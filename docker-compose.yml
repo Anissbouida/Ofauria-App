@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ofauria-db
+    environment:
+      POSTGRES_USER: ofauria
+      POSTGRES_PASSWORD: ofauria_secret
+      POSTGRES_DB: ofauria_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ofauria-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ofauria.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

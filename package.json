@@ -1,0 +1,24 @@
+{
+  "name": "ofauria-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Application de gestion pour la boulangerie-pâtisserie Ofauria",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "build:shared": "npm run build --workspace=shared",
+    "lint": "eslint . --ext .ts,.tsx",
+    "db:migrate": "npm run migrate --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}
