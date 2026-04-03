@@ -60,7 +60,7 @@ export default function CustomersPage() {
                   <Star size={14} className="text-amber-400" />
                   <span className="font-medium">{c.loyalty_points as number} pts</span>
                 </div>
-                <span className="text-sm text-gray-500">Total: {parseFloat(c.total_spent as string).toFixed(2)} €</span>
+                <span className="text-sm text-gray-500">Total: {parseFloat(c.total_spent as string).toFixed(2)} DH</span>
               </div>
             </div>
           ))}

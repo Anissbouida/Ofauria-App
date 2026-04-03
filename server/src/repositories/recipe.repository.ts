@@ -67,6 +67,48 @@ export const recipeRepository = {
     }
   },
 
+  async update(id: string, data: {
+    name: string; instructions?: string; yieldQuantity?: number;
+    ingredients: { ingredientId: string; quantity: number }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      let totalCost = 0;
+      for (const ing of data.ingredients) {
+        const ingResult = await client.query('SELECT unit_cost FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        if (ingResult.rows[0]) {
+          totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity;
+        }
+      }
+
+      await client.query(
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, total_cost = $4, updated_at = NOW()
+         WHERE id = $5`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, totalCost, id]
+      );
+
+      await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [id]);
+
+      for (const ing of data.ingredients) {
+        await client.query(
+          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES ($1, $2, $3)`,
+          [id, ing.ingredientId, ing.quantity]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return this.findById(id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   async delete(id: string) {
     await db.query('DELETE FROM recipes WHERE id = $1', [id]);
   },

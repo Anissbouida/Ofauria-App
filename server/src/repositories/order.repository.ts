@@ -17,7 +17,7 @@ export const orderRepository = {
 
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name
+      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
        ${where} ORDER BY o.created_at DESC LIMIT $${i++} OFFSET $${i}`,
       values
@@ -46,7 +46,7 @@ export const orderRepository = {
   async create(data: {
     orderNumber: string; customerId?: string; userId: string; type: string;
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
-    paymentMethod: string; notes?: string; pickupDate?: string;
+    advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
   }) {
     const client = await db.getClient();
@@ -54,11 +54,11 @@ export const orderRepository = {
       await client.query('BEGIN');
 
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, user_id, type, subtotal, tax_amount, discount_amount, total, payment_method, notes, pickup_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        `INSERT INTO orders (order_number, customer_id, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
-         data.paymentMethod, data.notes || null, data.pickupDate || null]
+         data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null]
       );
 
       for (const item of data.items) {
@@ -103,6 +103,25 @@ export const orderRepository = {
       `SELECT COUNT(*) FROM orders WHERE created_at::date = CURRENT_DATE`
     );
     const seq = parseInt(result.rows[0].count, 10) + 1;
-    return `OFA-${today}-${String(seq).padStart(4, '0')}`;
+    return `CMD-${today}-${String(seq).padStart(4, '0')}`;
+  },
+
+  async findByPickupDate(date: string) {
+    const result = await db.query(
+      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name,
+              json_agg(json_build_object(
+                'id', oi.id, 'product_id', oi.product_id, 'product_name', p.name,
+                'quantity', oi.quantity, 'unit_price', oi.unit_price, 'notes', oi.notes
+              )) as items
+       FROM orders o
+       LEFT JOIN customers c ON c.id = o.customer_id
+       JOIN order_items oi ON oi.order_id = o.id
+       JOIN products p ON p.id = oi.product_id
+       WHERE o.pickup_date::date = $1 AND o.status NOT IN ('cancelled', 'completed')
+       GROUP BY o.id, c.first_name, c.last_name
+       ORDER BY o.created_at`,
+      [date]
+    );
+    return result.rows;
   },
 };

@@ -123,7 +123,7 @@ export default function InventoryPage() {
                   <select name="unit" className="input">
                     <option value="kg">Kilogramme</option><option value="g">Gramme</option><option value="l">Litre</option><option value="ml">Millilitre</option><option value="unit">Unite</option>
                   </select></div>
-                <div><label className="block text-sm font-medium mb-1">Cout unitaire (€)</label><input name="unitCost" type="number" step="0.0001" className="input" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Cout unitaire (DH)</label><input name="unitCost" type="number" step="0.0001" className="input" required /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Fournisseur</label><input name="supplier" className="input" /></div>
               <div className="flex gap-3 justify-end">

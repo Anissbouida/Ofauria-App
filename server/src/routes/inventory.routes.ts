@@ -7,7 +7,7 @@ const router = Router();
 
 router.get('/', authenticate, inventoryController.list);
 router.get('/alerts', authenticate, inventoryController.alerts);
-router.post('/restock', authenticate, authorize('admin', 'manager'), inventoryController.restock);
+router.post('/restock', authenticate, authorize('admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie'), inventoryController.restock);
 router.get('/transactions', authenticate, inventoryController.transactions);
 
 export default router;

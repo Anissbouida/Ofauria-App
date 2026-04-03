@@ -15,7 +15,8 @@
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
     "build:shared": "npm run build --workspace=shared",
     "lint": "eslint . --ext .ts,.tsx",
-    "db:migrate": "npm run migrate --workspace=server"
+    "db:migrate": "npm run migrate --workspace=server",
+    "db:seed": "npm run seed --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

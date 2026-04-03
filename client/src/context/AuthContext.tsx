@@ -5,6 +5,7 @@ import type { User, LoginRequest } from '@ofauria/shared';
 interface AuthContextType {
   user: User | null;
   login: (data: LoginRequest) => Promise<void>;
+  loginWithPin: (pinCode: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -37,6 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user as User);
   };
 
+  const loginWithPin = async (pinCode: string) => {
+    const result = await authApi.pinLogin(pinCode);
+    localStorage.setItem('ofauria_token', result.token);
+    localStorage.setItem('ofauria_user', JSON.stringify(result.user));
+    setUser(result.user as User);
+  };
+
   const logout = () => {
     localStorage.removeItem('ofauria_token');
     localStorage.removeItem('ofauria_user');
@@ -44,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, loginWithPin, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

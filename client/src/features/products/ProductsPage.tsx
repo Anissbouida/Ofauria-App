@@ -14,7 +14,7 @@ export default function ProductsPage() {
 
   const { data: productsData, isLoading } = useQuery({
     queryKey: ['products', { search, categoryId: categoryFilter }],
-    queryFn: () => productsApi.list({ search, categoryId: categoryFilter }),
+    queryFn: () => productsApi.list({ search, categoryId: categoryFilter, limit: '500' }),
   });
 
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
@@ -61,9 +61,9 @@ export default function ProductsPage() {
       {isLoading ? (
         <p className="text-gray-500">Chargement...</p>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
           <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Produit</th>
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Categorie</th>
@@ -78,7 +78,7 @@ export default function ProductsPage() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       {p.image_url ? (
-                        <img src={p.image_url as string} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={p.image_url as string} alt="" className="w-10 h-10 rounded-lg object-contain" />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center text-lg">🥖</div>
                       )}
@@ -86,7 +86,7 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{p.category_name as string}</td>
-                  <td className="px-6 py-4 text-sm font-semibold">{parseFloat(p.price as string).toFixed(2)} €</td>
+                  <td className="px-6 py-4 text-sm font-semibold">{parseFloat(p.price as string).toFixed(2)} DH</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.is_available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {p.is_available ? 'Disponible' : 'Indisponible'}
@@ -160,12 +160,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Prix (€)</label>
+              <label className="block text-sm font-medium mb-1">Prix (DH)</label>
               <input type="number" step="0.01" className="input" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Prix de revient (€)</label>
+            <label className="block text-sm font-medium mb-1">Prix de revient (DH)</label>
             <input type="number" step="0.01" className="input" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} />
           </div>
           <div>

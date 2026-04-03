@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi } from '../../api/employees.api';
 import { Plus, Pencil, UserCog } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ROLE_LABELS } from '@ofauria/shared';
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
@@ -19,6 +20,7 @@ export default function EmployeesPage() {
       toast.success(editing ? 'Employe mis a jour' : 'Employe ajoute');
       setShowForm(false); setEditing(null);
     },
+    onError: () => toast.error('Erreur'),
   });
 
   return (
@@ -41,18 +43,23 @@ export default function EmployeesPage() {
                   </div>
                   <div>
                     <h3 className="font-semibold">{e.first_name as string} {e.last_name as string}</h3>
-                    <p className="text-sm text-gray-500 capitalize">{e.role as string}</p>
+                    <p className="text-sm text-gray-500">{ROLE_LABELS[e.role as keyof typeof ROLE_LABELS] || e.role as string}</p>
                   </div>
                 </div>
                 <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg">
                   <Pencil size={14} className="text-gray-400" />
                 </button>
               </div>
-              <div className="mt-3 pt-3 border-t text-sm text-gray-500 flex justify-between">
-                <span>{e.phone as string || 'Pas de telephone'}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {e.is_active ? 'Actif' : 'Inactif'}
-                </span>
+              <div className="mt-3 pt-3 border-t text-sm text-gray-500 space-y-1">
+                <div className="flex justify-between">
+                  <span>{e.phone as string || 'Pas de telephone'}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {e.is_active ? 'Actif' : 'Inactif'}
+                  </span>
+                </div>
+                {e.monthly_salary && (
+                  <div className="text-gray-600 font-medium">{parseFloat(e.monthly_salary as string).toFixed(2)} DH/mois</div>
+                )}
               </div>
             </div>
           ))}
@@ -68,7 +75,7 @@ export default function EmployeesPage() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const data: Record<string, unknown> = Object.fromEntries(fd);
-              if (data.hourlyRate) data.hourlyRate = parseFloat(data.hourlyRate as string);
+              if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
               saveMutation.mutate(data);
             }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -77,12 +84,17 @@ export default function EmployeesPage() {
               </div>
               <div><label className="block text-sm font-medium mb-1">Role</label>
                 <select name="role" defaultValue={editing?.role as string || 'baker'} className="input">
-                  <option value="baker">Boulanger</option><option value="decorator">Patissier</option>
-                  <option value="cashier">Caissier</option><option value="manager">Gerant</option>
+                  <option value="admin">Administrateur</option>
+                  <option value="manager">Gerant</option>
+                  <option value="baker">Boulanger</option>
+                  <option value="pastry_chef">Patissier</option>
+                  <option value="viennoiserie">Viennoiserie</option>
+                  <option value="saleswoman">Vendeuse</option>
+                  <option value="cashier">Caissier</option>
                 </select></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Telephone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Taux horaire (€)</label><input name="hourlyRate" type="number" step="0.01" defaultValue={editing?.hourly_rate as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Salaire mensuel (DH)</label><input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input" /></div>
               </div>
               {!editing && <div><label className="block text-sm font-medium mb-1">Date d'embauche</label><input name="hireDate" type="date" className="input" required /></div>}
               <div className="flex gap-3 justify-end">

@@ -62,6 +62,53 @@ export const authController = {
     });
   },
 
+  async pinLogin(req: AuthRequest, res: Response) {
+    const { pinCode } = req.body;
+    if (!pinCode) {
+      res.status(400).json({ success: false, error: { message: 'Code PIN requis' } });
+      return;
+    }
+
+    const user = await userRepository.findByPinCode(pinCode);
+    if (!user || !user.is_active) {
+      res.status(401).json({ success: false, error: { message: 'Code PIN incorrect' } });
+      return;
+    }
+    if (user.role === 'admin') {
+      res.status(403).json({ success: false, error: { message: 'Les administrateurs doivent se connecter avec email et mot de passe' } });
+      return;
+    }
+
+    const token = generateToken({ userId: user.id, role: user.role });
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          role: user.role,
+          isActive: user.is_active,
+        },
+      },
+    });
+  },
+
+  async activeUsers(_req: AuthRequest, res: Response) {
+    const users = await userRepository.findAllActive();
+    res.json({
+      success: true,
+      data: users.map(u => ({
+        id: u.id,
+        firstName: u.first_name,
+        lastName: u.last_name,
+        role: u.role,
+      })),
+    });
+  },
+
   async me(req: AuthRequest, res: Response) {
     const user = await userRepository.findById(req.user!.userId);
     if (!user) {

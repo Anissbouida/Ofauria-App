@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../../api/reports.api';
-import { DollarSign, ShoppingCart, TrendingUp, Package, AlertTriangle } from 'lucide-react';
+import { DollarSign, ShoppingCart, TrendingUp, Package, AlertTriangle, ClipboardList } from 'lucide-react';
 
 function KPICard({ title, value, icon: Icon, color }: { title: string; value: string; icon: React.ElementType; color: string }) {
   return (
@@ -21,17 +21,18 @@ export default function DashboardPage() {
 
   if (isLoading) return <div className="text-center py-12 text-gray-500">Chargement du tableau de bord...</div>;
 
-  const d = data || { todayOrders: 0, todayRevenue: 0, avgOrderValue: 0, todayItemsSold: 0, topProducts: [], lowStockCount: 0 };
+  const d = data || { todaySales: 0, todayRevenue: 0, avgSaleValue: 0, todayItemsSold: 0, topProducts: [], pendingOrders: 0, lowStockCount: 0 };
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-bakery-chocolate">Tableau de bord</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Chiffre d'affaires du jour" value={`${d.todayRevenue.toFixed(2)} €`} icon={DollarSign} color="bg-green-500" />
-        <KPICard title="Commandes du jour" value={String(d.todayOrders)} icon={ShoppingCart} color="bg-blue-500" />
-        <KPICard title="Panier moyen" value={`${d.avgOrderValue.toFixed(2)} €`} icon={TrendingUp} color="bg-primary-500" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <KPICard title="Chiffre d'affaires du jour" value={`${d.todayRevenue.toFixed(2)} DH`} icon={DollarSign} color="bg-green-500" />
+        <KPICard title="Ventes du jour" value={String(d.todaySales)} icon={ShoppingCart} color="bg-blue-500" />
+        <KPICard title="Panier moyen" value={`${d.avgSaleValue.toFixed(2)} DH`} icon={TrendingUp} color="bg-primary-500" />
         <KPICard title="Articles vendus" value={String(d.todayItemsSold)} icon={Package} color="bg-purple-500" />
+        <KPICard title="Commandes en attente" value={String(d.pendingOrders)} icon={ClipboardList} color="bg-amber-500" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -49,7 +50,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-sm text-gray-500">{p.total_sold} vendus</span>
-                    <span className="text-sm font-medium text-green-600 ml-3">{parseFloat(p.total_revenue).toFixed(2)} €</span>
+                    <span className="text-sm font-medium text-green-600 ml-3">{parseFloat(p.total_revenue).toFixed(2)} DH</span>
                   </div>
                 </div>
               ))}

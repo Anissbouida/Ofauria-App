@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
-import { ordersApi } from '../../api/orders.api';
+import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
 import { Minus, Plus, Trash2, Search, User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ReceiptModal from './ReceiptModal';
+import { useAuth } from '../../context/AuthContext';
 
 interface CartItem {
   productId: string;
@@ -15,8 +17,21 @@ interface CartItem {
   imageUrl?: string;
 }
 
+interface ReceiptData {
+  saleNumber: string;
+  date: string;
+  cashierName: string;
+  customerName?: string;
+  items: { name: string; quantity: number; unitPrice: number; subtotal: number }[];
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+  paymentMethod: string;
+}
+
 export default function POSPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [search, setSearch] = useState('');
@@ -24,6 +39,7 @@ export default function POSPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile'>('cash');
   const [showPayment, setShowPayment] = useState(false);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
   const { data: productsData } = useQuery({
     queryKey: ['pos-products', { categoryId: selectedCategory, search, isAvailable: 'true' }],
@@ -37,14 +53,26 @@ export default function POSPage() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: ordersApi.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    mutationFn: salesApi.checkout,
+    onSuccess: (sale: Record<string, unknown>) => {
+      const receipt: ReceiptData = {
+        saleNumber: sale.sale_number as string,
+        date: sale.created_at as string,
+        cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+        customerName: customerSearch.length >= 2 ? customerSearch : undefined,
+        items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, subtotal: i.price * i.quantity })),
+        subtotal,
+        discountAmount: 0,
+        total,
+        paymentMethod,
+      };
+      setReceiptData(receipt);
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setCart([]); setCustomerId(''); setShowPayment(false);
-      toast.success('Commande enregistree !');
+      setCart([]); setCustomerId(''); setCustomerSearch(''); setShowPayment(false);
+      toast.success('Vente enregistree !');
     },
-    onError: () => toast.error('Erreur lors de la commande'),
+    onError: () => toast.error('Erreur lors de la vente'),
   });
 
   const products = productsData?.data || [];
@@ -79,7 +107,6 @@ export default function POSPage() {
   const handleCheckout = () => {
     checkoutMutation.mutate({
       customerId: customerId || undefined,
-      type: 'in_store',
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
       paymentMethod,
     });
@@ -103,16 +130,18 @@ export default function POSPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto flex-1">
+        <div className="overflow-y-auto flex-1 grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(6, 5cm)', gridAutoRows: '5cm' }}>
           {products.map((p: Record<string, unknown>) => (
-            <button key={p.id as string} onClick={() => addToCart(p)} className="bg-white rounded-xl p-3 text-left hover:shadow-md transition-shadow border border-gray-100 flex flex-col">
-              {p.image_url ? (
-                <img src={p.image_url as string} alt="" className="w-full h-24 object-cover rounded-lg mb-2" />
-              ) : (
-                <div className="w-full h-24 bg-primary-50 rounded-lg mb-2 flex items-center justify-center text-3xl">🥖</div>
-              )}
-              <span className="font-medium text-sm truncate">{p.name as string}</span>
-              <span className="text-primary-600 font-bold mt-1">{parseFloat(p.price as string).toFixed(2)} €</span>
+            <button key={p.id as string} onClick={() => addToCart(p)} className="bg-white rounded-xl p-1.5 text-left hover:shadow-md hover:border-primary-300 transition-all border border-gray-100 flex flex-col">
+              <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                {p.image_url ? (
+                  <img src={p.image_url as string} alt="" className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-2xl">🥖</span>
+                )}
+              </div>
+              <span className="font-medium text-xs line-clamp-2 leading-tight mt-1">{p.name as string}</span>
+              <span className="text-primary-600 font-bold text-xs pt-0.5">{parseFloat(p.price as string).toFixed(2)} DH</span>
             </button>
           ))}
         </div>
@@ -131,7 +160,7 @@ export default function POSPage() {
             <div key={item.productId} className="flex items-center gap-3 py-2 border-b border-gray-50">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate">{item.name}</p>
-                <p className="text-primary-600 text-sm">{item.price.toFixed(2)} €</p>
+                <p className="text-primary-600 text-sm">{item.price.toFixed(2)} DH</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => updateQuantity(item.productId, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
@@ -142,7 +171,7 @@ export default function POSPage() {
                   <Plus size={14} />
                 </button>
               </div>
-              <span className="text-sm font-semibold w-16 text-right">{(item.price * item.quantity).toFixed(2)} €</span>
+              <span className="text-sm font-semibold w-16 text-right">{(item.price * item.quantity).toFixed(2)} DH</span>
               <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))} className="text-red-400 hover:text-red-600">
                 <Trash2 size={14} />
               </button>
@@ -170,7 +199,7 @@ export default function POSPage() {
         <div className="p-4 border-t space-y-3">
           <div className="flex justify-between text-lg font-bold">
             <span>Total</span>
-            <span className="text-primary-600">{total.toFixed(2)} €</span>
+            <span className="text-primary-600">{total.toFixed(2)} DH</span>
           </div>
           <button onClick={() => setShowPayment(true)} disabled={cart.length === 0} className="btn-primary w-full py-3 text-lg">
             Encaisser
@@ -183,7 +212,7 @@ export default function POSPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
             <h2 className="text-xl font-bold mb-4">Paiement</h2>
-            <p className="text-3xl font-bold text-primary-600 text-center mb-6">{total.toFixed(2)} €</p>
+            <p className="text-3xl font-bold text-primary-600 text-center mb-6">{total.toFixed(2)} DH</p>
             <div className="grid grid-cols-3 gap-3 mb-6">
               {(['cash', 'card', 'mobile'] as const).map(m => (
                 <button key={m} onClick={() => setPaymentMethod(m)}
@@ -200,6 +229,11 @@ export default function POSPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Receipt Modal */}
+      {receiptData && (
+        <ReceiptModal receipt={receiptData} onClose={() => setReceiptData(null)} />
       )}
     </div>
   );

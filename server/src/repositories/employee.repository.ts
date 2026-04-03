@@ -13,13 +13,13 @@ export const employeeRepository = {
 
   async create(data: {
     userId?: string; firstName: string; lastName: string; role: string;
-    phone?: string; hourlyRate?: number; hireDate: string;
+    phone?: string; monthlySalary?: number; hireDate: string;
   }) {
     const result = await db.query(
-      `INSERT INTO employees (user_id, first_name, last_name, role, phone, hourly_rate, hire_date)
+      `INSERT INTO employees (user_id, first_name, last_name, role, phone, monthly_salary, hire_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
-       data.phone || null, data.hourlyRate || null, data.hireDate]
+       data.phone || null, data.monthlySalary || null, data.hireDate]
     );
     return result.rows[0];
   },
@@ -27,7 +27,7 @@ export const employeeRepository = {
   async update(id: string, data: Record<string, unknown>) {
     const mapping: Record<string, string> = {
       firstName: 'first_name', lastName: 'last_name', role: 'role',
-      phone: 'phone', hourlyRate: 'hourly_rate', isActive: 'is_active',
+      phone: 'phone', monthlySalary: 'monthly_salary', isActive: 'is_active',
     };
     const fields: string[] = [];
     const values: unknown[] = [];

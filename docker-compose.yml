@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ofauria_secret
       POSTGRES_DB: ofauria_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

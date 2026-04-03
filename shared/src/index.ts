@@ -2,6 +2,7 @@
 export * from './constants/roles.js';
 export * from './constants/order-status.js';
 export * from './constants/units.js';
+export * from './constants/production-status.js';
 
 // Types
 export * from './types/common.types.js';
@@ -12,3 +13,4 @@ export * from './types/inventory.types.js';
 export * from './types/customer.types.js';
 export * from './types/recipe.types.js';
 export * from './types/employee.types.js';
+export * from './types/production.types.js';

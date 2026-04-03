@@ -42,7 +42,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+              <Tooltip formatter={(value: number) => `${value.toFixed(2)} DH`} />
               <Line type="monotone" dataKey="revenue" stroke="#d98a35" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -79,7 +79,7 @@ export default function ReportsPage() {
                 <td className="py-3 font-medium">{p.name}</td>
                 <td className="py-3 text-sm text-gray-500">{p.category}</td>
                 <td className="py-3 text-right">{p.total_sold}</td>
-                <td className="py-3 text-right font-semibold text-primary-600">{parseFloat(p.total_revenue).toFixed(2)} €</td>
+                <td className="py-3 text-right font-semibold text-primary-600">{parseFloat(p.total_revenue).toFixed(2)} DH</td>
               </tr>
             ))}
           </tbody>
