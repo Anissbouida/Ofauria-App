@@ -1,34 +1,35 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionsContext';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
-  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings,
+  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
 } from 'lucide-react';
+import type { AppModule } from '@ofauria/shared';
 
-const ADMIN_MANAGER = ['admin', 'manager'];
-const PRODUCTION_ROLES = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie'];
-
-const modules = [
-  { name: 'Tableau de bord', description: 'Vue d\'ensemble de l\'activite', href: '/reports', icon: LayoutDashboard, color: 'bg-blue-500', roles: ADMIN_MANAGER },
-  { name: 'Point de vente', description: 'Caisse et ventes directes', href: '/pos', icon: Monitor, color: 'bg-green-600', roles: ['admin', 'manager', 'cashier', 'saleswoman'] },
-  { name: 'Ventes', description: 'Historique des ventes', href: '/sales', icon: Receipt, color: 'bg-emerald-500', roles: ADMIN_MANAGER },
-  { name: 'Pre-commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', roles: ['admin', 'manager', 'cashier', 'saleswoman'] },
-  { name: 'Produits', description: 'Catalogue et tarifs', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', roles: ADMIN_MANAGER },
-  { name: 'Clients', description: 'Fichier clients et fidelite', href: '/customers', icon: Users, color: 'bg-cyan-600', roles: ['admin', 'manager', 'cashier', 'saleswoman'] },
-  { name: 'Inventaire', description: 'Stock matieres premieres', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', roles: PRODUCTION_ROLES },
-  { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', roles: PRODUCTION_ROLES },
-  { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', roles: [...PRODUCTION_ROLES, 'cashier', 'saleswoman'] },
-  { name: 'Employes', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', roles: ADMIN_MANAGER },
-  { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', roles: ['admin'] },
-  { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', roles: ADMIN_MANAGER },
-  { name: 'Parametres', description: 'Personnalisation de l\'application', href: '/settings', icon: Settings, color: 'bg-slate-600', roles: ['admin'] },
+const modules: { name: string; description: string; href: string; icon: typeof LayoutDashboard; color: string; module: AppModule }[] = [
+  { name: 'Tableau de bord', description: 'Vue d\'ensemble de l\'activite', href: '/reports', icon: LayoutDashboard, color: 'bg-blue-500', module: 'dashboard' },
+  { name: 'Point de vente', description: 'Caisse et ventes directes', href: '/pos', icon: Monitor, color: 'bg-green-600', module: 'pos' },
+  { name: 'Ventes', description: 'Historique des ventes', href: '/sales', icon: Receipt, color: 'bg-emerald-500', module: 'sales' },
+  { name: 'Pre-commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
+  { name: 'Produits', description: 'Catalogue et tarifs', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', module: 'products' },
+  { name: 'Clients', description: 'Fichier clients et fidelite', href: '/customers', icon: Users, color: 'bg-cyan-600', module: 'customers' },
+  { name: 'Inventaire', description: 'Stock matieres premieres', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
+  { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
+  { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
+  { name: 'Personnel', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
+  { name: 'Comptabilite', description: 'Factures, paiements et fournisseurs', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
+  { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
+  { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },
+  { name: 'Parametres', description: 'Personnalisation de l\'application', href: '/settings', icon: Settings, color: 'bg-slate-600', module: 'settings' },
 ];
 
 export default function HomePage() {
   const { user } = useAuth();
+  const { hasModule } = usePermissions();
   const navigate = useNavigate();
 
-  const userModules = modules.filter(m => m.roles.includes(user?.role || ''));
+  const userModules = modules.filter(m => hasModule(m.module));
 
   return (
     <div className="max-w-5xl mx-auto">

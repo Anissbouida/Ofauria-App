@@ -17,9 +17,11 @@ export const productRepository = {
 
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT p.*, c.name as category_name, c.slug as category_slug
+      `SELECT p.*, c.name as category_name, c.slug as category_slug,
+              u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN users u ON u.id = p.responsible_user_id
        ${where}
        ORDER BY p.created_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -31,8 +33,11 @@ export const productRepository = {
 
   async findById(id: string) {
     const result = await db.query(
-      `SELECT p.*, c.name as category_name, c.slug as category_slug
-       FROM products p LEFT JOIN categories c ON c.id = p.category_id
+      `SELECT p.*, c.name as category_name, c.slug as category_slug,
+              u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN users u ON u.id = p.responsible_user_id
        WHERE p.id = $1`,
       [id]
     );
@@ -43,13 +48,14 @@ export const productRepository = {
     name: string; slug: string; categoryId: number; description?: string;
     price: number; costPrice?: number; isAvailable?: boolean;
     isCustomOrderable?: boolean; preparationTimeMin?: number;
+    responsibleUserId?: string;
   }) {
     const result = await db.query(
-      `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [data.name, data.slug, data.categoryId, data.description || null, data.price,
        data.costPrice || null, data.isAvailable ?? true, data.isCustomOrderable ?? false,
-       data.preparationTimeMin || null]
+       data.preparationTimeMin || null, data.responsibleUserId || null]
     );
     return result.rows[0];
   },
@@ -60,6 +66,9 @@ export const productRepository = {
       price: 'price', costPrice: 'cost_price', imageUrl: 'image_url',
       isAvailable: 'is_available', isCustomOrderable: 'is_custom_orderable',
       preparationTimeMin: 'preparation_time_min',
+      responsibleUserId: 'responsible_user_id',
+      stockQuantity: 'stock_quantity',
+      stockMinThreshold: 'stock_min_threshold',
     };
 
     const fields: string[] = [];

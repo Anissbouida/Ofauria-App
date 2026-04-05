@@ -1,6 +1,7 @@
 export const ORDER_STATUS = {
   PENDING: 'pending',
-  PREPARING: 'preparing',
+  CONFIRMED: 'confirmed',
+  IN_PRODUCTION: 'in_production',
   READY: 'ready',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
@@ -9,11 +10,12 @@ export const ORDER_STATUS = {
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: 'En attente',
-  preparing: 'En préparation',
-  ready: 'Prêt',
-  completed: 'Terminé',
-  cancelled: 'Annulé',
+  pending: 'Brouillon',
+  confirmed: 'Confirmee',
+  in_production: 'En production',
+  ready: 'Prete',
+  completed: 'Terminee',
+  cancelled: 'Annulee',
 };
 
 export const ORDER_TYPES = {

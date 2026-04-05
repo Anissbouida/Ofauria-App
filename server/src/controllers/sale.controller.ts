@@ -2,13 +2,16 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
+import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
-    const { dateFrom, dateTo, customerId, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, page = '1', limit = '20' } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
     const result = await saleRepository.findAll({
-      dateFrom, dateTo, customerId, limit: l, offset: (p - 1) * l,
+      dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId,
+      storeId: req.user!.storeId,
+      limit: l, offset: (p - 1) * l,
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },
@@ -38,16 +41,30 @@ export const saleController = {
     const taxAmount = 0;
     const total = subtotal - discountAmount + taxAmount;
 
+    // Require an open cash register session
+    const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
+    if (!activeSession) {
+      res.status(400).json({ success: false, error: { message: 'Vous devez ouvrir la caisse avant de vendre' } });
+      return;
+    }
+
     const sale = await saleRepository.create({
       customerId, userId: req.user!.userId,
       subtotal, taxAmount, discountAmount, total, paymentMethod, notes, items: saleItems,
+      sessionId: activeSession.id, storeId: req.user!.storeId,
     });
 
     res.status(201).json({ success: true, data: sale });
   },
 
-  async todayStats(_req: AuthRequest, res: Response) {
-    const stats = await saleRepository.todayStats();
+  async todayStats(req: AuthRequest, res: Response) {
+    const stats = await saleRepository.todayStats(req.user!.storeId);
     res.json({ success: true, data: stats });
+  },
+
+  async summary(req: AuthRequest, res: Response) {
+    const { dateFrom, dateTo, groupBy = 'category' } = req.query as Record<string, string>;
+    const result = await saleRepository.summary({ dateFrom, dateTo, groupBy, storeId: req.user!.storeId });
+    res.json({ success: true, data: result });
   },
 };

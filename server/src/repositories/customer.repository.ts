@@ -30,6 +30,11 @@ export const customerRepository = {
     return result.rows[0] || null;
   },
 
+  async findByPhone(phone: string) {
+    const result = await db.query('SELECT * FROM customers WHERE phone = $1', [phone]);
+    return result.rows[0] || null;
+  },
+
   async create(data: { firstName: string; lastName: string; email?: string; phone?: string; notes?: string }) {
     const result = await db.query(
       `INSERT INTO customers (first_name, last_name, email, phone, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
@@ -57,5 +62,9 @@ export const customerRepository = {
       values
     );
     return result.rows[0];
+  },
+
+  async delete(id: string) {
+    await db.query('DELETE FROM customers WHERE id = $1', [id]);
   },
 };

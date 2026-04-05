@@ -1,38 +1,48 @@
 import { db } from '../config/database.js';
 
 export const inventoryRepository = {
-  async findAll() {
+  async findAll(storeId?: string) {
+    const where = storeId ? 'WHERE inv.store_id = $1' : '';
+    const params = storeId ? [storeId] : [];
     const result = await db.query(
-      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier
+      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category
        FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
-       ORDER BY ing.name`
+       ${where}
+       ORDER BY ing.category, ing.name`,
+      params
     );
     return result.rows;
   },
 
-  async findAlerts() {
+  async findAlerts(storeId?: string) {
+    const storeFilter = storeId ? ' AND inv.store_id = $1' : '';
+    const params = storeId ? [storeId] : [];
     const result = await db.query(
-      `SELECT inv.*, ing.name as ingredient_name, ing.unit
+      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.category
        FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
-       WHERE inv.current_quantity <= inv.minimum_threshold
-       ORDER BY (inv.current_quantity / NULLIF(inv.minimum_threshold, 0))`
+       WHERE inv.current_quantity <= inv.minimum_threshold${storeFilter}
+       ORDER BY (inv.current_quantity / NULLIF(inv.minimum_threshold, 0))`,
+      params
     );
     return result.rows;
   },
 
-  async restock(ingredientId: string, quantity: number, performedBy: string, note?: string) {
+  async restock(ingredientId: string, quantity: number, performedBy: string, note?: string, storeId?: string) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      const storeFilter = storeId ? ' AND store_id = $3' : '';
+      const updateParams: unknown[] = [quantity, ingredientId];
+      if (storeId) updateParams.push(storeId);
       await client.query(
         `UPDATE inventory SET current_quantity = current_quantity + $1, last_restocked_at = NOW(), updated_at = NOW()
-         WHERE ingredient_id = $2`,
-        [quantity, ingredientId]
+         WHERE ingredient_id = $2${storeFilter}`,
+        updateParams
       );
       await client.query(
-        `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by)
-         VALUES ($1, 'restock', $2, $3, $4)`,
-        [ingredientId, quantity, note || null, performedBy]
+        `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
+         VALUES ($1, 'restock', $2, $3, $4, $5)`,
+        [ingredientId, quantity, note || null, performedBy, storeId || null]
       );
       await client.query('COMMIT');
     } catch (err) {
@@ -43,9 +53,14 @@ export const inventoryRepository = {
     }
   },
 
-  async getTransactions(ingredientId?: string, limit = 50) {
-    const where = ingredientId ? 'WHERE it.ingredient_id = $1' : '';
-    const params = ingredientId ? [ingredientId, limit] : [limit];
+  async getTransactions(ingredientId?: string, limit = 50, storeId?: string) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+    if (ingredientId) { conditions.push(`it.ingredient_id = $${idx++}`); values.push(ingredientId); }
+    if (storeId) { conditions.push(`it.store_id = $${idx++}`); values.push(storeId); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    values.push(limit);
     const result = await db.query(
       `SELECT it.*, ing.name as ingredient_name, u.first_name as performed_by_name
        FROM inventory_transactions it
@@ -53,8 +68,8 @@ export const inventoryRepository = {
        LEFT JOIN users u ON u.id = it.performed_by
        ${where}
        ORDER BY it.created_at DESC
-       LIMIT $${ingredientId ? 2 : 1}`,
-      params
+       LIMIT $${idx}`,
+      values
     );
     return result.rows;
   },
@@ -71,13 +86,13 @@ export const ingredientRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[] }) {
+  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || []]
+        `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre']
       );
       // Create inventory entry
       await client.query(
@@ -96,7 +111,7 @@ export const ingredientRepository = {
 
   async update(id: string, data: Record<string, unknown>) {
     const mapping: Record<string, string> = {
-      name: 'name', unit: 'unit', unitCost: 'unit_cost', supplier: 'supplier', allergens: 'allergens',
+      name: 'name', unit: 'unit', unitCost: 'unit_cost', supplier: 'supplier', allergens: 'allergens', category: 'category',
     };
     const fields: string[] = [];
     const values: unknown[] = [];

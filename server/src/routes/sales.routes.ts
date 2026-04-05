@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', authenticate, saleController.list);
 router.get('/today', authenticate, saleController.todayStats);
+router.get('/summary', authenticate, saleController.summary);
 router.get('/:id', authenticate, saleController.getById);
 router.post('/checkout', authenticate, saleController.checkout);
 

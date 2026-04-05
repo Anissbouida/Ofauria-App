@@ -9,6 +9,7 @@ export interface UserRow {
   last_name: string;
   role: string;
   is_active: boolean;
+  store_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -59,7 +60,7 @@ export const userRepository = {
 
   async update(id: string, data: {
     email?: string; firstName?: string; lastName?: string;
-    role?: string; isActive?: boolean; passwordHash?: string; pinCode?: string | null;
+    role?: string; isActive?: boolean; passwordHash?: string; pinCode?: string | null; storeId?: string | null;
   }): Promise<UserRow> {
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -71,6 +72,7 @@ export const userRepository = {
     if (data.isActive !== undefined) { fields.push(`is_active = $${i++}`); values.push(data.isActive); }
     if (data.passwordHash !== undefined) { fields.push(`password_hash = $${i++}`); values.push(data.passwordHash); }
     if (data.pinCode !== undefined) { fields.push(`pin_code = $${i++}`); values.push(data.pinCode); }
+    if (data.storeId !== undefined) { fields.push(`store_id = $${i++}`); values.push(data.storeId); }
     fields.push('updated_at = NOW()');
     values.push(id);
     const result = await db.query(

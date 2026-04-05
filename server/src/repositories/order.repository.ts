@@ -1,11 +1,12 @@
 import { db } from '../config/database.js';
 
 export const orderRepository = {
-  async findAll(params: { status?: string; type?: string; customerId?: string; limit: number; offset: number }) {
+  async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; limit: number; offset: number }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
+    if (params.storeId) { conditions.push(`o.store_id = $${i++}`); values.push(params.storeId); }
     if (params.status) { conditions.push(`o.status = $${i++}`); values.push(params.status); }
     if (params.type) { conditions.push(`o.type = $${i++}`); values.push(params.type); }
     if (params.customerId) { conditions.push(`o.customer_id = $${i++}`); values.push(params.customerId); }
@@ -28,7 +29,7 @@ export const orderRepository = {
 
   async findById(id: string) {
     const orderResult = await db.query(
-      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name
+      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
       [id]
     );
@@ -47,6 +48,7 @@ export const orderRepository = {
     orderNumber: string; customerId?: string; userId: string; type: string;
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
+    sessionId?: string; storeId?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
   }) {
     const client = await db.getClient();
@@ -54,11 +56,11 @@ export const orderRepository = {
       await client.query('BEGIN');
 
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        `INSERT INTO orders (order_number, customer_id, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
-         data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null]
+         data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null]
       );
 
       for (const item of data.items) {
@@ -75,6 +77,51 @@ export const orderRepository = {
         await client.query(
           `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
           [data.total, loyaltyPoints, data.customerId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return orderResult.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  async update(id: string, data: {
+    customerId?: string; type?: string; subtotal: number; taxAmount: number;
+    discountAmount: number; total: number; advanceAmount?: number;
+    paymentMethod?: string; notes?: string; pickupDate?: string;
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const orderResult = await client.query(
+        `UPDATE orders SET customer_id = COALESCE($1, customer_id), type = COALESCE($2, type),
+         subtotal = $3, tax_amount = $4, discount_amount = $5, total = $6, advance_amount = $7,
+         payment_method = COALESCE($8, payment_method), notes = $9, pickup_date = COALESCE($10, pickup_date)
+         WHERE id = $11 AND status IN ('pending', 'confirmed') RETURNING *`,
+        [data.customerId || null, data.type || null, data.subtotal, data.taxAmount,
+         data.discountAmount, data.total, data.advanceAmount || 0,
+         data.paymentMethod || null, data.notes || null, data.pickupDate || null, id]
+      );
+
+      if (!orderResult.rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      // Replace items
+      await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
+      for (const item of data.items) {
+        await client.query(
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null]
         );
       }
 
@@ -106,7 +153,11 @@ export const orderRepository = {
     return `CMD-${today}-${String(seq).padStart(4, '0')}`;
   },
 
-  async findByPickupDate(date: string) {
+  async findByPickupDate(date: string, storeId?: string) {
+    const conditions = [`o.pickup_date::date = $1`, `o.status IN ('confirmed', 'in_production')`];
+    const values: unknown[] = [date];
+    if (storeId) { conditions.push(`o.store_id = $2`); values.push(storeId); }
+
     const result = await db.query(
       `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name,
               json_agg(json_build_object(
@@ -117,10 +168,10 @@ export const orderRepository = {
        LEFT JOIN customers c ON c.id = o.customer_id
        JOIN order_items oi ON oi.order_id = o.id
        JOIN products p ON p.id = oi.product_id
-       WHERE o.pickup_date::date = $1 AND o.status NOT IN ('cancelled', 'completed')
+       WHERE ${conditions.join(' AND ')}
        GROUP BY o.id, c.first_name, c.last_name
        ORDER BY o.created_at`,
-      [date]
+      values
     );
     return result.rows;
   },

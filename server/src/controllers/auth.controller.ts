@@ -20,7 +20,7 @@ export const authController = {
       return;
     }
 
-    const token = generateToken({ userId: user.id, role: user.role });
+    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined });
     res.json({
       success: true,
       data: {
@@ -32,6 +32,7 @@ export const authController = {
           lastName: user.last_name,
           role: user.role,
           isActive: user.is_active,
+          storeId: user.store_id || null,
         },
       },
     });
@@ -79,7 +80,7 @@ export const authController = {
       return;
     }
 
-    const token = generateToken({ userId: user.id, role: user.role });
+    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined });
     res.json({
       success: true,
       data: {
@@ -91,6 +92,7 @@ export const authController = {
           lastName: user.last_name,
           role: user.role,
           isActive: user.is_active,
+          storeId: user.store_id || null,
         },
       },
     });
@@ -125,6 +127,7 @@ export const authController = {
         lastName: user.last_name,
         role: user.role,
         isActive: user.is_active,
+        storeId: user.store_id || null,
       },
     });
   },

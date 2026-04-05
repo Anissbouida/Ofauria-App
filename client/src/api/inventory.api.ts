@@ -4,6 +4,8 @@ export const inventoryApi = {
   list: () => api.get('/inventory').then(r => r.data.data),
   alerts: () => api.get('/inventory/alerts').then(r => r.data.data),
   restock: (data: { ingredientId: string; quantity: number; note?: string }) => api.post('/inventory/restock', data),
+  adjust: (data: { ingredientId: string; quantity: number; type: string; note?: string }) => api.post('/inventory/adjust', data),
+  updateThreshold: (data: { ingredientId: string; threshold: number }) => api.put('/inventory/threshold', data),
   transactions: (ingredientId?: string) => api.get('/inventory/transactions', { params: { ingredientId } }).then(r => r.data.data),
 };
 

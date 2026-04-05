@@ -4,11 +4,26 @@ import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
 import { productsApi } from '../../api/products.api';
 import { ordersApi } from '../../api/orders.api';
-import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS } from '@ofauria/shared';
-import { Plus, Trash2, Factory, Calendar, ShoppingBag } from 'lucide-react';
+import { usePermissions } from '../../context/PermissionsContext';
+import { useAuth } from '../../context/AuthContext';
+import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, ROLE_CATEGORY_SLUGS, getRoleCategorySlugs } from '@ofauria/shared';
+import { Plus, Trash2, Factory, Calendar, ShoppingBag, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+
+const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie'];
+const ROLE_LABELS: Record<string, string> = {
+  baker: 'Boulanger',
+  pastry_chef: 'Patissier',
+  viennoiserie: 'Viennoiserie',
+};
+
+const roleColors: Record<string, string> = {
+  baker: 'bg-amber-100 text-amber-800',
+  pastry_chef: 'bg-pink-100 text-pink-800',
+  viennoiserie: 'bg-orange-100 text-orange-800',
+};
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -20,12 +35,20 @@ const statusColors: Record<string, string> = {
 export default function ProductionPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
 
+  const isChef = CHEF_ROLES.includes(user?.role || '');
+  const isAdmin = ['admin', 'manager'].includes(user?.role || '');
+
   const { data, isLoading } = useQuery({
-    queryKey: ['production', { status: statusFilter }],
-    queryFn: () => productionApi.list({ status: statusFilter }),
+    queryKey: ['production', { status: statusFilter, targetRole: roleFilter }],
+    queryFn: () => productionApi.list({
+      status: statusFilter,
+      ...(roleFilter ? { targetRole: roleFilter } : {}),
+    }),
   });
 
   const deleteMutation = useMutation({
@@ -46,6 +69,26 @@ export default function ProductionPage() {
         </button>
       </div>
 
+      {/* Role filter for admin/manager */}
+      {isAdmin && (
+        <div className="flex gap-2 overflow-x-auto">
+          <button onClick={() => setRoleFilter('')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              roleFilter === '' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'
+            }`}>
+            Tous les chefs
+          </button>
+          {CHEF_ROLES.map(role => (
+            <button key={role} onClick={() => setRoleFilter(role)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                roleFilter === role ? 'bg-gray-800 text-white' : `bg-white text-gray-600 hover:bg-gray-100`
+              }`}>
+              {ROLE_LABELS[role]}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-2 overflow-x-auto">
         {tabs.map((tab, i) => (
           <button key={tab} onClick={() => setStatusFilter(tab)}
@@ -63,6 +106,7 @@ export default function ProductionPage() {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Date</th>
+                {isAdmin && <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Chef</th>}
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Type</th>
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Articles</th>
                 <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Statut</th>
@@ -79,12 +123,32 @@ export default function ProductionPage() {
                       {format(new Date(p.plan_date as string), 'dd MMM yyyy', { locale: fr })}
                     </div>
                   </td>
+                  {isAdmin && (
+                    <td className="px-6 py-4">
+                      {p.target_role ? (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${roleColors[p.target_role as string] || 'bg-gray-100 text-gray-700'}`}>
+                          {ROLE_LABELS[p.target_role as string] || p.target_role}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-700">
                       {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{p.item_count as number} produit(s)</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    <div>{p.item_count as number} produit(s)</div>
+                    {p.order_number && (
+                      <div className="flex items-center gap-1 mt-0.5 text-xs text-blue-600">
+                        <Package size={12} />
+                        {p.order_number}
+                        {p.order_customer_name && <span className="text-gray-400">— {p.order_customer_name as string}</span>}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status as string]}`}>
                       {PRODUCTION_STATUS_LABELS[(p.status as string) as keyof typeof PRODUCTION_STATUS_LABELS]}
@@ -124,19 +188,35 @@ export default function ProductionPage() {
 
 function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const queryClient = useQueryClient();
-  const [planDate, setPlanDate] = useState(format(new Date(Date.now() + 86400000), 'yyyy-MM-dd'));
+  const { user } = useAuth();
+  const { getModuleConfig } = usePermissions();
+  const [planDate, setPlanDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [type, setType] = useState<'daily' | 'weekly'>('daily');
   const [notes, setNotes] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Record<string, number>>({});
   const [orderQtys, setOrderQtys] = useState<Record<string, number>>({});
+  const [selectedRole, setSelectedRole] = useState<string>(
+    CHEF_ROLES.includes(user?.role || '') ? user!.role : ''
+  );
+
+  const isAdminUser = ['admin', 'manager'].includes(user?.role || '');
+
+  // Filter products by role-based category slugs
+  const allowedSlugs = selectedRole
+    ? getRoleCategorySlugs(selectedRole)
+    : (getModuleConfig('production').category_slugs as string[] | undefined) || null;
 
   const { data: productsData } = useQuery({
     queryKey: ['products-all'],
-    queryFn: () => productsApi.list({ isAvailable: 'true', limit: '200' }),
+    queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const allProducts = (productsData?.data || []) as Record<string, unknown>[];
+  // Apply permission-based category filter
+  const products = allowedSlugs
+    ? allProducts.filter(p => allowedSlugs.includes(p.category_slug as string))
+    : allProducts;
 
   const { data: ordersForDate, isLoading: ordersLoading } = useQuery({
     queryKey: ['orders-for-date', planDate],
@@ -219,14 +299,15 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   });
 
   const handleSubmit = () => {
+    if (isAdminUser && !selectedRole) { toast.error('Selectionnez un chef'); return; }
     const items = Object.entries(selected).map(([productId, plannedQuantity]) => ({ productId, plannedQuantity }));
     if (items.length === 0) { toast.error('Selectionnez au moins un produit'); return; }
-    createMutation.mutate({ planDate, type, notes: notes || undefined, items });
+    createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items });
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-2xl w-full max-w-4xl flex flex-col" style={{ height: 'min(95vh, 900px)' }}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:max-h-full">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
@@ -237,6 +318,18 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
         {/* Settings bar */}
         <div className="px-5 py-3 border-b bg-gray-50 shrink-0">
           <div className="flex flex-wrap gap-3 items-end">
+            {isAdminUser && (
+              <div className="w-48">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Chef responsable *</label>
+                <select value={selectedRole} onChange={(e) => { setSelectedRole(e.target.value); setSelected({}); setActiveCategory(''); }}
+                  className="input text-base py-2.5">
+                  <option value="">-- Choisir un chef --</option>
+                  {CHEF_ROLES.map(r => (
+                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs font-medium text-gray-500 mb-1">Date de production</label>
               <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)}
@@ -288,92 +381,96 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           </div>
         )}
 
-        {/* Category tabs */}
-        <div className="px-5 py-3 border-b shrink-0">
-          <div className="flex gap-2 overflow-x-auto pb-1 -mb-1">
+        {/* Category sidebar + Products grid */}
+        <div className="flex flex-1 min-h-0">
+          {/* Category sidebar (left) */}
+          <div className="w-44 shrink-0 border-r bg-gray-50 overflow-y-auto py-3 px-2 flex flex-col gap-1.5">
             <button type="button" onClick={() => setActiveCategory('')}
-              className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                !activeCategory ? 'bg-primary-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                !activeCategory ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
               }`}>
               Tous
             </button>
             {categories.map(([id, name]) => (
               <button key={id} type="button" onClick={() => setActiveCategory(String(id))}
-                className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  activeCategory === String(id) ? 'bg-primary-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  activeCategory === String(id) ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                 }`}>
                 {name}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Search */}
-        <div className="px-5 py-2 shrink-0">
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un produit..."
-            className="input text-base py-2.5 w-full" />
-        </div>
+          {/* Right content: search + grid */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Search */}
+            <div className="px-5 py-2 shrink-0">
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un produit..."
+                className="input text-base py-2.5 w-full" />
+            </div>
 
-        {/* Products grid */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {filteredProducts.map((p) => {
-              const pid = p.id as string;
-              const qty = selected[pid] || 0;
-              const fromOrders = orderQtys[pid] || 0;
-              const isSelected = qty > 0;
-              return (
-                <div key={pid}
-                  className={`rounded-xl border-2 p-3 transition-all select-none ${
-                    isSelected
-                      ? 'border-primary-500 bg-primary-50 shadow-sm'
-                      : 'border-gray-200 bg-white active:border-gray-300'
-                  }`}>
-                  <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight min-h-[2.5rem] flex items-center">
-                    {p.name as string}
-                  </div>
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <span className="text-xs text-gray-400">{p.category_name as string}</span>
-                    {fromOrders > 0 && (
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
-                        CMD: {fromOrders}
-                      </span>
-                    )}
-                  </div>
+            {/* Products grid */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {filteredProducts.map((p) => {
+                  const pid = p.id as string;
+                  const qty = selected[pid] || 0;
+                  const fromOrders = orderQtys[pid] || 0;
+                  const isSelected = qty > 0;
+                  return (
+                    <div key={pid}
+                      className={`rounded-xl border-2 p-3 transition-all select-none ${
+                        isSelected
+                          ? 'border-primary-500 bg-primary-50 shadow-sm'
+                          : 'border-gray-200 bg-white active:border-gray-300'
+                      }`}>
+                      <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight h-[2.5rem]" title={p.name as string}>
+                        <span className="line-clamp-2">{p.name as string}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <span className="text-xs text-gray-400">{p.category_name as string}</span>
+                        {fromOrders > 0 && (
+                          <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                            CMD: {fromOrders}
+                          </span>
+                        )}
+                      </div>
 
-                  {!isSelected ? (
-                    <button type="button" onClick={() => setQty(pid, Math.max(1, fromOrders))}
-                      className="w-full py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700 transition-colors">
-                      <Plus size={16} className="inline -mt-0.5 mr-1" /> Ajouter
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-between bg-white rounded-lg border border-primary-200 overflow-hidden">
-                      <button type="button" onClick={() => setQty(pid, qty - 1)}
-                        className={`w-12 h-11 flex items-center justify-center text-xl font-bold transition-colors ${
-                          qty <= fromOrders && fromOrders > 0
-                            ? 'text-gray-300 cursor-not-allowed'
-                            : 'text-primary-600 active:bg-primary-50'
-                        }`}
-                        disabled={qty <= fromOrders && fromOrders > 0}>
-                        {qty === 1 && fromOrders === 0 ? <Trash2 size={16} className="text-red-400" /> : '−'}
-                      </button>
-                      <input type="number" min={fromOrders || 1} value={qty}
-                        onChange={(e) => setQty(pid, parseInt(e.target.value) || 0)}
-                        className="w-14 text-center text-lg font-bold border-x border-primary-200 h-11 focus:outline-none" />
-                      <button type="button" onClick={() => setQty(pid, qty + 1)}
-                        className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50 transition-colors">
-                        +
-                      </button>
+                      {!isSelected ? (
+                        <button type="button" onClick={() => setQty(pid, Math.max(1, fromOrders))}
+                          className="w-full py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700 transition-colors">
+                          <Plus size={16} className="inline -mt-0.5 mr-1" /> Ajouter
+                        </button>
+                      ) : (
+                        <div className="flex items-center justify-between bg-white rounded-lg border border-primary-200 overflow-hidden">
+                          <button type="button" onClick={() => setQty(pid, qty - 1)}
+                            className={`w-12 h-11 flex items-center justify-center text-xl font-bold transition-colors ${
+                              qty <= fromOrders && fromOrders > 0
+                                ? 'text-gray-300 cursor-not-allowed'
+                                : 'text-primary-600 active:bg-primary-50'
+                            }`}
+                            disabled={qty <= fromOrders && fromOrders > 0}>
+                            {qty === 1 && fromOrders === 0 ? <Trash2 size={16} className="text-red-400" /> : '−'}
+                          </button>
+                          <input type="number" min={fromOrders || 1} value={qty}
+                            onChange={(e) => setQty(pid, parseInt(e.target.value) || 0)}
+                            className="w-14 text-center text-lg font-bold border-x border-primary-200 h-11 focus:outline-none" />
+                          <button type="button" onClick={() => setQty(pid, qty + 1)}
+                            className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50 transition-colors">
+                            +
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+              {filteredProducts.length === 0 && (
+                <div className="text-center py-8 text-gray-400">Aucun produit trouve</div>
+              )}
+            </div>
           </div>
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-8 text-gray-400">Aucun produit trouve</div>
-          )}
         </div>
 
         {/* Footer with selected summary & submit */}

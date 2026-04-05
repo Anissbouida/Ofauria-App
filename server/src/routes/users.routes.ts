@@ -10,4 +10,9 @@ router.post('/', authenticate, authorize('admin'), userController.create);
 router.put('/:id', authenticate, authorize('admin'), userController.update);
 router.delete('/:id', authenticate, authorize('admin'), userController.remove);
 
+// Permissions
+router.get('/me/permissions', authenticate, userController.myPermissions);
+router.get('/:id/permissions', authenticate, authorize('admin'), userController.getPermissions);
+router.put('/:id/permissions', authenticate, authorize('admin'), userController.setPermissions);
+
 export default router;

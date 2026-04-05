@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
+import NotificationBell from './NotificationBell';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const { user, logout } = useAuth();
@@ -62,6 +63,9 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
       </div>
 
       <div className="flex-1" />
+
+      {/* Notifications */}
+      <NotificationBell />
 
       {/* Right: User dropdown */}
       <div className="relative" ref={menuRef}>

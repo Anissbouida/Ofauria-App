@@ -11,6 +11,8 @@ router.get('/', authenticate, orderController.list);
 router.get('/for-date', authenticate, orderController.forDate);
 router.get('/:id', authenticate, orderController.getById);
 router.post('/', authenticate, authorize(...ORDER_ROLES), orderController.create);
+router.put('/:id', authenticate, authorize(...ORDER_ROLES), orderController.update);
 router.put('/:id/status', authenticate, authorize(...ORDER_ROLES), orderController.updateStatus);
+router.post('/:id/deliver', authenticate, authorize(...ORDER_ROLES), orderController.deliver);
 
 export default router;

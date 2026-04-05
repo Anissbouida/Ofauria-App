@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
-import { PRODUCTION_STATUS_LABELS } from '@ofauria/shared';
-import { ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer } from 'lucide-react';
+import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
+import { usePermissions } from '../../context/PermissionsContext';
+import { ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package, User, Phone, Calendar, Banknote } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -49,8 +50,9 @@ export default function PlanDetailPage() {
   const printBonDeCommande = (planData?: Record<string, unknown>) => {
     const p = planData || plan;
     if (!p) return;
-    const planItems = (p.items || []) as Record<string, unknown>[];
-    const ingredientNeeds = (p.ingredient_needs || []) as Record<string, unknown>[];
+    // Use role-filtered items and needs
+    const planItems = items;
+    const ingredientNeeds = needs;
     const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
     const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
@@ -101,7 +103,7 @@ export default function PlanDetailPage() {
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
   <div style="text-align:right">
-    <strong>Demandeur :</strong> ${p.created_by_name || '-'}<br/>
+    <strong>Chef :</strong> ${p.target_role === 'baker' ? 'Boulanger' : p.target_role === 'pastry_chef' ? 'Patissier' : p.target_role === 'viennoiserie' ? 'Viennoiserie' : p.created_by_name || '-'}<br/>
     <strong>Date d'emission :</strong> ${now}<br/>
     <strong>Statut :</strong> Confirme
   </div>
@@ -182,8 +184,26 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
   const printFicheProduction = (planData?: Record<string, unknown>) => {
     const p = planData || plan;
     if (!p) return;
-    const planItems = (p.items || []) as Record<string, unknown>[];
-    const ingredientNeeds = (p.ingredient_needs || []) as Record<string, unknown>[];
+    // Use role-filtered items and needs for printing
+    const allPlanNeeds = (p.ingredient_needs || []) as Record<string, unknown>[];
+    const filteredPrintNeeds = allowedSlugs
+      ? allPlanNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
+      : allPlanNeeds;
+    const printNeedsMap = new Map<string, Record<string, unknown>>();
+    for (const n of filteredPrintNeeds) {
+      const ingId = n.ingredient_id as string;
+      const existing = printNeedsMap.get(ingId);
+      if (existing) {
+        existing.needed_quantity = (parseFloat(existing.needed_quantity as string) + parseFloat(n.needed_quantity as string)).toString();
+      } else {
+        printNeedsMap.set(ingId, { ...n });
+      }
+    }
+    const ingredientNeeds = [...printNeedsMap.values()];
+    const allPrintItems = (p.items || []) as Record<string, unknown>[];
+    const planItems = allowedSlugs
+      ? allPrintItems.filter((it) => allowedSlugs.includes(it.category_slug as string))
+      : allPrintItems;
     const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
     const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
@@ -349,12 +369,41 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
+  // Permission-based filtering: use plan's target_role if set, otherwise user's permissions
+  // If plan is linked to an order, show ALL items (no category filtering)
+  const { getModuleConfig } = usePermissions();
+  const prodConfig = getModuleConfig('production');
+  const allowedSlugs = plan?.order_id
+    ? null  // Order-linked plans: show all items assigned to this chef
+    : plan?.target_role
+      ? getRoleCategorySlugs(plan.target_role as string)
+      : (prodConfig.category_slugs as string[] | undefined) || null;
+
   if (isLoading) return <p className="text-gray-500">Chargement...</p>;
   if (!plan) return <p className="text-gray-500">Plan non trouve</p>;
 
-  const items = plan.items || [];
-  const needs = plan.ingredient_needs || [];
-  const insufficientNeeds = needs.filter((n: Record<string, unknown>) => !n.is_sufficient);
+  const allItems = plan.items || [];
+  const items = allowedSlugs
+    ? allItems.filter((it: Record<string, unknown>) => allowedSlugs.includes(it.category_slug as string))
+    : allItems;
+  const allNeeds = (plan.ingredient_needs || []) as Record<string, unknown>[];
+  // Filter ingredient needs by allowed categories, then aggregate by ingredient
+  const filteredNeeds = allowedSlugs
+    ? allNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
+    : allNeeds;
+  // Aggregate needs by ingredient (same ingredient may appear for multiple products)
+  const needsMap = new Map<string, Record<string, unknown>>();
+  for (const n of filteredNeeds) {
+    const ingId = n.ingredient_id as string;
+    const existing = needsMap.get(ingId);
+    if (existing) {
+      existing.needed_quantity = (parseFloat(existing.needed_quantity as string) + parseFloat(n.needed_quantity as string)).toString();
+    } else {
+      needsMap.set(ingId, { ...n });
+    }
+  }
+  const needs = [...needsMap.values()];
+  const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
 
   return (
     <div className="space-y-6">
@@ -373,7 +422,17 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-1">
-            Cree par {plan.created_by_name} {plan.notes && `— ${plan.notes}`}
+            Cree par {plan.created_by_name}
+            {plan.target_role && (
+              <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
+                plan.target_role === 'baker' ? 'bg-amber-100 text-amber-800' :
+                plan.target_role === 'pastry_chef' ? 'bg-pink-100 text-pink-800' :
+                plan.target_role === 'viennoiserie' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-700'
+              }`}>
+                {plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role}
+              </span>
+            )}
+            {plan.notes && ` — ${plan.notes}`}
           </p>
         </div>
 
@@ -410,6 +469,69 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           )}
         </div>
       </div>
+
+      {/* Linked order info */}
+      {plan.order_number && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Package size={18} className="text-blue-600" />
+            <h3 className="font-semibold text-blue-900">Commande liee : {plan.order_number}</h3>
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
+              plan.order_status === 'in_production' ? 'bg-yellow-100 text-yellow-700' :
+              plan.order_status === 'ready' ? 'bg-green-100 text-green-700' :
+              plan.order_status === 'completed' ? 'bg-gray-100 text-gray-700' :
+              'bg-blue-100 text-blue-700'
+            }`}>
+              {plan.order_status === 'pending' ? 'En attente' :
+               plan.order_status === 'confirmed' ? 'Confirmee' :
+               plan.order_status === 'in_production' ? 'En production' :
+               plan.order_status === 'ready' ? 'Prete' :
+               plan.order_status === 'completed' ? 'Livree' :
+               plan.order_status === 'cancelled' ? 'Annulee' : plan.order_status}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            {plan.order_customer_first_name && (
+              <div className="flex items-center gap-2 text-blue-800">
+                <User size={14} className="text-blue-500" />
+                <span>{plan.order_customer_first_name} {plan.order_customer_last_name || ''}</span>
+              </div>
+            )}
+            {plan.order_customer_phone && (
+              <div className="flex items-center gap-2 text-blue-800">
+                <Phone size={14} className="text-blue-500" />
+                <span>{plan.order_customer_phone}</span>
+              </div>
+            )}
+            {plan.order_pickup_date && (
+              <div className="flex items-center gap-2 text-blue-800">
+                <Calendar size={14} className="text-blue-500" />
+                <span>Retrait: {format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr })}</span>
+              </div>
+            )}
+            {plan.order_total && (
+              <div className="flex items-center gap-2 text-blue-800">
+                <Banknote size={14} className="text-blue-500" />
+                <span>Total: {parseFloat(plan.order_total).toFixed(2)} DH
+                  {parseFloat(plan.order_advance_amount) > 0 && (
+                    <span className="text-blue-500 ml-1">(Avance: {parseFloat(plan.order_advance_amount).toFixed(2)} DH)</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Role filter banner */}
+      {allowedSlugs && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+          <Filter size={16} className="text-amber-500" />
+          <span className="text-sm text-amber-800">
+            Affichage filtre selon votre profil — {items.length} produit(s) sur {allItems.length} au total
+          </span>
+        </div>
+      )}
 
       {/* Plan Items */}
       <div className="card">
@@ -510,6 +632,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <CompletionModal
           planId={id!}
           items={items}
+          allItems={allItems}
           onClose={() => setShowCompletion(false)}
           onCompleted={async () => {
             const freshPlan = await productionApi.getById(id!);
@@ -521,15 +644,17 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   );
 }
 
-function CompletionModal({ planId, items, onClose, onCompleted }: {
+function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   planId: string;
-  items: Record<string, unknown>[];
+  items: Record<string, unknown>[]; // filtered items for this role
+  allItems: Record<string, unknown>[]; // all items for submission
   onClose: () => void;
   onCompleted: () => void;
 }) {
   const queryClient = useQueryClient();
+  // Initialize actuals: filtered items get their planned qty, others keep their planned qty too
   const [actuals, setActuals] = useState<Record<string, number>>(
-    Object.fromEntries(items.map(it => [it.id as string, it.planned_quantity as number]))
+    Object.fromEntries(allItems.map(it => [it.id as string, it.planned_quantity as number]))
   );
 
   const completeMutation = useMutation({

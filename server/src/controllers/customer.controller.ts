@@ -22,4 +22,8 @@ export const customerController = {
     const customer = await customerRepository.update(req.params.id, req.body);
     res.json({ success: true, data: customer });
   },
+  async remove(req: AuthRequest, res: Response) {
+    await customerRepository.delete(req.params.id);
+    res.json({ success: true, data: null });
+  },
 };

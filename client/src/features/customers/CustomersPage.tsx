@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
-import { Plus, Search, Pencil, Star } from 'lucide-react';
+import { Plus, Search, Pencil, Star, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function CustomersPage() {
@@ -13,6 +13,15 @@ export default function CustomersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['customers', search],
     queryFn: () => customersApi.list({ search }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: customersApi.remove,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Client supprime');
+    },
+    onError: () => toast.error('Impossible de supprimer ce client (il a peut-etre des commandes ou ventes liees)'),
   });
 
   const saveMutation = useMutation({
@@ -51,9 +60,17 @@ export default function CustomersPage() {
                   {c.email && <p className="text-sm text-gray-500">{c.email as string}</p>}
                   {c.phone && <p className="text-sm text-gray-500">{c.phone as string}</p>}
                 </div>
-                <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg">
-                  <Pencil size={14} className="text-gray-400" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg" title="Modifier">
+                    <Pencil size={14} className="text-gray-400" />
+                  </button>
+                  <button onClick={() => {
+                    if (confirm(`Supprimer ${c.first_name} ${c.last_name} ?`))
+                      deleteMutation.mutate(c.id as string);
+                  }} className="p-2 hover:bg-red-50 rounded-lg" title="Supprimer">
+                    <Trash2 size={14} className="text-red-400" />
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-4 mt-3 pt-3 border-t">
                 <div className="flex items-center gap-1 text-sm">

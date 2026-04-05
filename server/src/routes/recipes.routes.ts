@@ -6,6 +6,7 @@ import { authorize } from '../middleware/role.middleware.js';
 const router = Router();
 
 router.get('/', authenticate, recipeController.list);
+router.get('/base', authenticate, recipeController.baseRecipes);
 router.get('/:id', authenticate, recipeController.getById);
 router.post('/', authenticate, authorize('admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie'), recipeController.create);
 router.put('/:id', authenticate, authorize('admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie'), recipeController.update);

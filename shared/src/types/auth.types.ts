@@ -7,6 +7,7 @@ export interface User {
   lastName: string;
   role: Role;
   isActive: boolean;
+  storeId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

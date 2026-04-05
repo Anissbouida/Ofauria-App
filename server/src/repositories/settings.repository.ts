@@ -9,15 +9,45 @@ export const settingsRepository = {
   async update(data: {
     companyName?: string; subtitle?: string;
     primaryColor?: string; secondaryColor?: string; logoUrl?: string | null;
+    receiptHeader?: string; receiptFooter?: string;
+    receiptShowLogo?: boolean; receiptLogoSize?: number;
+    receiptFontSize?: number; receiptPaperWidth?: number;
+    receiptShowCashier?: boolean; receiptShowDate?: boolean;
+    receiptShowPaymentDetail?: boolean; receiptExtraLines?: string;
+    receiptAutoPrint?: boolean; receiptOpenDrawer?: boolean; receiptNumCopies?: number;
   }) {
+    const mapping: Record<string, string> = {
+      companyName: 'company_name',
+      subtitle: 'subtitle',
+      primaryColor: 'primary_color',
+      secondaryColor: 'secondary_color',
+      logoUrl: 'logo_url',
+      receiptHeader: 'receipt_header',
+      receiptFooter: 'receipt_footer',
+      receiptShowLogo: 'receipt_show_logo',
+      receiptLogoSize: 'receipt_logo_size',
+      receiptFontSize: 'receipt_font_size',
+      receiptPaperWidth: 'receipt_paper_width',
+      receiptShowCashier: 'receipt_show_cashier',
+      receiptShowDate: 'receipt_show_date',
+      receiptShowPaymentDetail: 'receipt_show_payment_detail',
+      receiptExtraLines: 'receipt_extra_lines',
+      receiptAutoPrint: 'receipt_auto_print',
+      receiptOpenDrawer: 'receipt_open_drawer',
+      receiptNumCopies: 'receipt_num_copies',
+    };
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
-    if (data.companyName !== undefined) { fields.push(`company_name = $${i++}`); values.push(data.companyName); }
-    if (data.subtitle !== undefined) { fields.push(`subtitle = $${i++}`); values.push(data.subtitle); }
-    if (data.primaryColor !== undefined) { fields.push(`primary_color = $${i++}`); values.push(data.primaryColor); }
-    if (data.secondaryColor !== undefined) { fields.push(`secondary_color = $${i++}`); values.push(data.secondaryColor); }
-    if (data.logoUrl !== undefined) { fields.push(`logo_url = $${i++}`); values.push(data.logoUrl); }
+
+    for (const [key, col] of Object.entries(mapping)) {
+      if ((data as Record<string, unknown>)[key] !== undefined) {
+        fields.push(`${col} = $${i++}`);
+        values.push((data as Record<string, unknown>)[key]);
+      }
+    }
+
     if (fields.length === 0) return this.get();
     fields.push('updated_at = NOW()');
     const result = await db.query(`UPDATE company_settings SET ${fields.join(', ')} WHERE id = 1 RETURNING *`, values);

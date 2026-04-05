@@ -11,4 +11,9 @@ export const productsApi = {
     form.append('image', file);
     return api.post(`/products/${id}/image`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data);
   },
+  adjustStock: (id: string, data: { quantity: number; type?: string; note?: string }) =>
+    api.post(`/products/${id}/stock`, data).then(r => r.data.data),
+  stockHistory: (id: string, params?: Record<string, string>) =>
+    api.get(`/products/${id}/stock-history`, { params }).then(r => r.data),
+  lowStock: () => api.get('/products/alerts/low-stock').then(r => r.data.data),
 };

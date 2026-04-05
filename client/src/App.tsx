@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider } from './context/AuthContext';
+import { PermissionsProvider } from './context/PermissionsContext';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './features/auth/LoginPage';
 import HomePage from './features/dashboard/HomePage';
@@ -19,8 +20,9 @@ import ProductionPage from './features/production/ProductionPage';
 import PlanDetailPage from './features/production/PlanDetailPage';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
+import AccountingPage from './features/accounting/AccountingPage';
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 30_000, retry: 1 },
   },
@@ -31,6 +33,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
       <AuthProvider>
+      <PermissionsProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -47,12 +50,14 @@ export default function App() {
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+{/* Toasts disabled */}
+      </PermissionsProvider>
       </AuthProvider>
       </SettingsProvider>
     </QueryClientProvider>

@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 interface TokenPayload {
   userId: string;
   role: string;
+  storeId?: string;
 }
 
 export function generateToken(payload: TokenPayload): string {

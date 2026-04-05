@@ -23,10 +23,13 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilt
 const router = Router();
 
 router.get('/', authenticate, productController.list);
+router.get('/alerts/low-stock', authenticate, productController.lowStock);
 router.get('/:id', authenticate, productController.getById);
 router.post('/', authenticate, authorize('admin', 'manager'), productController.create);
 router.put('/:id', authenticate, authorize('admin', 'manager'), productController.update);
 router.delete('/:id', authenticate, authorize('admin'), productController.remove);
 router.post('/:id/image', authenticate, authorize('admin', 'manager'), upload.single('image'), productController.uploadImage);
+router.post('/:id/stock', authenticate, authorize('admin', 'manager'), productController.adjustStock);
+router.get('/:id/stock-history', authenticate, productController.stockHistory);
 
 export default router;
