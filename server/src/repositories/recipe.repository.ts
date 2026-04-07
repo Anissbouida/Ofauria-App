@@ -96,6 +96,16 @@ export const recipeRepository = {
         );
       }
 
+      // Cycle detection for sub-recipes
+      if (data.subRecipes && data.subRecipes.length > 0) {
+        for (const sr of data.subRecipes) {
+          const hasCycle = await this.detectCycle(sr.subRecipeId, recipeId);
+          if (hasCycle) {
+            throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
+          }
+        }
+      }
+
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           await client.query(
@@ -119,10 +129,39 @@ export const recipeRepository = {
     name: string; instructions?: string; yieldQuantity?: number; isBase?: boolean;
     ingredients: { ingredientId: string; quantity: number }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
+    changedBy?: string; changeNote?: string;
   }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+
+      // Snapshot current state for versioning
+      const currentRecipe = await this.findById(id);
+      if (currentRecipe) {
+        const versionNumResult = await client.query(
+          `SELECT COALESCE(MAX(version_number), 0) + 1 as next_version FROM recipe_versions WHERE recipe_id = $1`,
+          [id]
+        );
+        const nextVersion = versionNumResult.rows[0].next_version;
+
+        await client.query(
+          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            id,
+            nextVersion,
+            currentRecipe.name,
+            currentRecipe.instructions,
+            currentRecipe.yield_quantity,
+            currentRecipe.total_cost,
+            currentRecipe.is_base,
+            JSON.stringify(currentRecipe.ingredients),
+            JSON.stringify(currentRecipe.sub_recipes),
+            data.changedBy || null,
+            data.changeNote || null,
+          ]
+        );
+      }
 
       let totalCost = 0;
       for (const ing of data.ingredients) {
@@ -161,6 +200,17 @@ export const recipeRepository = {
 
       // Re-insert sub-recipes
       await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
+
+      // Cycle detection for sub-recipes
+      if (data.subRecipes && data.subRecipes.length > 0) {
+        for (const sr of data.subRecipes) {
+          const hasCycle = await this.detectCycle(sr.subRecipeId, id);
+          if (hasCycle) {
+            throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
+          }
+        }
+      }
+
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           await client.query(
@@ -184,8 +234,11 @@ export const recipeRepository = {
     }
   },
 
-  /** When a base recipe cost changes, update all parent recipes that use it */
-  async recalcParents(subRecipeId: string) {
+  /** When a base recipe cost changes, update all parent recipes that use it (recursive) */
+  async recalcParents(subRecipeId: string, visited = new Set<string>()) {
+    if (visited.has(subRecipeId)) return; // prevent infinite loop
+    visited.add(subRecipeId);
+
     const parents = await db.query(
       `SELECT DISTINCT recipe_id FROM recipe_sub_recipes WHERE sub_recipe_id = $1`,
       [subRecipeId]
@@ -204,7 +257,39 @@ export const recipeRepository = {
       }
 
       await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+
+      // Recurse up to grandparents
+      await this.recalcParents(row.recipe_id, visited);
     }
+  },
+
+  async findVersions(recipeId: string) {
+    const result = await db.query(
+      `SELECT rv.*, u.first_name || ' ' || u.last_name as changed_by_name
+       FROM recipe_versions rv
+       LEFT JOIN users u ON u.id = rv.changed_by
+       WHERE rv.recipe_id = $1
+       ORDER BY rv.version_number DESC`,
+      [recipeId]
+    );
+    return result.rows;
+  },
+
+  async detectCycle(recipeId: string, subRecipeId: string): Promise<boolean> {
+    // Check if adding subRecipeId as a sub-recipe of recipeId would create a cycle
+    // Uses recursive CTE to walk the sub-recipe tree from subRecipeId
+    const result = await db.query(
+      `WITH RECURSIVE chain AS (
+         SELECT sub_recipe_id FROM recipe_sub_recipes WHERE recipe_id = $1
+         UNION ALL
+         SELECT rsr.sub_recipe_id
+         FROM recipe_sub_recipes rsr
+         JOIN chain c ON c.sub_recipe_id = rsr.recipe_id
+       )
+       SELECT 1 FROM chain WHERE sub_recipe_id = $2 LIMIT 1`,
+      [subRecipeId, recipeId]
+    );
+    return result.rows.length > 0;
   },
 
   async delete(id: string) {

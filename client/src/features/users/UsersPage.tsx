@@ -177,6 +177,7 @@ export default function UsersPage() {
                     <option value="baker">Boulanger</option>
                     <option value="pastry_chef">Patissier</option>
                     <option value="viennoiserie">Viennoiserie</option>
+                    <option value="beldi_sale">Beldi & Sale</option>
                     <option value="saleswoman">Vendeuse</option>
                     <option value="cashier">Caissier</option>
                   </select>

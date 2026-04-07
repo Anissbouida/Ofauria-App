@@ -29,6 +29,23 @@ export const purchaseOrderRepository = {
     return result.rows;
   },
 
+  async findEligibleForExpense(storeId?: string) {
+    const storeFilter = storeId ? 'AND po.store_id = $1' : '';
+    const params = storeId ? [storeId] : [];
+    const result = await db.query(
+      `SELECT po.id, po.order_number, po.order_date, po.status, po.supplier_id,
+              s.name as supplier_name,
+              (SELECT COALESCE(SUM(quantity_delivered * unit_price), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
+       FROM purchase_orders po
+       JOIN suppliers s ON s.id = po.supplier_id
+       WHERE po.status IN ('livre_complet', 'livre_partiel', 'envoye', 'en_attente')
+       ${storeFilter}
+       ORDER BY po.order_date DESC`,
+      params
+    );
+    return result.rows;
+  },
+
   async findById(id: string) {
     const poResult = await db.query(
       `SELECT po.*, s.name as supplier_name, s.phone as supplier_phone, s.contact_name as supplier_contact,
@@ -200,11 +217,11 @@ export const purchaseOrderRepository = {
 
         const invNumber = `FC-${po.order_number}`;
         await client.query(
-          `INSERT INTO invoices (invoice_number, supplier_id, category_id, invoice_date, amount, tax_amount, total_amount, notes, created_by)
-           VALUES ($1, $2, $3, CURRENT_DATE, $4, 0, $4, $5, $6)
+          `INSERT INTO invoices (invoice_number, supplier_id, category_id, invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
+           VALUES ($1, $2, $3, CURRENT_DATE, $4, 0, $4, $5, $6, $7)
            ON CONFLICT DO NOTHING`,
           [invNumber, po.supplier_id, categoryId, totalDeliveredValue,
-           `Auto-genere depuis reception ${po.order_number}`, performedBy]
+           `Auto-genere depuis reception ${po.order_number}`, performedBy, storeId || null]
         );
       }
 

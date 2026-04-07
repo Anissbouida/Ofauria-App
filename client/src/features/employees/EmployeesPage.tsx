@@ -218,8 +218,8 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   <select name="role" defaultValue={editing?.role as string || 'baker'} className="input">
                     <option value="admin">Administrateur</option><option value="manager">Gerant</option>
                     <option value="baker">Boulanger</option><option value="pastry_chef">Patissier</option>
-                    <option value="viennoiserie">Viennoiserie</option><option value="saleswoman">Vendeuse</option>
-                    <option value="cashier">Caissier</option>
+                    <option value="viennoiserie">Viennoiserie</option><option value="beldi_sale">Beldi & Sale</option>
+                    <option value="saleswoman">Vendeuse</option><option value="cashier">Caissier</option>
                   </select></div>
                 <div><label className="block text-sm font-medium mb-1">Type de contrat</label>
                   <select name="contractType" defaultValue={editing?.contract_type as string || 'cdi'} className="input">

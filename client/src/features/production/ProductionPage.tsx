@@ -12,11 +12,12 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie'];
+const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 const ROLE_LABELS: Record<string, string> = {
   baker: 'Boulanger',
   pastry_chef: 'Patissier',
   viennoiserie: 'Viennoiserie',
+  beldi_sale: 'Beldi & Sale',
 };
 
 const roleColors: Record<string, string> = {
@@ -43,11 +44,13 @@ export default function ProductionPage() {
   const isChef = CHEF_ROLES.includes(user?.role || '');
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
 
+  // Chefs automatically see only their own plans; admins can filter manually
+  const effectiveRole = isChef ? (user?.role || '') : roleFilter;
   const { data, isLoading } = useQuery({
-    queryKey: ['production', { status: statusFilter, targetRole: roleFilter }],
+    queryKey: ['production', { status: statusFilter, targetRole: effectiveRole }],
     queryFn: () => productionApi.list({
       status: statusFilter,
-      ...(roleFilter ? { targetRole: roleFilter } : {}),
+      ...(effectiveRole ? { targetRole: effectiveRole } : {}),
     }),
   });
 

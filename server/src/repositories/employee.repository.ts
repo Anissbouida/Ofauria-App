@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { paymentRepository } from './accounting.repository.js';
 
 export const employeeRepository = {
   async findAll(storeId?: string) {
@@ -325,11 +326,37 @@ export const payrollRepository = {
     return result.rows[0];
   },
 
-  async markPaid(id: string, paymentMethod: string) {
+  async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string) {
     const result = await db.query(
       `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1 WHERE id = $2 RETURNING *`,
       [paymentMethod, id]
     );
-    return result.rows[0];
+    const payroll = result.rows[0];
+    if (!payroll) return null;
+
+    // Get employee info for the accounting entry description
+    const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [payroll.employee_id]);
+    const employee = emp.rows[0];
+    const empName = employee ? `${employee.first_name} ${employee.last_name}` : '';
+
+    // Find "Salaires" expense category
+    const catResult = await db.query(`SELECT id FROM expense_categories WHERE name = 'Salaires' AND type = 'expense' LIMIT 1`);
+    const categoryId = catResult.rows[0]?.id || null;
+
+    // Create accounting entry (écriture comptable)
+    await paymentRepository.create({
+      reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`,
+      type: 'salary',
+      categoryId,
+      employeeId: payroll.employee_id,
+      amount: parseFloat(payroll.net_salary),
+      paymentMethod: paymentMethod,
+      paymentDate: new Date().toISOString().slice(0, 10),
+      description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`,
+      createdBy: createdBy || payroll.employee_id,
+      storeId,
+    });
+
+    return payroll;
   },
 };

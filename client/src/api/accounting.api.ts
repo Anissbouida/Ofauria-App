@@ -25,11 +25,20 @@ export const invoicesApi = {
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/invoices', data).then(r => r.data.data),
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
+  uploadAttachment: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('attachment', file);
+    return api.post(`/invoices/${id}/attachment`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
+  removeAttachment: (id: string) => api.delete(`/invoices/${id}/attachment`).then(r => r.data.data),
 };
 
 export const paymentsApi = {
   list: (params?: Record<string, string>) => api.get('/payments', { params }).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/payments', data).then(r => r.data.data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/payments/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/payments/${id}`),
   summary: (dateFrom: string, dateTo: string) =>
     api.get('/payments/summary', { params: { dateFrom, dateTo } }).then(r => r.data.data),

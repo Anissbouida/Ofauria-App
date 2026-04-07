@@ -7,7 +7,18 @@ export const productionApi = {
   updateItems: (id: string, items: Record<string, unknown>[]) => api.put(`/production/${id}/items`, { items }).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
   start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
-  complete: (id: string, items: { planItemId: string; actualQuantity: number }[]) =>
-    api.post(`/production/${id}/complete`, { items }).then(r => r.data.data),
+  produceItems: (id: string, items: { planItemId: string; actualQuantity: number }[]) =>
+    api.post(`/production/${id}/produce-items`, { items }).then(r => r.data),
+  transferItems: (id: string, itemIds: string[]) =>
+    api.post(`/production/${id}/transfer-items`, { itemIds }).then(r => r.data),
+  pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),
+  confirmTransferReception: (transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[]) =>
+    api.post(`/production/transfers/${transferId}/receive`, { items }).then(r => r.data),
+  restoreItems: (id: string, itemIds: string[]) =>
+    api.post(`/production/${id}/restore-items`, { itemIds }).then(r => r.data),
+  cancelItems: (id: string, itemIds: string[], reason?: string) =>
+    api.post(`/production/${id}/cancel-items`, { itemIds, reason }).then(r => r.data),
+  complete: (id: string, items: { planItemId: string; actualQuantity: number }[], completionType?: string) =>
+    api.post(`/production/${id}/complete`, { items, completionType }).then(r => r.data),
   remove: (id: string) => api.delete(`/production/${id}`),
 };

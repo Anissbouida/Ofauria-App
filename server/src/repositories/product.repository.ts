@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 
 export const productRepository = {
-  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number }) {
+  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -15,11 +15,25 @@ export const productRepository = {
     const countResult = await db.query(`SELECT COUNT(*) FROM products p ${where}`, values);
     const total = parseInt(countResult.rows[0].count, 10);
 
+    const storeStockJoin = params.storeId
+      ? `LEFT JOIN product_store_stock pss ON pss.product_id = p.id AND pss.store_id = $${i++}`
+      : '';
+    if (params.storeId) values.push(params.storeId);
+
+    const stockColumns = params.storeId
+      ? `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+      : `p.stock_quantity, p.stock_min_threshold,`;
+
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT p.*, c.name as category_name, c.slug as category_slug,
+      `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
+              p.image_url, p.is_available, p.is_custom_orderable, p.preparation_time_min,
+              p.responsible_user_id, p.created_at, p.updated_at,
+              ${stockColumns}
+              c.name as category_name, c.slug as category_slug,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
        FROM products p
+       ${storeStockJoin}
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN users u ON u.id = p.responsible_user_id
        ${where}
@@ -69,6 +83,7 @@ export const productRepository = {
       responsibleUserId: 'responsible_user_id',
       stockQuantity: 'stock_quantity',
       stockMinThreshold: 'stock_min_threshold',
+      minProductionQuantity: 'min_production_quantity',
     };
 
     const fields: string[] = [];

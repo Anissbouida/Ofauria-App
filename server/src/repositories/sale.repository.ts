@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { adjustProductStock } from './product-stock.helper.js';
 
 export const saleRepository = {
   async findAll(params: {
@@ -120,13 +121,8 @@ export const saleRepository = {
           [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Decrement product stock
-        const stockResult = await client.query(
-          `UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW()
-           WHERE id = $2 RETURNING stock_quantity`,
-          [item.quantity, item.productId]
-        );
-        const stockAfter = stockResult.rows[0]?.stock_quantity ?? 0;
+        // Decrement product stock (store-isolated)
+        const stockAfter = await adjustProductStock(client, item.productId, -item.quantity, data.storeId);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
            VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7)`,

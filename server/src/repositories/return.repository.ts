@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { adjustProductStock } from './product-stock.helper.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -178,13 +179,8 @@ export const returnRepository = {
           [returnResult.rows[0].id, item.saleItemId, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Restore product stock on return
-        const stockResult = await client.query(
-          `UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW()
-           WHERE id = $2 RETURNING stock_quantity`,
-          [item.quantity, item.productId]
-        );
-        const stockAfter = stockResult.rows[0]?.stock_quantity ?? 0;
+        // Restore product stock on return (store-isolated)
+        const stockAfter = await adjustProductStock(client, item.productId, item.quantity, data.storeId);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
            VALUES ($1, 'return', $2, $3, $4, $5, $6, $7)`,
@@ -196,12 +192,8 @@ export const returnRepository = {
       // For exchanges, decrement stock for new products given
       if (data.type === 'exchange' && data.exchangeProducts?.length) {
         for (const ep of data.exchangeProducts) {
-          const stockResult = await client.query(
-            `UPDATE products SET stock_quantity = stock_quantity - $1, updated_at = NOW()
-             WHERE id = $2 RETURNING stock_quantity`,
-            [ep.quantity, ep.newProductId]
-          );
-          const stockAfter = stockResult.rows[0]?.stock_quantity ?? 0;
+          // Decrement stock for exchanged product (store-isolated)
+          const stockAfter = await adjustProductStock(client, ep.newProductId, -ep.quantity, data.storeId);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, 'exchange', $2, $3, $4, $5, $6, $7)`,

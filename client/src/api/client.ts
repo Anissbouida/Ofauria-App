@@ -19,7 +19,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('ofauria_token');
       localStorage.removeItem('ofauria_user');
-      window.location.href = '/login';
+      // Don't redirect if already on login page (prevents infinite reload loop)
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

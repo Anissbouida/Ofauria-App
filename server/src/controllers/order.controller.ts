@@ -7,6 +7,7 @@ import { cashRegisterRepository } from '../repositories/cash-register.repository
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { createNotification } from '../utils/notify.js';
+import { paymentRepository } from '../repositories/accounting.repository.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -111,6 +112,22 @@ export const orderController = {
       subtotal, taxAmount, discountAmount, total, advanceAmount, paymentMethod, notes, pickupDate, items: orderItems,
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
+
+    // Record advance payment in accounting if > 0
+    if (advanceAmount > 0) {
+      try {
+        await paymentRepository.create({
+          reference: `AVA-${orderNumber}`,
+          type: 'income',
+          amount: advanceAmount,
+          paymentMethod: paymentMethod || 'cash',
+          paymentDate: new Date().toISOString().split('T')[0],
+          description: `Avance commande ${orderNumber}`,
+          createdBy: req.user!.userId,
+          storeId: req.user!.storeId,
+        });
+      } catch { /* non-blocking: advance is still tracked in order */ }
+    }
 
     // Auto-confirm and send order to production
     await orderRepository.updateStatus(order.id, 'confirmed');
@@ -218,9 +235,59 @@ export const orderController = {
     const order = await orderRepository.updateStatus(req.params.id, status);
     if (!order) { res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } }); return; }
 
-    // Notify based on status change
+    // When cashier sends order to production: create production plans + notify chefs
+    if (status === 'in_production') {
+      // Fetch full order with items
+      const fullOrder = await orderRepository.findById(req.params.id);
+      if (fullOrder && fullOrder.items && fullOrder.items.length > 0) {
+        // Group items by responsible chef role
+        const itemsByRole = new Map<string, { productId: string; plannedQuantity: number }[]>();
+        for (const item of fullOrder.items) {
+          const product = await productRepository.findById(item.product_id);
+          if (!product) continue;
+          const role = product.responsible_role || getRoleForCategorySlug(product.category_slug);
+          if (!itemsByRole.has(role)) itemsByRole.set(role, []);
+          itemsByRole.get(role)!.push({ productId: item.product_id, plannedQuantity: parseInt(item.quantity) || 1 });
+        }
+
+        // Create one production plan per chef role
+        const createdPlans: { id: string; targetRole: string }[] = [];
+        for (const [role, planItems] of itemsByRole) {
+          try {
+            const plan = await productionRepository.create({
+              planDate: fullOrder.pickup_date || new Date().toISOString().split('T')[0],
+              type: 'daily',
+              notes: `Commande ${fullOrder.order_number} — Client: ${fullOrder.customer_first_name || ''} ${fullOrder.customer_last_name || ''}`.trim(),
+              createdBy: req.user!.userId,
+              targetRole: role,
+              storeId: req.user!.storeId,
+              orderId: req.params.id,
+              items: planItems,
+            });
+            createdPlans.push({ id: plan.id, targetRole: role });
+          } catch (err) {
+            console.error(`Failed to create production plan for role ${role}:`, err);
+          }
+        }
+
+        // Notify chefs about new production plans
+        for (const plan of createdPlans) {
+          await createNotification({
+            targetRole: plan.targetRole,
+            storeId: req.user!.storeId,
+            type: 'production_plan_created',
+            title: 'Nouvelle demande de production',
+            message: `Commande ${fullOrder.order_number} pour le ${fullOrder.pickup_date || 'aujourd\'hui'} — ${itemsByRole.get(plan.targetRole)?.length || 0} produit(s) a produire`,
+            referenceType: 'production_plan',
+            referenceId: plan.id,
+            createdBy: req.user!.userId,
+          });
+        }
+      }
+    }
+
+    // Notify cashier/saleswoman when order is ready for pickup
     if (status === 'ready') {
-      // Notify cashier/saleswoman that order is ready for pickup
       for (const role of ['cashier', 'saleswoman', 'manager']) {
         await createNotification({
           targetRole: role,

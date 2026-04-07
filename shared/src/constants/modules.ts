@@ -14,6 +14,7 @@ export const APP_MODULES = {
   users: 'users',
   reports: 'reports',
   settings: 'settings',
+  replenishment: 'replenishment',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -33,17 +34,18 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   users: 'Utilisateurs',
   reports: 'Rapports',
   settings: 'Parametres',
+  replenishment: 'Approvisionnement',
 };
 
 /** Default permissions per role (used when no custom permissions are set) */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'inventory', 'recipes', 'production', 'employees', 'accounting', 'reports'],
-  cashier: ['pos', 'orders', 'customers', 'production'],
-  saleswoman: ['pos', 'orders', 'customers', 'production'],
-  baker: ['inventory', 'recipes', 'production'],
-  pastry_chef: ['inventory', 'recipes', 'production'],
-  viennoiserie: ['inventory', 'recipes', 'production'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'inventory', 'recipes', 'production', 'employees', 'accounting', 'reports', 'replenishment'],
+  cashier: ['pos', 'orders', 'customers', 'production', 'replenishment'],
+  saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment'],
+  baker: ['inventory', 'recipes', 'production', 'replenishment'],
+  pastry_chef: ['inventory', 'recipes', 'production', 'replenishment'],
+  viennoiserie: ['inventory', 'recipes', 'production', 'replenishment'],
 };
 
 export interface UserPermission {

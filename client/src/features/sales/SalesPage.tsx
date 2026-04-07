@@ -5,13 +5,13 @@ import { cashRegisterApi } from '../../api/cash-register.api';
 import { returnsApi } from '../../api/returns.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag, User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight } from 'lucide-react';
+import { Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag, User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package, ChevronDown, ChevronUp } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', manager: 'Gerant', cashier: 'Caissier', baker: 'Boulanger',
-  pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', saleswoman: 'Vendeuse',
+  pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale', saleswoman: 'Vendeuse',
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -691,6 +691,11 @@ export default function SalesPage() {
                     </div>
                   )}
 
+                  {/* ═══ Bilan Produits (Inventaire) ═══ */}
+                  {isClosed && s.inv_total_replenished !== null && parseInt(s.inv_total_replenished as string) > 0 && (
+                    <InventoryBilan session={s} />
+                  )}
+
                   {s.notes && (
                     <p className="mt-3 text-sm text-gray-500 italic">Note : {s.notes as string}</p>
                   )}
@@ -703,6 +708,108 @@ export default function SalesPage() {
       {/* ═══ Receipt Modal ═══ */}
       {receiptData && (
         <ReceiptModal receipt={receiptData} onClose={() => setReceiptData(null)} />
+      )}
+    </div>
+  );
+}
+
+// ═══ Sub-component: Inventory Bilan per session ═══
+function InventoryBilan({ session }: { session: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+  const totalRep = parseInt(session.inv_total_replenished as string) || 0;
+  const totalSold = parseInt(session.inv_total_sold as string) || 0;
+  const totalRemaining = parseInt(session.inv_total_remaining as string) || 0;
+  const totalDiscrepancy = parseInt(session.inv_total_discrepancy as string) || 0;
+
+  const { data: items } = useQuery({
+    queryKey: ['session-inventory', session.id],
+    queryFn: () => cashRegisterApi.getInventoryItems(session.id as string),
+    enabled: expanded,
+  });
+
+  return (
+    <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Package size={16} className="text-indigo-500" />
+          <span className="text-sm font-semibold text-gray-700">Bilan des produits</span>
+          <span className="text-xs text-gray-500">({totalRep} approv. / {totalSold} vendus / {totalRemaining} restants)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {totalDiscrepancy !== 0 && (
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${totalDiscrepancy > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+              {totalDiscrepancy > 0 ? `-${totalDiscrepancy} manquant` : `+${Math.abs(totalDiscrepancy)} surplus`}
+            </span>
+          )}
+          {totalDiscrepancy === 0 && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Aucun écart</span>
+          )}
+          {expanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 py-3">
+          {/* Summary cards */}
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+              <p className="text-xs text-blue-600 mb-0.5">Approvisionné</p>
+              <p className="text-lg font-bold text-blue-700">{totalRep}</p>
+            </div>
+            <div className="bg-green-50 rounded-lg p-2.5 text-center">
+              <p className="text-xs text-green-600 mb-0.5">Vendu</p>
+              <p className="text-lg font-bold text-green-700">{totalSold}</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-2.5 text-center">
+              <p className="text-xs text-gray-600 mb-0.5">Restant</p>
+              <p className="text-lg font-bold text-gray-700">{totalRemaining}</p>
+            </div>
+            <div className={`rounded-lg p-2.5 text-center ${totalDiscrepancy > 0 ? 'bg-red-50' : totalDiscrepancy < 0 ? 'bg-blue-50' : 'bg-green-50'}`}>
+              <p className={`text-xs mb-0.5 ${totalDiscrepancy > 0 ? 'text-red-600' : totalDiscrepancy < 0 ? 'text-blue-600' : 'text-green-600'}`}>Écart</p>
+              <p className={`text-lg font-bold ${totalDiscrepancy > 0 ? 'text-red-700' : totalDiscrepancy < 0 ? 'text-blue-700' : 'text-green-700'}`}>
+                {totalDiscrepancy === 0 ? '0' : totalDiscrepancy > 0 ? `-${totalDiscrepancy}` : `+${Math.abs(totalDiscrepancy)}`}
+              </p>
+            </div>
+          </div>
+
+          {/* Items detail table */}
+          {items && items.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <div className="grid grid-cols-5 gap-1 text-xs font-medium text-gray-500 bg-gray-50 px-3 py-2">
+                <span className="col-span-1">Produit</span>
+                <span className="text-center">Approv.</span>
+                <span className="text-center">Vendu</span>
+                <span className="text-center">Restant</span>
+                <span className="text-center">Écart</span>
+              </div>
+              <div className="max-h-60 overflow-y-auto divide-y divide-gray-50">
+                {(items as Record<string, unknown>[]).map((it, idx) => {
+                  const rep = parseInt(it.replenished_qty as string) || 0;
+                  const sold = parseInt(it.sold_qty as string) || 0;
+                  const rem = parseInt(it.remaining_qty as string) || 0;
+                  const disc = parseInt(it.discrepancy as string) || 0;
+                  return (
+                    <div key={idx} className={`grid grid-cols-5 gap-1 items-center px-3 py-1.5 text-sm ${disc !== 0 ? (disc > 0 ? 'bg-red-50/50' : 'bg-blue-50/50') : ''}`}>
+                      <span className="truncate text-xs font-medium" title={it.product_name as string}>{it.product_name as string}</span>
+                      <span className="text-center text-xs font-semibold text-blue-700">{rep}</span>
+                      <span className="text-center text-xs font-semibold text-green-700">{sold}</span>
+                      <span className="text-center text-xs font-semibold text-gray-700">{rem}</span>
+                      <span className={`text-center text-xs font-bold ${disc > 0 ? 'text-red-600' : disc < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                        {disc === 0 ? '✓' : disc > 0 ? `-${disc}` : `+${Math.abs(disc)}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {items && items.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-2">Aucun détail d'inventaire disponible</p>
+          )}
+        </div>
       )}
     </div>
   );

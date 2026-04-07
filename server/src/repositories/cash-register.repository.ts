@@ -26,9 +26,14 @@ export const cashRegisterRepository = {
 
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT cs.*, u.first_name, u.last_name
+      `SELECT cs.*, u.first_name, u.last_name,
+         dic.total_replenished as inv_total_replenished,
+         dic.total_sold as inv_total_sold,
+         dic.total_remaining as inv_total_remaining,
+         dic.total_discrepancy as inv_total_discrepancy
        FROM cash_register_sessions cs
        JOIN users u ON u.id = cs.user_id
+       LEFT JOIN daily_inventory_checks dic ON dic.session_id = cs.id
        ${where}
        ORDER BY cs.opened_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -40,13 +45,30 @@ export const cashRegisterRepository = {
 
   async findById(id: string) {
     const result = await db.query(
-      `SELECT cs.*, u.first_name, u.last_name
+      `SELECT cs.*, u.first_name, u.last_name,
+         dic.total_replenished as inv_total_replenished,
+         dic.total_sold as inv_total_sold,
+         dic.total_remaining as inv_total_remaining,
+         dic.total_discrepancy as inv_total_discrepancy
        FROM cash_register_sessions cs
        JOIN users u ON u.id = cs.user_id
+       LEFT JOIN daily_inventory_checks dic ON dic.session_id = cs.id
        WHERE cs.id = $1`,
       [id]
     );
     return result.rows[0] || null;
+  },
+
+  async getInventoryItems(sessionId: string) {
+    const result = await db.query(
+      `SELECT dici.product_name, dici.replenished_qty, dici.sold_qty, dici.remaining_qty, dici.discrepancy
+       FROM daily_inventory_check_items dici
+       JOIN daily_inventory_checks dic ON dic.id = dici.check_id
+       WHERE dic.session_id = $1
+       ORDER BY dici.product_name`,
+      [sessionId]
+    );
+    return result.rows;
   },
 
   async open(userId: string, openingAmount: number, storeId?: string) {

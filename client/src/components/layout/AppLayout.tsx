@@ -6,7 +6,7 @@ import Header from './Header';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  AlertTriangle,
+  AlertTriangle, Package,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
 
@@ -22,6 +22,7 @@ const modules: { name: string; href: string; icon: typeof LayoutDashboard; color
   { name: 'Inventaire', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
   { name: 'Recettes', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
   { name: 'Production', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
+  { name: 'Approvisionnement', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
   { name: 'Personnel', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
   { name: 'Comptabilite', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
   { name: 'Utilisateurs', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },

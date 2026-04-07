@@ -21,6 +21,8 @@ import PlanDetailPage from './features/production/PlanDetailPage';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
 import AccountingPage from './features/accounting/AccountingPage';
+import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
+import RequestDetailPage from './features/replenishment/RequestDetailPage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +50,8 @@ export default function App() {
               <Route path="/recipes" element={<RecipesPage />} />
               <Route path="/production" element={<ProductionPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
+              <Route path="/replenishment" element={<ReplenishmentPage />} />
+              <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
@@ -56,7 +60,7 @@ export default function App() {
             </Route>
           </Routes>
         </BrowserRouter>
-{/* Toasts disabled */}
+        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       </PermissionsProvider>
       </AuthProvider>
       </SettingsProvider>

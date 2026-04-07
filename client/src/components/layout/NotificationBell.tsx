@@ -94,8 +94,9 @@ export default function NotificationBell() {
     // Navigate to the relevant page
     if (notif.reference_type === 'production_plan' && notif.reference_id) {
       navigate(`/production/${notif.reference_id}`);
+    } else if (notif.reference_type === 'replenishment_request' && notif.reference_id) {
+      navigate(`/replenishment/${notif.reference_id}`);
     } else if (notif.reference_type === 'order' && notif.reference_id) {
-      // For order_ready notifications, navigate to orders page
       navigate('/orders');
     }
 

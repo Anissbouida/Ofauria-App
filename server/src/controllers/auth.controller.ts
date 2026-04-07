@@ -75,11 +75,6 @@ export const authController = {
       res.status(401).json({ success: false, error: { message: 'Code PIN incorrect' } });
       return;
     }
-    if (user.role === 'admin') {
-      res.status(403).json({ success: false, error: { message: 'Les administrateurs doivent se connecter avec email et mot de passe' } });
-      return;
-    }
-
     const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined });
     res.json({
       success: true,

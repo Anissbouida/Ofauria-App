@@ -17,6 +17,8 @@ export const purchaseOrdersApi = {
     api.post(`/purchase-orders/${id}/cancel`).then(r => r.data.data),
   remove: (id: string) =>
     api.delete(`/purchase-orders/${id}`),
+  eligible: () =>
+    api.get('/purchase-orders/eligible').then(r => r.data.data),
   overdue: (days?: number) =>
     api.get('/purchase-orders/overdue', { params: days ? { days: String(days) } : undefined }).then(r => r.data.data),
 };

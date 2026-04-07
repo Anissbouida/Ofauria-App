@@ -19,6 +19,7 @@ import storeRoutes from './store.routes.js';
 import uploadRoutes from './upload.routes.js';
 import notificationsRoutes from './notifications.routes.js';
 import purchaseOrderRoutes from './purchase-order.routes.js';
+import replenishmentRoutes from './replenishment.routes.js';
 
 const router = Router();
 
@@ -51,5 +52,6 @@ router.use('/stores', storeRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
+router.use('/replenishment', replenishmentRoutes);
 
 export default router;

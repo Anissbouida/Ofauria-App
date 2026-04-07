@@ -11,6 +11,11 @@ export const purchaseOrderController = {
     res.json({ success: true, data });
   },
 
+  async eligible(req: AuthRequest, res: Response) {
+    const data = await purchaseOrderRepository.findEligibleForExpense(req.user!.storeId);
+    res.json({ success: true, data });
+  },
+
   async getById(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }

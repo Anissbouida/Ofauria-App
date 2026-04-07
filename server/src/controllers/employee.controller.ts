@@ -131,7 +131,7 @@ export const payrollController = {
   },
   async markPaid(req: AuthRequest, res: Response) {
     const { paymentMethod } = req.body;
-    const payroll = await payrollRepository.markPaid(req.params.id, paymentMethod || 'cash');
+    const payroll = await payrollRepository.markPaid(req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId);
     res.json({ success: true, data: payroll });
   },
 };

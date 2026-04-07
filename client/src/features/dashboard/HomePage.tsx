@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
-  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
+  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
 
@@ -17,6 +17,7 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Inventaire', description: 'Stock matieres premieres', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
   { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
   { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
+  { name: 'Approvisionnement', description: 'Demandes et transferts de stock', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
   { name: 'Personnel', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
   { name: 'Comptabilite', description: 'Factures, paiements et fournisseurs', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
   { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
+import { replenishmentApi } from '../../api/replenishment.api';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
 import { usePermissions } from '../../context/PermissionsContext';
-import { ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package, User, Phone, Calendar, Banknote } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package, User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -25,7 +26,7 @@ export default function PlanDetailPage() {
   const { user } = useAuth();
   const [showCompletion, setShowCompletion] = useState(false);
   const { settings } = useSettings();
-  const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie'].includes(user?.role || '');
+  const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
 
   const { data: plan, isLoading, refetch } = useQuery({
     queryKey: ['production', id],
@@ -33,17 +34,22 @@ export default function PlanDetailPage() {
     enabled: !!id,
   });
 
+  // Load linked replenishment request if this plan was auto-generated
+  const replenishmentId = plan?.replenishment_request_id as string | undefined;
+  const { data: linkedReplenishment } = useQuery({
+    queryKey: ['replenishment', replenishmentId],
+    queryFn: () => replenishmentApi.getById(replenishmentId!),
+    enabled: !!replenishmentId,
+  });
+
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      toast.success('Plan confirme — impression du bon de commande...');
+      toast.success('Plan confirme avec succes');
       if (result.warnings?.length > 0) {
         result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
       }
-      // Fetch fresh data then print
-      const freshPlan = await productionApi.getById(id!);
-      printBonDeCommande(freshPlan);
     },
   });
 
@@ -103,7 +109,7 @@ export default function PlanDetailPage() {
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
   <div style="text-align:right">
-    <strong>Chef :</strong> ${p.target_role === 'baker' ? 'Boulanger' : p.target_role === 'pastry_chef' ? 'Patissier' : p.target_role === 'viennoiserie' ? 'Viennoiserie' : p.created_by_name || '-'}<br/>
+    <strong>Chef :</strong> ${p.target_role === 'baker' ? 'Boulanger' : p.target_role === 'pastry_chef' ? 'Patissier' : p.target_role === 'viennoiserie' ? 'Viennoiserie' : p.target_role === 'beldi_sale' ? 'Beldi & Sale' : p.created_by_name || '-'}<br/>
     <strong>Date d'emission :</strong> ${now}<br/>
     <strong>Statut :</strong> Confirme
   </div>
@@ -369,15 +375,47 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
-  // Permission-based filtering: use plan's target_role if set, otherwise user's permissions
-  // If plan is linked to an order, show ALL items (no category filtering)
+  // ═══ Modification 2: Restore items from waiting list ═══
+  const restoreMutation = useMutation({
+    mutationFn: (itemIds: string[]) => productionApi.restoreItems(id!, itemIds),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      if (result.warnings?.length > 0) {
+        result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
+      } else {
+        toast.success('Article(s) restaure(s) avec succes');
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error?.message || 'Erreur lors de la restauration');
+    },
+  });
+
+  // ═══ Point 8: Cancel items from production plan ═══
+  const cancelItemsMutation = useMutation({
+    mutationFn: ({ itemIds, reason }: { itemIds: string[]; reason?: string }) => productionApi.cancelItems(id!, itemIds, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      toast.success('Article(s) annule(s)');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error?.message || 'Erreur lors de l\'annulation');
+    },
+  });
+
+  // Permission-based filtering: chef roles ALWAYS see only their own section
+  // Admin/manager see everything or filtered by plan's target_role
   const { getModuleConfig } = usePermissions();
   const prodConfig = getModuleConfig('production');
+  const userRole = user?.role || '';
+  const isChefRole = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(userRole);
   const allowedSlugs = plan?.order_id
-    ? null  // Order-linked plans: show all items assigned to this chef
-    : plan?.target_role
-      ? getRoleCategorySlugs(plan.target_role as string)
-      : (prodConfig.category_slugs as string[] | undefined) || null;
+    ? null  // Order-linked plans: show all items
+    : isChefRole
+      ? getRoleCategorySlugs(userRole) // Chef: always filter by own role
+      : plan?.target_role
+        ? getRoleCategorySlugs(plan.target_role as string)
+        : (prodConfig.category_slugs as string[] | undefined) || null;
 
   if (isLoading) return <p className="text-gray-500">Chargement...</p>;
   if (!plan) return <p className="text-gray-500">Plan non trouve</p>;
@@ -418,7 +456,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               Plan du {format(new Date(plan.plan_date), 'dd MMMM yyyy', { locale: fr })}
             </h1>
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[plan.status]}`}>
-              {PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS]}
+              {plan.status === 'completed' && plan.completion_type === 'partial'
+                ? 'Termine partiel'
+                : plan.status === 'completed' && plan.completion_type === 'complete'
+                ? 'Termine complet'
+                : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS]}
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-1">
@@ -427,9 +469,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
                 plan.target_role === 'baker' ? 'bg-amber-100 text-amber-800' :
                 plan.target_role === 'pastry_chef' ? 'bg-pink-100 text-pink-800' :
-                plan.target_role === 'viennoiserie' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-700'
+                plan.target_role === 'viennoiserie' ? 'bg-orange-100 text-orange-800' :
+                plan.target_role === 'beldi_sale' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
               }`}>
-                {plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role}
+                {plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : plan.target_role}
               </span>
             )}
             {plan.notes && ` — ${plan.notes}`}
@@ -457,11 +500,37 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               )}
             </>
           )}
-          {plan.status === 'in_progress' && isChef && (
-            <button onClick={() => setShowCompletion(true)} className="btn-primary flex items-center gap-2">
-              <Factory size={18} /> Terminer la production
-            </button>
-          )}
+          {plan.status === 'in_progress' && isChef && (() => {
+            const produciblePending = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
+            const waitingCount = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting').length;
+            const allProduced = produciblePending.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
+            return (
+              <>
+                {produciblePending.length > 0 && (
+                  <button onClick={() => setShowCompletion(true)} className="btn-primary flex items-center gap-2">
+                    <Factory size={18} /> Produire ({produciblePending.length})
+                  </button>
+                )}
+                {waitingCount > 0 && allProduced && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Cloture partielle : ${waitingCount} article(s) en attente seront annules. Continuer ?`)) {
+                        productionApi.complete(id!, [], 'partial').then(() => {
+                          queryClient.invalidateQueries({ queryKey: ['production', id] });
+                          toast.success('Plan cloture partiellement');
+                        }).catch((err: any) => {
+                          toast.error(err?.response?.data?.error?.message || 'Erreur');
+                        });
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
+                  >
+                    <CheckCircle size={18} /> Cloture partielle
+                  </button>
+                )}
+              </>
+            );
+          })()}
           {plan.status === 'completed' && isChef && (
             <button onClick={() => printFicheProduction()} className="btn-secondary flex items-center gap-2">
               <Printer size={18} /> Fiche de production
@@ -533,47 +602,270 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* Plan Items */}
-      <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Articles du plan ({items.length})</h2>
-        <table className="w-full">
-          <thead className="border-b">
-            <tr>
-              <th className="text-left py-2 text-sm font-medium text-gray-500">Produit</th>
-              <th className="text-right py-2 text-sm font-medium text-gray-500">Qte planifiee</th>
-              <th className="text-right py-2 text-sm font-medium text-gray-500">Qte produite</th>
-              <th className="text-left py-2 text-sm font-medium text-gray-500">Notes</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {items.map((item: Record<string, unknown>) => (
-              <tr key={item.id as string}>
-                <td className="py-3">
-                  <div className="flex items-center gap-3">
-                    {item.product_image ? (
-                      <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover" />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-primary-100 flex items-center justify-center text-sm">🥖</div>
-                    )}
-                    <span className="font-medium">{item.product_name as string}</span>
+      {/* Two-column layout: Stock items (left) + Production items (right) */}
+      {linkedReplenishment ? (() => {
+        const repItems = (linkedReplenishment.items || []) as Record<string, unknown>[];
+        // Filter replenishment items by plan's target_role categories (so admin sees only relevant items)
+        const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
+        const effectiveSlugs = allowedSlugs || planRoleSlugs;
+        const filteredRepItems = effectiveSlugs
+          ? repItems.filter((ri) => effectiveSlugs.includes(ri.category_slug as string))
+          : repItems;
+        const stockItems = filteredRepItems.filter((ri) => {
+          const fromStock = (ri.fulfilled_from_stock as number) || 0;
+          const status = ri.status as string;
+          return fromStock > 0 || status === 'fulfilled' || status === 'from_stock';
+        });
+        const hasStock = stockItems.length > 0;
+        const hasProduction = items.length > 0;
+
+        return (
+          <div className={`grid gap-4 ${hasStock && hasProduction ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Left column — Stock items */}
+            {hasStock && (
+              <div className="bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden self-start">
+                <div className="bg-green-50 px-5 py-3 border-b border-green-200 flex items-center gap-2">
+                  <Box size={18} className="text-green-600" />
+                  <h3 className="font-semibold text-green-800 text-sm">Preleves du stock ({stockItems.length})</h3>
+                </div>
+                <div className="divide-y divide-green-50">
+                  {stockItems.map((ri) => (
+                    <div key={ri.id as string} className="px-5 py-3 flex items-center gap-3 bg-green-50/30">
+                      {ri.product_image ? (
+                        <img src={ri.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center text-sm flex-shrink-0">📦</div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{ri.product_name as string}</div>
+                        <div className="text-xs text-gray-400">{ri.category_name as string}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="font-semibold text-green-700 text-sm">{(ri.fulfilled_from_stock as number) || 0}</span>
+                        <span className="text-xs text-gray-400 ml-0.5">/ {(ri.requested_quantity as number) || 0}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-green-50 px-5 py-2 border-t border-green-200">
+                  <span className="text-xs text-green-600">Transfert auto — Demande {linkedReplenishment.request_number as string}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Right column — Production items */}
+            {hasProduction && (
+              <div className="bg-white rounded-xl shadow-sm border border-blue-200 overflow-hidden self-start">
+                <div className="bg-blue-50 px-5 py-3 border-b border-blue-200 flex items-center gap-2">
+                  <Factory size={18} className="text-blue-600" />
+                  <h3 className="font-semibold text-blue-800 text-sm">A produire ({items.length})</h3>
+                </div>
+                <table className="w-full">
+                  <thead className="border-b border-blue-100">
+                    <tr>
+                      <th className="text-left px-5 py-2 text-xs font-medium text-blue-700 uppercase">Produit</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium text-blue-700 uppercase">Planifie</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium text-blue-700 uppercase">Produit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-blue-50">
+                    {items.map((item: Record<string, unknown>) => (
+                      <tr key={item.id as string} className="hover:bg-blue-50/30">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            {item.product_image ? (
+                              <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-sm">🥖</div>
+                            )}
+                            <div>
+                              <span className="font-medium text-sm">{item.product_name as string}</span>
+                              {(item.notes as string) && <div className="text-xs text-gray-400">{item.notes as string}</div>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold text-sm">{item.planned_quantity as number}</td>
+                        <td className="px-3 py-3 text-right text-sm">
+                          {item.actual_quantity != null ? (
+                            <span className={`font-semibold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-green-600' : 'text-amber-600'}`}>
+                              {item.actual_quantity as number}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })() : (
+        /* Non-replenishment plan: standard single-column items table */
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Articles du plan ({items.length})</h2>
+            {plan.status === 'in_progress' && (() => {
+              const produced = items.filter((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
+              const total = items.filter((it: Record<string, unknown>) => it.status !== 'cancelled').length;
+              if (produced === 0) return null;
+              const pct = Math.round((produced / total) * 100);
+              return (
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                </td>
-                <td className="py-3 text-right font-semibold">{item.planned_quantity as number}</td>
-                <td className="py-3 text-right">
-                  {item.actual_quantity != null ? (
-                    <span className={`font-semibold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-green-600' : 'text-amber-600'}`}>
-                      {item.actual_quantity as number}
-                    </span>
-                  ) : (
-                    <span className="text-gray-300">—</span>
-                  )}
-                </td>
-                <td className="py-3 text-sm text-gray-500">{(item.notes as string) || '—'}</td>
+                  <span className="text-xs text-gray-500">{produced}/{total} ({pct}%)</span>
+                </div>
+              );
+            })()}
+          </div>
+          <table className="w-full">
+            <thead className="border-b">
+              <tr>
+                <th className="text-left py-2 text-sm font-medium text-gray-500">Produit</th>
+                <th className="text-right py-2 text-sm font-medium text-gray-500">Qte planifiee</th>
+                <th className="text-right py-2 text-sm font-medium text-gray-500">Qte produite</th>
+                <th className="text-left py-2 text-sm font-medium text-gray-500">Statut</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {items.map((item: Record<string, unknown>) => {
+                const itemStatus = (item.status as string) || 'pending';
+                const statusBadge = itemStatus === 'produced'
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Produit</span>
+                  : itemStatus === 'transferred'
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Transfere</span>
+                  : itemStatus === 'received'
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Recu</span>
+                  : itemStatus === 'cancelled'
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Annule</span>
+                  : item.waiting_status === 'waiting'
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">En attente</span>
+                  : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">En cours</span>;
+                return (
+                  <tr key={item.id as string} className={(itemStatus === 'received' || itemStatus === 'cancelled') ? 'opacity-60' : ''}>
+                    <td className="py-3">
+                      <div className="flex items-center gap-3">
+                        {item.product_image ? (
+                          <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-primary-100 flex items-center justify-center text-sm">🥖</div>
+                        )}
+                        <span className={`font-medium ${itemStatus === 'cancelled' ? 'line-through' : ''}`}>{item.product_name as string}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-right font-semibold">{item.planned_quantity as number}</td>
+                    <td className="py-3 text-right">
+                      {item.actual_quantity != null ? (
+                        <span className={`font-semibold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-green-600' : 'text-amber-600'}`}>
+                          {item.actual_quantity as number}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                    <td className="py-3">{statusBadge}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ═══ Modification 2: Waiting list — items blocked by insufficient ingredients ═══ */}
+      {plan.status !== 'draft' && (() => {
+        const waitingItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting');
+        const restoredItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'restored');
+        if (waitingItems.length === 0 && restoredItems.length === 0) return null;
+        return (
+          <div className="card border-amber-200">
+            <div className="flex items-center gap-2 mb-4">
+              <Clock size={20} className="text-amber-500" />
+              <h2 className="text-lg font-semibold text-amber-800">
+                Liste d'attente
+                {waitingItems.length > 0 && <span className="ml-2 text-sm font-normal text-amber-600">({waitingItems.length} en attente)</span>}
+              </h2>
+            </div>
+
+            {waitingItems.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle size={16} className="text-amber-500" />
+                  <span className="text-sm font-medium text-amber-800">
+                    Ces articles ne peuvent pas etre produits — ingredients insuffisants.
+                    {plan.status === 'in_progress' && ' La production ne peut pas etre terminee tant que des articles sont en attente.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {waitingItems.map((item: Record<string, unknown>) => (
+                <div key={item.id as string} className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-lg border border-amber-100">
+                  {item.product_image ? (
+                    <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center text-sm flex-shrink-0">⏳</div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{item.product_name as string}</div>
+                    <div className="text-xs text-amber-600">Qte planifiee: {item.planned_quantity as number}</div>
+                  </div>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">En attente</span>
+                  {isChef && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => restoreMutation.mutate([item.id as string])}
+                        disabled={restoreMutation.isPending}
+                        className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded-lg flex items-center gap-1 transition-colors"
+                      >
+                        <RotateCcw size={12} /> Restaurer
+                      </button>
+                      <button
+                        onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
+                        disabled={cancelItemsMutation.isPending}
+                        className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded-lg flex items-center gap-1 transition-colors"
+                      >
+                        <XCircle size={12} /> Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {restoredItems.map((item: Record<string, unknown>) => (
+                <div key={item.id as string} className="flex items-center gap-3 p-3 bg-green-50/50 rounded-lg border border-green-100">
+                  {item.product_image ? (
+                    <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center text-sm flex-shrink-0">✅</div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{item.product_name as string}</div>
+                    <div className="text-xs text-green-600">Qte planifiee: {item.planned_quantity as number}</div>
+                  </div>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Restaure</span>
+                </div>
+              ))}
+            </div>
+
+            {waitingItems.length > 1 && isChef && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, unknown>) => it.id as string))}
+                  disabled={restoreMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <RotateCcw size={14} /> Restaurer tous ({waitingItems.length})
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Ingredient Needs (only after confirmation) */}
       {plan.status !== 'draft' && needs.length > 0 && (
@@ -652,56 +944,79 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   onCompleted: () => void;
 }) {
   const queryClient = useQueryClient();
-  // Initialize actuals: filtered items get their planned qty, others keep their planned qty too
+  // Only show pending items (not waiting, not already produced/transferred/received)
+  const producibleItems = items.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
+  const producibleAllItems = allItems.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
+  // Initialize actuals: planned qty for producible items
   const [actuals, setActuals] = useState<Record<string, number>>(
-    Object.fromEntries(allItems.map(it => [it.id as string, it.planned_quantity as number]))
+    Object.fromEntries(producibleAllItems.map(it => [it.id as string, it.planned_quantity as number]))
   );
 
-  const completeMutation = useMutation({
-    mutationFn: () => productionApi.complete(
+  const produceMutation = useMutation({
+    mutationFn: () => productionApi.produceItems(
       planId,
-      Object.entries(actuals).map(([planItemId, actualQuantity]) => ({ planItemId, actualQuantity }))
+      Object.entries(actuals)
+        .filter(([, qty]) => qty > 0)
+        .map(([planItemId, actualQuantity]) => ({ planItemId, actualQuantity }))
     ),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success('Production terminee ! Stock mis a jour.');
+      const producedCount = Object.values(actuals).filter(q => q > 0).length;
+      toast.success(`${producedCount} article(s) produit(s) — stock mis a jour`);
+      if (result.autoCompleted) {
+        toast.success('Plan de production termine automatiquement', { duration: 4000 });
+      }
+      if (result.warnings?.length > 0) {
+        result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
+      }
       onClose();
       onCompleted();
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.error?.message || error?.message || 'Erreur lors de la production';
+      toast.error(message);
     },
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg p-6">
-        <h2 className="text-xl font-bold mb-4">Terminer la production</h2>
-        <p className="text-sm text-gray-500 mb-4">Saisissez les quantites reellement produites. Le stock sera automatiquement mis a jour.</p>
-
-        <div className="space-y-3 mb-6">
-          <div className="grid grid-cols-3 gap-3 text-sm font-medium text-gray-500 border-b pb-2">
-            <span>Produit</span>
-            <span className="text-right">Planifie</span>
-            <span className="text-right">Produit</span>
-          </div>
-          {items.map((item) => (
-            <div key={item.id as string} className="grid grid-cols-3 gap-3 items-center">
-              <span className="font-medium text-sm truncate">{item.product_name as string}</span>
-              <span className="text-right text-gray-500">{item.planned_quantity as number}</span>
-              <input
-                type="number" min="0"
-                value={actuals[item.id as string] || 0}
-                onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
-                className="input text-right py-1"
-              />
-            </div>
-          ))}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Fixed header */}
+        <div className="p-6 pb-4 border-b border-gray-100 flex-shrink-0">
+          <h2 className="text-xl font-bold">Produire les articles</h2>
+          <p className="text-sm text-gray-500 mt-1">Saisissez les quantites produites. Mettez 0 pour les articles non encore prets. Le stock sera mis a jour.</p>
         </div>
 
-        <div className="flex gap-3">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-6 py-4">
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-3 text-sm font-medium text-gray-500 border-b pb-2 sticky top-0 bg-white">
+              <span>Produit</span>
+              <span className="text-right">Planifie</span>
+              <span className="text-right">Produit</span>
+            </div>
+            {producibleItems.map((item) => (
+              <div key={item.id as string} className="grid grid-cols-3 gap-3 items-center">
+                <span className="font-medium text-sm truncate">{item.product_name as string}</span>
+                <span className="text-right text-gray-500">{item.planned_quantity as number}</span>
+                <input
+                  type="number" min="0"
+                  value={actuals[item.id as string] || 0}
+                  onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
+                  className="input text-right py-1"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sticky footer */}
+        <div className="p-6 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
           <button onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-          <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}
+          <button onClick={() => produceMutation.mutate()} disabled={produceMutation.isPending || Object.values(actuals).every(q => q <= 0)}
             className="btn-primary flex-1">
-            {completeMutation.isPending ? 'Traitement...' : 'Confirmer et deduire le stock'}
+            {produceMutation.isPending ? 'Production...' : 'Produire et mettre a jour le stock'}
           </button>
         </div>
       </div>

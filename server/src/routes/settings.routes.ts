@@ -5,7 +5,7 @@ import { authorize } from '../middleware/role.middleware.js';
 
 const router = Router();
 
-router.get('/', settingsController.get);
+router.get('/', authenticate, settingsController.get);
 router.put('/', authenticate, authorize('admin'), settingsController.update);
 
 export default router;

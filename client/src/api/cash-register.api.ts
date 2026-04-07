@@ -7,4 +7,5 @@ export const cashRegisterApi = {
   open: (openingAmount: number) => api.post('/cash-register/open', { openingAmount }).then(r => r.data.data),
   close: () => api.post('/cash-register/close').then(r => r.data.data),
   submitAmount: (id: string, data: { actualAmount: number; notes?: string }) => api.post(`/cash-register/${id}/submit`, data).then(r => r.data.data),
+  getInventoryItems: (id: string) => api.get(`/cash-register/${id}/inventory`).then(r => r.data.data),
 };

@@ -18,6 +18,11 @@ export const cashRegisterController = {
     res.json({ success: true, data: session });
   },
 
+  async getInventoryItems(req: AuthRequest, res: Response) {
+    const items = await cashRegisterRepository.getInventoryItems(req.params.id);
+    res.json({ success: true, data: items });
+  },
+
   async currentSession(req: AuthRequest, res: Response) {
     const session = await cashRegisterRepository.findOpenSession(req.user!.userId);
     res.json({ success: true, data: session });

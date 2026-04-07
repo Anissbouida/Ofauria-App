@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
@@ -6,13 +6,14 @@ import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
+import { replenishmentApi } from '../../api/replenishment.api';
 import { productionApi } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
 import api from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -71,8 +72,11 @@ export default function POSPage() {
   const [openingAmount, setOpeningAmount] = useState('0');
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
-  const [closeStep, setCloseStep] = useState<'input' | 'result'>('input');
+  const [closeStep, setCloseStep] = useState<'inventory' | 'input' | 'result'>('inventory');
   const [closeResult, setCloseResult] = useState<Record<string, unknown> | null>(null);
+  const [inventoryItems, setInventoryItems] = useState<Record<string, unknown>[]>([]);
+  const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
+  const [inventoryDone, setInventoryDone] = useState(false);
 
   // Order form state
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -80,6 +84,11 @@ export default function POSPage() {
 
   // Production request state
   const [showProductionForm, setShowProductionForm] = useState(false);
+
+  // Transfers confirmation state
+  const [showTransfers, setShowTransfers] = useState(false);
+  const [transferReceptionItems, setTransferReceptionItems] = useState<Record<string, Record<string, { qtyReceived: number; notes: string }>>>({});
+  const [confirmingTransferId, setConfirmingTransferId] = useState<string | null>(null);
 
   // Return/Exchange state
   const [returnSearch, setReturnSearch] = useState('');
@@ -122,6 +131,55 @@ export default function POSPage() {
     enabled: !!activeSession && posTab === 'orders',
   });
 
+  // Pending transfers for cashier confirmation
+  const { data: pendingTransfers = [] } = useQuery({
+    queryKey: ['pending-transfers'],
+    queryFn: replenishmentApi.pendingTransfers,
+    enabled: !!activeSession,
+    refetchInterval: 30000, // Auto-refresh every 30s
+  });
+
+  // Pending production transfers
+  const { data: pendingProductionTransfers = [] } = useQuery({
+    queryKey: ['pending-production-transfers'],
+    queryFn: productionApi.pendingTransfers,
+    enabled: !!activeSession,
+    refetchInterval: 30000,
+  });
+
+  const confirmTransferMutation = useMutation({
+    mutationFn: ({ id, items }: { id: string; items: { itemId: string; qtyReceived: number; notes?: string }[] }) =>
+      replenishmentApi.confirmReception(id, items),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['pending-transfers'] });
+      setConfirmingTransferId(null);
+      if (data?.status === 'closed_with_discrepancy') {
+        toast('Reception confirmee avec ecart', { icon: '⚠️' });
+      } else {
+        toast.success('Reception confirmee');
+      }
+    },
+    onError: () => toast.error('Erreur lors de la confirmation'),
+  });
+
+  const confirmProductionTransferMutation = useMutation({
+    mutationFn: ({ transferId, items }: { transferId: string; items: { itemId: string; qtyReceived: number; notes?: string }[] }) =>
+      productionApi.confirmTransferReception(transferId, items),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['pending-production-transfers'] });
+      setConfirmingTransferId(null);
+      if (data?.data?.status === 'received_with_discrepancy') {
+        toast('Reception production confirmee avec ecart', { icon: '⚠️' });
+      } else {
+        toast.success('Reception production confirmee');
+      }
+      if (data?.data?.planCompleted) {
+        toast.success('Plan de production termine — tous les articles recus !');
+      }
+    },
+    onError: () => toast.error('Erreur lors de la confirmation'),
+  });
+
   const openMutation = useMutation({
     mutationFn: (amount: number) => cashRegisterApi.open(amount),
     onSuccess: () => {
@@ -134,10 +192,31 @@ export default function POSPage() {
   });
 
   const closeMutation = useMutation({
-    mutationFn: () => cashRegisterApi.close(),
-    onSuccess: (data) => {
+    mutationFn: async () => {
+      const data = await cashRegisterApi.close();
+      // Load replenished items for inventory check (Rule 3)
+      let invItems: Record<string, unknown>[] = [];
+      try { invItems = await replenishmentApi.closingInventory() || []; } catch { /* no items */ }
+      return { data, invItems };
+    },
+    onSuccess: ({ data, invItems }) => {
       setCloseResult(data);
-      setCloseStep('input');
+      if (invItems.length > 0) {
+        setInventoryItems(invItems);
+        // Pre-fill remaining qty = replenished - sold (suggestion)
+        const qtys: Record<string, number> = {};
+        for (const it of invItems) {
+          const rep = parseInt(it.replenished_qty as string) || 0;
+          const sold = parseInt(it.sold_qty as string) || 0;
+          qtys[it.product_id as string] = Math.max(0, rep - sold);
+        }
+        setInventoryQtys(qtys);
+        setCloseStep('inventory');
+        setInventoryDone(false);
+      } else {
+        setCloseStep('input');
+        setInventoryDone(true);
+      }
       setShowCloseModal(true);
     },
     onError: () => toast.error('Erreur lors de la fermeture'),
@@ -151,7 +230,8 @@ export default function POSPage() {
     onSuccess: (data) => {
       setCloseResult(data);
       setCloseStep('result');
-      queryClient.invalidateQueries({ queryKey: ['cash-register-session'] });
+      // Don't invalidate here — wait until user clicks "Terminer"
+      // Otherwise activeSession becomes null and the result screen is hidden
     },
     onError: () => toast.error('Erreur'),
   });
@@ -409,11 +489,34 @@ export default function POSPage() {
 
         {/* Bottom actions */}
         <div className="p-2 border-t space-y-1">
-          {/* Production request */}
+          {/* Pending transfers — always visible */}
+          {(() => {
+            const repCount = (pendingTransfers as Record<string, unknown>[]).length;
+            const prodCount = (pendingProductionTransfers as Record<string, unknown>[]).length;
+            const totalCount = repCount + prodCount;
+            return (
+              <button onClick={() => setShowTransfers(true)}
+                className={`w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  totalCount > 0
+                    ? 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-purple-300 animate-pulse font-bold'
+                    : 'text-purple-600 hover:bg-purple-50'
+                }`}>
+                <Truck size={16} />
+                <span className="flex-1 text-left">Reception transferts</span>
+                {totalCount > 0 && (
+                  <span className="bg-purple-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-bold">
+                    {totalCount}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
+
+          {/* Replenishment request */}
           <button onClick={() => setShowProductionForm(true)}
             className="w-full px-3 py-2.5 rounded-lg text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2">
-            <Factory size={16} />
-            Demande production
+            <Package size={16} />
+            Approvisionnement
           </button>
 
           {/* Close register */}
@@ -1019,8 +1122,98 @@ export default function POSPage() {
       {/* Close Register Modal */}
       {showCloseModal && closeResult && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            {closeStep === 'input' ? (
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            {/* ═══ RULE 3: Inventory step ═══ */}
+            {closeStep === 'inventory' ? (
+              <>
+                <h2 className="text-xl font-bold mb-1">Saisie des invendus en vitrine</h2>
+                <p className="text-sm text-gray-500 mb-4">Saisissez les quantités restantes en vitrine pour chaque article approvisionné aujourd'hui.</p>
+                <div className="space-y-2 mb-4">
+                  <div className="grid grid-cols-4 gap-2 text-xs font-medium text-gray-500 border-b pb-2">
+                    <span className="col-span-1">Produit</span>
+                    <span className="text-center">Approvisionné</span>
+                    <span className="text-center">Vendu</span>
+                    <span className="text-center">Restant</span>
+                  </div>
+                  {inventoryItems.map((it) => {
+                    const pid = it.product_id as string;
+                    const rep = parseInt(it.replenished_qty as string) || 0;
+                    const sold = parseInt(it.sold_qty as string) || 0;
+                    const remaining = inventoryQtys[pid] ?? 0;
+                    const discrepancy = rep - sold - remaining;
+                    return (
+                      <div key={pid} className={`grid grid-cols-4 gap-2 items-center py-2 px-2 rounded-lg ${discrepancy !== 0 ? 'bg-amber-50' : ''}`}>
+                        <span className="text-sm font-medium truncate" title={it.product_name as string}>
+                          {it.product_name as string}
+                        </span>
+                        <span className="text-center text-sm font-semibold text-blue-700">{rep}</span>
+                        <span className="text-center text-sm font-semibold text-green-700">{sold}</span>
+                        <input type="number" min={0} max={rep}
+                          value={remaining}
+                          onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="input text-center py-1 text-sm font-bold" />
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Summary */}
+                {(() => {
+                  let totalDiscrepancy = 0;
+                  inventoryItems.forEach((it) => {
+                    const pid = it.product_id as string;
+                    const rep = parseInt(it.replenished_qty as string) || 0;
+                    const sold = parseInt(it.sold_qty as string) || 0;
+                    const remaining = inventoryQtys[pid] ?? 0;
+                    totalDiscrepancy += rep - sold - remaining;
+                  });
+                  if (totalDiscrepancy !== 0) {
+                    return (
+                      <div className={`rounded-xl p-3 mb-4 flex items-center gap-2 text-sm ${totalDiscrepancy > 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
+                        <AlertTriangle size={16} className={totalDiscrepancy > 0 ? 'text-red-500' : 'text-blue-500'} />
+                        <span className={totalDiscrepancy > 0 ? 'text-red-700' : 'text-blue-700'}>
+                          {totalDiscrepancy > 0
+                            ? `Écart : ${totalDiscrepancy} unité(s) non justifiée(s) (perte/casse)`
+                            : `Écart : ${Math.abs(totalDiscrepancy)} unité(s) en surplus`}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="rounded-xl p-3 mb-4 flex items-center gap-2 text-sm bg-green-50 border border-green-200">
+                      <CheckCircle size={16} className="text-green-500" />
+                      <span className="text-green-700">Inventaire cohérent — aucun écart.</span>
+                    </div>
+                  );
+                })()}
+                <div className="flex gap-3">
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); }}
+                    className="btn-secondary flex-1">Annuler</button>
+                  <button onClick={async () => {
+                    try {
+                      const items = inventoryItems.map((it) => ({
+                        productId: it.product_id as string,
+                        productName: it.product_name as string,
+                        replenishedQty: parseInt(it.replenished_qty as string) || 0,
+                        soldQty: parseInt(it.sold_qty as string) || 0,
+                        remainingQty: inventoryQtys[it.product_id as string] ?? 0,
+                      }));
+                      await replenishmentApi.saveInventoryCheck({
+                        sessionId: closeResult?.id as string,
+                        items,
+                      });
+                      toast.success('Inventaire enregistré');
+                    } catch {
+                      toast.error('Erreur lors de l\'enregistrement de l\'inventaire');
+                    }
+                    setInventoryDone(true);
+                    setCloseStep('input');
+                  }}
+                    className="btn-primary flex-1">
+                    Valider l'inventaire
+                  </button>
+                </div>
+              </>
+            ) : closeStep === 'input' ? (
               <>
                 <h2 className="text-xl font-bold mb-2">Fermeture de caisse</h2>
                 <p className="text-sm text-gray-500 mb-6">Comptez l'argent dans la caisse et saisissez le montant trouve.</p>
@@ -1111,6 +1304,80 @@ export default function POSPage() {
                       <span className="font-semibold text-green-600">{parseFloat(closeResult.total_revenue as string).toFixed(2)} DH</span>
                     </div>
                   </div>
+
+                  {/* ═══ Bilan produits : Approvisionné / Vendu / Restant / Écart ═══ */}
+                  {inventoryItems.length > 0 && (
+                    <div className="bg-gray-50 rounded-xl p-4 text-sm">
+                      <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <Package size={16} className="text-indigo-500" />
+                        Bilan des produits
+                      </h3>
+                      <div className="grid grid-cols-5 gap-1 text-xs font-medium text-gray-500 border-b pb-2 mb-2">
+                        <span className="col-span-1">Produit</span>
+                        <span className="text-center">Approv.</span>
+                        <span className="text-center">Vendu</span>
+                        <span className="text-center">Restant</span>
+                        <span className="text-center">Écart</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {inventoryItems.map((it) => {
+                          const pid = it.product_id as string;
+                          const rep = parseInt(it.replenished_qty as string) || 0;
+                          const sold = parseInt(it.sold_qty as string) || 0;
+                          const remaining = inventoryQtys[pid] ?? 0;
+                          const ecart = rep - sold - remaining;
+                          return (
+                            <div key={pid} className={`grid grid-cols-5 gap-1 items-center py-1.5 px-1 rounded ${ecart !== 0 ? (ecart > 0 ? 'bg-red-50' : 'bg-blue-50') : ''}`}>
+                              <span className="text-xs font-medium truncate" title={it.product_name as string}>
+                                {it.product_name as string}
+                              </span>
+                              <span className="text-center text-xs font-semibold text-blue-700">{rep}</span>
+                              <span className="text-center text-xs font-semibold text-green-700">{sold}</span>
+                              <span className="text-center text-xs font-semibold text-gray-700">{remaining}</span>
+                              <span className={`text-center text-xs font-bold ${ecart > 0 ? 'text-red-600' : ecart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                                {ecart === 0 ? '✓' : ecart > 0 ? `-${ecart}` : `+${Math.abs(ecart)}`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Totaux */}
+                      {(() => {
+                        let totalRep = 0, totalSold = 0, totalRemaining = 0, totalEcart = 0;
+                        inventoryItems.forEach((it) => {
+                          const pid = it.product_id as string;
+                          const rep = parseInt(it.replenished_qty as string) || 0;
+                          const sold = parseInt(it.sold_qty as string) || 0;
+                          const remaining = inventoryQtys[pid] ?? 0;
+                          totalRep += rep; totalSold += sold; totalRemaining += remaining;
+                          totalEcart += rep - sold - remaining;
+                        });
+                        return (
+                          <>
+                            <div className="grid grid-cols-5 gap-1 items-center py-2 px-1 border-t mt-2 font-semibold text-xs">
+                              <span>Total</span>
+                              <span className="text-center text-blue-700">{totalRep}</span>
+                              <span className="text-center text-green-700">{totalSold}</span>
+                              <span className="text-center text-gray-700">{totalRemaining}</span>
+                              <span className={`text-center font-bold ${totalEcart > 0 ? 'text-red-600' : totalEcart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                                {totalEcart === 0 ? '✓' : totalEcart > 0 ? `-${totalEcart}` : `+${Math.abs(totalEcart)}`}
+                              </span>
+                            </div>
+                            {totalEcart !== 0 && (
+                              <div className={`mt-2 rounded-lg p-2 flex items-center gap-2 ${totalEcart > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <AlertTriangle size={14} />
+                                <span className="text-xs font-medium">
+                                  {totalEcart > 0
+                                    ? `${totalEcart} unité(s) manquante(s) — perte/casse à justifier`
+                                    : `${Math.abs(totalEcart)} unité(s) en surplus`}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => {
                   setShowCloseModal(false);
@@ -1118,7 +1385,8 @@ export default function POSPage() {
                   setActualAmount('');
                   setCloseNotes('');
                   setCloseStep('input');
-                  toast.success('Caisse fermee avec succes !');
+                  queryClient.invalidateQueries({ queryKey: ['cash-register-session'] });
+                  toast.success('Caisse fermée avec succès !');
                 }} className="btn-primary w-full py-3">
                   Terminer
                 </button>
@@ -1128,15 +1396,315 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* Production Request Modal */}
+      {/* Replenishment Request Modal */}
       {showProductionForm && (
-        <ProductionRequestModal
+        <ReplenishmentRequestModal
           onClose={() => setShowProductionForm(false)}
           onCreated={() => {
             setShowProductionForm(false);
-            toast.success('Demande de production envoyee !');
+            toast.success('Demande envoyee !');
           }}
         />
+      )}
+
+      {/* Transfers Confirmation Modal */}
+      {showTransfers && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-purple-50 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <Truck size={22} className="text-purple-600" />
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">Transferts en attente de confirmation</h2>
+                  <p className="text-xs text-gray-500">{(pendingTransfers as Record<string, unknown>[]).length + (pendingProductionTransfers as Record<string, unknown>[]).length} transfert(s) a confirmer</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowTransfers(false); setConfirmingTransferId(null); }}
+                className="p-2 hover:bg-gray-100 rounded-lg"><XCircle size={20} className="text-gray-400" /></button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {(pendingTransfers as Record<string, unknown>[]).map((transfer) => {
+                const tId = transfer.id as string;
+                const allItems = (transfer.items || []) as Record<string, unknown>[];
+                const items = allItems.filter(i => i.status === 'ready');
+                const isConfirming = confirmingTransferId === tId;
+                const roleSuffix = (transfer.assigned_role as string) || '';
+                const ROLE_LABELS_MAP: Record<string, string> = { baker: 'Boulanger', pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale', general: 'General' };
+                const ROLE_COLORS_MAP: Record<string, string> = { baker: 'border-amber-300 bg-amber-50', pastry_chef: 'border-pink-300 bg-pink-50', viennoiserie: 'border-orange-300 bg-orange-50', beldi_sale: 'border-green-300 bg-green-50', general: 'border-gray-300 bg-gray-50' };
+
+                return (
+                  <div key={tId} className={`border-2 rounded-xl overflow-hidden ${ROLE_COLORS_MAP[roleSuffix] || 'border-gray-200 bg-white'}`}>
+                    {/* Transfer header */}
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-gray-800">{ROLE_LABELS_MAP[roleSuffix] || roleSuffix}</span>
+                          <span className="text-xs text-gray-400">#{transfer.request_number as string}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Transfere par {transfer.transferred_by_name as string || '—'}
+                          {transfer.transferred_at ? ` le ${format(new Date(transfer.transferred_at as string), 'dd/MM HH:mm', { locale: fr })}` : ''}
+                        </p>
+                      </div>
+                      {!isConfirming ? (
+                        <button onClick={() => {
+                          setConfirmingTransferId(tId);
+                          // Pre-fill with expected quantities
+                          const presets: Record<string, { qtyReceived: number; notes: string }> = {};
+                          for (const item of items) {
+                            presets[item.id as string] = { qtyReceived: (item.qty_to_store as number) || 0, notes: '' };
+                          }
+                          setTransferReceptionItems(prev => ({ ...prev, [tId]: presets }));
+                        }}
+                          className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition flex items-center gap-2">
+                          <CheckCircle size={16} /> Confirmer
+                        </button>
+                      ) : (
+                        <button onClick={() => setConfirmingTransferId(null)}
+                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs hover:bg-gray-50">
+                          Annuler
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Items table */}
+                    <table className="w-full">
+                      <thead className="bg-white/60 border-t">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Produit</th>
+                          <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Attendu</th>
+                          {isConfirming && (
+                            <>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Recu</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Ecart</th>
+                              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Note</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {items.map((item) => {
+                          const itemId = item.id as string;
+                          const expected = (item.qty_to_store as number) || 0;
+                          const receptionData = transferReceptionItems[tId]?.[itemId];
+                          const received = receptionData?.qtyReceived ?? expected;
+                          const diff = received - expected;
+
+                          return (
+                            <tr key={itemId} className={isConfirming && diff !== 0 ? 'bg-red-50/40' : ''}>
+                              <td className="px-4 py-2.5">
+                                <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
+                                <div className="text-[11px] text-gray-400">{item.category_name as string}</div>
+                              </td>
+                              <td className="text-center px-3 py-2.5 text-sm font-semibold text-gray-700">{expected}</td>
+                              {isConfirming && (
+                                <>
+                                  <td className="text-center px-3 py-2.5">
+                                    <input type="number" min={0} value={received}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setTransferReceptionItems(prev => ({
+                                          ...prev,
+                                          [tId]: { ...prev[tId], [itemId]: { ...(prev[tId]?.[itemId] || { qtyReceived: 0, notes: '' }), qtyReceived: val } }
+                                        }));
+                                      }}
+                                      className={`input text-sm py-1.5 w-16 text-center ${diff !== 0 ? 'border-red-300 bg-red-50' : ''}`} />
+                                  </td>
+                                  <td className="text-center px-3 py-2.5">
+                                    {diff === 0 ? <CheckCircle size={16} className="mx-auto text-green-500" /> :
+                                      <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <input type="text" placeholder="..." value={receptionData?.notes || ''}
+                                      onChange={(e) => {
+                                        setTransferReceptionItems(prev => ({
+                                          ...prev,
+                                          [tId]: { ...prev[tId], [itemId]: { ...(prev[tId]?.[itemId] || { qtyReceived: expected, notes: '' }), notes: e.target.value } }
+                                        }));
+                                      }}
+                                      className="input text-sm py-1.5 w-full" />
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    {/* Confirm button */}
+                    {isConfirming && (
+                      <div className="px-4 py-3 border-t bg-white/80 flex justify-end">
+                        <button
+                          onClick={() => {
+                            const receptionData = transferReceptionItems[tId] || {};
+                            const itemsToSend = items.map((item) => {
+                              const itemId = item.id as string;
+                              const r = receptionData[itemId] || { qtyReceived: (item.qty_to_store as number) || 0, notes: '' };
+                              return { itemId, qtyReceived: r.qtyReceived, notes: r.notes || undefined };
+                            });
+                            confirmTransferMutation.mutate({ id: tId, items: itemsToSend });
+                          }}
+                          disabled={confirmTransferMutation.isPending}
+                          className="px-6 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition flex items-center gap-2">
+                          <CheckCircle size={16} />
+                          {confirmTransferMutation.isPending ? 'Confirmation...' : 'Valider la reception'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ═══ Production transfers ═══ */}
+              {(pendingProductionTransfers as Record<string, unknown>[]).length > 0 && (
+                <div className="mt-2">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                    <Factory size={14} /> Transferts de production
+                  </h3>
+                </div>
+              )}
+              {(pendingProductionTransfers as Record<string, unknown>[]).map((transfer) => {
+                const tId = `prod_${transfer.id as string}`;
+                const transferId = transfer.id as string;
+                const prodItems = (transfer.items || []) as Record<string, unknown>[];
+                const isConfirming = confirmingTransferId === tId;
+                const ROLE_LABELS_MAP: Record<string, string> = { baker: 'Boulanger', pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale' };
+                const ROLE_COLORS_MAP: Record<string, string> = { baker: 'border-amber-300 bg-amber-50', pastry_chef: 'border-pink-300 bg-pink-50', viennoiserie: 'border-orange-300 bg-orange-50', beldi_sale: 'border-green-300 bg-green-50' };
+                const targetRole = (transfer.target_role as string) || '';
+
+                return (
+                  <div key={tId} className={`border-2 rounded-xl overflow-hidden ${ROLE_COLORS_MAP[targetRole] || 'border-blue-200 bg-blue-50'}`}>
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Factory size={14} className="text-blue-600" />
+                          <span className="font-bold text-sm text-gray-800">Production — {ROLE_LABELS_MAP[targetRole] || targetRole || 'General'}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Transfere par {transfer.transferred_by_name as string || '—'}
+                          {transfer.transferred_at ? ` le ${format(new Date(transfer.transferred_at as string), 'dd/MM HH:mm', { locale: fr })}` : ''}
+                        </p>
+                      </div>
+                      {!isConfirming ? (
+                        <button onClick={() => {
+                          setConfirmingTransferId(tId);
+                          const presets: Record<string, { qtyReceived: number; notes: string }> = {};
+                          for (const item of prodItems) {
+                            presets[item.id as string] = { qtyReceived: (item.transferred_quantity as number) || 0, notes: '' };
+                          }
+                          setTransferReceptionItems(prev => ({ ...prev, [tId]: presets }));
+                        }}
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
+                          <CheckCircle size={16} /> Confirmer
+                        </button>
+                      ) : (
+                        <button onClick={() => setConfirmingTransferId(null)}
+                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs hover:bg-gray-50">
+                          Annuler
+                        </button>
+                      )}
+                    </div>
+
+                    <table className="w-full">
+                      <thead className="bg-white/60 border-t">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-xs font-medium text-gray-500 uppercase">Produit</th>
+                          <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Attendu</th>
+                          {isConfirming && (
+                            <>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Recu</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Ecart</th>
+                              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Note</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {prodItems.map((item) => {
+                          const itemId = item.id as string;
+                          const expected = (item.transferred_quantity as number) || 0;
+                          const receptionData = transferReceptionItems[tId]?.[itemId];
+                          const received = receptionData?.qtyReceived ?? expected;
+                          const diff = received - expected;
+
+                          return (
+                            <tr key={itemId} className={isConfirming && diff !== 0 ? 'bg-red-50/40' : ''}>
+                              <td className="px-4 py-2.5">
+                                <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
+                              </td>
+                              <td className="text-center px-3 py-2.5 text-sm font-semibold text-gray-700">{expected}</td>
+                              {isConfirming && (
+                                <>
+                                  <td className="text-center px-3 py-2.5">
+                                    <input type="number" min={0} value={received}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setTransferReceptionItems(prev => ({
+                                          ...prev,
+                                          [tId]: { ...prev[tId], [itemId]: { ...(prev[tId]?.[itemId] || { qtyReceived: 0, notes: '' }), qtyReceived: val } }
+                                        }));
+                                      }}
+                                      className={`input text-sm py-1.5 w-16 text-center ${diff !== 0 ? 'border-red-300 bg-red-50' : ''}`} />
+                                  </td>
+                                  <td className="text-center px-3 py-2.5">
+                                    {diff === 0 ? <CheckCircle size={16} className="mx-auto text-green-500" /> :
+                                      <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <input type="text" placeholder="..." value={receptionData?.notes || ''}
+                                      onChange={(e) => {
+                                        setTransferReceptionItems(prev => ({
+                                          ...prev,
+                                          [tId]: { ...prev[tId], [itemId]: { ...(prev[tId]?.[itemId] || { qtyReceived: expected, notes: '' }), notes: e.target.value } }
+                                        }));
+                                      }}
+                                      className="input text-sm py-1.5 w-full" />
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+
+                    {isConfirming && (
+                      <div className="px-4 py-3 border-t bg-white/80 flex justify-end">
+                        <button
+                          onClick={() => {
+                            const receptionData = transferReceptionItems[tId] || {};
+                            const itemsToSend = prodItems.map((item) => {
+                              const itemId = item.id as string;
+                              const r = receptionData[itemId] || { qtyReceived: (item.transferred_quantity as number) || 0, notes: '' };
+                              return { itemId, qtyReceived: r.qtyReceived, notes: r.notes || undefined };
+                            });
+                            confirmProductionTransferMutation.mutate({ transferId, items: itemsToSend });
+                          }}
+                          disabled={confirmProductionTransferMutation.isPending}
+                          className="px-6 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition flex items-center gap-2">
+                          <CheckCircle size={16} />
+                          {confirmProductionTransferMutation.isPending ? 'Confirmation...' : 'Valider la reception'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {(pendingTransfers as Record<string, unknown>[]).length === 0 && (pendingProductionTransfers as Record<string, unknown>[]).length === 0 && (
+                <div className="text-center py-12 text-gray-400">
+                  <Truck size={48} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Aucun transfert en attente</p>
+                  <p className="text-sm mt-1">Tous les transferts ont ete confirmes.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Receipt Modal */}
@@ -1147,36 +1715,106 @@ export default function POSPage() {
   );
 }
 
-function ProductionRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const queryClient = useQueryClient();
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const [planDate, setPlanDate] = useState(format(tomorrow, 'yyyy-MM-dd'));
+  const [mode, setMode] = useState<'suggestions' | 'catalog'>('suggestions');
   const [notes, setNotes] = useState('');
+  const [priority, setPriority] = useState('normal');
   const [activeCategory, setActiveCategory] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Record<string, number>>({});
-  const [targetRole, setTargetRole] = useState('');
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [validationDone, setValidationDone] = useState(false);
+  const [blockedItems, setBlockedItems] = useState<Array<{ productId: string; productName: string; unsoldQty: number; message: string }>>([]);
 
+  // ═══ RULE 1: Check which products are already requested today ═══
+  const { data: todayCheck } = useQuery({
+    queryKey: ['replenishment-check-today'],
+    queryFn: () => replenishmentApi.checkToday(),
+  });
+  const alreadyRequestedIds: string[] = todayCheck?.alreadyRequestedProductIds || [];
+
+  const MARGIN = 1.10; // +10% margin
+
+  const getDayName = () => {
+    const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    return days[new Date().getDay()];
+  };
+
+  // Fetch recommendations
+  const { data: recommendations, isLoading: recoLoading } = useQuery({
+    queryKey: ['replenishment-recommendations'],
+    queryFn: () => replenishmentApi.recommendations(),
+  });
+
+  // Fetch all products for catalog mode
   const { data: productsData } = useQuery({
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
   const products = (productsData?.data || []) as Record<string, unknown>[];
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['active-users'],
-    queryFn: () => api.get('/auth/users-list').then(r => r.data.data),
-  });
-  const chefRoles = ['baker', 'pastry_chef', 'viennoiserie'];
-  const chefs = (users as Record<string, unknown>[]).filter(
-    (u) => chefRoles.includes(u.role as string)
-  );
+  // Auto-populate from recommendations on first load
+  useEffect(() => {
+    if (suggestionsLoaded) return;
+    const recos = recommendations as Record<string, unknown>[] | undefined;
+    if (!recos) return;
+
+    const auto: Record<string, number> = {};
+
+    if (recos.length > 0) {
+      // Suggestions basées sur l'historique + 10% marge
+      for (const r of recos) {
+        const sold = parseInt(r.last_week_qty as string) || 0;
+        const stock = parseFloat(r.current_stock as string) || 0;
+        const suggested = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
+        if (suggested > 0) {
+          auto[r.product_id as string] = suggested;
+        }
+      }
+    } else {
+      // Pas de données historiques → suggestions aléatoires pour tester
+      const available = products.filter(p => p.is_available !== false);
+      const shuffled = [...available].sort(() => Math.random() - 0.5).slice(0, 15);
+      for (const p of shuffled) {
+        auto[p.id as string] = Math.floor(Math.random() * 10) + 2;
+      }
+    }
+
+    if (Object.keys(auto).length > 0) {
+      setSelected(auto);
+      setSuggestionsLoaded(true);
+      // Expand all categories by default
+      const cats: Record<string, boolean> = {};
+      const recos = recommendations as Record<string, unknown>[] | undefined;
+      if (recos) for (const r of recos) cats[(r.category_name as string) || 'Autre'] = true;
+      setExpandedCats(cats);
+    }
+  }, [recommendations, products, suggestionsLoaded]);
+
+  const toggleCat = (cat: string) => setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
+  const selectAllCat = (items: Record<string, unknown>[]) => {
+    const next = { ...selected };
+    for (const item of items) {
+      const pid = (item.product_id || item.id) as string;
+      const sold = parseInt((item.last_week_qty as string) || '0') || 0;
+      const stock = parseFloat((item.current_stock as string) || '0') || 0;
+      const need = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
+      next[pid] = need;
+    }
+    setSelected(next);
+  };
+  const deselectAllCat = (items: Record<string, unknown>[]) => {
+    const next = { ...selected };
+    for (const item of items) delete next[(item.product_id || item.id) as string];
+    setSelected(next);
+  };
 
   const categories = Array.from(
     new Map(
-      products
-        .filter((p) => p.category_name)
+      products.filter((p) => p.category_name)
         .map((p) => [p.category_id as number, p.category_name as string])
     ).entries()
   ).sort((a, b) => a[1].localeCompare(b[1]));
@@ -1190,185 +1828,366 @@ function ProductionRequestModal({ onClose, onCreated }: { onClose: () => void; o
   const setQty = (productId: string, qty: number) => {
     setSelected((prev) => {
       const next = { ...prev };
-      if (qty <= 0) { delete next[productId]; }
-      else { next[productId] = qty; }
+      if (qty <= 0) delete next[productId];
+      else next[productId] = qty;
       return next;
     });
   };
 
   const totalSelected = Object.keys(selected).length;
+  const totalQty = Object.values(selected).reduce((s, q) => s + q, 0);
 
   const createMutation = useMutation({
-    mutationFn: productionApi.create,
+    mutationFn: replenishmentApi.create,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['production'] });
+      queryClient.invalidateQueries({ queryKey: ['replenishment'] });
       onCreated();
+    },
+    onError: (error: unknown) => {
+      const errData = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
+      const data = errData?.data as Record<string, unknown> | undefined;
+      const err = data?.error as Record<string, unknown> | undefined;
+      if (err?.code === 'ALL_PRODUCTS_ALREADY_REQUESTED') {
+        toast.error(err.message as string);
+      } else {
+        toast.error('Erreur lors de la création de la demande');
+      }
     },
   });
 
-  const handleSubmit = () => {
-    const items = Object.entries(selected).map(([productId, plannedQuantity]) => ({ productId, plannedQuantity }));
-    if (items.length === 0) { toast.error('Selectionnez au moins un produit'); return; }
-    if (!targetRole) { toast.error('Veuillez selectionner le chef responsable'); return; }
-    createMutation.mutate({ planDate, type: 'daily', notes: notes || undefined, targetRole, items });
+  const handleSubmit = async () => {
+    const productIds = Object.keys(selected);
+    if (!productIds.length) { toast.error('Sélectionnez au moins un produit'); return; }
+
+    // ═══ RULE 2: Show unsold items warning (informative, not blocking) ═══
+    if (!validationDone) {
+      setSubmitting(true);
+      try {
+        const result = await replenishmentApi.checkItems(productIds);
+        if (result.blockedItems?.length > 0) {
+          setBlockedItems(result.blockedItems);
+          setValidationDone(true);
+          setSubmitting(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Erreur de vérification des articles:', err);
+        toast.error('Erreur lors de la vérification des articles');
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({ productId, requestedQuantity }));
+    if (!items.length) { toast.error('Aucun article éligible à envoyer'); return; }
+    setBlockedItems([]);
+    setValidationDone(false);
+    setSubmitting(false);
+    createMutation.mutate({ priority, notes: notes || undefined, items });
   };
+
+  // Group recommendations by category
+  const recosByCategory = ((recommendations || []) as Record<string, unknown>[]).reduce((groups: Record<string, Record<string, unknown>[]>, item) => {
+    const cat = (item.category_name as string) || 'Autre';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(item);
+    return groups;
+  }, {});
+
+  // For random suggestions when no history
+  const hasHistory = ((recommendations || []) as Record<string, unknown>[]).length > 0;
+  const randomByCategory = !hasHistory ? products.reduce((groups: Record<string, Record<string, unknown>[]>, p) => {
+    const cat = (p.category_name as string) || 'Autre';
+    if (!groups[cat]) groups[cat] = [];
+    if (selected[p.id as string]) groups[cat].push(p);
+    return groups;
+  }, {}) : {};
+
+  const displayCategories = hasHistory ? recosByCategory : randomByCategory;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:max-h-full">
+      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:h-[calc(100vh-2rem)] sm:max-w-5xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0 bg-gradient-to-r from-indigo-50 to-blue-50">
           <div className="flex items-center gap-3">
-            <Factory size={22} className="text-indigo-600" />
-            <h2 className="text-lg sm:text-xl font-bold text-bakery-chocolate">Demande de production</h2>
+            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+              <Package size={22} className="text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">Approvisionnement</h2>
+              <p className="text-xs text-gray-500">{hasHistory ? `Basé sur les ventes de ${getDayName()} dernier (+10%)` : 'Suggestions aléatoires — aucun historique'}</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
+          <button onClick={onClose} className="p-2 hover:bg-white/80 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
         </div>
 
-        {/* Settings bar */}
-        <div className="px-5 py-3 border-b bg-gray-50 shrink-0">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Chef responsable <span className="text-red-400">*</span></label>
-              <select value={targetRole} onChange={(e) => setTargetRole(e.target.value)}
-                className="input text-base py-2.5">
-                <option value="">-- Choisir un chef --</option>
-                {(() => {
-                  // Group chefs by role for display
-                  const roleGroups = chefRoles.reduce((acc, role) => {
-                    const roleChefs = chefs.filter((c) => c.role === role);
-                    if (roleChefs.length > 0) {
-                      acc.push({ role, label: (ROLE_LABELS as Record<string, string>)[role] || role, chefs: roleChefs });
-                    }
-                    return acc;
-                  }, [] as { role: string; label: string; chefs: Record<string, unknown>[] }[]);
-                  return roleGroups.map((g) => (
-                    <option key={g.role} value={g.role}>
-                      {g.label} ({g.chefs.map((c) => `${c.firstName || c.first_name}`).join(', ')})
-                    </option>
-                  ));
-                })()}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Date de production</label>
-              <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)}
-                className="input text-base py-2.5" required />
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optionnel)</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-                className="input text-base py-2.5" placeholder="Ex: besoin urgent de croissants..." />
+        {/* Rule 1: Warning if request already exists today */}
+        {alreadyRequestedIds.length > 0 && (
+          <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 shrink-0">
+            <div className="flex items-center gap-2 text-blue-800">
+              <Package size={16} className="text-blue-600 shrink-0" />
+              <p className="text-xs">
+                {alreadyRequestedIds.length} produit(s) deja demande(s) aujourd'hui — ils ne seront pas inclus.
+              </p>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Category sidebar + Products grid */}
-        <div className="flex flex-1 min-h-0">
-          {/* Category sidebar */}
-          <div className="w-44 shrink-0 border-r bg-gray-50 overflow-y-auto py-3 px-2 flex flex-col gap-1.5">
-            <button type="button" onClick={() => setActiveCategory('')}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                !activeCategory ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
-              }`}>
-              Tous
-            </button>
-            {categories.map(([id, name]) => (
-              <button key={id} type="button" onClick={() => setActiveCategory(String(id))}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  activeCategory === String(id) ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
-                }`}>
-                {name}
-              </button>
-            ))}
-          </div>
-
-          {/* Right: search + product grid */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="px-5 py-2 shrink-0">
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un produit..."
-                className="input text-base py-2.5 w-full" />
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-3">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {filteredProducts.map((p) => {
-                  const pid = p.id as string;
-                  const qty = selected[pid] || 0;
-                  const isSelected = qty > 0;
-                  return (
-                    <div key={pid}
-                      className={`rounded-xl border-2 p-3 transition-all select-none ${
-                        isSelected
-                          ? 'border-primary-500 bg-primary-50 shadow-sm'
-                          : 'border-gray-200 bg-white active:border-gray-300'
-                      }`}>
-                      <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight h-[2.5rem]" title={p.name as string}>
-                        <span className="line-clamp-2">{p.name as string}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mb-3">
-                        <span className="text-xs text-gray-400">{p.category_name as string}</span>
-                      </div>
-
-                      {!isSelected ? (
-                        <button type="button" onClick={() => setQty(pid, 1)}
-                          className="w-full py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700 transition-colors">
-                          <Plus size={16} className="inline -mt-0.5 mr-1" /> Ajouter
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-between bg-white rounded-lg border border-primary-200 overflow-hidden">
-                          <button type="button" onClick={() => setQty(pid, qty - 1)}
-                            className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50 transition-colors">
-                            {qty === 1 ? <Trash2 size={16} className="text-red-400" /> : '−'}
-                          </button>
-                          <input type="number" min={1} value={qty}
-                            onChange={(e) => setQty(pid, parseInt(e.target.value) || 0)}
-                            className="w-14 text-center text-lg font-bold border-x border-primary-200 h-11 focus:outline-none" />
-                          <button type="button" onClick={() => setQty(pid, qty + 1)}
-                            className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50 transition-colors">
-                            +
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+        {/* Unsold items info banner */}
+        {blockedItems.length > 0 && (
+          <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 shrink-0">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle size={16} className="text-amber-600" />
               </div>
-              {filteredProducts.length === 0 && (
-                <div className="text-center py-8 text-gray-400">Aucun produit trouve</div>
-              )}
+              <div className="flex-1">
+                <p className="font-semibold text-amber-800 text-sm">Attention : {blockedItems.length} article(s) avec du stock non vendu</p>
+                <p className="text-xs text-amber-600 mt-1">Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand meme les envoyer si necessaire.</p>
+                <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
+                  {blockedItems.slice(0, 10).map(bi => (
+                    <p key={bi.productId} className="text-xs text-amber-700">• {bi.productName} — {bi.unsoldQty} unite(s) restante(s)</p>
+                  ))}
+                  {blockedItems.length > 10 && <p className="text-xs text-amber-700 font-medium">... et {blockedItems.length - 10} autre(s)</p>}
+                </div>
+                <p className="text-xs text-amber-700 font-medium mt-2">Cliquez sur « Confirmer l'envoi » pour continuer malgre tout.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="px-6 py-3 border-b bg-white shrink-0">
+          <div className="flex items-center gap-3">
+            <select value={priority} onChange={(e) => setPriority(e.target.value)}
+              className="input py-2 text-sm w-36">
+              <option value="normal">🟢 Normale</option>
+              <option value="high">🟠 Haute</option>
+              <option value="urgent">🔴 Urgente</option>
+            </select>
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher un produit..." className="input py-2 text-sm pl-9 w-full" />
+            </div>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (optionnel)" className="input py-2 text-sm w-56" />
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button onClick={() => setMode('suggestions')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${mode === 'suggestions' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500'}`}>
+                <Lightbulb size={13} className="inline -mt-0.5 mr-1" />Suggestions
+              </button>
+              <button onClick={() => setMode('catalog')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${mode === 'catalog' ? 'bg-white shadow-sm text-primary-700' : 'text-gray-500'}`}>
+                <Package size={13} className="inline -mt-0.5 mr-1" />Catalogue
+              </button>
             </div>
           </div>
         </div>
+
+        {/* ══════ SUGGESTIONS MODE ══════ */}
+        {mode === 'suggestions' && (
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {recoLoading ? (
+              <div className="text-center py-16 text-gray-400">
+                <div className="animate-spin w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full mx-auto mb-3" />
+                Chargement des suggestions...
+              </div>
+            ) : Object.keys(displayCategories).length > 0 ? (
+              Object.entries(displayCategories).map(([catName, items]) => {
+                const filtered = search ? (items as Record<string, unknown>[]).filter(i => ((i.product_name || i.name) as string).toLowerCase().includes(search.toLowerCase())) : (items as Record<string, unknown>[]);
+                if (!filtered.length) return null;
+                const isExpanded = expandedCats[catName] !== false;
+                const catSelectedCount = filtered.filter(i => selected[((i.product_id || i.id) as string)]).length;
+
+                return (
+                  <div key={catName} className="border-b last:border-b-0">
+                    <div onClick={() => toggleCat(catName)}
+                      className="w-full flex items-center justify-between px-6 py-3 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer select-none">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${catSelectedCount > 0 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                          {catSelectedCount}
+                        </span>
+                        <span className="font-semibold text-sm text-gray-700">{catName}</span>
+                        <span className="text-xs text-gray-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        {catSelectedCount < filtered.length ? (
+                          <button onClick={() => selectAllCat(filtered)} className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 hover:bg-blue-50 rounded">
+                            Tout sélectionner
+                          </button>
+                        ) : (
+                          <button onClick={() => deselectAllCat(filtered)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded">
+                            Tout retirer
+                          </button>
+                        )}
+                        <span className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="divide-y divide-gray-50">
+                        {filtered.map((item) => {
+                          const pid = (item.product_id || item.id) as string;
+                          const sold = parseInt((item.last_week_qty as string) || '0') || 0;
+                          const stock = parseFloat((item.current_stock as string) || '0') || 0;
+                          const suggested = hasHistory ? Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock))) : (selected[pid] || 1);
+                          const qty = selected[pid] || 0;
+                          const isSelected = qty > 0;
+
+                          return (
+                            <div key={pid} className={`flex items-center gap-4 px-6 py-2.5 transition-colors ${isSelected ? 'bg-primary-50/50' : 'hover:bg-gray-50'}`}>
+                              <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
+                                className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-primary-600 border-primary-600' : 'border-gray-300 hover:border-primary-400'}`}>
+                                {isSelected && <CheckCircle size={14} className="text-white" />}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <span className={`text-sm ${isSelected ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
+                                  {(item.product_name || item.name) as string}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {hasHistory && (
+                                  <>
+                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600" title="Vendu">📊 {sold}</span>
+                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${stock > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} title="Stock">📦 {Math.floor(stock)}</span>
+                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium" title="Suggéré">💡 {suggested}</span>
+                                  </>
+                                )}
+                              </div>
+                              {isSelected ? (
+                                <div className="flex items-center bg-white rounded-lg border border-primary-200 shrink-0 shadow-sm">
+                                  <button onClick={() => setQty(pid, qty - 1)}
+                                    className="w-8 h-8 flex items-center justify-center text-primary-600 font-bold hover:bg-primary-50 rounded-l-lg">−</button>
+                                  <input type="number" min={1} value={qty}
+                                    onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
+                                    className="w-12 text-center text-sm font-bold h-8 border-x border-primary-200 focus:outline-none focus:bg-primary-50" />
+                                  <button onClick={() => setQty(pid, qty + 1)}
+                                    className="w-8 h-8 flex items-center justify-center text-primary-600 font-bold hover:bg-primary-50 rounded-r-lg">+</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setQty(pid, suggested)}
+                                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-primary-100 hover:text-primary-700 transition-colors shrink-0">
+                                  + Ajouter
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-16 text-gray-400">
+                <Lightbulb size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Aucune suggestion disponible</p>
+                <button onClick={() => setMode('catalog')} className="mt-3 text-primary-600 text-sm font-medium hover:underline">
+                  → Sélectionner manuellement depuis le catalogue
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════ CATALOG MODE ══════ */}
+        {mode === 'catalog' && (
+          <div className="flex flex-1 min-h-0">
+            <div className="w-44 shrink-0 border-r bg-gray-50 overflow-y-auto py-3 px-2 flex flex-col gap-1.5">
+              <button type="button" onClick={() => setActiveCategory('')}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  !activeCategory ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                Tous
+              </button>
+              {categories.map(([id, name]) => (
+                <button key={id} type="button" onClick={() => setActiveCategory(String(id))}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    activeCategory === String(id) ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                  }`}>
+                  {name}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="px-5 py-2 shrink-0">
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Rechercher un produit..."
+                  className="input text-base py-2.5 w-full" />
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {filteredProducts.map((p) => {
+                    const pid = p.id as string;
+                    const qty = selected[pid] || 0;
+                    const isSelected = qty > 0;
+                    return (
+                      <div key={pid}
+                        className={`rounded-xl border-2 p-3 transition-all select-none ${
+                          isSelected ? 'border-primary-500 bg-primary-50 shadow-sm' : 'border-gray-200 bg-white active:border-gray-300'
+                        }`}>
+                        <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight h-[2.5rem]" title={p.name as string}>
+                          <span className="line-clamp-2">{p.name as string}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mb-3">
+                          <span className="text-xs text-gray-400">{p.category_name as string}</span>
+                        </div>
+                        {!isSelected ? (
+                          <button type="button" onClick={() => setQty(pid, 1)}
+                            className="w-full py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700 transition-colors">
+                            <Plus size={16} className="inline -mt-0.5 mr-1" /> Ajouter
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-between bg-white rounded-lg border border-primary-200 overflow-hidden">
+                            <button type="button" onClick={() => setQty(pid, qty - 1)}
+                              className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50">
+                              {qty === 1 ? <Trash2 size={16} className="text-red-400" /> : '−'}
+                            </button>
+                            <input type="number" min={1} value={qty}
+                              onChange={(e) => setQty(pid, parseInt(e.target.value) || 0)}
+                              className="w-14 text-center text-lg font-bold border-x border-primary-200 h-11 focus:outline-none" />
+                            <button type="button" onClick={() => setQty(pid, qty + 1)}
+                              className="w-12 h-11 flex items-center justify-center text-xl font-bold text-primary-600 active:bg-primary-50">
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {filteredProducts.length === 0 && (
+                  <div className="text-center py-8 text-gray-400">Aucun produit trouvé</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
-        <div className="border-t bg-white px-5 py-4 shrink-0 rounded-b-2xl">
-          {totalSelected > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {Object.entries(selected).map(([pid, qty]) => {
-                const prod = products.find((p) => p.id === pid);
-                return (
-                  <span key={pid} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-100 text-primary-800 text-sm font-medium">
-                    {prod ? prod.name as string : pid} <strong>&times;{qty}</strong>
-                    <button type="button" onClick={() => setQty(pid, 0)}
-                      className="ml-1 text-primary-400 hover:text-red-500">&times;</button>
-                  </span>
-                );
-              })}
+        <div className="border-t bg-white px-6 py-3 shrink-0 rounded-b-2xl">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-gray-700">
+                {totalSelected > 0 ? (
+                  <><strong className="text-primary-600">{totalSelected}</strong> produit{totalSelected > 1 ? 's' : ''} — <strong className="text-primary-600">{totalQty}</strong> unités</>
+                ) : 'Aucun produit sélectionné'}
+              </span>
+              {totalSelected > 0 && (
+                <button onClick={() => setSelected({})} className="text-xs text-red-500 hover:text-red-700 font-medium">
+                  Tout vider
+                </button>
+              )}
             </div>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-gray-500">
-              {totalSelected > 0 ? `${totalSelected} produit(s) selectionne(s)` : 'Aucun produit selectionne'}
-            </span>
             <div className="flex gap-2">
-              <button type="button" onClick={onClose}
-                className="btn-secondary px-5 py-2.5 text-base">Annuler</button>
-              <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || totalSelected === 0}
-                className="btn-primary px-6 py-2.5 text-base disabled:opacity-50">
-                {createMutation.isPending ? 'Envoi...' : `Envoyer la demande (${totalSelected})`}
+              <button type="button" onClick={onClose} className="btn-secondary px-5 py-2.5">Annuler</button>
+              <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || submitting || !totalSelected}
+                className="btn-primary px-6 py-2.5 disabled:opacity-50">
+                {createMutation.isPending || submitting ? 'Vérification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}
               </button>
             </div>
           </div>

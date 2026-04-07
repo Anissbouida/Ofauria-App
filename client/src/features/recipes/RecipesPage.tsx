@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface RecipeIngredient {
@@ -181,6 +181,17 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
     queryFn: () => recipesApi.getById(recipeId),
   });
 
+  const { data: versions = [] } = useQuery<Array<{
+    id: string; version_number: number; name: string; instructions: string;
+    yield_quantity: number; total_cost: string; is_base: boolean;
+    ingredients: unknown[]; sub_recipes: unknown[];
+    changed_by_name: string; change_note: string; created_at: string;
+  }>>({
+    queryKey: ['recipe-versions', recipeId],
+    queryFn: () => recipesApi.versions(recipeId),
+  });
+
+  const [showVersions, setShowVersions] = useState(false);
   const [portions, setPortions] = useState<number | null>(null);
 
   const yieldQty = recipe?.yield_quantity || 1;
@@ -202,7 +213,22 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   const costPerUnit = targetPortions > 0 ? totalCost / targetPortions : 0;
   const sellingPrice = parseFloat(recipe?.product_price || '0');
   const margin = sellingPrice > 0 ? ((sellingPrice - costPerUnit) / sellingPrice * 100) : 0;
-  const steps = recipe?.instructions?.split('. ').filter(s => s.trim()) || [];
+  // Parse instructions: support numbered steps (1. 2. 3.), line breaks, and period-separated
+  const steps = (() => {
+    if (!recipe?.instructions) return [];
+    const text = recipe.instructions.trim();
+    // Try numbered steps first (1. xxx  2. xxx)
+    const numberedMatch = text.match(/\d+\.\s/);
+    if (numberedMatch) {
+      return text.split(/\d+\.\s+/).filter(s => s.trim()).map(s => s.trim().replace(/\.$/, ''));
+    }
+    // Try line breaks
+    if (text.includes('\n')) {
+      return text.split('\n').filter(s => s.trim()).map(s => s.trim());
+    }
+    // Fall back to period-separated
+    return text.split('. ').filter(s => s.trim());
+  })();
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -393,6 +419,41 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   </div>
                 </div>
               )}
+
+              {/* Version history */}
+              <div>
+                <button onClick={() => setShowVersions(!showVersions)}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                  <History size={16} /> Historique des modifications ({versions.length})
+                  <ChevronRight size={14} className={`transition-transform ${showVersions ? 'rotate-90' : ''}`} />
+                </button>
+                {showVersions && versions.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {versions.map((v) => (
+                      <div key={v.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-gray-700">
+                            Version {v.version_number}
+                          </span>
+                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <Clock size={12} />
+                            {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                          <p>Nom: {v.name} · Rendement: {v.yield_quantity} · Cout: {parseFloat(v.total_cost || '0').toFixed(2)} DH</p>
+                          <p>{(v.ingredients as unknown[]).length} ingredient(s), {(v.sub_recipes as unknown[]).length} sous-recette(s)</p>
+                          {v.changed_by_name && <p className="text-gray-400">Par: {v.changed_by_name}</p>}
+                          {v.change_note && <p className="italic text-gray-400">Note: {v.change_note}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showVersions && versions.length === 0 && (
+                  <p className="mt-2 text-sm text-gray-400 italic">Aucune modification enregistree</p>
+                )}
+              </div>
 
               <div className="bg-green-50 rounded-xl p-4">
                 <h3 className="font-semibold text-sm text-green-800 mb-3">Resume de production</h3>

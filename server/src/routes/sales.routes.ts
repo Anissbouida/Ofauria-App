@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { saleController } from '../controllers/sale.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { authorize } from '../middleware/role.middleware.js';
+import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
 
-router.get('/', authenticate, saleController.list);
-router.get('/today', authenticate, saleController.todayStats);
-router.get('/summary', authenticate, saleController.summary);
-router.get('/:id', authenticate, saleController.getById);
-router.post('/checkout', authenticate, saleController.checkout);
+router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.list);
+router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.todayStats);
+router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.summary);
+router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.getById);
+router.post('/checkout', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.checkout);
 
 export default router;

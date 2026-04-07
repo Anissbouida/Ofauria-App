@@ -2,10 +2,16 @@ import { db } from '../config/database.js';
 
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
-  async getRegister(year: number, month: number) {
+  async getRegister(year: number, month: number, storeId?: string) {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const storeFilterP = storeId ? ' AND p.store_id = $3' : '';
+    const storeFilterS = storeId ? ' AND store_id = $3' : '';
+    const storeFilterSales = storeId ? ' AND store_id = $3' : '';
+    const baseParams = [startDate, endDate];
+    const params = storeId ? [...baseParams, storeId] : baseParams;
 
     // All payments for the month
     const payments = await db.query(
@@ -16,9 +22,9 @@ export const caisseRepository = {
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN employees e ON e.id = p.employee_id
-       WHERE p.payment_date BETWEEN $1 AND $2
+       WHERE p.payment_date BETWEEN $1 AND $2${storeFilterP}
        ORDER BY p.payment_date, p.created_at`,
-      [startDate, endDate]
+      params
     );
 
     // Cash register sessions grouped by date (cashier-reported + system amounts)
@@ -31,57 +37,86 @@ export const caisseRepository = {
               COUNT(*) as session_count
        FROM cash_register_sessions
        WHERE status = 'closed'
-         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') BETWEEN $1 AND $2
+         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') BETWEEN $1 AND $2${storeFilterS}
        GROUP BY DATE(closed_at AT TIME ZONE 'Africa/Casablanca')
        ORDER BY DATE(closed_at AT TIME ZONE 'Africa/Casablanca')`,
-      [startDate, endDate]
+      params
     );
 
-    // Daily sales totals (UTC dates to match sales module)
+    // Daily sales totals with payment method breakdown (source of truth for cash/card)
     const sales = await db.query(
       `SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as sale_date,
               COALESCE(SUM(total), 0) as total_sales,
+              COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
+              COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
+              COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
               COUNT(*) as sale_count
        FROM sales
-       WHERE DATE(created_at) BETWEEN $1 AND $2
+       WHERE DATE(created_at) BETWEEN $1 AND $2${storeFilterSales}
        GROUP BY DATE(created_at)
        ORDER BY DATE(created_at)`,
-      [startDate, endDate]
+      params
     );
 
     // Previous balance: payments before this month
+    const prevStoreFilter = storeId ? ' AND p.store_id = $2' : '';
+    const prevParams = storeId ? [startDate, storeId] : [startDate];
+
     const prevPayments = await db.query(
       `SELECT
-        COALESCE(SUM(CASE WHEN p.type = 'income' THEN p.amount ELSE 0 END), 0) as total_entries,
-        COALESCE(SUM(CASE WHEN p.type != 'income' THEN p.amount ELSE 0 END), 0) as total_exits
+        COALESCE(SUM(CASE WHEN p.type = 'income' AND p.payment_method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_entries,
+        COALESCE(SUM(CASE WHEN p.type = 'income' AND p.payment_method != 'cash' THEN p.amount ELSE 0 END), 0) as bank_entries,
+        COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_exits,
+        COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method != 'cash' THEN p.amount ELSE 0 END), 0) as bank_exits
        FROM payments p
-       WHERE p.payment_date < $1`,
-      [startDate]
+       WHERE p.payment_date < $1${prevStoreFilter}`,
+      prevParams
     );
 
-    // Previous balance: cash register sessions before this month (cashier amounts)
+    // Previous balance: cash register sessions before this month (cashier declared amounts)
+    const prevStoreFilterS = storeId ? ' AND store_id = $2' : '';
+    const prevSessionParams = storeId ? [startDate, storeId] : [startDate];
+
     const prevSessions = await db.query(
-      `SELECT
-        COALESCE(SUM(actual_amount), 0) as cash_total,
-        COALESCE(SUM(card_revenue), 0) as card_total
+      `SELECT COALESCE(SUM(actual_amount), 0) as cash_total
        FROM cash_register_sessions
        WHERE status = 'closed'
-         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') < $1`,
-      [startDate]
+         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') < $1${prevStoreFilterS}`,
+      prevSessionParams
     );
 
-    const entries = parseFloat(prevPayments.rows[0].total_entries);
-    const exits = parseFloat(prevPayments.rows[0].total_exits);
-    const prevCash = parseFloat(prevSessions.rows[0].cash_total);
-    const prevCard = parseFloat(prevSessions.rows[0].card_total);
+    // Previous sales totals (cash + card) from actual sales
+    const prevSalesFilterS = storeId ? ' AND store_id = $2' : '';
+    const prevSalesParams = storeId ? [startDate, storeId] : [startDate];
+
+    const prevSales = await db.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
+        COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
+       FROM sales
+       WHERE DATE(created_at) < $1${prevSalesFilterS}`,
+      prevSalesParams
+    );
+
+    const cashEntries = parseFloat(prevPayments.rows[0].cash_entries);
+    const bankEntries = parseFloat(prevPayments.rows[0].bank_entries);
+    const cashExits = parseFloat(prevPayments.rows[0].cash_exits);
+    const bankExits = parseFloat(prevPayments.rows[0].bank_exits);
+    const prevSessionCash = parseFloat(prevSessions.rows[0].cash_total);
+    const prevSalesCash = parseFloat(prevSales.rows[0].cash_total);
+    const prevCardSales = parseFloat(prevSales.rows[0].card_total);
+
+    // Use session amounts when available, otherwise use cash sales
+    // (for months without cash register sessions, cash caissière = cash système)
+    const prevCash = prevSessionCash > 0 ? prevSessionCash : prevSalesCash;
 
     return {
       payments: payments.rows,
       sessions: sessions.rows,
       sales: sales.rows,
       previousBalance: {
-        cashNet: entries + prevCash - exits,
-        cardCumul: prevCard,
+        cashNet: cashEntries + prevCash - cashExits,
+        cardCumul: prevCardSales + bankEntries - bankExits,
       },
     };
   },
@@ -134,6 +169,10 @@ export const expenseCategoryRepository = {
     const result = await db.query('SELECT * FROM expense_categories ORDER BY type, name');
     return result.rows;
   },
+  async findById(id: string) {
+    const result = await db.query('SELECT * FROM expense_categories WHERE id = $1', [id]);
+    return result.rows[0] || null;
+  },
   async create(data: { name: string; type: string; description?: string }) {
     const result = await db.query(
       `INSERT INTO expense_categories (name, type, description) VALUES ($1,$2,$3) RETURNING *`,
@@ -158,8 +197,9 @@ export const expenseCategoryRepository = {
 
 /* ═══ Invoices ═══ */
 export const invoiceRepository = {
-  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string }) {
+  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
     const conditions: string[] = []; const values: unknown[] = []; let i = 1;
+    if (params.storeId) { conditions.push(`inv.store_id = $${i++}`); values.push(params.storeId); }
     if (params.supplierId) { conditions.push(`inv.supplier_id = $${i++}`); values.push(params.supplierId); }
     if (params.status) { conditions.push(`inv.status = $${i++}`); values.push(params.status); }
     if (params.dateFrom) { conditions.push(`inv.invoice_date >= $${i++}`); values.push(params.dateFrom); }
@@ -189,15 +229,16 @@ export const invoiceRepository = {
   async create(data: {
     invoiceNumber: string; supplierId: string; categoryId?: string;
     invoiceDate: string; dueDate?: string; amount: number;
-    taxAmount?: number; totalAmount: number; notes?: string; createdBy: string;
+    taxAmount?: number; totalAmount: number; notes?: string; createdBy: string; storeId?: string;
   }) {
     const result = await db.query(
       `INSERT INTO invoices (invoice_number, supplier_id, category_id, invoice_date, due_date,
-        amount, tax_amount, total_amount, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        amount, tax_amount, total_amount, notes, created_by, store_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [data.invoiceNumber, data.supplierId, data.categoryId || null,
        data.invoiceDate, data.dueDate || null, data.amount,
-       data.taxAmount || 0, data.totalAmount, data.notes || null, data.createdBy]
+       data.taxAmount || 0, data.totalAmount, data.notes || null, data.createdBy,
+       data.storeId || null]
     );
     return result.rows[0];
   },
@@ -223,12 +264,17 @@ export const invoiceRepository = {
     const result = await db.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
     return result.rows[0];
   },
+  async updateAttachment(id: string, url: string | null) {
+    const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
+    return result.rows[0];
+  },
 };
 
 /* ═══ Payments ═══ */
 export const paymentRepository = {
-  async findAll(params: { type?: string; dateFrom?: string; dateTo?: string; supplierId?: string }) {
+  async findAll(params: { type?: string; dateFrom?: string; dateTo?: string; supplierId?: string; storeId?: string }) {
     const conditions: string[] = []; const values: unknown[] = []; let i = 1;
+    if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
     if (params.type) { conditions.push(`p.type = $${i++}`); values.push(params.type); }
     if (params.dateFrom) { conditions.push(`p.payment_date >= $${i++}`); values.push(params.dateFrom); }
     if (params.dateTo) { conditions.push(`p.payment_date <= $${i++}`); values.push(params.dateTo); }
@@ -236,13 +282,15 @@ export const paymentRepository = {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT p.*, s.name as supplier_name, e.first_name as employee_first_name, e.last_name as employee_last_name,
-              ec.name as category_name, ec.type as category_type,
-              inv.invoice_number
+              ec.name as category_name, ec.type as category_type, ec.requires_po,
+              inv.invoice_number,
+              po.order_number as purchase_order_number
        FROM payments p
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN employees e ON e.id = p.employee_id
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN invoices inv ON inv.id = p.invoice_id
+       LEFT JOIN purchase_orders po ON po.id = p.purchase_order_id
        ${where}
        ORDER BY p.payment_date DESC, p.created_at DESC`,
       values
@@ -252,20 +300,34 @@ export const paymentRepository = {
   async create(data: {
     reference?: string; type: string; categoryId?: string; invoiceId?: string;
     supplierId?: string; employeeId?: string; amount: number;
-    paymentMethod: string; paymentDate: string; description?: string; createdBy: string;
+    paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
+    purchaseOrderId?: string;
   }) {
     const result = await db.query(
       `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
-        amount, payment_method, payment_date, description, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [data.reference || null, data.type, data.categoryId || null, data.invoiceId || null,
        data.supplierId || null, data.employeeId || null, data.amount,
-       data.paymentMethod, data.paymentDate, data.description || null, data.createdBy]
+       data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+       data.storeId || null, data.purchaseOrderId || null]
     );
     // Update invoice paid amount if linked
     if (data.invoiceId) {
       await invoiceRepository.updatePaidAmount(data.invoiceId);
     }
+    return result.rows[0];
+  },
+  async update(id: string, data: { categoryId?: string; description?: string; amount?: number; paymentMethod?: string; paymentDate?: string }) {
+    const sets: string[] = []; const values: unknown[] = []; let i = 1;
+    if (data.categoryId !== undefined) { sets.push(`category_id = $${i++}`); values.push(data.categoryId || null); }
+    if (data.description !== undefined) { sets.push(`description = $${i++}`); values.push(data.description); }
+    if (data.amount !== undefined) { sets.push(`amount = $${i++}`); values.push(data.amount); }
+    if (data.paymentMethod !== undefined) { sets.push(`payment_method = $${i++}`); values.push(data.paymentMethod); }
+    if (data.paymentDate !== undefined) { sets.push(`payment_date = $${i++}`); values.push(data.paymentDate); }
+    if (sets.length === 0) return null;
+    values.push(id);
+    const result = await db.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
     return result.rows[0];
   },
   async delete(id: string) {
@@ -277,7 +339,11 @@ export const paymentRepository = {
       await invoiceRepository.updatePaidAmount(invoiceId);
     }
   },
-  async summary(params: { dateFrom: string; dateTo: string }) {
+  async summary(params: { dateFrom: string; dateTo: string; storeId?: string }) {
+    const storeFilter = params.storeId ? ' AND p.store_id = $3' : '';
+    const values: unknown[] = [params.dateFrom, params.dateTo];
+    if (params.storeId) values.push(params.storeId);
+
     const result = await db.query(
       `SELECT
         COALESCE(SUM(CASE WHEN ec.type = 'expense' OR p.type IN ('invoice','salary','expense') THEN p.amount ELSE 0 END), 0) as total_expenses,
@@ -285,21 +351,25 @@ export const paymentRepository = {
         COUNT(*) as total_payments
        FROM payments p
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
-       WHERE p.payment_date BETWEEN $1 AND $2`,
-      [params.dateFrom, params.dateTo]
+       WHERE p.payment_date BETWEEN $1 AND $2${storeFilter}`,
+      values
     );
     return result.rows[0];
   },
-  async summaryByCategory(params: { dateFrom: string; dateTo: string }) {
+  async summaryByCategory(params: { dateFrom: string; dateTo: string; storeId?: string }) {
+    const storeFilter = params.storeId ? ' AND p.store_id = $3' : '';
+    const values: unknown[] = [params.dateFrom, params.dateTo];
+    if (params.storeId) values.push(params.storeId);
+
     const result = await db.query(
       `SELECT ec.name as category_name, ec.type as category_type,
               COUNT(p.id) as payment_count, SUM(p.amount) as total_amount
        FROM payments p
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
-       WHERE p.payment_date BETWEEN $1 AND $2
+       WHERE p.payment_date BETWEEN $1 AND $2${storeFilter}
        GROUP BY ec.id, ec.name, ec.type
        ORDER BY total_amount DESC`,
-      [params.dateFrom, params.dateTo]
+      values
     );
     return result.rows;
   },

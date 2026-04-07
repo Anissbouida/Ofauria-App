@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import toast from 'react-hot-toast';
@@ -184,11 +184,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     isCustomOrderable: (product?.is_custom_orderable as boolean) || false,
     responsibleUserId: (product?.responsible_user_id as string) || '',
     stockMinThreshold: (product?.stock_min_threshold as string) || '0',
+    minProductionQuantity: (product?.min_production_quantity as string) || '0',
   });
 
   // Fetch users (chefs) for the responsible selector
   const { data: allUsers = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
-  const chefRoles = ['baker', 'pastry_chef', 'viennoiserie'];
+  const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
   const chefUsers = allUsers.filter((u: Record<string, unknown>) => chefRoles.includes(u.role as string) && u.isActive !== false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>((product?.image_url as string) || null);
@@ -279,6 +280,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         costPrice: form.costPrice ? parseFloat(form.costPrice) : undefined,
         responsibleUserId: form.responsibleUserId || null,
         stockMinThreshold: parseFloat(form.stockMinThreshold) || 0,
+        minProductionQuantity: parseInt(form.minProductionQuantity) || 0,
       },
       imageFile
     );
@@ -423,6 +425,15 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
               placeholder="0 = pas d'alerte" />
             <p className="text-xs text-gray-400 mt-1">Alerte quand le stock descend en dessous de ce seuil</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1 flex items-center gap-1.5">
+              <Factory size={14} className="text-amber-500" /> Lot minimum de production
+            </label>
+            <input type="number" step="1" min="0" className="input" value={form.minProductionQuantity}
+              onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
+              placeholder="0 = pas de minimum" />
+            <p className="text-xs text-gray-400 mt-1">Quantite minimale a produire (le surplus reste en stock)</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Description</label>
