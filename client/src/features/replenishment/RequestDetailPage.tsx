@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   ClipboardCheck, AlertTriangle, XCircle, PackageCheck,
+  Loader2, User, Calendar, Hash, ChefHat, Layers, ArrowRight,
 } from 'lucide-react';
 
 /* ─── Constants ─── */
@@ -25,24 +26,19 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Annule',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  submitted: 'bg-yellow-100 text-yellow-700',
-  acknowledged: 'bg-blue-100 text-blue-700',
-  preparing: 'bg-indigo-100 text-indigo-700',
-  transferred: 'bg-purple-100 text-purple-700',
-  partially_delivered: 'bg-teal-100 text-teal-700',
-  closed: 'bg-green-100 text-green-700',
-  closed_with_discrepancy: 'bg-orange-100 text-orange-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+const STATUS_GRADIENT: Record<string, string> = {
+  submitted: 'from-yellow-500 to-amber-500',
+  acknowledged: 'from-blue-500 to-blue-600',
+  preparing: 'from-indigo-500 to-indigo-600',
+  transferred: 'from-purple-500 to-violet-500',
+  partially_delivered: 'from-teal-500 to-teal-600',
+  closed: 'from-emerald-500 to-green-500',
+  closed_with_discrepancy: 'from-orange-500 to-orange-600',
+  cancelled: 'from-gray-400 to-gray-500',
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
   low: 'Basse', normal: 'Normale', high: 'Haute', urgent: 'Urgente',
-};
-
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'bg-blue-50 text-blue-600', normal: 'bg-gray-50 text-gray-600',
-  high: 'bg-orange-50 text-orange-600', urgent: 'bg-red-100 text-red-700',
 };
 
 const STEPPER_STEPS = [
@@ -56,17 +52,16 @@ const STEPPER_STEPS = [
 function stepIndex(status: string): number {
   if (status === 'cancelled') return -1;
   if (status === 'closed_with_discrepancy') return 4;
-  if (status === 'partially_delivered') return 1; // Shows at "acknowledged" step with special label
+  if (status === 'partially_delivered') return 1;
   const idx = STEPPER_STEPS.findIndex((s) => s.key === status);
   return idx >= 0 ? idx : 0;
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  baker: 'bg-amber-50 border-amber-200 text-amber-800',
-  pastry_chef: 'bg-pink-50 border-pink-200 text-pink-800',
-  viennoiserie: 'bg-orange-50 border-orange-200 text-orange-800',
-  beldi_sale: 'bg-green-50 border-green-200 text-green-800',
-  general: 'bg-gray-50 border-gray-200 text-gray-800',
+const ROLE_CONFIG: Record<string, { bg: string; text: string }> = {
+  baker: { bg: 'bg-amber-100', text: 'text-amber-800' },
+  pastry_chef: { bg: 'bg-pink-100', text: 'text-pink-800' },
+  viennoiserie: { bg: 'bg-orange-100', text: 'text-orange-800' },
+  beldi_sale: { bg: 'bg-green-100', text: 'text-green-800' },
 };
 
 const SOURCE_TYPE_LABELS: Record<string, string> = {
@@ -76,7 +71,7 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_TYPE_COLORS: Record<string, string> = {
-  stock: 'bg-green-100 text-green-700',
+  stock: 'bg-emerald-100 text-emerald-700',
   production: 'bg-blue-100 text-blue-700',
   mixed: 'bg-amber-100 text-amber-700',
 };
@@ -93,9 +88,7 @@ export default function RequestDetailPage() {
   const isResponsable = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
   const isStoreStaff = ['admin', 'manager', 'cashier', 'saleswoman'].includes(user?.role || '');
 
-  // Preparation form state
   const [prepItems, setPrepItems] = useState<Record<string, { qtyToStore: number; qtyToStock: number; source: string }>>({});
-  // Reception form state
   const [receptionItems, setReceptionItems] = useState<Record<string, { qtyReceived: number; notes: string }>>({});
 
   const { data: request, isLoading } = useQuery({
@@ -144,7 +137,7 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
       if (data?.status === 'closed_with_discrepancy') {
-        toast('Reception confirmee avec ecart', { icon: '⚠️' });
+        toast('Reception confirmee avec ecart', { icon: '\u26a0\ufe0f' });
       } else {
         toast.success('Reception confirmee');
       }
@@ -164,8 +157,26 @@ export default function RequestDetailPage() {
 
   /* ─── Loading / not found ─── */
 
-  if (isLoading) return <p className="text-gray-500 p-6">Chargement...</p>;
-  if (!request) return <p className="text-gray-500 p-6">Demande non trouvee</p>;
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 size={32} className="animate-spin text-indigo-500" />
+        <span className="text-gray-500 text-sm">Chargement...</span>
+      </div>
+    </div>
+  );
+
+  if (!request) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+        <Package size={32} className="text-gray-400" />
+      </div>
+      <p className="text-gray-500">Demande non trouvee</p>
+      <button onClick={() => navigate('/replenishment')} className="text-indigo-600 hover:text-indigo-700 text-sm font-medium flex items-center gap-1">
+        <ArrowLeft size={16} /> Retour
+      </button>
+    </div>
+  );
 
   return (
     <SubRequestDetailView
@@ -220,28 +231,22 @@ function SubRequestDetailView({
   const assignedRole = request.assigned_role as string;
   const productionPlans = (request.production_plans || []) as Record<string, unknown>[];
 
-  // Check if current chef can act on this request
   const isMyRequest = !assignedRole || assignedRole === user?.role || isAdmin;
 
-  // Item-level classification
   const pendingItems = items.filter(i => i.status === 'pending');
   const receivedItems = items.filter(i => i.status === 'received' || i.status === 'received_with_discrepancy');
   const readyItems = items.filter(i => i.status === 'ready');
 
-  // Production status helpers
   const hasProductionItems = items.some(i => i.source_type === 'production' || i.source_type === 'mixed');
   const productionComplete = productionPlans.length === 0 || productionPlans.every(p => p.status === 'completed');
 
-  // Items eligible for preparation: pending items whose production item is produced/completed (or from stock)
   const preparableItems = pendingItems.filter(i => {
     if (i.source_type === 'stock') return true;
     if (i.source_type === 'production' || i.source_type === 'mixed') {
-      // Check item-level production status first (partial production), fallback to plan status
       const prodItemStatus = i.production_item_status as string | null;
       const prodPlanStatus = i.production_status as string | null;
       const itemProduced = prodItemStatus === 'produced' || prodItemStatus === 'transferred' || prodItemStatus === 'received';
       const planCompleted = prodPlanStatus === 'completed';
-      // If production item is cancelled, item can't be prepared
       if (prodItemStatus === 'cancelled') return false;
       return itemProduced || planCompleted;
     }
@@ -257,10 +262,12 @@ function SubRequestDetailView({
   });
   const isPartialTransfer = receivedItems.length > 0;
 
+  const gradient = STATUS_GRADIENT[displayStatus] || STATUS_GRADIENT.submitted;
+  const rc = ROLE_CONFIG[assignedRole];
+
   /* ─── Handlers ─── */
 
   const handleStartPreparing = () => {
-    // Only prepare items that are preparable (pending + production done or from stock)
     const itemsToSend = preparableItems.map((item) => {
       const itemId = item.id as string;
       const p = prepItems[itemId] || { qtyToStore: item.requested_quantity as number, qtyToStock: 0, source: 'stock' };
@@ -270,7 +277,6 @@ function SubRequestDetailView({
   };
 
   const handleConfirmReception = () => {
-    // Only confirm items that are ready (transferred)
     const itemsToConfirm = readyItems.map((item) => {
       const itemId = item.id as string;
       const r = receptionItems[itemId] || { qtyReceived: (item.qty_to_store as number) || 0, notes: '' };
@@ -305,49 +311,87 @@ function SubRequestDetailView({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/replenishment')} className="p-2 hover:bg-gray-100 rounded-lg">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold text-bakery-chocolate">
-              Demande #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
-            </h1>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[displayStatus] || STATUS_COLORS.submitted}`}>
-              {STATUS_LABELS[displayStatus] || displayStatus}
-            </span>
-            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${PRIORITY_COLORS[request.priority as string] || PRIORITY_COLORS.normal}`}>
-              {PRIORITY_LABELS[request.priority as string] || request.priority}
-            </span>
-            {assignedRole && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                ROLE_COLORS[assignedRole]?.replace('border-', 'bg-').split(' ').filter(c => c.startsWith('bg-') || c.startsWith('text-')).join(' ') || 'bg-gray-100 text-gray-600'
-              }`}>
-                {ASSIGNED_ROLE_LABELS[assignedRole]}
-              </span>
-            )}
-            {isPartialTransfer && (
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
-                {receivedItems.length}/{items.length} recu(s)
-              </span>
+      {/* ══════════════ HEADER CARD ══════════════ */}
+      <div className={`bg-gradient-to-br ${gradient} rounded-2xl p-6 text-white shadow-lg relative overflow-hidden`}>
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
+          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
+        </div>
+        <div className="relative">
+          <div className="flex items-start gap-4">
+            <button onClick={() => navigate('/replenishment')} className="p-2 hover:bg-white/20 rounded-xl transition-colors mt-0.5">
+              <ArrowLeft size={20} />
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold">
+                  Demande #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
+                </h1>
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-white/20 backdrop-blur-sm">
+                  {STATUS_LABELS[displayStatus] || displayStatus}
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-white/15">
+                  {PRIORITY_LABELS[request.priority as string] || request.priority}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-white/80 text-sm flex-wrap">
+                {request.requested_by_name && (
+                  <span className="flex items-center gap-1.5">
+                    <User size={14} /> {request.requested_by_name as string}
+                  </span>
+                )}
+                {request.created_at && (
+                  <span className="flex items-center gap-1.5">
+                    <Calendar size={14} /> {format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
+                  </span>
+                )}
+                {rc && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 flex items-center gap-1">
+                    <ChefHat size={12} /> {ASSIGNED_ROLE_LABELS[assignedRole]}
+                  </span>
+                )}
+                {isPartialTransfer && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20">
+                    {receivedItems.length}/{items.length} recu(s)
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Cancel button */}
+            {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged'].includes(status) && (
+              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}
+                className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-medium flex items-center gap-2 transition-colors">
+                <XCircle size={16} /> Annuler
+              </button>
             )}
           </div>
-        </div>
 
-        {/* Cancel button */}
-        {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged'].includes(status) && (
-          <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}
-            className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2">
-            <XCircle size={16} /> Annuler
-          </button>
-        )}
+          {/* Stats row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{items.length}</div>
+              <div className="text-xs text-white/70">Articles</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{receivedItems.length}</div>
+              <div className="text-xs text-white/70">Recus</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{readyItems.length}</div>
+              <div className="text-xs text-white/70">Prets</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{pendingItems.length}</div>
+              <div className="text-xs text-white/70">En attente</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Stepper */}
+      {/* ══════════════ STEPPER ══════════════ */}
       {status !== 'cancelled' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between">
             {STEPPER_STEPS.map((step, i) => {
               const isActive = i <= currentStep;
@@ -356,17 +400,17 @@ function SubRequestDetailView({
               return (
                 <div key={step.key} className="flex-1 flex items-center">
                   <div className="flex flex-col items-center flex-1">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      isCurrent ? 'bg-primary-600 text-white ring-4 ring-primary-100' :
-                      isActive ? 'bg-primary-600 text-white' :
-                      'bg-gray-200 text-gray-400'
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                      isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 shadow-md' :
+                      isActive ? 'bg-indigo-600 text-white' :
+                      'bg-gray-100 text-gray-400'
                     }`}>
                       {isActive && i < currentStep ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                     </div>
-                    <span className={`mt-1.5 text-xs font-medium ${
+                    <span className={`mt-2 text-xs font-medium ${
                       isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
                         ? 'text-teal-700'
-                        : isActive ? 'text-primary-700' : 'text-gray-400'
+                        : isActive ? 'text-indigo-700' : 'text-gray-400'
                     }`}>
                       {isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
                         ? 'Partiellement livre'
@@ -374,7 +418,7 @@ function SubRequestDetailView({
                     </span>
                   </div>
                   {i < STEPPER_STEPS.length - 1 && (
-                    <div className={`h-0.5 flex-1 mx-1 ${i < currentStep ? 'bg-primary-500' : 'bg-gray-200'}`} />
+                    <div className={`h-0.5 flex-1 mx-2 rounded-full ${i < currentStep ? 'bg-indigo-500' : 'bg-gray-200'}`} />
                   )}
                 </div>
               );
@@ -385,8 +429,10 @@ function SubRequestDetailView({
 
       {/* Cancelled banner */}
       {status === 'cancelled' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 flex items-center gap-3">
-          <XCircle size={24} className="text-gray-400" />
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-gray-200 flex items-center justify-center flex-shrink-0">
+            <XCircle size={22} className="text-gray-500" />
+          </div>
           <div>
             <p className="font-semibold text-gray-700">Demande annulee</p>
             <p className="text-sm text-gray-500">Cette demande a ete annulee et ne sera pas traitee.</p>
@@ -396,19 +442,19 @@ function SubRequestDetailView({
 
       {/* Production status banner */}
       {hasProductionItems && !['cancelled', 'closed', 'closed_with_discrepancy'].includes(status) && (
-        <div className={`border rounded-xl p-4 flex items-center gap-3 ${
-          productionComplete ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50'
+        <div className={`rounded-2xl p-4 flex items-center gap-4 ${
+          productionComplete ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200'
         }`}>
-          {productionComplete ? (
-            <CheckCircle2 size={20} className="text-green-600 flex-shrink-0" />
-          ) : (
-            <Clock size={20} className="text-blue-600 flex-shrink-0" />
-          )}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            productionComplete ? 'bg-emerald-100' : 'bg-blue-100'
+          }`}>
+            {productionComplete ? <CheckCircle2 size={20} className="text-emerald-600" /> : <Clock size={20} className="text-blue-600" />}
+          </div>
           <div className="flex-1">
-            <h4 className={`font-semibold text-sm ${productionComplete ? 'text-green-800' : 'text-blue-800'}`}>
+            <h4 className={`font-semibold text-sm ${productionComplete ? 'text-emerald-800' : 'text-blue-800'}`}>
               {productionComplete ? 'Production terminee' : 'Production en cours'}
             </h4>
-            <p className={`text-xs mt-0.5 ${productionComplete ? 'text-green-600' : 'text-blue-600'}`}>
+            <p className={`text-xs mt-0.5 ${productionComplete ? 'text-emerald-600' : 'text-blue-600'}`}>
               {productionComplete
                 ? 'Tous les articles ont ete produits.'
                 : pendingProductionItems.length > 0
@@ -420,62 +466,91 @@ function SubRequestDetailView({
           {productionPlans.length > 0 && (
             <button
               onClick={() => navigate(`/production/${productionPlans[0].id}`)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex-shrink-0"
+              className="text-xs px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex-shrink-0 shadow-sm font-medium flex items-center gap-1"
             >
-              Voir le plan
+              Voir le plan <ArrowRight size={12} />
             </button>
           )}
         </div>
       )}
 
-      {/* Info section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="text-gray-400 text-xs uppercase tracking-wide">Demandeur</span>
-            <p className="font-medium text-gray-800 mt-0.5">{request.requested_by_name as string || '—'}</p>
-          </div>
-          <div>
-            <span className="text-gray-400 text-xs uppercase tracking-wide">Date</span>
-            <p className="font-medium text-gray-800 mt-0.5">
-              {request.created_at
-                ? format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })
-                : '—'}
-            </p>
-          </div>
-          {request.acknowledged_by_name && (
-            <div>
-              <span className="text-gray-400 text-xs uppercase tracking-wide">Pris en charge par</span>
-              <p className="font-medium text-gray-800 mt-0.5">{request.acknowledged_by_name as string}</p>
+      {/* ══════════════ INFO CARDS ══════════════ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+              <User size={16} className="text-indigo-600" />
             </div>
-          )}
-          {request.transferred_by_name && (
             <div>
-              <span className="text-gray-400 text-xs uppercase tracking-wide">Transfere par</span>
-              <p className="font-medium text-gray-800 mt-0.5">{request.transferred_by_name as string}</p>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide">Demandeur</div>
+              <div className="text-sm font-medium text-gray-800">{request.requested_by_name as string || '\u2014'}</div>
             </div>
-          )}
+          </div>
         </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
+              <Calendar size={16} className="text-blue-600" />
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide">Date</div>
+              <div className="text-sm font-medium text-gray-800">
+                {request.created_at ? format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr }) : '\u2014'}
+              </div>
+            </div>
+          </div>
+        </div>
+        {request.acknowledged_by_name && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
+                <ClipboardCheck size={16} className="text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Pris en charge par</div>
+                <div className="text-sm font-medium text-gray-800">{request.acknowledged_by_name as string}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        {request.transferred_by_name && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
+                <Truck size={16} className="text-purple-600" />
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Transfere par</div>
+                <div className="text-sm font-medium text-gray-800">{request.transferred_by_name as string}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ═══ ACTION PANELS BY STATUS ═══ */}
+      {/* ══════════════ ACTION PANELS BY STATUS ══════════════ */}
 
       {/* SUBMITTED: Responsable can acknowledge */}
       {status === 'submitted' && isResponsable && isMyRequest && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
-          <Clock size={32} className="mx-auto text-yellow-600 mb-3" />
+        <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center mx-auto mb-4">
+            <Clock size={28} className="text-white" />
+          </div>
           <h3 className="font-bold text-yellow-800 text-lg mb-1">Nouvelle demande en attente</h3>
-          <p className="text-sm text-yellow-700 mb-4">Prenez en charge cette demande pour commencer le traitement.</p>
+          <p className="text-sm text-yellow-700 mb-5">Prenez en charge cette demande pour commencer le traitement.</p>
           <button onClick={() => acknowledgeMutation.mutate()} disabled={acknowledgeMutation.isPending}
-            className="btn-primary px-8 py-3 text-base">
+            className="px-8 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
+            {acknowledgeMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <ClipboardCheck size={18} />}
             {acknowledgeMutation.isPending ? 'Prise en charge...' : 'Prendre en charge'}
           </button>
         </div>
       )}
 
       {status === 'submitted' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 flex items-center gap-3">
-          <Clock size={24} className="text-yellow-600" />
+        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+            <Clock size={22} className="text-yellow-600" />
+          </div>
           <div>
             <p className="font-semibold text-yellow-800">En attente de prise en charge</p>
             <p className="text-sm text-yellow-600">Le responsable n'a pas encore pris en charge cette demande.</p>
@@ -485,116 +560,112 @@ function SubRequestDetailView({
 
       {/* ACKNOWLEDGED: Responsable fills preparation form */}
       {status === 'acknowledged' && isResponsable && isMyRequest && (
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200 overflow-hidden">
-          <div className="bg-blue-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
+        <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <PackageCheck size={20} className="text-blue-600" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+                <PackageCheck size={20} className="text-white" />
+              </div>
               <div>
                 <h3 className="font-bold text-blue-800">Preparation des articles</h3>
                 <p className="text-xs text-blue-600 mt-0.5">
                   {!hasPreparableItems
                     ? 'Aucun article pret — en attente de production'
                     : pendingProductionItems.length > 0
-                      ? `${preparableItems.length} article(s) pret(s) — ${pendingProductionItems.length} en attente de production (transfert partiel possible)`
+                      ? `${preparableItems.length} article(s) pret(s) — ${pendingProductionItems.length} en attente de production`
                       : 'Renseignez les quantites a envoyer au magasin et a garder en stock'}
                 </p>
               </div>
             </div>
             <button onClick={handleStartPreparing} disabled={prepareMutation.isPending || !hasPreparableItems}
-              className={`btn-primary flex items-center gap-2 ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              <PackageCheck size={16} />
-              {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente de production' : pendingProductionItems.length > 0 ? 'Preparer le lot disponible' : 'Commencer la preparation'}
+              className={`px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {prepareMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
+              {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente' : pendingProductionItems.length > 0 ? 'Preparer le lot disponible' : 'Commencer la preparation'}
             </button>
           </div>
 
-          {/* Already received items (from previous partial transfers) */}
           {receivedItems.length > 0 && (
-            <div className="bg-green-50/50 px-6 py-2 border-b border-green-100">
-              <p className="text-xs text-green-700 font-medium">
+            <div className="bg-emerald-50/50 px-6 py-2.5 border-b border-emerald-100 flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-emerald-600" />
+              <p className="text-xs text-emerald-700 font-medium">
                 {receivedItems.length} article(s) deja recu(s) lors d'un transfert precedent
               </p>
             </div>
           )}
 
-          <table className="w-full">
-            <thead className="bg-blue-50/50 border-b border-blue-100">
-              <tr>
-                <th className="text-left px-6 py-2.5 text-xs font-medium text-blue-700 uppercase">Produit</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Origine</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Statut</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Demande</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Source</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Vers magasin</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-blue-700 uppercase">Vers stock</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-blue-50">
-              {items.map((item) => {
-                const itemId = item.id as string;
-                const requestedQty = (item.requested_quantity as number) || 0;
-                const itemStatus = item.status as string;
-                const isReceived = itemStatus === 'received' || itemStatus === 'received_with_discrepancy';
-                const isPreparable = preparableItems.some(pi => pi.id === item.id);
-                const isWaitingProduction = pendingProductionItems.some(pi => pi.id === item.id);
-                return (
-                  <tr key={itemId} className={`${isReceived ? 'bg-green-50/30 opacity-60' : isWaitingProduction ? 'bg-amber-50/30 opacity-60' : 'hover:bg-blue-50/30'}`}>
-                    <td className="px-6 py-3">
-                      <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
-                      <div className="text-xs text-gray-400">{item.category_name as string}</div>
-                    </td>
-                    <td className="text-center px-4 py-3">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${SOURCE_TYPE_COLORS[item.source_type as string] || ''}`}>
-                        {SOURCE_TYPE_LABELS[item.source_type as string] || '—'}
-                      </span>
-                    </td>
-                    <td className="text-center px-4 py-3">
-                      {isReceived ? (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Deja recu</span>
-                      ) : isWaitingProduction ? (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">En production</span>
-                      ) : (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Pret</span>
-                      )}
-                    </td>
-                    <td className="text-center px-4 py-3 text-sm font-bold text-gray-800">{requestedQty}</td>
-                    {isPreparable ? (
-                      <>
-                        <td className="text-center px-4 py-3">
-                          <select value={getPrepValue(itemId, 'source', item.source_type === 'production' ? 'production' : 'stock') as string}
-                            onChange={(e) => setPrepValue(itemId, 'source', e.target.value)} className="input text-sm py-1.5 w-28">
-                            <option value="stock">Stock</option>
-                            <option value="production">Production</option>
-                          </select>
-                        </td>
-                        <td className="text-center px-4 py-3">
-                          <input type="number" min={0} value={getPrepValue(itemId, 'qtyToStore', requestedQty) as number}
-                            onChange={(e) => setPrepValue(itemId, 'qtyToStore', parseInt(e.target.value) || 0)}
-                            className="input text-sm py-1.5 w-20 text-center" />
-                        </td>
-                        <td className="text-center px-4 py-3">
-                          <input type="number" min={0} value={getPrepValue(itemId, 'qtyToStock', 0) as number}
-                            onChange={(e) => setPrepValue(itemId, 'qtyToStock', parseInt(e.target.value) || 0)}
-                            className="input text-sm py-1.5 w-20 text-center" />
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="text-center px-4 py-3 text-xs text-gray-400">—</td>
-                        <td className="text-center px-4 py-3 text-xs text-gray-400">{isReceived ? (item.qty_to_store as number || '—') : '—'}</td>
-                        <td className="text-center px-4 py-3 text-xs text-gray-400">{isReceived ? (item.qty_received as number || '—') : '—'}</td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="divide-y divide-blue-50">
+            {items.map((item) => {
+              const itemId = item.id as string;
+              const requestedQty = (item.requested_quantity as number) || 0;
+              const itemStatus = item.status as string;
+              const isReceived = itemStatus === 'received' || itemStatus === 'received_with_discrepancy';
+              const isPreparable = preparableItems.some(pi => pi.id === item.id);
+              const isWaitingProduction = pendingProductionItems.some(pi => pi.id === item.id);
+              return (
+                <div key={itemId} className={`px-6 py-3.5 flex items-center gap-4 ${isReceived ? 'bg-emerald-50/30 opacity-60' : isWaitingProduction ? 'bg-amber-50/30 opacity-60' : 'hover:bg-blue-50/30'} transition-colors`}>
+                  {/* Left bar */}
+                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${isReceived ? 'bg-emerald-500' : isWaitingProduction ? 'bg-amber-400' : 'bg-blue-500'}`} />
+                  {/* Product */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
+                    <div className="text-xs text-gray-400">{item.category_name as string}</div>
+                  </div>
+                  {/* Source type */}
+                  <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium flex-shrink-0 ${SOURCE_TYPE_COLORS[item.source_type as string] || ''}`}>
+                    {SOURCE_TYPE_LABELS[item.source_type as string] || '\u2014'}
+                  </span>
+                  {/* Status */}
+                  {isReceived ? (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700 flex-shrink-0">Deja recu</span>
+                  ) : isWaitingProduction ? (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 flex-shrink-0">En production</span>
+                  ) : (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 flex-shrink-0">Pret</span>
+                  )}
+                  {/* Requested qty */}
+                  <div className="text-center flex-shrink-0 w-14">
+                    <div className="text-[10px] text-gray-400 uppercase">Demande</div>
+                    <div className="text-sm font-bold text-gray-800">{requestedQty}</div>
+                  </div>
+                  {/* Inputs */}
+                  {isPreparable ? (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <select value={getPrepValue(itemId, 'source', item.source_type === 'production' ? 'production' : 'stock') as string}
+                        onChange={(e) => setPrepValue(itemId, 'source', e.target.value)}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 w-24">
+                        <option value="stock">Stock</option>
+                        <option value="production">Production</option>
+                      </select>
+                      <div className="text-center">
+                        <div className="text-[10px] text-gray-400">Magasin</div>
+                        <input type="number" min={0} value={getPrepValue(itemId, 'qtyToStore', requestedQty) as number}
+                          onChange={(e) => setPrepValue(itemId, 'qtyToStore', parseInt(e.target.value) || 0)}
+                          className="w-16 text-center py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div className="text-center">
+                        <div className="text-[10px] text-gray-400">Stock</div>
+                        <input type="number" min={0} value={getPrepValue(itemId, 'qtyToStock', 0) as number}
+                          onChange={(e) => setPrepValue(itemId, 'qtyToStock', parseInt(e.target.value) || 0)}
+                          className="w-16 text-center py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-48 flex-shrink-0 text-xs text-gray-400 text-center">
+                      {isReceived ? `Magasin: ${item.qty_to_store || '\u2014'} | Recu: ${item.qty_received || '\u2014'}` : '\u2014'}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
       {status === 'acknowledged' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 flex items-center gap-3">
-          <ClipboardCheck size={24} className="text-blue-600" />
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <ClipboardCheck size={22} className="text-blue-600" />
+          </div>
           <div>
             <p className="font-semibold text-blue-800">Demande prise en charge</p>
             <p className="text-sm text-blue-600">Le responsable prepare votre commande.</p>
@@ -604,20 +675,25 @@ function SubRequestDetailView({
 
       {/* PREPARING: Responsable can validate transfer */}
       {status === 'preparing' && isResponsable && isMyRequest && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
-          <Truck size={32} className="mx-auto text-indigo-600 mb-3" />
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mx-auto mb-4">
+            <Truck size={28} className="text-white" />
+          </div>
           <h3 className="font-bold text-indigo-800 text-lg mb-1">Preparation en cours</h3>
-          <p className="text-sm text-indigo-600 mb-4">Une fois les articles prets, validez le transfert vers le magasin.</p>
+          <p className="text-sm text-indigo-600 mb-5">Une fois les articles prets, validez le transfert vers le magasin.</p>
           <button onClick={() => transferMutation.mutate()} disabled={transferMutation.isPending}
-            className="btn-primary px-8 py-3 text-base bg-indigo-600 hover:bg-indigo-700">
+            className="px-8 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
+            {transferMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Truck size={18} />}
             {transferMutation.isPending ? 'Transfert en cours...' : 'Valider le transfert'}
           </button>
         </div>
       )}
 
       {status === 'preparing' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 flex items-center gap-3">
-          <PackageCheck size={24} className="text-indigo-600" />
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+            <PackageCheck size={22} className="text-indigo-600" />
+          </div>
           <div>
             <p className="font-semibold text-indigo-800">En preparation</p>
             <p className="text-sm text-indigo-600">Vos articles sont en cours de preparation.</p>
@@ -627,10 +703,12 @@ function SubRequestDetailView({
 
       {/* TRANSFERRED: Cashier confirms reception */}
       {status === 'transferred' && isStoreStaff && (
-        <div className="bg-white rounded-xl shadow-sm border border-purple-200 overflow-hidden">
-          <div className="bg-purple-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+        <div className="bg-white rounded-2xl shadow-sm border border-purple-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-50 to-violet-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Truck size={20} className="text-purple-600" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center">
+                <Truck size={20} className="text-white" />
+              </div>
               <div>
                 <h3 className="font-bold text-purple-800">Confirmation de reception</h3>
                 <p className="text-xs text-purple-600 mt-0.5">
@@ -641,56 +719,50 @@ function SubRequestDetailView({
               </div>
             </div>
             <button onClick={handleConfirmReception} disabled={receptionMutation.isPending}
-              className="btn-primary flex items-center gap-2 bg-purple-600 hover:bg-purple-700">
-              <CheckCircle2 size={16} />
+              className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+              {receptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               {receptionMutation.isPending ? 'Confirmation...' : 'Confirmer la reception'}
             </button>
           </div>
-          <table className="w-full">
-            <thead className="bg-purple-50/50 border-b border-purple-100">
-              <tr>
-                <th className="text-left px-6 py-2.5 text-xs font-medium text-purple-700 uppercase">Produit</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-purple-700 uppercase">Attendu</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-purple-700 uppercase">Recu</th>
-                <th className="text-center px-4 py-2.5 text-xs font-medium text-purple-700 uppercase">Ecart</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-purple-700 uppercase">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-purple-50">
-              {readyItems.map((item) => {
-                const itemId = item.id as string;
-                const expected = (item.qty_to_store as number) || 0;
-                const received = (getReceptionValue(itemId, 'qtyReceived', expected) as number);
-                const diff = received - expected;
-                return (
-                  <tr key={itemId} className={diff !== 0 ? 'bg-red-50/30' : 'hover:bg-purple-50/30'}>
-                    <td className="px-6 py-3">
-                      <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
-                      <div className="text-xs text-gray-400">{item.category_name as string}</div>
-                    </td>
-                    <td className="text-center px-4 py-3 text-sm font-semibold text-gray-700">{expected}</td>
-                    <td className="text-center px-4 py-3">
-                      <input type="number" min={0} value={received}
-                        onChange={(e) => setReceptionValue(itemId, 'qtyReceived', parseInt(e.target.value) || 0)}
-                        className={`input text-sm py-1.5 w-20 text-center ${diff !== 0 ? 'border-red-300 bg-red-50' : ''}`} />
-                    </td>
-                    <td className="text-center px-4 py-3">
-                      {diff === 0 ? <CheckCircle2 size={18} className="mx-auto text-green-500" /> :
-                        <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input type="text" placeholder="Note..." value={(getReceptionValue(itemId, 'notes', '') as string)}
-                        onChange={(e) => setReceptionValue(itemId, 'notes', e.target.value)} className="input text-sm py-1.5 w-full" />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="divide-y divide-purple-50">
+            {readyItems.map((item) => {
+              const itemId = item.id as string;
+              const expected = (item.qty_to_store as number) || 0;
+              const received = (getReceptionValue(itemId, 'qtyReceived', expected) as number);
+              const diff = received - expected;
+              return (
+                <div key={itemId} className={`px-6 py-4 flex items-center gap-4 ${diff !== 0 ? 'bg-red-50/30' : 'hover:bg-purple-50/30'} transition-colors`}>
+                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${diff === 0 ? 'bg-purple-500' : 'bg-red-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
+                    <div className="text-xs text-gray-400">{item.category_name as string}</div>
+                  </div>
+                  <div className="text-center flex-shrink-0 w-16">
+                    <div className="text-[10px] text-gray-400 uppercase">Attendu</div>
+                    <div className="text-sm font-bold text-gray-700">{expected}</div>
+                  </div>
+                  <div className="text-center flex-shrink-0">
+                    <div className="text-[10px] text-gray-400 uppercase">Recu</div>
+                    <input type="number" min={0} value={received}
+                      onChange={(e) => setReceptionValue(itemId, 'qtyReceived', parseInt(e.target.value) || 0)}
+                      className={`w-16 text-center py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 ${diff !== 0 ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
+                  </div>
+                  <div className="text-center flex-shrink-0 w-12">
+                    <div className="text-[10px] text-gray-400 uppercase">Ecart</div>
+                    {diff === 0 ? <CheckCircle2 size={18} className="mx-auto text-emerald-500 mt-1" /> :
+                      <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
+                  </div>
+                  <input type="text" placeholder="Note..." value={(getReceptionValue(itemId, 'notes', '') as string)}
+                    onChange={(e) => setReceptionValue(itemId, 'notes', e.target.value)}
+                    className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 flex-shrink-0" />
+                </div>
+              );
+            })}
+          </div>
           {pendingItems.length > 0 && (
-            <div className="bg-amber-50 px-6 py-3 border-t border-amber-200">
+            <div className="bg-amber-50 px-6 py-3 border-t border-amber-200 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-500" />
               <p className="text-xs text-amber-700">
-                <AlertTriangle size={12} className="inline mr-1" />
                 {pendingItems.length} article(s) en attente de production — un autre transfert sera necessaire apres la production.
               </p>
             </div>
@@ -699,8 +771,10 @@ function SubRequestDetailView({
       )}
 
       {status === 'transferred' && !isStoreStaff && (
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 flex items-center gap-3">
-          <Truck size={24} className="text-purple-600" />
+        <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+            <Truck size={22} className="text-purple-600" />
+          </div>
           <div>
             <p className="font-semibold text-purple-800">Transfere — en attente de reception</p>
             <p className="text-sm text-purple-600">La caissiere doit confirmer la reception des articles.</p>
@@ -710,15 +784,17 @@ function SubRequestDetailView({
 
       {/* CLOSED: Summary */}
       {(status === 'closed' || status === 'closed_with_discrepancy') && (
-        <div className={`border rounded-xl overflow-hidden ${status === 'closed_with_discrepancy' ? 'border-orange-200' : 'border-green-200'}`}>
-          <div className={`px-6 py-4 flex items-center gap-3 ${status === 'closed_with_discrepancy' ? 'bg-orange-50 border-b border-orange-200' : 'bg-green-50 border-b border-green-200'}`}>
-            {status === 'closed_with_discrepancy' ? <AlertTriangle size={20} className="text-orange-600" /> : <CheckCircle2 size={20} className="text-green-600" />}
+        <div className={`rounded-2xl overflow-hidden ${status === 'closed_with_discrepancy' ? 'border border-orange-200' : 'border border-emerald-200'}`}>
+          <div className={`px-6 py-4 flex items-center gap-4 ${status === 'closed_with_discrepancy' ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-200' : 'bg-gradient-to-r from-emerald-50 to-green-50 border-b border-emerald-200'}`}>
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${status === 'closed_with_discrepancy' ? 'bg-orange-100' : 'bg-emerald-100'}`}>
+              {status === 'closed_with_discrepancy' ? <AlertTriangle size={22} className="text-orange-600" /> : <CheckCircle2 size={22} className="text-emerald-600" />}
+            </div>
             <div>
-              <h3 className={`font-bold ${status === 'closed_with_discrepancy' ? 'text-orange-800' : 'text-green-800'}`}>
+              <h3 className={`font-bold ${status === 'closed_with_discrepancy' ? 'text-orange-800' : 'text-emerald-800'}`}>
                 {status === 'closed_with_discrepancy' ? 'Cloture avec ecart' : 'Cloture — tout est conforme'}
               </h3>
               {request.closed_by_name && (
-                <p className={`text-xs mt-0.5 ${status === 'closed_with_discrepancy' ? 'text-orange-600' : 'text-green-600'}`}>
+                <p className={`text-xs mt-0.5 ${status === 'closed_with_discrepancy' ? 'text-orange-600' : 'text-emerald-600'}`}>
                   Confirme par {request.closed_by_name as string} le {request.closed_at ? format(new Date(request.closed_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
                 </p>
               )}
@@ -727,84 +803,89 @@ function SubRequestDetailView({
         </div>
       )}
 
-      {/* Items table (always visible) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-          <Package size={18} className="text-gray-500" />
-          <h3 className="font-semibold text-gray-800">Articles ({items.length})</h3>
+      {/* ══════════════ ITEMS TABLE (always visible) ══════════════ */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center">
+            <Layers size={18} className="text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-800">Articles</h3>
+            <span className="text-xs text-gray-500">{items.length} article(s)</span>
+          </div>
         </div>
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr>
-              <th className="text-left px-6 py-2.5 text-xs font-medium text-gray-500 uppercase">Produit</th>
-              <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Origine</th>
-              <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Demande</th>
-              {['preparing', 'transferred', 'closed', 'closed_with_discrepancy'].includes(status) && (
-                <>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Source</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Magasin</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Stock</th>
-                </>
-              )}
-              {['closed', 'closed_with_discrepancy'].includes(status) && (
-                <>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Recu</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500 uppercase">Ecart</th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {items.map((item) => {
-              const qtyToStore = (item.qty_to_store as number) || 0;
-              const qtyReceived = item.qty_received as number;
-              const diff = qtyReceived !== null && qtyReceived !== undefined ? qtyReceived - qtyToStore : null;
-              const hasDiff = diff !== null && diff !== 0;
-              return (
-                <tr key={item.id as string} className={hasDiff ? 'bg-red-50/30' : ''}>
-                  <td className="px-6 py-3">
-                    <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
-                    <div className="text-xs text-gray-400">{item.category_name as string}</div>
-                  </td>
-                  <td className="text-center px-4 py-3">
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${SOURCE_TYPE_COLORS[item.source_type as string] || ''}`}>
-                      {SOURCE_TYPE_LABELS[item.source_type as string] || '—'}
-                    </span>
-                    {item.source_type === 'mixed' && (
-                      <div className="text-[10px] text-gray-400 mt-0.5">
-                        {(item.qty_from_stock as number) || 0}s + {(item.qty_to_produce as number) || 0}p
-                      </div>
-                    )}
-                  </td>
-                  <td className="text-center px-4 py-3 text-sm font-semibold">{(item.requested_quantity as number) || 0}</td>
-                  {['preparing', 'transferred', 'closed', 'closed_with_discrepancy'].includes(status) && (
-                    <>
-                      <td className="text-center px-4 py-3 text-xs text-gray-500">
-                        {(item.source as string) === 'production' ? 'Production' : 'Stock'}
-                      </td>
-                      <td className="text-center px-4 py-3 text-sm font-semibold text-primary-700">{qtyToStore}</td>
-                      <td className="text-center px-4 py-3 text-sm text-gray-500">{(item.qty_to_stock as number) || 0}</td>
-                    </>
-                  )}
-                  {['closed', 'closed_with_discrepancy'].includes(status) && (
-                    <>
-                      <td className="text-center px-4 py-3 text-sm font-semibold">{qtyReceived ?? '—'}</td>
-                      <td className="text-center px-4 py-3">
-                        {diff === null ? '—' : diff === 0 ? (
-                          <CheckCircle2 size={16} className="mx-auto text-green-500" />
-                        ) : (
-                          <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                            {diff > 0 ? '+' : ''}{diff}
-                          </span>
-                        )}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="divide-y divide-gray-50">
+          {items.map((item) => {
+            const qtyToStore = (item.qty_to_store as number) || 0;
+            const qtyReceived = item.qty_received as number;
+            const diff = qtyReceived !== null && qtyReceived !== undefined ? qtyReceived - qtyToStore : null;
+            const hasDiff = diff !== null && diff !== 0;
+            const isClosed = ['closed', 'closed_with_discrepancy'].includes(status);
+            const showPrepDetails = ['preparing', 'transferred', 'closed', 'closed_with_discrepancy'].includes(status);
+
+            return (
+              <div key={item.id as string} className={`px-6 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${hasDiff ? 'bg-red-50/20' : ''}`}>
+                {/* Left bar */}
+                <div className={`w-1 h-10 rounded-full flex-shrink-0 ${hasDiff ? 'bg-red-400' : isClosed ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                {/* Product */}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-800">{item.product_name as string}</div>
+                  <div className="text-xs text-gray-400">{item.category_name as string}</div>
+                </div>
+                {/* Source type */}
+                <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium flex-shrink-0 ${SOURCE_TYPE_COLORS[item.source_type as string] || 'bg-gray-100 text-gray-500'}`}>
+                  {SOURCE_TYPE_LABELS[item.source_type as string] || '\u2014'}
+                </span>
+                {item.source_type === 'mixed' && (
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">
+                    {(item.qty_from_stock as number) || 0}s + {(item.qty_to_produce as number) || 0}p
+                  </span>
+                )}
+                {/* Demanded */}
+                <div className="text-center flex-shrink-0 w-14">
+                  <div className="text-[10px] text-gray-400 uppercase">Demande</div>
+                  <div className="text-sm font-bold text-gray-700">{(item.requested_quantity as number) || 0}</div>
+                </div>
+                {/* Prep details */}
+                {showPrepDetails && (
+                  <>
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-[10px] text-gray-400 uppercase">Source</div>
+                      <div className="text-xs text-gray-500">{(item.source as string) === 'production' ? 'Prod.' : 'Stock'}</div>
+                    </div>
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-[10px] text-gray-400 uppercase">Magasin</div>
+                      <div className="text-sm font-semibold text-indigo-700">{qtyToStore}</div>
+                    </div>
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-[10px] text-gray-400 uppercase">Stock</div>
+                      <div className="text-sm text-gray-500">{(item.qty_to_stock as number) || 0}</div>
+                    </div>
+                  </>
+                )}
+                {/* Reception details */}
+                {isClosed && (
+                  <>
+                    <div className="text-center flex-shrink-0 w-14">
+                      <div className="text-[10px] text-gray-400 uppercase">Recu</div>
+                      <div className="text-sm font-semibold">{qtyReceived ?? '\u2014'}</div>
+                    </div>
+                    <div className="text-center flex-shrink-0 w-12">
+                      <div className="text-[10px] text-gray-400 uppercase">Ecart</div>
+                      {diff === null ? <span className="text-gray-300">\u2014</span> : diff === 0 ? (
+                        <CheckCircle2 size={16} className="mx-auto text-emerald-500 mt-1" />
+                      ) : (
+                        <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

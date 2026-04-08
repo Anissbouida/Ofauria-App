@@ -19,7 +19,7 @@ const navigation: { name: string; href: string; icon: typeof LayoutDashboard; mo
   { name: 'Recettes', href: '/recipes', icon: ChefHat, module: 'recipes' },
   { name: 'Production', href: '/production', icon: Factory, module: 'production' },
   { name: 'Approvisionnement', href: '/replenishment', icon: Package, module: 'replenishment' },
-  { name: 'Personnel', href: '/employees', icon: UserCog, module: 'employees' },
+  { name: 'RH', href: '/employees', icon: UserCog, module: 'employees' },
   { name: 'Comptabilite', href: '/accounting', icon: Calculator, module: 'accounting' },
   { name: 'Utilisateurs', href: '/users', icon: Lock, module: 'users' },
   { name: 'Rapports', href: '/reports', icon: BarChart3, module: 'reports' },

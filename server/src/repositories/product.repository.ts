@@ -28,7 +28,10 @@ export const productRepository = {
     const result = await db.query(
       `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
               p.image_url, p.is_available, p.is_custom_orderable, p.preparation_time_min,
-              p.responsible_user_id, p.created_at, p.updated_at,
+              p.responsible_user_id, p.min_production_quantity,
+              p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
+              p.recycle_ingredient_id, p.max_reexpositions,
+              p.created_at, p.updated_at,
               ${stockColumns}
               c.name as category_name, c.slug as category_slug,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
@@ -84,6 +87,12 @@ export const productRepository = {
       stockQuantity: 'stock_quantity',
       stockMinThreshold: 'stock_min_threshold',
       minProductionQuantity: 'min_production_quantity',
+      shelfLifeDays: 'shelf_life_days',
+      displayLifeHours: 'display_life_hours',
+      isReexposable: 'is_reexposable',
+      isRecyclable: 'is_recyclable',
+      recycleIngredientId: 'recycle_ingredient_id',
+      maxReexpositions: 'max_reexpositions',
     };
 
     const fields: string[] = [];

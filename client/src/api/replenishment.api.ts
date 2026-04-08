@@ -20,6 +20,6 @@ export const replenishmentApi = {
   cancel: (id: string) => api.post(`/replenishment/${id}/cancel`).then(r => r.data),
   pendingTransfers: () => api.get('/replenishment/pending-transfers').then(r => r.data.data),
   recommendations: () => api.get('/replenishment/recommendations').then(r => r.data.data),
-  saveInventoryCheck: (data: { sessionId?: string; items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number }[]; notes?: string }) =>
+  saveInventoryCheck: (data: { sessionId?: string; items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number; destination?: string }[]; notes?: string }) =>
     api.post('/replenishment/inventory-check', data).then(r => r.data.data),
 };

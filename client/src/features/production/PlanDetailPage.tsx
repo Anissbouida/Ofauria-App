@@ -7,16 +7,27 @@ import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
 import { usePermissions } from '../../context/PermissionsContext';
-import { ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package, User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle } from 'lucide-react';
+import {
+  ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package,
+  User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
+  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  confirmed: 'bg-blue-100 text-blue-700',
-  in_progress: 'bg-yellow-100 text-yellow-700',
-  completed: 'bg-green-100 text-green-700',
+const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
+  draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
+  confirmed: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', gradient: 'from-blue-500 to-blue-600', label: 'Confirme', icon: <CheckCircle size={14} /> },
+  in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500', gradient: 'from-amber-500 to-orange-600', label: 'En cours', icon: <Play size={14} /> },
+  completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600', label: 'Termine', icon: <CheckCircle size={14} /> },
+};
+
+const roleConfig: Record<string, { label: string; bg: string; text: string; avatar: string }> = {
+  baker: { label: 'Boulanger', bg: 'bg-amber-100', text: 'text-amber-800', avatar: 'bg-amber-500' },
+  pastry_chef: { label: 'Patissier', bg: 'bg-pink-100', text: 'text-pink-800', avatar: 'bg-pink-500' },
+  viennoiserie: { label: 'Viennoiserie', bg: 'bg-orange-100', text: 'text-orange-800', avatar: 'bg-orange-500' },
+  beldi_sale: { label: 'Beldi & Sale', bg: 'bg-green-100', text: 'text-green-800', avatar: 'bg-green-500' },
 };
 
 export default function PlanDetailPage() {
@@ -28,13 +39,12 @@ export default function PlanDetailPage() {
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
 
-  const { data: plan, isLoading, refetch } = useQuery({
+  const { data: plan, isLoading } = useQuery({
     queryKey: ['production', id],
     queryFn: () => productionApi.getById(id!),
     enabled: !!id,
   });
 
-  // Load linked replenishment request if this plan was auto-generated
   const replenishmentId = plan?.replenishment_request_id as string | undefined;
   const { data: linkedReplenishment } = useQuery({
     queryKey: ['replenishment', replenishmentId],
@@ -48,7 +58,7 @@ export default function PlanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       toast.success('Plan confirme avec succes');
       if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
+        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       }
     },
   });
@@ -56,7 +66,6 @@ export default function PlanDetailPage() {
   const printBonDeCommande = (planData?: Record<string, unknown>) => {
     const p = planData || plan;
     if (!p) return;
-    // Use role-filtered items and needs
     const planItems = items;
     const ingredientNeeds = needs;
     const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
@@ -104,7 +113,7 @@ export default function PlanDetailPage() {
 
 <div class="info">
   <div>
-    <strong>N° Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -190,7 +199,6 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
   const printFicheProduction = (planData?: Record<string, unknown>) => {
     const p = planData || plan;
     if (!p) return;
-    // Use role-filtered items and needs for printing
     const allPlanNeeds = (p.ingredient_needs || []) as Record<string, unknown>[];
     const filteredPrintNeeds = allowedSlugs
       ? allPlanNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
@@ -272,7 +280,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 
 <div class="info">
   <div>
-    <strong>N° Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -375,13 +383,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
-  // ═══ Modification 2: Restore items from waiting list ═══
   const restoreMutation = useMutation({
     mutationFn: (itemIds: string[]) => productionApi.restoreItems(id!, itemIds),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
+        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       } else {
         toast.success('Article(s) restaure(s) avec succes');
       }
@@ -391,7 +398,6 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
-  // ═══ Point 8: Cancel items from production plan ═══
   const cancelItemsMutation = useMutation({
     mutationFn: ({ itemIds, reason }: { itemIds: string[]; reason?: string }) => productionApi.cancelItems(id!, itemIds, reason),
     onSuccess: () => {
@@ -403,33 +409,48 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
-  // Permission-based filtering: chef roles ALWAYS see only their own section
-  // Admin/manager see everything or filtered by plan's target_role
   const { getModuleConfig } = usePermissions();
   const prodConfig = getModuleConfig('production');
   const userRole = user?.role || '';
   const isChefRole = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(userRole);
   const allowedSlugs = plan?.order_id
-    ? null  // Order-linked plans: show all items
+    ? null
     : isChefRole
-      ? getRoleCategorySlugs(userRole) // Chef: always filter by own role
+      ? getRoleCategorySlugs(userRole)
       : plan?.target_role
         ? getRoleCategorySlugs(plan.target_role as string)
         : (prodConfig.category_slugs as string[] | undefined) || null;
 
-  if (isLoading) return <p className="text-gray-500">Chargement...</p>;
-  if (!plan) return <p className="text-gray-500">Plan non trouve</p>;
+  // Loading state
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 size={32} className="animate-spin text-amber-500" />
+        <span className="text-gray-500 text-sm">Chargement du plan...</span>
+      </div>
+    </div>
+  );
+
+  if (!plan) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+        <PackageOpen size={32} className="text-gray-400" />
+      </div>
+      <p className="text-gray-500">Plan non trouve</p>
+      <button onClick={() => navigate('/production')} className="text-amber-600 hover:text-amber-700 text-sm font-medium flex items-center gap-1">
+        <ArrowLeft size={16} /> Retour a la production
+      </button>
+    </div>
+  );
 
   const allItems = plan.items || [];
   const items = allowedSlugs
     ? allItems.filter((it: Record<string, unknown>) => allowedSlugs.includes(it.category_slug as string))
     : allItems;
   const allNeeds = (plan.ingredient_needs || []) as Record<string, unknown>[];
-  // Filter ingredient needs by allowed categories, then aggregate by ingredient
   const filteredNeeds = allowedSlugs
     ? allNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
     : allNeeds;
-  // Aggregate needs by ingredient (same ingredient may appear for multiple products)
   const needsMap = new Map<string, Record<string, unknown>>();
   for (const n of filteredNeeds) {
     const ingId = n.ingredient_id as string;
@@ -443,111 +464,181 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const needs = [...needsMap.values()];
   const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
 
+  const sc = statusConfig[plan.status] || statusConfig.draft;
+  const rc = roleConfig[plan.target_role as string];
+
+  // Progress stats
+  const producedCount = items.filter((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
+  const cancelledCount = items.filter((it: Record<string, unknown>) => it.status === 'cancelled').length;
+  const waitingCount = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting').length;
+  const pendingCount = items.filter((it: Record<string, unknown>) => it.status === 'pending' && it.waiting_status !== 'waiting').length;
+  const totalActive = items.length - cancelledCount;
+  const progressPct = totalActive > 0 ? Math.round((producedCount / totalActive) * 100) : 0;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/production')} className="p-2 hover:bg-gray-100 rounded-lg">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-bakery-chocolate">
-              Plan du {format(new Date(plan.plan_date), 'dd MMMM yyyy', { locale: fr })}
-            </h1>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[plan.status]}`}>
-              {plan.status === 'completed' && plan.completion_type === 'partial'
-                ? 'Termine partiel'
-                : plan.status === 'completed' && plan.completion_type === 'complete'
-                ? 'Termine complet'
-                : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS]}
-            </span>
-          </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Cree par {plan.created_by_name}
-            {plan.target_role && (
-              <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-                plan.target_role === 'baker' ? 'bg-amber-100 text-amber-800' :
-                plan.target_role === 'pastry_chef' ? 'bg-pink-100 text-pink-800' :
-                plan.target_role === 'viennoiserie' ? 'bg-orange-100 text-orange-800' :
-                plan.target_role === 'beldi_sale' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
-              }`}>
-                {plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : plan.target_role}
-              </span>
-            )}
-            {plan.notes && ` — ${plan.notes}`}
-          </p>
+      {/* ══════════════ HEADER CARD ══════════════ */}
+      <div className={`bg-gradient-to-br ${sc.gradient} rounded-2xl p-6 text-white shadow-lg relative overflow-hidden`}>
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
+          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
         </div>
+        <div className="relative">
+          {/* Top row: back + title */}
+          <div className="flex items-start gap-4 mb-4">
+            <button onClick={() => navigate('/production')} className="p-2 hover:bg-white/20 rounded-xl transition-colors mt-0.5">
+              <ArrowLeft size={20} />
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold">
+                  Plan du {format(new Date(plan.plan_date), 'dd MMMM yyyy', { locale: fr })}
+                </h1>
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-white/20 backdrop-blur-sm flex items-center gap-1.5">
+                  {sc.icon}
+                  {plan.status === 'completed' && plan.completion_type === 'partial'
+                    ? 'Termine partiel'
+                    : plan.status === 'completed' && plan.completion_type === 'complete'
+                    ? 'Termine complet'
+                    : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS]}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-white/80 text-sm flex-wrap">
+                <span className="flex items-center gap-1.5">
+                  <User size={14} /> {plan.created_by_name}
+                </span>
+                {rc && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 flex items-center gap-1">
+                    <ChefHat size={12} /> {rc.label}
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <Hash size={14} /> {(plan.id as string).slice(0, 8).toUpperCase()}
+                </span>
+                {plan.type && (
+                  <span className="flex items-center gap-1.5">
+                    <Calendar size={14} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
+                  </span>
+                )}
+                {plan.notes && (
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={14} /> {plan.notes}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
-        {/* Action buttons */}
-        <div className="flex gap-2">
-          {plan.status === 'draft' && isChef && (
-            <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
-              className="btn-primary flex items-center gap-2">
-              <CheckCircle size={18} /> {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
-            </button>
-          )}
-          {plan.status === 'confirmed' && (
-            <>
-              <button onClick={() => printBonDeCommande()} className="btn-secondary flex items-center gap-2">
-                <Printer size={18} /> Bon de commande
-              </button>
-              {isChef && (
-                <button onClick={() => startMutation.mutate()} disabled={startMutation.isPending}
-                  className="btn-primary flex items-center gap-2">
-                  <Play size={18} /> {startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
-                </button>
-              )}
-            </>
-          )}
-          {plan.status === 'in_progress' && isChef && (() => {
-            const produciblePending = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
-            const waitingCount = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting').length;
-            const allProduced = produciblePending.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
-            return (
-              <>
-                {produciblePending.length > 0 && (
-                  <button onClick={() => setShowCompletion(true)} className="btn-primary flex items-center gap-2">
-                    <Factory size={18} /> Produire ({produciblePending.length})
-                  </button>
-                )}
-                {waitingCount > 0 && allProduced && (
-                  <button
-                    onClick={() => {
-                      if (confirm(`Cloture partielle : ${waitingCount} article(s) en attente seront annules. Continuer ?`)) {
-                        productionApi.complete(id!, [], 'partial').then(() => {
-                          queryClient.invalidateQueries({ queryKey: ['production', id] });
-                          toast.success('Plan cloture partiellement');
-                        }).catch((err: any) => {
-                          toast.error(err?.response?.data?.error?.message || 'Erreur');
-                        });
-                      }
-                    }}
-                    className="px-4 py-2 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
-                  >
-                    <CheckCircle size={18} /> Cloture partielle
-                  </button>
-                )}
-              </>
-            );
-          })()}
-          {plan.status === 'completed' && isChef && (
-            <button onClick={() => printFicheProduction()} className="btn-secondary flex items-center gap-2">
-              <Printer size={18} /> Fiche de production
-            </button>
+          {/* Stats row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{items.length}</div>
+              <div className="text-xs text-white/70">Articles</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{producedCount}</div>
+              <div className="text-xs text-white/70">Produits</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{needs.length}</div>
+              <div className="text-xs text-white/70">Ingredients</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
+              <div className="text-2xl font-bold">{progressPct}%</div>
+              <div className="text-xs text-white/70">Progression</div>
+            </div>
+          </div>
+
+          {/* Progress bar (for in_progress and completed) */}
+          {(plan.status === 'in_progress' || plan.status === 'completed') && totalActive > 0 && (
+            <div className="mt-4">
+              <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
+              </div>
+              <div className="flex justify-between text-xs text-white/60 mt-1">
+                <span>{producedCount} produit(s)</span>
+                {waitingCount > 0 && <span>{waitingCount} en attente</span>}
+                {pendingCount > 0 && <span>{pendingCount} en cours</span>}
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Linked order info */}
+      {/* ══════════════ ACTION BUTTONS ══════════════ */}
+      <div className="flex flex-wrap gap-3">
+        {plan.status === 'draft' && isChef && (
+          <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
+            className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+            {confirmMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+            {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
+          </button>
+        )}
+        {plan.status === 'confirmed' && (
+          <>
+            <button onClick={() => printBonDeCommande()} className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
+              <Printer size={16} className="text-amber-600" /> Bon de commande
+            </button>
+            {isChef && (
+              <button onClick={() => startMutation.mutate()} disabled={startMutation.isPending}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                {startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                {startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
+              </button>
+            )}
+          </>
+        )}
+        {plan.status === 'in_progress' && isChef && (() => {
+          const produciblePending = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
+          const allProduced = produciblePending.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
+          return (
+            <>
+              {produciblePending.length > 0 && (
+                <button onClick={() => setShowCompletion(true)} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                  <Factory size={16} /> Produire ({produciblePending.length})
+                </button>
+              )}
+              {waitingCount > 0 && allProduced && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Cloture partielle : ${waitingCount} article(s) en attente seront annules. Continuer ?`)) {
+                      productionApi.complete(id!, [], 'partial').then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['production', id] });
+                        toast.success('Plan cloture partiellement');
+                      }).catch((err: any) => {
+                        toast.error(err?.response?.data?.error?.message || 'Erreur');
+                      });
+                    }
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm"
+                >
+                  <CheckCircle size={16} /> Cloture partielle
+                </button>
+              )}
+            </>
+          );
+        })()}
+        {plan.status === 'completed' && isChef && (
+          <button onClick={() => printFicheProduction()} className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
+            <Printer size={16} className="text-emerald-600" /> Fiche de production
+          </button>
+        )}
+      </div>
+
+      {/* ══════════════ LINKED ORDER CARD ══════════════ */}
       {plan.order_number && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Package size={18} className="text-blue-600" />
-            <h3 className="font-semibold text-blue-900">Commande liee : {plan.order_number}</h3>
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-              plan.order_status === 'in_production' ? 'bg-yellow-100 text-yellow-700' :
-              plan.order_status === 'ready' ? 'bg-green-100 text-green-700' :
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+              <Package size={18} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-blue-900">Commande liee</h3>
+              <span className="text-xs text-blue-600">{plan.order_number}</span>
+            </div>
+            <span className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
+              plan.order_status === 'in_production' ? 'bg-amber-100 text-amber-700' :
+              plan.order_status === 'ready' ? 'bg-emerald-100 text-emerald-700' :
               plan.order_status === 'completed' ? 'bg-gray-100 text-gray-700' :
               'bg-blue-100 text-blue-700'
             }`}>
@@ -559,53 +650,75 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                plan.order_status === 'cancelled' ? 'Annulee' : plan.order_status}
             </span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {plan.order_customer_first_name && (
-              <div className="flex items-center gap-2 text-blue-800">
-                <User size={14} className="text-blue-500" />
-                <span>{plan.order_customer_first_name} {plan.order_customer_last_name || ''}</span>
+              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <User size={14} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Client</div>
+                  <div className="text-sm font-medium text-gray-800">{plan.order_customer_first_name} {plan.order_customer_last_name || ''}</div>
+                </div>
               </div>
             )}
             {plan.order_customer_phone && (
-              <div className="flex items-center gap-2 text-blue-800">
-                <Phone size={14} className="text-blue-500" />
-                <span>{plan.order_customer_phone}</span>
+              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Phone size={14} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Telephone</div>
+                  <div className="text-sm font-medium text-gray-800">{plan.order_customer_phone}</div>
+                </div>
               </div>
             )}
             {plan.order_pickup_date && (
-              <div className="flex items-center gap-2 text-blue-800">
-                <Calendar size={14} className="text-blue-500" />
-                <span>Retrait: {format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr })}</span>
+              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Calendar size={14} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Retrait</div>
+                  <div className="text-sm font-medium text-gray-800">{format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr })}</div>
+                </div>
               </div>
             )}
             {plan.order_total && (
-              <div className="flex items-center gap-2 text-blue-800">
-                <Banknote size={14} className="text-blue-500" />
-                <span>Total: {parseFloat(plan.order_total).toFixed(2)} DH
-                  {parseFloat(plan.order_advance_amount) > 0 && (
-                    <span className="text-blue-500 ml-1">(Avance: {parseFloat(plan.order_advance_amount).toFixed(2)} DH)</span>
-                  )}
-                </span>
+              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Banknote size={14} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Total</div>
+                  <div className="text-sm font-medium text-gray-800">
+                    {parseFloat(plan.order_total).toFixed(2)} DH
+                    {parseFloat(plan.order_advance_amount) > 0 && (
+                      <span className="text-blue-500 text-xs ml-1">(Av. {parseFloat(plan.order_advance_amount).toFixed(2)})</span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Role filter banner */}
+      {/* ══════════════ ROLE FILTER BANNER ══════════════ */}
       {allowedSlugs && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
-          <Filter size={16} className="text-amber-500" />
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Filter size={16} className="text-amber-600" />
+          </div>
           <span className="text-sm text-amber-800">
-            Affichage filtre selon votre profil — {items.length} produit(s) sur {allItems.length} au total
+            Affichage filtre selon votre profil — <strong>{items.length}</strong> produit(s) sur {allItems.length} au total
           </span>
         </div>
       )}
 
-      {/* Two-column layout: Stock items (left) + Production items (right) */}
+      {/* ══════════════ ITEMS SECTION ══════════════ */}
       {linkedReplenishment ? (() => {
         const repItems = (linkedReplenishment.items || []) as Record<string, unknown>[];
-        // Filter replenishment items by plan's target_role categories (so admin sees only relevant items)
         const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
         const effectiveSlugs = allowedSlugs || planRoleSlugs;
         const filteredRepItems = effectiveSlugs
@@ -620,63 +733,79 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         const hasProduction = items.length > 0;
 
         return (
-          <div className={`grid gap-4 ${hasStock && hasProduction ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-            {/* Left column — Stock items */}
+          <div className={`grid gap-5 ${hasStock && hasProduction ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Stock items */}
             {hasStock && (
-              <div className="bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden self-start">
-                <div className="bg-green-50 px-5 py-3 border-b border-green-200 flex items-center gap-2">
-                  <Box size={18} className="text-green-600" />
-                  <h3 className="font-semibold text-green-800 text-sm">Preleves du stock ({stockItems.length})</h3>
+              <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden self-start">
+                <div className="bg-gradient-to-r from-emerald-50 to-green-50 px-5 py-4 border-b border-emerald-200 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
+                    <Box size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-emerald-800">Preleves du stock</h3>
+                    <span className="text-xs text-emerald-600">{stockItems.length} article(s)</span>
+                  </div>
                 </div>
-                <div className="divide-y divide-green-50">
+                <div className="divide-y divide-emerald-50">
                   {stockItems.map((ri) => (
-                    <div key={ri.id as string} className="px-5 py-3 flex items-center gap-3 bg-green-50/30">
+                    <div key={ri.id as string} className="px-5 py-3.5 flex items-center gap-3 hover:bg-emerald-50/30 transition-colors">
                       {ri.product_image ? (
-                        <img src={ri.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                        <img src={ri.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                       ) : (
-                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center text-sm flex-shrink-0">📦</div>
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <Package size={16} className="text-emerald-600" />
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm truncate">{ri.product_name as string}</div>
                         <div className="text-xs text-gray-400">{ri.category_name as string}</div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <span className="font-semibold text-green-700 text-sm">{(ri.fulfilled_from_stock as number) || 0}</span>
+                        <span className="font-bold text-emerald-700">{(ri.fulfilled_from_stock as number) || 0}</span>
                         <span className="text-xs text-gray-400 ml-0.5">/ {(ri.requested_quantity as number) || 0}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="bg-green-50 px-5 py-2 border-t border-green-200">
-                  <span className="text-xs text-green-600">Transfert auto — Demande {linkedReplenishment.request_number as string}</span>
+                <div className="bg-emerald-50 px-5 py-2.5 border-t border-emerald-200">
+                  <span className="text-xs text-emerald-600 flex items-center gap-1.5">
+                    <TrendingUp size={12} /> Transfert auto — Demande {linkedReplenishment.request_number as string}
+                  </span>
                 </div>
               </div>
             )}
 
-            {/* Right column — Production items */}
+            {/* Production items */}
             {hasProduction && (
-              <div className="bg-white rounded-xl shadow-sm border border-blue-200 overflow-hidden self-start">
-                <div className="bg-blue-50 px-5 py-3 border-b border-blue-200 flex items-center gap-2">
-                  <Factory size={18} className="text-blue-600" />
-                  <h3 className="font-semibold text-blue-800 text-sm">A produire ({items.length})</h3>
+              <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden self-start">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4 border-b border-blue-200 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+                    <Factory size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-blue-800">A produire</h3>
+                    <span className="text-xs text-blue-600">{items.length} article(s)</span>
+                  </div>
                 </div>
                 <table className="w-full">
                   <thead className="border-b border-blue-100">
-                    <tr>
-                      <th className="text-left px-5 py-2 text-xs font-medium text-blue-700 uppercase">Produit</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-blue-700 uppercase">Planifie</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-blue-700 uppercase">Produit</th>
+                    <tr className="bg-blue-50/50">
+                      <th className="text-left px-5 py-2.5 text-xs font-semibold text-blue-700 uppercase">Produit</th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-blue-700 uppercase">Planifie</th>
+                      <th className="text-right px-5 py-2.5 text-xs font-semibold text-blue-700 uppercase">Produit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-blue-50">
                     {items.map((item: Record<string, unknown>) => (
-                      <tr key={item.id as string} className="hover:bg-blue-50/30">
-                        <td className="px-5 py-3">
+                      <tr key={item.id as string} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
                             {item.product_image ? (
-                              <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover" />
+                              <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover" />
                             ) : (
-                              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-sm">🥖</div>
+                              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                                <ClipboardList size={16} className="text-blue-600" />
+                              </div>
                             )}
                             <div>
                               <span className="font-medium text-sm">{item.product_name as string}</span>
@@ -684,10 +813,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-right font-semibold text-sm">{item.planned_quantity as number}</td>
-                        <td className="px-3 py-3 text-right text-sm">
+                        <td className="px-3 py-3.5 text-right font-semibold text-sm">{item.planned_quantity as number}</td>
+                        <td className="px-5 py-3.5 text-right text-sm">
                           {item.actual_quantity != null ? (
-                            <span className={`font-semibold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-green-600' : 'text-amber-600'}`}>
+                            <span className={`inline-flex items-center gap-1 font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              {(item.actual_quantity as number) >= (item.planned_quantity as number) && <CheckCircle size={14} />}
                               {item.actual_quantity as number}
                             </span>
                           ) : (
@@ -703,125 +833,144 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </div>
         );
       })() : (
-        /* Non-replenishment plan: standard single-column items table */
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Articles du plan ({items.length})</h2>
-            {plan.status === 'in_progress' && (() => {
-              const produced = items.filter((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
-              const total = items.filter((it: Record<string, unknown>) => it.status !== 'cancelled').length;
-              if (produced === 0) return null;
-              const pct = Math.round((produced / total) * 100);
+        /* Non-replenishment plan: card-based items */
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <Layers size={18} className="text-white" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Articles du plan</h2>
+                <span className="text-xs text-gray-500">{items.length} article(s)</span>
+              </div>
+            </div>
+            {plan.status === 'in_progress' && totalActive > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="w-28 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                </div>
+                <span className="text-xs font-medium text-gray-500">{producedCount}/{totalActive} ({progressPct}%)</span>
+              </div>
+            )}
+          </div>
+          <div className="divide-y divide-gray-50">
+            {items.map((item: Record<string, unknown>) => {
+              const itemStatus = (item.status as string) || 'pending';
+              const isWaiting = item.waiting_status === 'waiting';
+              const isCancelled = itemStatus === 'cancelled';
+              const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
+
+              const statusBadgeConfig = itemStatus === 'produced'
+                ? { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={12} />, label: 'Produit' }
+                : itemStatus === 'transferred'
+                ? { bg: 'bg-purple-100', text: 'text-purple-700', icon: <TrendingUp size={12} />, label: 'Transfere' }
+                : itemStatus === 'received'
+                ? { bg: 'bg-blue-100', text: 'text-blue-700', icon: <Package size={12} />, label: 'Recu' }
+                : isCancelled
+                ? { bg: 'bg-red-100', text: 'text-red-700', icon: <XCircle size={12} />, label: 'Annule' }
+                : isWaiting
+                ? { bg: 'bg-amber-100', text: 'text-amber-700', icon: <Clock size={12} />, label: 'En attente' }
+                : { bg: 'bg-gray-100', text: 'text-gray-600', icon: <Play size={12} />, label: 'En cours' };
+
               return (
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                <div key={item.id as string} className={`px-5 py-4 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${isCancelled ? 'opacity-50' : ''}`}>
+                  {/* Left color bar */}
+                  <div className={`w-1 h-12 rounded-full flex-shrink-0 ${
+                    isProduced ? 'bg-emerald-500' : isCancelled ? 'bg-red-300' : isWaiting ? 'bg-amber-400' : 'bg-gray-300'
+                  }`} />
+                  {/* Image */}
+                  {item.product_image ? (
+                    <img src={item.product_image as string} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+                      <ClipboardList size={18} className="text-amber-400" />
+                    </div>
+                  )}
+                  {/* Name */}
+                  <div className="flex-1 min-w-0">
+                    <span className={`font-medium text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
+                    {(item.notes as string) && <div className="text-xs text-gray-400 mt-0.5">{item.notes as string}</div>}
                   </div>
-                  <span className="text-xs text-gray-500">{produced}/{total} ({pct}%)</span>
+                  {/* Quantities */}
+                  <div className="flex items-center gap-5 flex-shrink-0">
+                    <div className="text-center">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Planifie</div>
+                      <div className="text-lg font-bold text-gray-700">{item.planned_quantity as number}</div>
+                    </div>
+                    <div className="text-gray-200">/</div>
+                    <div className="text-center">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Produit</div>
+                      {item.actual_quantity != null ? (
+                        <div className={`text-lg font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {item.actual_quantity as number}
+                        </div>
+                      ) : (
+                        <div className="text-lg text-gray-300 font-bold">—</div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Status badge */}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 flex-shrink-0 ${statusBadgeConfig.bg} ${statusBadgeConfig.text}`}>
+                    {statusBadgeConfig.icon} {statusBadgeConfig.label}
+                  </span>
                 </div>
               );
-            })()}
+            })}
           </div>
-          <table className="w-full">
-            <thead className="border-b">
-              <tr>
-                <th className="text-left py-2 text-sm font-medium text-gray-500">Produit</th>
-                <th className="text-right py-2 text-sm font-medium text-gray-500">Qte planifiee</th>
-                <th className="text-right py-2 text-sm font-medium text-gray-500">Qte produite</th>
-                <th className="text-left py-2 text-sm font-medium text-gray-500">Statut</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {items.map((item: Record<string, unknown>) => {
-                const itemStatus = (item.status as string) || 'pending';
-                const statusBadge = itemStatus === 'produced'
-                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Produit</span>
-                  : itemStatus === 'transferred'
-                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Transfere</span>
-                  : itemStatus === 'received'
-                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Recu</span>
-                  : itemStatus === 'cancelled'
-                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Annule</span>
-                  : item.waiting_status === 'waiting'
-                  ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">En attente</span>
-                  : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">En cours</span>;
-                return (
-                  <tr key={item.id as string} className={(itemStatus === 'received' || itemStatus === 'cancelled') ? 'opacity-60' : ''}>
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        {item.product_image ? (
-                          <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover" />
-                        ) : (
-                          <div className="w-8 h-8 rounded bg-primary-100 flex items-center justify-center text-sm">🥖</div>
-                        )}
-                        <span className={`font-medium ${itemStatus === 'cancelled' ? 'line-through' : ''}`}>{item.product_name as string}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 text-right font-semibold">{item.planned_quantity as number}</td>
-                    <td className="py-3 text-right">
-                      {item.actual_quantity != null ? (
-                        <span className={`font-semibold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-green-600' : 'text-amber-600'}`}>
-                          {item.actual_quantity as number}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="py-3">{statusBadge}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       )}
 
-      {/* ═══ Modification 2: Waiting list — items blocked by insufficient ingredients ═══ */}
+      {/* ══════════════ WAITING LIST ══════════════ */}
       {plan.status !== 'draft' && (() => {
         const waitingItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting');
         const restoredItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'restored');
         if (waitingItems.length === 0 && restoredItems.length === 0) return null;
         return (
-          <div className="card border-amber-200">
-            <div className="flex items-center gap-2 mb-4">
-              <Clock size={20} className="text-amber-500" />
-              <h2 className="text-lg font-semibold text-amber-800">
-                Liste d'attente
-                {waitingItems.length > 0 && <span className="ml-2 text-sm font-normal text-amber-600">({waitingItems.length} en attente)</span>}
-              </h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 border-b border-amber-200 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <Clock size={18} className="text-white" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-amber-900">Liste d'attente</h2>
+                {waitingItems.length > 0 && <span className="text-xs text-amber-600">{waitingItems.length} en attente</span>}
+              </div>
             </div>
 
             {waitingItems.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle size={16} className="text-amber-500" />
-                  <span className="text-sm font-medium text-amber-800">
-                    Ces articles ne peuvent pas etre produits — ingredients insuffisants.
-                    {plan.status === 'in_progress' && ' La production ne peut pas etre terminee tant que des articles sont en attente.'}
-                  </span>
-                </div>
+              <div className="mx-5 mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
+                <AlertTriangle size={18} className="text-amber-500 flex-shrink-0" />
+                <span className="text-sm text-amber-800">
+                  Ces articles ne peuvent pas etre produits — ingredients insuffisants.
+                  {plan.status === 'in_progress' && ' La production ne peut pas etre terminee tant que des articles sont en attente.'}
+                </span>
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="p-5 space-y-2">
               {waitingItems.map((item: Record<string, unknown>) => (
-                <div key={item.id as string} className="flex items-center gap-3 p-3 bg-amber-50/50 rounded-lg border border-amber-100">
+                <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-amber-50/50 rounded-xl border border-amber-100 hover:bg-amber-50 transition-colors">
                   {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                    <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                   ) : (
-                    <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center text-sm flex-shrink-0">⏳</div>
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Clock size={16} className="text-amber-600" />
+                    </div>
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{item.product_name as string}</div>
                     <div className="text-xs text-amber-600">Qte planifiee: {item.planned_quantity as number}</div>
                   </div>
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">En attente</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 flex items-center gap-1">
+                    <Clock size={10} /> En attente
+                  </span>
                   {isChef && (
-                    <div className="flex gap-1">
+                    <div className="flex gap-1.5">
                       <button
                         onClick={() => restoreMutation.mutate([item.id as string])}
                         disabled={restoreMutation.isPending}
-                        className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded-lg flex items-center gap-1 transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-lg flex items-center gap-1 transition-colors"
                       >
                         <RotateCcw size={12} /> Restaurer
                       </button>
@@ -837,27 +986,31 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 </div>
               ))}
               {restoredItems.map((item: Record<string, unknown>) => (
-                <div key={item.id as string} className="flex items-center gap-3 p-3 bg-green-50/50 rounded-lg border border-green-100">
+                <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-100">
                   {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                    <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
                   ) : (
-                    <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center text-sm flex-shrink-0">✅</div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle size={16} className="text-emerald-600" />
+                    </div>
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{item.product_name as string}</div>
-                    <div className="text-xs text-green-600">Qte planifiee: {item.planned_quantity as number}</div>
+                    <div className="text-xs text-emerald-600">Qte planifiee: {item.planned_quantity as number}</div>
                   </div>
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Restaure</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                    <CheckCircle size={10} /> Restaure
+                  </span>
                 </div>
               ))}
             </div>
 
             {waitingItems.length > 1 && isChef && (
-              <div className="mt-3 flex justify-end">
+              <div className="px-5 pb-4 flex justify-end">
                 <button
                   onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, unknown>) => it.id as string))}
                   disabled={restoreMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg flex items-center gap-2 transition-colors"
+                  className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 rounded-xl flex items-center gap-2 transition-all shadow-md"
                 >
                   <RotateCcw size={14} /> Restaurer tous ({waitingItems.length})
                 </button>
@@ -867,59 +1020,78 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         );
       })()}
 
-      {/* Ingredient Needs (only after confirmation) */}
+      {/* ══════════════ INGREDIENT NEEDS ══════════════ */}
       {plan.status !== 'draft' && needs.length > 0 && (
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Besoins en ingredients</h2>
-
-          {insufficientNeeds.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 mb-4">
-              <AlertTriangle className="text-amber-500" size={20} />
-              <span className="text-amber-800 font-medium">
-                {insufficientNeeds.length} ingredient(s) en quantite insuffisante !
-              </span>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+                <Beaker size={18} className="text-white" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Besoins en ingredients</h2>
+                <span className="text-xs text-gray-500">{needs.length} ingredient(s)</span>
+              </div>
             </div>
-          )}
+            {insufficientNeeds.length > 0 && (
+              <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
+                <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
+              </span>
+            )}
+          </div>
 
-          <table className="w-full">
-            <thead className="border-b">
-              <tr>
-                <th className="text-left py-2 text-sm font-medium text-gray-500">Ingredient</th>
-                <th className="text-left py-2 text-sm font-medium text-gray-500">Unite</th>
-                <th className="text-right py-2 text-sm font-medium text-gray-500">Besoin</th>
-                <th className="text-right py-2 text-sm font-medium text-gray-500">Disponible</th>
-                <th className="text-left py-2 text-sm font-medium text-gray-500">Statut</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {needs.map((need: Record<string, unknown>) => {
-                const needed = parseFloat(need.needed_quantity as string);
-                const available = parseFloat(need.available_quantity as string);
-                const sufficient = need.is_sufficient as boolean;
-                return (
-                  <tr key={need.id as string} className={sufficient ? '' : 'bg-red-50/50'}>
-                    <td className="py-3 font-medium">{need.ingredient_name as string}</td>
-                    <td className="py-3 text-sm text-gray-500">{need.unit as string}</td>
-                    <td className="py-3 text-right font-semibold">{needed.toFixed(2)}</td>
-                    <td className="py-3 text-right">{available.toFixed(2)}</td>
-                    <td className="py-3">
-                      {sufficient ? (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Suffisant</span>
-                      ) : (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                          Manque {(needed - available).toFixed(2)} {need.unit as string}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="divide-y divide-gray-50">
+            {needs.map((need: Record<string, unknown>) => {
+              const needed = parseFloat(need.needed_quantity as string);
+              const available = parseFloat(need.available_quantity as string);
+              const sufficient = need.is_sufficient as boolean;
+              const pct = needed > 0 ? Math.min(Math.round((available / needed) * 100), 100) : 100;
+
+              return (
+                <div key={need.id as string} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${!sufficient ? 'bg-red-50/30' : ''}`}>
+                  {/* Left color bar */}
+                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                  {/* Name + unit */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
+                    <div className="text-xs text-gray-400">{need.unit as string}</div>
+                  </div>
+                  {/* Progress bar */}
+                  <div className="w-24 flex-shrink-0">
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
+                  </div>
+                  {/* Quantities */}
+                  <div className="flex items-center gap-4 flex-shrink-0">
+                    <div className="text-center">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
+                      <div className="text-sm font-bold text-gray-700">{needed.toFixed(2)}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
+                      <div className="text-sm font-bold text-gray-700">{available.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  {/* Status */}
+                  {sufficient ? (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
+                      <CheckCircle size={10} /> OK
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
+                      <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Completion Modal */}
+      {/* ══════════════ COMPLETION MODAL ══════════════ */}
       {showCompletion && (
         <CompletionModal
           planId={id!}
@@ -938,16 +1110,14 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
 function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   planId: string;
-  items: Record<string, unknown>[]; // filtered items for this role
-  allItems: Record<string, unknown>[]; // all items for submission
+  items: Record<string, unknown>[];
+  allItems: Record<string, unknown>[];
   onClose: () => void;
   onCompleted: () => void;
 }) {
   const queryClient = useQueryClient();
-  // Only show pending items (not waiting, not already produced/transferred/received)
   const producibleItems = items.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
   const producibleAllItems = allItems.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
-  // Initialize actuals: planned qty for producible items
   const [actuals, setActuals] = useState<Record<string, number>>(
     Object.fromEntries(producibleAllItems.map(it => [it.id as string, it.planned_quantity as number]))
   );
@@ -968,7 +1138,7 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
         toast.success('Plan de production termine automatiquement', { duration: 4000 });
       }
       if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '⚠️', duration: 5000 }));
+        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       }
       onClose();
       onCompleted();
@@ -980,43 +1150,63 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* Fixed header */}
-        <div className="p-6 pb-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-xl font-bold">Produire les articles</h2>
-          <p className="text-sm text-gray-500 mt-1">Saisissez les quantites produites. Mettez 0 pour les articles non encore prets. Le stock sera mis a jour.</p>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header gradient */}
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-2xl p-5 text-white flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <Factory size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Produire les articles</h2>
+              <p className="text-emerald-100 text-xs mt-0.5">{producibleItems.length} article(s) a produire — Le stock sera mis a jour</p>
+            </div>
+          </div>
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-6 py-4">
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3 text-sm font-medium text-gray-500 border-b pb-2 sticky top-0 bg-white">
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="space-y-2">
+            {/* Column headers */}
+            <div className="grid grid-cols-[1fr_80px_90px] gap-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-2">
               <span>Produit</span>
               <span className="text-right">Planifie</span>
               <span className="text-right">Produit</span>
             </div>
             {producibleItems.map((item) => (
-              <div key={item.id as string} className="grid grid-cols-3 gap-3 items-center">
-                <span className="font-medium text-sm truncate">{item.product_name as string}</span>
-                <span className="text-right text-gray-500">{item.planned_quantity as number}</span>
+              <div key={item.id as string} className="grid grid-cols-[1fr_80px_90px] gap-3 items-center py-2 hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {item.product_image ? (
+                    <img src={item.product_image as string} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                      <ClipboardList size={14} className="text-amber-400" />
+                    </div>
+                  )}
+                  <span className="font-medium text-sm truncate text-gray-800">{item.product_name as string}</span>
+                </div>
+                <span className="text-right text-gray-500 font-medium">{item.planned_quantity as number}</span>
                 <input
                   type="number" min="0"
                   value={actuals[item.id as string] || 0}
                   onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
-                  className="input text-right py-1"
+                  className="w-full text-right py-2 px-3 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Sticky footer */}
-        <div className="p-6 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
-          <button onClick={onClose} className="btn-secondary flex-1">Annuler</button>
+        {/* Footer */}
+        <div className="p-5 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">
+            Annuler
+          </button>
           <button onClick={() => produceMutation.mutate()} disabled={produceMutation.isPending || Object.values(actuals).every(q => q <= 0)}
-            className="btn-primary flex-1">
-            {produceMutation.isPending ? 'Production...' : 'Produire et mettre a jour le stock'}
+            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center justify-center gap-2">
+            {produceMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+            {produceMutation.isPending ? 'Production...' : 'Produire et mettre a jour'}
           </button>
         </div>
       </div>

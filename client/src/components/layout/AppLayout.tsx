@@ -23,7 +23,7 @@ const modules: { name: string; href: string; icon: typeof LayoutDashboard; color
   { name: 'Recettes', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
   { name: 'Production', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
   { name: 'Approvisionnement', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
-  { name: 'Personnel', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
+  { name: 'RH', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
   { name: 'Comptabilite', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
   { name: 'Utilisateurs', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
   { name: 'Rapports', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },

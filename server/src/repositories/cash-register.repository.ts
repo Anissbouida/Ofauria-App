@@ -71,6 +71,16 @@ export const cashRegisterRepository = {
     return result.rows;
   },
 
+  async findLastClosedSession(storeId?: string) {
+    const result = await db.query(
+      `SELECT actual_amount FROM cash_register_sessions
+       WHERE status = 'closed' ${storeId ? 'AND store_id = $1' : ''}
+       ORDER BY closed_at DESC LIMIT 1`,
+      storeId ? [storeId] : []
+    );
+    return result.rows[0] || null;
+  },
+
   async open(userId: string, openingAmount: number, storeId?: string) {
     const result = await db.query(
       `INSERT INTO cash_register_sessions (user_id, opening_amount, store_id) VALUES ($1, $2, $3) RETURNING *`,

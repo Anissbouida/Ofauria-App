@@ -76,6 +76,7 @@ export default function POSPage() {
   const [closeResult, setCloseResult] = useState<Record<string, unknown> | null>(null);
   const [inventoryItems, setInventoryItems] = useState<Record<string, unknown>[]>([]);
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
+  const [inventoryDestinations, setInventoryDestinations] = useState<Record<string, string>>({});
   const [inventoryDone, setInventoryDone] = useState(false);
 
   // Order form state
@@ -110,6 +111,13 @@ export default function POSPage() {
   const { data: activeSession, isLoading: sessionLoading } = useQuery({
     queryKey: ['cash-register-session'],
     queryFn: cashRegisterApi.currentSession,
+  });
+
+  // Last closed session amount (for pre-filling opening amount)
+  const { data: lastClosedData } = useQuery({
+    queryKey: ['last-closed-amount'],
+    queryFn: cashRegisterApi.lastClosedAmount,
+    enabled: !activeSession && !sessionLoading,
   });
 
   const { data: productsData } = useQuery({
@@ -376,7 +384,7 @@ export default function POSPage() {
                 Ouvrez la caisse pour commencer a vendre
               </p>
             </div>
-            <button onClick={() => setShowOpenModal(true)} className="btn-primary px-8 py-3 text-lg">
+            <button onClick={() => { setOpeningAmount(String(lastClosedData?.amount || 0)); setShowOpenModal(true); }} className="btn-primary px-8 py-3 text-lg">
               <Unlock size={20} className="inline mr-2" />
               Ouvrir la caisse
             </button>
@@ -392,6 +400,13 @@ export default function POSPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
               <h2 className="text-xl font-bold mb-4">Ouverture de caisse</h2>
+              {(lastClosedData?.amount || 0) > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    <strong>Report automatique :</strong> la derniere fermeture indiquait <strong>{(lastClosedData?.amount || 0).toFixed(2)} DH</strong> en caisse.
+                  </p>
+                </div>
+              )}
               <label className="block text-sm font-medium text-gray-700 mb-2">Fond de caisse (DH)</label>
               <input type="number" value={openingAmount} onChange={(e) => setOpeningAmount(e.target.value)}
                 className="input text-center text-2xl font-bold mb-6" min="0" step="0.01" autoFocus />
@@ -1122,41 +1137,233 @@ export default function POSPage() {
       {/* Close Register Modal */}
       {showCloseModal && closeResult && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : 'max-w-lg max-h-[90vh]'} overflow-y-auto`}>
             {/* ═══ RULE 3: Inventory step ═══ */}
             {closeStep === 'inventory' ? (
               <>
-                <h2 className="text-xl font-bold mb-1">Saisie des invendus en vitrine</h2>
-                <p className="text-sm text-gray-500 mb-4">Saisissez les quantités restantes en vitrine pour chaque article approvisionné aujourd'hui.</p>
-                <div className="space-y-2 mb-4">
-                  <div className="grid grid-cols-4 gap-2 text-xs font-medium text-gray-500 border-b pb-2">
-                    <span className="col-span-1">Produit</span>
-                    <span className="text-center">Approvisionné</span>
-                    <span className="text-center">Vendu</span>
-                    <span className="text-center">Restant</span>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Inventaire & retours fin de journee</h2>
+                    <p className="text-sm text-gray-500 mt-1">Saisissez les quantites restantes et choisissez la destination pour chaque article.</p>
                   </div>
-                  {inventoryItems.map((it) => {
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Package size={18} />
+                    <span className="font-semibold">{inventoryItems.length} articles</span>
+                  </div>
+                </div>
+
+                {/* Summary bar at top */}
+                {(() => {
+                  let totalDiscrepancy = 0;
+                  let totalReexpose = 0, totalRecycle = 0, totalWaste = 0, totalSold = 0, totalRemaining = 0;
+                  inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
                     const rep = parseInt(it.replenished_qty as string) || 0;
                     const sold = parseInt(it.sold_qty as string) || 0;
                     const remaining = inventoryQtys[pid] ?? 0;
-                    const discrepancy = rep - sold - remaining;
-                    return (
-                      <div key={pid} className={`grid grid-cols-4 gap-2 items-center py-2 px-2 rounded-lg ${discrepancy !== 0 ? 'bg-amber-50' : ''}`}>
-                        <span className="text-sm font-medium truncate" title={it.product_name as string}>
-                          {it.product_name as string}
-                        </span>
-                        <span className="text-center text-sm font-semibold text-blue-700">{rep}</span>
-                        <span className="text-center text-sm font-semibold text-green-700">{sold}</span>
-                        <input type="number" min={0} max={rep}
-                          value={remaining}
-                          onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                          className="input text-center py-1 text-sm font-bold" />
+                    totalSold += sold;
+                    totalRemaining += remaining;
+                    totalDiscrepancy += rep - sold - remaining;
+                    if (remaining > 0) {
+                      const dest = inventoryDestinations[pid] || 'reexpose';
+                      if (dest === 'reexpose') totalReexpose += remaining;
+                      else if (dest === 'recycle') totalRecycle += remaining;
+                      else if (dest === 'waste') totalWaste += remaining;
+                    }
+                  });
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-blue-700">{totalSold}</div>
+                        <div className="text-xs text-blue-600 font-medium">Vendus</div>
                       </div>
-                    );
-                  })}
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-gray-700">{totalRemaining}</div>
+                        <div className="text-xs text-gray-600 font-medium">Restants</div>
+                      </div>
+                      {totalReexpose > 0 && (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-green-700">{totalReexpose}</div>
+                          <div className="text-xs text-green-600 font-medium">A reexposer</div>
+                        </div>
+                      )}
+                      {totalRecycle > 0 && (
+                        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-cyan-700">{totalRecycle}</div>
+                          <div className="text-xs text-cyan-600 font-medium">A recycler</div>
+                        </div>
+                      )}
+                      {totalWaste > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-red-700">{totalWaste}</div>
+                          <div className="text-xs text-red-600 font-medium">A detruire</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Items table */}
+                <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">
+                  <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <span className="col-span-4">Produit</span>
+                    <span className="col-span-1 text-center">Stock</span>
+                    <span className="col-span-1 text-center">Vendu</span>
+                    <span className="col-span-2 text-center">Restant</span>
+                    <span className="col-span-1 text-center">Ecart</span>
+                    <span className="col-span-3 text-center">Destination</span>
+                  </div>
+                  <div className="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto">
+                    {inventoryItems.map((it) => {
+                      const pid = it.product_id as string;
+                      const rep = parseInt(it.replenished_qty as string) || 0;
+                      const sold = parseInt(it.sold_qty as string) || 0;
+                      const remaining = inventoryQtys[pid] ?? 0;
+                      const discrepancy = rep - sold - remaining;
+                      const destination = inventoryDestinations[pid] || 'reexpose';
+
+                      // Compute display status
+                      const displayLifeHours = it.display_life_hours as number | null;
+                      const isReexposable = it.is_reexposable as boolean;
+                      const isRecyclable = it.is_recyclable as boolean;
+                      const maxReex = (it.max_reexpositions as number) || 0;
+                      const reexCount = parseInt(it.reexposition_count as string) || 0;
+                      const canReexpose = isReexposable && (maxReex === 0 || reexCount < maxReex);
+
+                      // Auto-suggest destination
+                      const suggestedDest = !canReexpose && isRecyclable ? 'recycle'
+                        : !canReexpose && !isRecyclable ? 'waste'
+                        : 'reexpose';
+
+                      // Initialize destination on first render
+                      if (!inventoryDestinations[pid] && remaining > 0) {
+                        inventoryDestinations[pid] = suggestedDest;
+                      }
+
+                      // Exposition status
+                      let expoStatus: 'ok' | 'expiring' | 'expired' = 'ok';
+                      let expoLabel = '';
+                      if (displayLifeHours) {
+                        const hoursLeft = displayLifeHours - 10;
+                        if (hoursLeft <= 0) { expoStatus = 'expired'; expoLabel = 'Expire'; }
+                        else if (hoursLeft <= 4) { expoStatus = 'expiring'; expoLabel = `${hoursLeft}h restantes`; }
+                      }
+
+                      return (
+                        <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
+                          expoStatus === 'expired' ? 'bg-red-50' : discrepancy !== 0 ? 'bg-amber-50' : 'hover:bg-gray-50'
+                        }`}>
+                          {/* Product name */}
+                          <div className="col-span-4 min-w-0">
+                            <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
+                              {it.product_name as string}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {it.category_name && (
+                                <span className="text-[11px] text-gray-400">{it.category_name as string}</span>
+                              )}
+                              {expoStatus !== 'ok' && (
+                                <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${expoStatus === 'expired' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                  {expoStatus === 'expired' ? 'Expire' : expoLabel}
+                                </span>
+                              )}
+                              {reexCount > 0 && (
+                                <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                                  Reexp. {reexCount}x
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {/* Stock */}
+                          <div className="col-span-1 text-center">
+                            <span className="text-sm font-bold text-blue-700">{rep}</span>
+                          </div>
+                          {/* Sold */}
+                          <div className="col-span-1 text-center">
+                            <span className="text-sm font-bold text-green-700">{sold}</span>
+                          </div>
+                          {/* Remaining - larger input */}
+                          <div className="col-span-2 flex justify-center">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
+                                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <input type="number" min={0}
+                                value={remaining}
+                                onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                className="w-16 h-8 text-center text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                              />
+                              <button
+                                onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
+                                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          {/* Discrepancy */}
+                          <div className="col-span-1 text-center">
+                            {discrepancy !== 0 ? (
+                              <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                {discrepancy > 0 ? `-${discrepancy}` : `+${Math.abs(discrepancy)}`}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-300">0</span>
+                            )}
+                          </div>
+                          {/* Destination */}
+                          <div className="col-span-3">
+                            {remaining > 0 ? (
+                              <div className="flex gap-1">
+                                {canReexpose && (
+                                  <button
+                                    onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'reexpose' }))}
+                                    className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
+                                      (inventoryDestinations[pid] || suggestedDest) === 'reexpose'
+                                        ? 'bg-green-500 text-white border-green-500 shadow-sm'
+                                        : 'bg-white text-green-700 border-green-200 hover:bg-green-50'
+                                    }`}
+                                  >
+                                    Reexposer
+                                  </button>
+                                )}
+                                {isRecyclable && (
+                                  <button
+                                    onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'recycle' }))}
+                                    className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
+                                      (inventoryDestinations[pid] || suggestedDest) === 'recycle'
+                                        ? 'bg-cyan-500 text-white border-cyan-500 shadow-sm'
+                                        : 'bg-white text-cyan-700 border-cyan-200 hover:bg-cyan-50'
+                                    }`}
+                                  >
+                                    Recycler
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'waste' }))}
+                                  className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
+                                    (inventoryDestinations[pid] || suggestedDest) === 'waste'
+                                      ? 'bg-red-500 text-white border-red-500 shadow-sm'
+                                      : 'bg-white text-red-700 border-red-200 hover:bg-red-50'
+                                  }`}
+                                >
+                                  Detruire
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                {/* Summary */}
+
+                {/* Discrepancy alert */}
                 {(() => {
                   let totalDiscrepancy = 0;
                   inventoryItems.forEach((it) => {
@@ -1166,49 +1373,71 @@ export default function POSPage() {
                     const remaining = inventoryQtys[pid] ?? 0;
                     totalDiscrepancy += rep - sold - remaining;
                   });
-                  if (totalDiscrepancy !== 0) {
-                    return (
-                      <div className={`rounded-xl p-3 mb-4 flex items-center gap-2 text-sm ${totalDiscrepancy > 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
-                        <AlertTriangle size={16} className={totalDiscrepancy > 0 ? 'text-red-500' : 'text-blue-500'} />
-                        <span className={totalDiscrepancy > 0 ? 'text-red-700' : 'text-blue-700'}>
-                          {totalDiscrepancy > 0
-                            ? `Écart : ${totalDiscrepancy} unité(s) non justifiée(s) (perte/casse)`
-                            : `Écart : ${Math.abs(totalDiscrepancy)} unité(s) en surplus`}
-                        </span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="rounded-xl p-3 mb-4 flex items-center gap-2 text-sm bg-green-50 border border-green-200">
-                      <CheckCircle size={16} className="text-green-500" />
-                      <span className="text-green-700">Inventaire cohérent — aucun écart.</span>
+
+                  return totalDiscrepancy !== 0 ? (
+                    <div className={`rounded-xl p-4 flex items-center gap-3 text-sm mb-4 ${totalDiscrepancy > 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
+                      <AlertTriangle size={20} className={totalDiscrepancy > 0 ? 'text-red-500' : 'text-blue-500'} />
+                      <span className={`font-medium ${totalDiscrepancy > 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                        {totalDiscrepancy > 0
+                          ? `Ecart : ${totalDiscrepancy} unite(s) non justifiee(s) (perte/casse)`
+                          : `Ecart : ${Math.abs(totalDiscrepancy)} unite(s) en surplus`}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl p-4 flex items-center gap-3 text-sm mb-4 bg-green-50 border border-green-200">
+                      <CheckCircle size={20} className="text-green-500" />
+                      <span className="text-green-700 font-medium">Inventaire coherent — aucun ecart.</span>
                     </div>
                   );
                 })()}
+
                 <div className="flex gap-3">
                   <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); }}
-                    className="btn-secondary flex-1">Annuler</button>
+                    className="btn-secondary flex-1 py-3 text-base">Annuler</button>
                   <button onClick={async () => {
+                    // Check all expired items have a valid destination (not reexpose)
+                    let hasError = false;
+                    inventoryItems.forEach((it) => {
+                      const pid = it.product_id as string;
+                      const remaining = inventoryQtys[pid] ?? 0;
+                      if (remaining > 0) {
+                        const displayLifeHours = it.display_life_hours as number | null;
+                        if (displayLifeHours && displayLifeHours <= 10) {
+                          const dest = inventoryDestinations[pid] || 'reexpose';
+                          const isReexposable = it.is_reexposable as boolean;
+                          if (dest === 'reexpose' && !isReexposable) hasError = true;
+                        }
+                      }
+                    });
+                    if (hasError) {
+                      toast.error('Certains produits expires ne peuvent pas etre reexposes');
+                      return;
+                    }
                     try {
-                      const items = inventoryItems.map((it) => ({
-                        productId: it.product_id as string,
-                        productName: it.product_name as string,
-                        replenishedQty: parseInt(it.replenished_qty as string) || 0,
-                        soldQty: parseInt(it.sold_qty as string) || 0,
-                        remainingQty: inventoryQtys[it.product_id as string] ?? 0,
-                      }));
+                      const items = inventoryItems.map((it) => {
+                        const pid = it.product_id as string;
+                        const remaining = inventoryQtys[pid] ?? 0;
+                        return {
+                          productId: pid,
+                          productName: it.product_name as string,
+                          replenishedQty: parseInt(it.replenished_qty as string) || 0,
+                          soldQty: parseInt(it.sold_qty as string) || 0,
+                          remainingQty: remaining,
+                          destination: remaining > 0 ? (inventoryDestinations[pid] || 'reexpose') : undefined,
+                        };
+                      });
                       await replenishmentApi.saveInventoryCheck({
                         sessionId: closeResult?.id as string,
                         items,
                       });
-                      toast.success('Inventaire enregistré');
+                      toast.success('Inventaire et retours enregistres');
                     } catch {
-                      toast.error('Erreur lors de l\'enregistrement de l\'inventaire');
+                      toast.error('Erreur lors de l\'enregistrement');
                     }
                     setInventoryDone(true);
                     setCloseStep('input');
                   }}
-                    className="btn-primary flex-1">
+                    className="btn-primary flex-1 py-3 text-base font-semibold">
                     Valider l'inventaire
                   </button>
                 </div>

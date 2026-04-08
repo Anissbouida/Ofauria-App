@@ -26,9 +26,49 @@ export const productController = {
     res.json({ success: true, data: product });
   },
   async create(req: AuthRequest, res: Response) {
-    const data = { ...req.body, slug: slugify(req.body.name) };
-    const product = await productRepository.create(data);
-    res.status(201).json({ success: true, data: product });
+    const { recipeId, ...body } = req.body;
+
+    // Recipe is mandatory for new products
+    if (!recipeId) {
+      res.status(400).json({ success: false, error: { message: 'Une recette est obligatoire pour creer un produit. Veuillez d\'abord creer la recette dans le module Recettes.' } });
+      return;
+    }
+
+    // Verify recipe exists and is not already linked to another product
+    const recipeCheck = await db.query('SELECT id, product_id, name FROM recipes WHERE id = $1', [recipeId]);
+    if (recipeCheck.rows.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
+      return;
+    }
+    if (recipeCheck.rows[0].product_id) {
+      res.status(400).json({ success: false, error: { message: `Cette recette est deja liee a un autre produit.` } });
+      return;
+    }
+
+    const data = { ...body, slug: slugify(body.name) };
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const productResult = await client.query(
+        `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [data.name, data.slug, data.categoryId, data.description || null, data.price,
+         data.costPrice || null, data.isAvailable ?? true, data.isCustomOrderable ?? false,
+         data.preparationTimeMin || null, data.responsibleUserId || null]
+      );
+      const product = productResult.rows[0];
+
+      // Link the recipe to the newly created product
+      await client.query('UPDATE recipes SET product_id = $1 WHERE id = $2', [product.id, recipeId]);
+
+      await client.query('COMMIT');
+      res.status(201).json({ success: true, data: product });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
   async update(req: AuthRequest, res: Response) {
     const data = { ...req.body };

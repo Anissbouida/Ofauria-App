@@ -18,7 +18,7 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
   { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
   { name: 'Approvisionnement', description: 'Demandes et transferts de stock', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
-  { name: 'Personnel', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
+  { name: 'RH', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
   { name: 'Comptabilite', description: 'Factures, paiements et fournisseurs', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
   { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
   { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },

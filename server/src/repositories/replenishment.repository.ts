@@ -6,7 +6,7 @@ export const replenishmentRepository = {
   async generateRequestNumber(): Promise<string> {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const result = await db.query(
-      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at) = CURRENT_DATE AND batch_id IS NOT NULL`
+      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca') AND batch_id IS NOT NULL`
     );
     const num = parseInt(result.rows[0].count, 10) + 1;
     return `DRA-${today}-${String(num).padStart(3, '0')}`;
@@ -231,7 +231,7 @@ export const replenishmentRepository = {
         const productionNeeded: { productId: string; qty: number; itemId: string }[] = [];
 
         for (const item of items) {
-          const available = stockMap[item.productId] || 0;
+          const available = Math.max(stockMap[item.productId] || 0, 0);
           const requested = item.requestedQuantity;
           const fromStock = Math.min(available, requested);
           const toProduce = requested - fromStock;
@@ -511,8 +511,8 @@ export const replenishmentRepository = {
        FROM replenishment_request_items ri
        JOIN replenishment_requests rr ON rr.id = ri.request_id
        WHERE rr.store_id = $1
-         AND rr.created_at::date = CURRENT_DATE
-         AND rr.status != 'cancelled'`,
+         AND DATE(rr.created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca')
+         AND rr.status NOT IN ('cancelled', 'closed', 'closed_with_discrepancy')`,
       [storeId]
     );
     return result.rows.map((r: { product_id: string }) => r.product_id);
@@ -557,32 +557,42 @@ export const replenishmentRepository = {
 
   /* ─── RULE 3: Get replenished items today ─── */
 
-  async getReplenishedItemsToday(storeId: string) {
+  async getReplenishedItemsToday(storeId: string, sessionOpenedAt?: string | null) {
+    // Show all products that have stock in the store (i.e. currently in the display/vitrine)
+    // This is more reliable than filtering by request date, since products may have been
+    // transferred across date boundaries
     const result = await db.query(`
       SELECT
-        ri.product_id,
+        pss.product_id,
         p.name as product_name,
         p.image_url as product_image,
         c.name as category_name,
-        SUM(COALESCE(ri.qty_to_store, 0)) as replenished_qty,
+        p.shelf_life_days,
+        p.display_life_hours,
+        p.is_reexposable,
+        p.is_recyclable,
+        p.recycle_ingredient_id,
+        p.max_reexpositions,
+        COALESCE(pss.stock_quantity, 0)::int as replenished_qty,
         COALESCE(
           (SELECT SUM(si.quantity)
            FROM sale_items si
            JOIN sales s ON s.id = si.sale_id
            WHERE s.store_id = $1
-             AND s.created_at::date = CURRENT_DATE
-             AND si.product_id = ri.product_id),
+             AND DATE(s.created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca')
+             AND si.product_id = pss.product_id),
           0
-        ) as sold_qty
-      FROM replenishment_request_items ri
-      JOIN replenishment_requests rr ON rr.id = ri.request_id
-      JOIN products p ON p.id = ri.product_id
+        ) as sold_qty,
+        COALESCE(pdt.current_reexposition_count, 0) as reexposition_count,
+        pdt.display_expires_at,
+        pdt.produced_at,
+        pdt.expires_at
+      FROM product_store_stock pss
+      JOIN products p ON p.id = pss.product_id
       LEFT JOIN categories c ON c.id = p.category_id
-      WHERE rr.store_id = $1
-        AND rr.created_at::date = CURRENT_DATE
-        AND rr.status != 'cancelled'
-        AND COALESCE(ri.qty_to_store, 0) > 0
-      GROUP BY ri.product_id, p.name, p.image_url, c.name
+      LEFT JOIN product_display_tracking pdt ON pdt.product_id = pss.product_id AND pdt.store_id = $1 AND pdt.status = 'active'
+      WHERE pss.store_id = $1
+        AND COALESCE(pss.stock_quantity, 0) > 0
       ORDER BY c.name, p.name
     `, [storeId]);
     return result.rows;
@@ -594,7 +604,7 @@ export const replenishmentRepository = {
     storeId: string;
     sessionId?: string;
     checkedBy: string;
-    items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number }[];
+    items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number; destination?: string; displayStatus?: string }[];
     notes?: string;
   }) {
     const client = await db.getClient();
@@ -619,10 +629,84 @@ export const replenishmentRepository = {
 
       for (const it of data.items) {
         const discrepancy = it.replenishedQty - it.soldQty - it.remainingQty;
+        const destination = it.destination || 'reexpose';
+
+        // Get current reexposition count from tracking
+        const trackResult = await client.query(
+          `SELECT current_reexposition_count FROM product_display_tracking
+           WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
+          [it.productId, data.storeId]
+        );
+        const reexCount = trackResult.rows[0]?.current_reexposition_count || 0;
+
         await client.query(`
-          INSERT INTO daily_inventory_check_items (check_id, product_id, product_name, replenished_qty, sold_qty, remaining_qty, discrepancy)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `, [checkId, it.productId, it.productName, it.replenishedQty, it.soldQty, it.remainingQty, discrepancy]);
+          INSERT INTO daily_inventory_check_items (check_id, product_id, product_name, replenished_qty, sold_qty, remaining_qty, discrepancy, destination, display_status, reexposition_count)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [checkId, it.productId, it.productName, it.replenishedQty, it.soldQty, it.remainingQty, discrepancy, destination, it.displayStatus || 'ok', reexCount]);
+
+        // Apply destination effects on stock
+        if (it.remainingQty > 0) {
+          if (destination === 'recycle') {
+            // Reduce product store stock
+            await client.query(
+              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+               WHERE product_id = $2 AND store_id = $3`,
+              [it.remainingQty, it.productId, data.storeId]
+            );
+            // Add to recycle ingredient stock if configured
+            const recycleResult = await client.query(
+              `SELECT recycle_ingredient_id FROM products WHERE id = $1`, [it.productId]
+            );
+            if (recycleResult.rows[0]?.recycle_ingredient_id) {
+              const ingId = recycleResult.rows[0].recycle_ingredient_id;
+              await client.query(
+                `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
+                 WHERE ingredient_id = $2 AND store_id = $3`,
+                [it.remainingQty, ingId, data.storeId]
+              );
+              await client.query(
+                `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
+                 VALUES ($1, 'recycle', $2, $3, $4, $5)`,
+                [ingId, it.remainingQty, `Recyclage: ${it.productName} x${it.remainingQty}`, data.checkedBy, data.storeId]
+              );
+            }
+            // Update tracking
+            await client.query(
+              `UPDATE product_display_tracking SET status = 'recycled', updated_at = NOW()
+               WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
+              [it.productId, data.storeId]
+            );
+          } else if (destination === 'waste') {
+            // Reduce product store stock — perte
+            await client.query(
+              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+               WHERE product_id = $2 AND store_id = $3`,
+              [it.remainingQty, it.productId, data.storeId]
+            );
+            // Record waste transaction
+            await client.query(
+              `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+               VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
+              [it.productId, -it.remainingQty, `Perte fin de journee: ${it.productName} x${it.remainingQty}`, data.checkedBy, data.storeId]
+            );
+            // Update tracking
+            await client.query(
+              `UPDATE product_display_tracking SET status = 'wasted', updated_at = NOW()
+               WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
+              [it.productId, data.storeId]
+            );
+          } else if (destination === 'reexpose') {
+            // Reexpose: increment reexposition counter, stock stays
+            await client.query(
+              `INSERT INTO product_display_tracking (product_id, store_id, current_reexposition_count, first_displayed_at, last_reexposed_at, status)
+               VALUES ($1, $2, $3, NOW(), NOW(), 'active')
+               ON CONFLICT (product_id, store_id, first_displayed_at) DO UPDATE
+               SET current_reexposition_count = product_display_tracking.current_reexposition_count + 1,
+                   last_reexposed_at = NOW(), updated_at = NOW()`,
+              [it.productId, data.storeId, reexCount + 1]
+            );
+          }
+        }
       }
 
       await client.query('COMMIT');

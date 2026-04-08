@@ -5,7 +5,7 @@ import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval } from 'dat
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
-  Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download,
+  Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ROLE_LABELS } from '@ofauria/shared';
@@ -27,27 +27,35 @@ export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<HrTab>('employees');
 
-  const tabs: { key: HrTab; label: string; icon: typeof Users }[] = [
-    { key: 'employees', label: 'Employes', icon: Users },
-    { key: 'attendance', label: 'Pointage', icon: Clock },
-    { key: 'leaves', label: 'Conges', icon: CalendarOff },
-    { key: 'payroll', label: 'Paie', icon: Banknote },
-    { key: 'schedule', label: 'Planning', icon: CalendarDays },
+  const tabs: { key: HrTab; label: string; icon: typeof Users; color: string }[] = [
+    { key: 'employees', label: 'Employes', icon: Users, color: 'teal' },
+    { key: 'attendance', label: 'Pointage', icon: Clock, color: 'blue' },
+    { key: 'leaves', label: 'Conges', icon: CalendarOff, color: 'purple' },
+    { key: 'payroll', label: 'Paie', icon: Banknote, color: 'green' },
+    { key: 'schedule', label: 'Planning', icon: CalendarDays, color: 'amber' },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-bakery-chocolate">Ressources Humaines</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Ressources Humaines</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Gestion du personnel, pointage et paie</p>
+        </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-1.5 flex gap-1">
         {tabs.map(t => {
           const Icon = t.icon;
+          const isActive = tab === t.key;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                tab === t.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex-1 justify-center ${
+                isActive
+                  ? 'bg-teal-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               }`}>
               <Icon size={16} /> {t.label}
             </button>
@@ -69,6 +77,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [viewDetail, setViewDetail] = useState<Record<string, unknown> | null>(null);
+  const [searchEmp, setSearchEmp] = useState('');
 
   const { data: employees = [], isLoading } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
 
@@ -83,60 +92,107 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
     onError: () => toast.error('Erreur'),
   });
 
+  const activeCount = employees.filter((e: Record<string, unknown>) => e.is_active).length;
+  const filteredEmp = employees.filter((e: Record<string, unknown>) => {
+    if (!searchEmp) return true;
+    const s = searchEmp.toLowerCase();
+    return (e.first_name as string).toLowerCase().includes(s) || (e.last_name as string).toLowerCase().includes(s) || (e.cin as string || '').toLowerCase().includes(s);
+  });
+
+  const ROLE_COLORS: Record<string, string> = {
+    admin: 'bg-purple-100 text-purple-700',
+    baker: 'bg-amber-100 text-amber-700',
+    pastry_chef: 'bg-pink-100 text-pink-700',
+    cashier: 'bg-blue-100 text-blue-700',
+    viennoiserie: 'bg-orange-100 text-orange-700',
+    beldi_sale: 'bg-teal-100 text-teal-700',
+    manager: 'bg-indigo-100 text-indigo-700',
+  };
+
   return (
     <>
-      <div className="flex justify-end">
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
-          <Plus size={18} /> Ajouter un employe
+      {/* Stats + Actions */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-4 py-2.5 shadow-sm">
+            <Users size={18} className="text-teal-600" />
+            <span className="text-sm"><strong className="text-gray-900">{activeCount}</strong> <span className="text-gray-500">actifs</span></span>
+            <span className="text-gray-300 mx-1">|</span>
+            <span className="text-sm"><strong className="text-gray-900">{employees.length}</strong> <span className="text-gray-500">total</span></span>
+          </div>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Rechercher..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
+              className="pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 w-64 shadow-sm" />
+          </div>
+        </div>
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
+          <Plus size={18} /> Nouvel employe
         </button>
       </div>
 
-      {isLoading ? <p className="text-gray-500">Chargement...</p> : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="animate-spin w-8 h-8 border-3 border-teal-500 border-t-transparent rounded-full" />
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 18rem)' }}>
           <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employe</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Role</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Contrat</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Telephone</th>
-                <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Salaire</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Statut</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Actions</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Employe</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contrat</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Telephone</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Salaire</th>
+                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {employees.map((e: Record<string, unknown>) => (
-                <tr key={e.id as string} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
+              {filteredEmp.map((e: Record<string, unknown>) => (
+                <tr key={e.id as string} className="hover:bg-teal-50/30 transition-colors cursor-pointer" onClick={() => setViewDetail(e)}>
+                  <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 text-sm font-bold">
+                      <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-sm font-bold">
                         {(e.first_name as string).charAt(0)}{(e.last_name as string).charAt(0)}
                       </div>
                       <div>
-                        <p className="font-medium text-sm">{e.first_name as string} {e.last_name as string}</p>
+                        <p className="font-semibold text-sm text-gray-900">{e.first_name as string} {e.last_name as string}</p>
                         {e.cin && <p className="text-xs text-gray-400">CIN: {e.cin as string}</p>}
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm">{ROLE_LABELS[e.role as keyof typeof ROLE_LABELS] || e.role}</td>
-                  <td className="px-4 py-3 text-sm">{CONTRACT_LABELS[e.contract_type as string] || 'CDI'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{e.phone as string || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-right font-medium">
-                    {e.monthly_salary ? `${parseFloat(e.monthly_salary as string).toFixed(2)} DH` : '—'}
+                  <td className="px-5 py-3">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ROLE_COLORS[e.role as string] || 'bg-gray-100 text-gray-600'}`}>
+                      {ROLE_LABELS[e.role as keyof typeof ROLE_LABELS] || e.role}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <td className="px-5 py-3">
+                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600">{CONTRACT_LABELS[e.contract_type as string] || 'CDI'}</span>
+                  </td>
+                  <td className="px-5 py-3 text-sm text-gray-500">{e.phone as string || <span className="text-gray-300">—</span>}</td>
+                  <td className="px-5 py-3 text-right">
+                    {e.monthly_salary ? (
+                      <>
+                        <span className="text-sm font-bold text-gray-900">{parseFloat(e.monthly_salary as string).toFixed(0)}</span>
+                        <span className="text-xs text-gray-400 ml-0.5">DH</span>
+                      </>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-5 py-3 text-center">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${e.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${e.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
                       {e.is_active ? 'Actif' : 'Inactif'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => setViewDetail(e)} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Details">
-                        <UserCog size={15} />
+                  <td className="px-5 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => setViewDetail(e)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Details">
+                        <UserCog size={15} className="text-gray-400" />
                       </button>
-                      <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Modifier">
-                        <Pencil size={15} />
+                      <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
+                        <Pencil size={15} className="text-gray-500" />
                       </button>
                     </div>
                   </td>
@@ -144,45 +200,73 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               ))}
             </tbody>
           </table>
-          {employees.length === 0 && <p className="text-center py-8 text-gray-400">Aucun employe</p>}
+          {filteredEmp.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Users size={48} className="mb-3 text-gray-300" />
+              <p className="text-lg font-medium">Aucun employe trouve</p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Detail modal */}
+      {/* Detail modal — redesigned */}
       {viewDetail && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewDetail(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">{viewDetail.first_name as string} {viewDetail.last_name as string}</h2>
-              <button onClick={() => setViewDetail(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {([
-                ['Role', ROLE_LABELS[viewDetail.role as keyof typeof ROLE_LABELS] || viewDetail.role],
-                ['CIN', viewDetail.cin], ['Telephone', viewDetail.phone],
-                ['Date de naissance', viewDetail.birth_date ? format(new Date(viewDetail.birth_date as string), 'dd/MM/yyyy') : null],
-                ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
-                ['N° CNSS', viewDetail.cnss_number],
-                ['Type de contrat', CONTRACT_LABELS[viewDetail.contract_type as string]],
-                ['Debut contrat', viewDetail.contract_start ? format(new Date(viewDetail.contract_start as string), 'dd/MM/yyyy') : null],
-                ['Fin contrat', viewDetail.contract_end ? format(new Date(viewDetail.contract_end as string), 'dd/MM/yyyy') : null],
-                ['Date d\'embauche', viewDetail.hire_date ? format(new Date(viewDetail.hire_date as string), 'dd/MM/yyyy') : null],
-                ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
-                ['Contact urgence', viewDetail.emergency_contact_name],
-                ['Tel. urgence', viewDetail.emergency_contact_phone],
-              ] as [string, unknown][]).map(([label, val]) => val ? (
-                <div key={label} className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 mb-1">{label}</p>
-                  <p className="font-medium">{val as string}</p>
+          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[88vh] overflow-y-auto shadow-2xl" onClick={ev => ev.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 border-b border-teal-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-lg font-bold border-2 border-teal-200">
+                    {(viewDetail.first_name as string).charAt(0)}{(viewDetail.last_name as string).charAt(0)}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{viewDetail.first_name as string} {viewDetail.last_name as string}</h2>
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${ROLE_COLORS[viewDetail.role as string] || 'bg-gray-100 text-gray-600'}`}>
+                      {ROLE_LABELS[viewDetail.role as keyof typeof ROLE_LABELS] || viewDetail.role}
+                    </span>
+                  </div>
                 </div>
-              ) : null)}
-            </div>
-            {viewDetail.notes && (
-              <div className="mt-4 bg-gray-50 rounded-lg p-3 text-sm">
-                <p className="text-xs text-gray-500 mb-1">Notes</p>
-                <p>{viewDetail.notes as string}</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setViewDetail(null); setEditing(viewDetail); setShowForm(true); }}
+                    className="px-3 py-2 bg-white/70 hover:bg-white rounded-lg text-sm font-medium text-gray-600 transition-colors flex items-center gap-1.5">
+                    <Pencil size={14} /> Modifier
+                  </button>
+                  <button onClick={() => setViewDetail(null)} className="w-9 h-9 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center transition-colors">
+                    <X size={18} className="text-gray-500" />
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+            {/* Details */}
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {([
+                  ['CIN', viewDetail.cin], ['Telephone', viewDetail.phone],
+                  ['Date de naissance', viewDetail.birth_date ? format(new Date(viewDetail.birth_date as string), 'dd/MM/yyyy') : null],
+                  ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
+                  ['N CNSS', viewDetail.cnss_number],
+                  ['Type de contrat', CONTRACT_LABELS[viewDetail.contract_type as string]],
+                  ['Debut contrat', viewDetail.contract_start ? format(new Date(viewDetail.contract_start as string), 'dd/MM/yyyy') : null],
+                  ['Fin contrat', viewDetail.contract_end ? format(new Date(viewDetail.contract_end as string), 'dd/MM/yyyy') : null],
+                  ['Date d\'embauche', viewDetail.hire_date ? format(new Date(viewDetail.hire_date as string), 'dd/MM/yyyy') : null],
+                  ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
+                  ['Contact urgence', viewDetail.emergency_contact_name],
+                  ['Tel. urgence', viewDetail.emergency_contact_phone],
+                ] as [string, unknown][]).map(([label, val]) => val ? (
+                  <div key={label} className="bg-gray-50 rounded-xl p-3.5">
+                    <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+                    <p className="font-semibold text-gray-800">{val as string}</p>
+                  </div>
+                ) : null)}
+              </div>
+              {viewDetail.notes && (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                  <p className="text-[11px] text-amber-600 uppercase tracking-wider mb-1">Notes</p>
+                  <p className="text-amber-800">{viewDetail.notes as string}</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

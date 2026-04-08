@@ -28,6 +28,12 @@ export const cashRegisterController = {
     res.json({ success: true, data: session });
   },
 
+  async lastClosedAmount(req: AuthRequest, res: Response) {
+    const last = await cashRegisterRepository.findLastClosedSession(req.user!.storeId);
+    const amount = last ? parseFloat(last.actual_amount) : 0;
+    res.json({ success: true, data: { amount } });
+  },
+
   async open(req: AuthRequest, res: Response) {
     // Check for existing open session
     const existing = await cashRegisterRepository.findOpenSession(req.user!.userId);

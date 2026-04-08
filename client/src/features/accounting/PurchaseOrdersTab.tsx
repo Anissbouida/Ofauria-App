@@ -6,7 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
-  Package, ArrowRight, FileText, Filter,
+  Package, ArrowRight, FileText, Filter, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -139,9 +139,12 @@ export default function PurchaseOrdersTab() {
     <div className="space-y-5">
       {/* Overdue alerts */}
       {overdue.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 animate-pulse-slow">
-          <div className="flex items-center gap-2 text-red-700 font-semibold mb-2">
-            <AlertTriangle size={18} /> {overdue.length} bon{overdue.length > 1 ? 's' : ''} en retard de livraison
+        <div className="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4">
+          <div className="flex items-center gap-2.5 text-red-700 font-semibold mb-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
+              <AlertTriangle size={14} className="text-white" />
+            </div>
+            {overdue.length} bon{overdue.length > 1 ? 's' : ''} en retard de livraison
           </div>
           <div className="grid gap-2">
             {(overdue as Record<string, unknown>[]).map((po) => (
@@ -167,69 +170,83 @@ export default function PurchaseOrdersTab() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Total BC</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1">{stats.totalCount}</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-600 to-gray-700 flex items-center justify-center">
+              <ShoppingBag size={16} className="text-white" />
+            </div>
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total BC</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-800">{stats.totalCount}</p>
           <p className="text-xs text-gray-400 mt-1">{n(stats.totalAmount)} DH</p>
         </div>
-        {['en_attente', 'envoye', 'livre_complet'].map(s => {
+        {[
+          { key: 'en_attente', gradient: 'from-amber-500 to-yellow-500' },
+          { key: 'envoye', gradient: 'from-blue-500 to-indigo-500' },
+          { key: 'livre_complet', gradient: 'from-emerald-500 to-green-500' },
+        ].map(({ key: s, gradient }) => {
           const Icon = STATUS_ICONS[s];
           const data = stats.byStatus[s] || { count: 0, total: 0 };
           return (
             <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
-              className={`bg-white rounded-xl border p-4 text-left transition-all hover:shadow-md ${statusFilter === s ? 'ring-2 ring-primary-500' : ''}`}>
-              <div className="flex items-center gap-2">
-                <Icon size={14} className={statusTabs.find(t => t.key === s)?.color} />
-                <p className="text-xs text-gray-500 uppercase tracking-wide">{STATUS_LABELS[s]}</p>
+              className={`bg-white rounded-2xl shadow-sm border p-4 text-left transition-all hover:shadow-md ${statusFilter === s ? 'ring-2 ring-offset-1 ring-slate-400 border-slate-300' : 'border-gray-100'}`}>
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                  <Icon size={16} className="text-white" />
+                </div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{STATUS_LABELS[s]}</p>
               </div>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{data.count}</p>
+              <p className="text-2xl font-bold text-gray-800">{data.count}</p>
               <p className="text-xs text-gray-400 mt-1">{n(data.total)} DH</p>
             </button>
           );
         })}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Status tabs */}
-        <div className="flex gap-1 flex-wrap flex-1">
+      {/* Toolbar: status tabs + actions */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1 bg-gray-50 rounded-xl p-1 flex-1 flex-wrap">
           {statusTabs.map((tab) => {
             const Icon = tab.icon;
             const count = tab.key === '' ? stats.totalCount : (stats.byStatus[tab.key]?.count || 0);
             return (
               <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                   statusFilter === tab.key
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    ? 'bg-white text-slate-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}>
-                <Icon size={14} />
+                <Icon size={13} />
                 {tab.label}
-                {count > 0 && <span className={`text-xs ${statusFilter === tab.key ? 'text-white/70' : 'text-gray-400'}`}>({count})</span>}
+                {count > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    statusFilter === tab.key ? 'bg-slate-100 text-slate-600' : 'bg-gray-200 text-gray-500'
+                  }`}>{count}</span>
+                )}
               </button>
             );
           })}
         </div>
         <button onClick={() => setShowCreate(true)}
-          className="btn-primary flex items-center gap-2 shadow-sm">
-          <Plus size={18} /> Nouveau BC
+          className="px-4 py-2 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+          <Plus size={16} /> Nouveau BC
         </button>
       </div>
 
       {/* Search + Supplier filter */}
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Rechercher par N° ou fournisseur..."
             value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            className="input pl-9 py-2" />
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
         </div>
         {orderSuppliers.length > 1 && (
           <div className="relative">
             <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
-              className="input pl-9 pr-8 py-2 w-auto">
+              className="pl-9 pr-8 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
               <option value="">Tous les fournisseurs</option>
               {orderSuppliers.map(([id, name]) => (
                 <option key={id} value={id}>{name}</option>
@@ -241,14 +258,16 @@ export default function PurchaseOrdersTab() {
 
       {/* Orders list */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-400">
-          <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full mx-auto mb-3" />
-          Chargement...
+        <div className="flex flex-col items-center justify-center py-16">
+          <Loader2 className="animate-spin text-slate-400 mb-3" size={32} />
+          <p className="text-sm text-gray-400">Chargement des bons de commande...</p>
         </div>
       ) : displayed.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border">
-          <Truck size={48} className="mx-auto mb-4 text-gray-300" />
-          <p className="text-gray-500 font-medium">Aucun bon de commande</p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+            <Truck size={28} className="text-gray-300" />
+          </div>
+          <p className="text-gray-400 font-medium">Aucun bon de commande</p>
           <p className="text-gray-400 text-sm mt-1">
             {statusFilter || searchTerm || supplierFilter
               ? 'Aucun resultat pour ces filtres'
@@ -256,7 +275,7 @@ export default function PurchaseOrdersTab() {
           </p>
           {!statusFilter && !searchTerm && (
             <button onClick={() => setShowCreate(true)}
-              className="btn-primary mt-4 inline-flex items-center gap-2">
+              className="mt-4 px-4 py-2 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2 text-sm">
               <Plus size={16} /> Creer un BC
             </button>
           )}
@@ -272,8 +291,8 @@ export default function PurchaseOrdersTab() {
 
             return (
               <div key={po.id as string}
-                className={`bg-white rounded-xl border transition-all hover:shadow-md ${
-                  isExpanded ? 'shadow-md ring-1 ring-primary-200' : ''
+                className={`bg-white rounded-2xl shadow-sm border transition-all hover:shadow-md ${
+                  isExpanded ? 'shadow-md border-slate-300' : 'border-gray-100'
                 }`}>
                 {/* Main row */}
                 <div className="flex items-center px-4 py-3 gap-4 cursor-pointer"
@@ -554,23 +573,29 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Nouveau bon de commande</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Creez une commande fournisseur avec les articles souhaites</p>
+        <div className="sticky top-0 bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 flex items-center justify-between rounded-t-2xl z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <ShoppingBag size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Nouveau bon de commande</h2>
+              <p className="text-sm text-white/70">Creez une commande fournisseur avec les articles souhaites</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
         </div>
 
         <div className="p-6 space-y-6">
           {/* Supplier + Date */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur *</label>
-              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="input">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur *</label>
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
                 <option value="">Choisir un fournisseur</option>
                 {(suppliers as Record<string, unknown>[]).filter((s) => s.is_active !== false).map((s) => (
                   <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
@@ -578,12 +603,14 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Livraison prevue</label>
-              <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} className="input" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Livraison prevue</label>
+              <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="input" placeholder="Optionnel..." />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" placeholder="Optionnel..." />
             </div>
           </div>
 
@@ -591,16 +618,16 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des articles</label>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" placeholder="Chercher un ingredient..."
                 value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
-                className="input pl-9" />
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
             </div>
             {searchIngredient && filteredIngredients.length > 0 && (
-              <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                 {filteredIngredients.slice(0, 10).map(ing => (
                   <button key={ing.id as string} onClick={() => addIngredient(ing)}
-                    className="w-full text-left px-3 py-2 hover:bg-primary-50 text-sm flex items-center justify-between transition-colors">
+                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm flex items-center justify-between transition-colors first:rounded-t-xl last:rounded-b-xl">
                     <span className="font-medium">{ing.name as string} <span className="text-gray-400">({ing.unit as string})</span></span>
                     <span className="text-xs text-gray-400">{n(parseFloat(ing.unit_cost as string) || 0)} DH/{ing.unit as string}</span>
                   </button>
@@ -614,20 +641,20 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
           {/* Items list */}
           {items.length > 0 && (
-            <div className="bg-gray-50 rounded-xl border overflow-hidden">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-100 text-xs text-gray-500 uppercase">
-                  <tr>
-                    <th className="text-left px-4 py-2">Ingredient</th>
-                    <th className="text-right px-4 py-2 w-32">Quantite</th>
-                    <th className="text-right px-4 py-2 w-32">Prix unit. (DH)</th>
-                    <th className="text-right px-4 py-2 w-28">Sous-total</th>
+                <thead>
+                  <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingredient</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Quantite</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Prix unit. (DH)</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-28">Sous-total</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y bg-white">
+                <tbody className="divide-y divide-gray-50">
                   {items.map((item, idx) => (
-                    <tr key={item.ingredientId} className="group">
+                    <tr key={item.ingredientId} className="group hover:bg-gray-50/50">
                       <td className="px-4 py-2.5">
                         <span className="font-medium text-gray-700">{item.ingredientName}</span>
                         <span className="text-gray-400 text-xs ml-1">({item.unit})</span>
@@ -635,19 +662,19 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                       <td className="px-4 py-2.5">
                         <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
                           onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)}
-                          className="input text-sm py-1 text-right w-full" />
+                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
                       </td>
                       <td className="px-4 py-2.5">
                         <input type="number" min={0} step="0.01" value={item.unitPrice || ''}
                           onChange={(e) => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="input text-sm py-1 text-right w-full" />
+                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
                       </td>
                       <td className="px-4 py-2.5 text-right font-semibold text-gray-700">
                         {n(item.quantityOrdered * item.unitPrice)}
                       </td>
                       <td className="px-4 py-2.5">
                         <button onClick={() => removeItem(idx)}
-                          className="p-1 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                          className="p-1.5 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
                           <X size={14} className="text-red-400" />
                         </button>
                       </td>
@@ -655,16 +682,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </tbody>
               </table>
-              <div className="bg-gray-50 px-4 py-3 border-t flex items-center justify-between">
-                <span className="text-sm text-gray-500">{items.length} article{items.length > 1 ? 's' : ''}</span>
-                <span className="text-lg font-bold text-gray-800">Total: {n(totalAmount)} DH</span>
+              <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-4 py-3 flex items-center justify-between text-white rounded-b-2xl">
+                <span className="text-sm">{items.length} article{items.length > 1 ? 's' : ''}</span>
+                <span className="text-lg font-bold">Total: {n(totalAmount)} DH</span>
               </div>
             </div>
           )}
 
           {items.length === 0 && (
-            <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-              <ShoppingBag size={32} className="mx-auto mb-2 text-gray-300" />
+            <div className="flex flex-col items-center justify-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+              <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+                <ShoppingBag size={24} className="text-gray-300" />
+              </div>
               <p className="text-gray-400 text-sm">Recherchez et ajoutez des ingredients ci-dessus</p>
             </div>
           )}
@@ -678,10 +707,12 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="btn-secondary">Annuler</button>
+            <button onClick={onClose}
+              className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
             <button onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50">
-              <Plus size={16} /> {createMutation.isPending ? 'Creation...' : 'Creer le bon de commande'}
+              className="px-5 py-2.5 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50">
+              {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
+              {createMutation.isPending ? 'Creation...' : 'Creer le bon de commande'}
             </button>
           </div>
         </div>
@@ -698,10 +729,10 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-xl text-center">
-        <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full mx-auto mb-2" />
-        Chargement...
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl">
+        <Loader2 className="animate-spin text-slate-400 mx-auto mb-3" size={28} />
+        <p className="text-sm text-gray-400">Chargement...</p>
       </div>
     </div>
   );
@@ -714,43 +745,43 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   const StatusIcon = STATUS_ICONS[po.status] || Clock;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
         {/* Header */}
-        <div className="border-b px-6 py-4">
+        <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold">{po.order_number}</h2>
+                <h2 className="text-xl font-bold text-white">{po.order_number}</h2>
                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[po.status] || ''}`}>
                   <StatusIcon size={12} />
                   {STATUS_LABELS[po.status] || po.status}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-white/70 mt-1">
                 {po.supplier_name} — Cree par {po.created_by_name}
               </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
           </div>
         </div>
 
         <div className="p-6 space-y-5">
           {/* Info cards */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-400 uppercase">Commande</p>
-              <p className="font-medium text-sm mt-0.5">{format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr })}</p>
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Commande</p>
+              <p className="font-medium text-sm mt-1">{format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr })}</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-400 uppercase">Livraison prevue</p>
-              <p className="font-medium text-sm mt-0.5">
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Livraison prevue</p>
+              <p className="font-medium text-sm mt-1">
                 {po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'dd MMM yyyy', { locale: fr }) : '—'}
               </p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-400 uppercase">Date livraison</p>
-              <p className="font-medium text-sm mt-0.5">
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Date livraison</p>
+              <p className="font-medium text-sm mt-1">
                 {po.delivery_date ? format(new Date(po.delivery_date), 'dd MMM yyyy', { locale: fr }) : '—'}
               </p>
             </div>
@@ -758,13 +789,13 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
 
           {/* Global progress */}
           {(po.status === 'livre_partiel' || po.status === 'livre_complet') && (
-            <div className="bg-gray-50 rounded-lg p-4">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-600">Progression globale</span>
                 <span className="text-sm font-bold">{globalPct.toFixed(0)}%</span>
               </div>
-              <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${globalPct >= 100 ? 'bg-emerald-500' : 'bg-orange-400'}`}
+              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${globalPct >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`}
                   style={{ width: `${Math.min(100, globalPct)}%` }} />
               </div>
               <div className="flex justify-between mt-2 text-xs text-gray-400">
@@ -775,13 +806,13 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
           )}
 
           {po.notes && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
               <FileText size={14} className="inline mr-1.5" /> {po.notes}
             </div>
           )}
 
           {/* Items table */}
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                 <tr>
@@ -861,10 +892,10 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-xl text-center">
-        <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full mx-auto mb-2" />
-        Chargement...
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl">
+        <Loader2 className="animate-spin text-emerald-400 mx-auto mb-3" size={28} />
+        <p className="text-sm text-gray-400">Chargement...</p>
       </div>
     </div>
   );
@@ -895,18 +926,21 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   }, 0);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
         {/* Header */}
-        <div className="border-b px-6 py-4">
+        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-5 rounded-t-2xl">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <PackageCheck size={22} className="text-green-600" /> Confirmer la reception
-              </h2>
-              <p className="text-sm text-gray-500 mt-0.5">{po.order_number} — {po.supplier_name}</p>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <PackageCheck size={20} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Confirmer la reception</h2>
+                <p className="text-sm text-white/70">{po.order_number} — {po.supplier_name}</p>
+              </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
           </div>
         </div>
 
@@ -915,21 +949,21 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">Saisissez les quantites recues pour chaque article</p>
             <button onClick={fillAll}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors">
-              <CheckCircle2 size={14} /> Tout recu (livraison complete)
+              className="text-sm text-emerald-700 font-medium flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors">
+              <CheckCircle2 size={14} /> Tout recu
             </button>
           </div>
 
           {/* Items */}
-          <div className="border rounded-lg overflow-hidden">
+          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="text-left px-4 py-2.5">Ingredient</th>
-                  <th className="text-right px-4 py-2.5">Commande</th>
-                  <th className="text-right px-4 py-2.5">Deja recu</th>
-                  <th className="text-right px-4 py-2.5">Restant</th>
-                  <th className="text-right px-4 py-2.5 w-36">Qte recue</th>
+              <thead>
+                <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingredient</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Commande</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Deja recu</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Restant</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-36">Qte recue</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -960,7 +994,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                           <input type="number" min={0} max={remaining} step="0.01"
                             value={deliveries[item.id] ?? ''}
                             onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
-                            className="input text-sm py-1.5 text-right w-full" placeholder="0" />
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0" />
                         ) : <span className="text-sm text-gray-400 text-right block">—</span>}
                       </td>
                     </tr>
@@ -972,22 +1006,23 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
           {/* Summary of what's being received */}
           {totalDelivering > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
-              <span className="text-sm text-green-700">
-                <ArrowRight size={14} className="inline mr-1" />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+              <span className="text-sm text-emerald-700 flex items-center gap-1.5">
+                <ArrowRight size={14} />
                 Valeur de cette reception
               </span>
-              <span className="font-bold text-green-800">{n(totalDelivering)} DH</span>
+              <span className="font-bold text-emerald-800">{n(totalDelivering)} DH</span>
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="border-t px-6 py-4 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Annuler</button>
+          <button onClick={onClose}
+            className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
           <button onClick={handleSubmit} disabled={confirmMutation.isPending}
-            className="btn-primary flex items-center gap-2">
-            <PackageCheck size={16} />
+            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+            {confirmMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={16} />}
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer la reception'}
           </button>
         </div>
