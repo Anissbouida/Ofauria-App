@@ -111,13 +111,13 @@ export const productionController = {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour produire des articles' } });
       return;
     }
-    const { items } = req.body;
+    const { items, producedAt } = req.body;
     if (!items || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Aucun article a produire' } });
       return;
     }
     try {
-      const { warnings, autoCompleted } = await productionRepository.produceItems(req.params.id, items, req.user!.userId, req.user!.storeId);
+      const { warnings, autoCompleted } = await productionRepository.produceItems(req.params.id, items, req.user!.userId, req.user!.storeId, producedAt);
       const updated = await productionRepository.findById(req.params.id);
 
       // If plan auto-completed, notify manager

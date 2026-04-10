@@ -19,7 +19,11 @@ import storeRoutes from './store.routes.js';
 import uploadRoutes from './upload.routes.js';
 import notificationsRoutes from './notifications.routes.js';
 import purchaseOrderRoutes from './purchase-order.routes.js';
+import receptionVoucherRoutes from './reception-voucher.routes.js';
 import replenishmentRoutes from './replenishment.routes.js';
+import productLossRoutes from './product-loss.routes.js';
+import ingredientLotRoutes from './ingredient-lot.routes.js';
+import purchaseRequestRoutes from './purchase-request.routes.js';
 
 const router = Router();
 
@@ -52,6 +56,10 @@ router.use('/stores', storeRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
+router.use('/reception-vouchers', receptionVoucherRoutes);
 router.use('/replenishment', replenishmentRoutes);
+router.use('/product-losses', productLossRoutes);
+router.use('/ingredient-lots', ingredientLotRoutes);
+router.use('/purchase-requests', purchaseRequestRoutes);
 
 export default router;

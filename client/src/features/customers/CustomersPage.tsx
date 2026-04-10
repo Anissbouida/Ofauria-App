@@ -19,9 +19,9 @@ export default function CustomersPage() {
     mutationFn: customersApi.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Client supprime');
+      toast.success('Client supprimé');
     },
-    onError: () => toast.error('Impossible de supprimer ce client (il a peut-etre des commandes ou ventes liees)'),
+    onError: () => toast.error('Impossible de supprimer ce client (il a peut-être des commandes ou ventes liées)'),
   });
 
   const saveMutation = useMutation({
@@ -29,7 +29,7 @@ export default function CustomersPage() {
       editing ? customersApi.update(editing.id as string, data) : customersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(editing ? 'Client mis a jour' : 'Client cree');
+      toast.success(editing ? 'Client mis à jour' : 'Client créé');
       setShowForm(false); setEditing(null);
     },
   });
@@ -81,7 +81,7 @@ export default function CustomersPage() {
               </div>
             </div>
           ))}
-          {customers.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">Aucun client trouve</p>}
+          {customers.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">Aucun client trouvé</p>}
         </div>
       )}
 
@@ -95,11 +95,11 @@ export default function CustomersPage() {
               saveMutation.mutate(Object.fromEntries(fd));
             }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Prenom</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Prénom</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
                 <div><label className="block text-sm font-medium mb-1">Nom</label><input name="lastName" defaultValue={editing?.last_name as string} className="input" required /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Email</label><input name="email" type="email" defaultValue={editing?.email as string} className="input" /></div>
-              <div><label className="block text-sm font-medium mb-1">Telephone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
+              <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="btn-secondary">Annuler</button>
                 <button type="submit" disabled={saveMutation.isPending} className="btn-primary">Enregistrer</button>

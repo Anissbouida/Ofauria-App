@@ -3,10 +3,11 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
+import { customersApi } from '../../api/customers.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Search, Phone } from 'lucide-react';
+import { Plus, Trash2, Search, Phone, User, Users, Check } from 'lucide-react';
 
 /* ─── Step indicators ─── */
 const STEPS = [
@@ -41,23 +42,37 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
+type ClientMode = 'known' | 'walkin' | null;
+
 /* ─── Order form modal (multi-step) ─── */
 export default function OrderFormModal({ order, onClose, onSaved }: {
   order?: Record<string, unknown>;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (createdOrder?: Record<string, unknown>) => void;
 }) {
   const isEdit = !!order;
   const [step, setStep] = useState(1);
   const [detailLoaded, setDetailLoaded] = useState(!isEdit);
 
-  // Step 1: Client
+  // Step 1: Client mode
+  const [clientMode, setClientMode] = useState<ClientMode>(
+    isEdit ? (order.customer_id ? 'known' : 'walkin') : null
+  );
+
+  // Known client
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    isEdit && order.customer_id ? (order.customer_id as string) : null
+  );
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  // Walk-in client
   const [customerName, setCustomerName] = useState(
     isEdit ? `${order.customer_first_name || ''} ${order.customer_last_name || ''}`.trim() : ''
   );
   const [customerPhone, setCustomerPhone] = useState(
     isEdit ? (order.customer_phone as string || '') : ''
   );
+
   const [pickupDate, setPickupDate] = useState(
     isEdit && order.pickup_date ? format(new Date(order.pickup_date as string), 'yyyy-MM-dd') : format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
   );
@@ -69,6 +84,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   ]);
 
   // Step 3: Payment
+  const [deferPayment, setDeferPayment] = useState(isEdit ? (order.payment_method === 'deferred') : false);
   const [paymentMethod, setPaymentMethod] = useState(isEdit ? (order.payment_method as string || 'cash') : 'cash');
   const [discountAmount, setDiscountAmount] = useState(isEdit ? (parseFloat(order.discount_amount as string) || 0) : 0);
   const [advanceAmount, setAdvanceAmount] = useState(isEdit ? (parseFloat(order.advance_amount as string) || 0) : 0);
@@ -97,6 +113,24 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     setDetailLoaded(true);
   }, [orderDetail, detailLoaded, customerPhone]);
 
+  // Customers query
+  const { data: customersData } = useQuery({
+    queryKey: ['customers-list'],
+    queryFn: () => customersApi.list({ limit: '500' }),
+    enabled: clientMode === 'known',
+  });
+  const customers = (customersData?.data || []) as Record<string, unknown>[];
+
+  const filteredCustomers = customers.filter(c => {
+    if (!customerSearch) return true;
+    const q = customerSearch.toLowerCase();
+    const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+    const phone = (c.phone as string || '').toLowerCase();
+    return name.includes(q) || phone.includes(q);
+  });
+
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+
   const { data: productsData } = useQuery({
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
@@ -111,7 +145,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const createMutation = useMutation({
     mutationFn: ordersApi.create,
-    onSuccess: () => { toast.success('Commande creee avec succes'); onSaved(); },
+    onSuccess: (data: Record<string, unknown>) => { toast.success('Commande creee avec succes'); onSaved(data); },
     onError: () => { toast.error('Erreur lors de la creation'); },
   });
 
@@ -158,11 +192,26 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
 
-  const canNextStep1 = !!customerName.trim() && !!pickupDate;
+  // Derive display name for recap
+  const displayName = clientMode === 'known' && selectedCustomer
+    ? `${selectedCustomer.first_name || ''} ${selectedCustomer.last_name || ''}`.trim()
+    : customerName.trim();
+  const displayPhone = clientMode === 'known' && selectedCustomer
+    ? (selectedCustomer.phone as string || '')
+    : customerPhone;
+
+  const canNextStep1 = clientMode === 'known'
+    ? !!selectedCustomerId && !!pickupDate
+    : clientMode === 'walkin'
+      ? !!customerName.trim() && !!pickupDate
+      : false;
   const canNextStep2 = validItems.length > 0;
 
   const handleNext = () => {
-    if (step === 1 && !canNextStep1) { toast.error('Saisissez le nom du client et la date'); return; }
+    if (step === 1 && !canNextStep1) {
+      toast.error(clientMode === 'known' ? 'Selectionnez un client et la date' : 'Saisissez le nom du client et la date');
+      return;
+    }
     if (step === 2 && !canNextStep2) { toast.error('Ajoutez au moins un produit'); return; }
     setStep(step + 1);
   };
@@ -170,12 +219,23 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const saving = createMutation.isPending || updateMutation.isPending;
 
   const handleSubmit = () => {
-    const payload = {
-      customerName: customerName.trim(), customerPhone: customerPhone.trim() || undefined,
-      type, pickupDate, paymentMethod, notes: notes || undefined,
-      discountAmount, advanceAmount,
+    const payload: Record<string, unknown> = {
+      type, pickupDate,
+      paymentMethod: deferPayment ? 'deferred' : paymentMethod,
+      notes: notes || undefined,
+      discountAmount,
+      advanceAmount: deferPayment ? 0 : advanceAmount,
+      deferPayment,
       items: validItems.map((it) => ({ productId: it.productId, quantity: it.quantity, notes: it.notes || undefined })),
     };
+    if (clientMode === 'known' && selectedCustomerId) {
+      payload.customerId = selectedCustomerId;
+      payload.customerName = displayName;
+      payload.customerPhone = displayPhone || undefined;
+    } else {
+      payload.customerName = customerName.trim();
+      payload.customerPhone = customerPhone.trim() || undefined;
+    }
     if (isEdit) {
       updateMutation.mutate(payload);
     } else {
@@ -200,7 +260,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
           <h2 className="text-lg sm:text-xl font-bold text-bakery-chocolate">
-            {isEdit ? 'Modifier la pre-commande' : 'Nouvelle pre-commande'}
+            {isEdit ? 'Modifier la commande' : 'Nouvelle commande'}
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
         </div>
@@ -213,40 +273,155 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
           {/* ── STEP 1: Client ── */}
           {step === 1 && (
             <div className="p-5 space-y-5">
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-700">Informations du client</h3>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom du client *</label>
-                  <input type="text" autoFocus value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Nom complet du client"
-                    className="input text-base py-3 w-full" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Numero de telephone</label>
-                  <div className="relative">
-                    <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="06 XX XX XX XX"
-                      className="input text-base py-3 w-full pl-10" />
+              {/* Client mode selector */}
+              {!clientMode && (
+                <div className="space-y-4">
+                  <h3 className="text-center text-lg font-semibold text-gray-700">Quel type de client ?</h3>
+                  <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+                    {/* Known client card */}
+                    <button type="button" onClick={() => setClientMode('known')}
+                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-blue-500 hover:bg-blue-50 transition-all">
+                      <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                        <Users size={28} className="text-blue-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-gray-800 text-base">Client connu</p>
+                        <p className="text-xs text-gray-400 mt-1">Client enregistre dans la base, avec facture detaillee</p>
+                      </div>
+                    </button>
+
+                    {/* Walk-in client card */}
+                    <button type="button" onClick={() => setClientMode('walkin')}
+                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-amber-500 hover:bg-amber-50 transition-all">
+                      <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
+                        <User size={28} className="text-amber-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-gray-800 text-base">Client passager</p>
+                        <p className="text-xs text-gray-400 mt-1">Client de passage, ticket simple a imprimer</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                  <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                    className="input text-base py-3" required />
+              {/* Known client: search & select */}
+              {clientMode === 'known' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); }}
+                      className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <Users size={16} className="text-blue-600" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-gray-700">Client connu</h3>
+                    </div>
+                  </div>
+
+                  {/* Search */}
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input type="text" autoFocus value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+                      placeholder="Rechercher par nom ou telephone..."
+                      className="input text-base py-3 w-full pl-10" />
+                  </div>
+
+                  {/* Customer list */}
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                    {filteredCustomers.length === 0 ? (
+                      <p className="text-center py-6 text-gray-400 text-sm">Aucun client trouve</p>
+                    ) : filteredCustomers.map(c => {
+                      const cId = c.id as string;
+                      const isSelected = cId === selectedCustomerId;
+                      const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+                      return (
+                        <button key={cId} type="button"
+                          onClick={() => {
+                            setSelectedCustomerId(cId);
+                            setCustomerName(fullName);
+                            setCustomerPhone(c.phone as string || '');
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                            isSelected
+                              ? 'bg-blue-50 border-2 border-blue-500 shadow-sm'
+                              : 'bg-white border-2 border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                          }`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                            isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {fullName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium truncate ${isSelected ? 'text-blue-700' : 'text-gray-800'}`}>{fullName}</p>
+                            {c.phone && (
+                              <p className="text-xs text-gray-400 flex items-center gap-1">
+                                <Phone size={10} /> {c.phone as string}
+                              </p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                              <Check size={14} className="text-white" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type de commande</label>
-                  <select value={type} onChange={(e) => setType(e.target.value)} className="input text-base py-3">
-                    <option value="custom">Sur mesure</option>
-                    <option value="event">Evenement</option>
-                    <option value="online">En ligne</option>
-                  </select>
+              )}
+
+              {/* Walk-in client: name + phone */}
+              {clientMode === 'walkin' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => { setClientMode(null); setCustomerName(''); setCustomerPhone(''); }}
+                      className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <User size={16} className="text-amber-600" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-gray-700">Client passager</h3>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom du client *</label>
+                    <input type="text" autoFocus value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Nom complet du client"
+                      className="input text-base py-3 w-full" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Numero de telephone</label>
+                    <div className="relative">
+                      <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                        placeholder="06 XX XX XX XX"
+                        className="input text-base py-3 w-full pl-10" />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Date + Type (shown after mode is selected) */}
+              {clientMode && (
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                      className="input text-base py-3" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Type de commande</label>
+                    <select value={type} onChange={(e) => setType(e.target.value)} className="input text-base py-3">
+                      <option value="custom">Sur mesure</option>
+                      <option value="event">Evenement</option>
+                      <option value="online">En ligne</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -372,14 +547,23 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               <div className="bg-gray-50 rounded-xl p-4">
                 <h3 className="text-sm font-semibold text-gray-500 mb-3">Recapitulatif</h3>
                 <div className="flex items-center gap-3 mb-3 pb-3 border-b">
-                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-sm">
-                    {customerName.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                    clientMode === 'known' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {displayName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <div className="font-medium">{customerName}</div>
-                    {customerPhone && (
+                    <div className="font-medium flex items-center gap-2">
+                      {displayName}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        clientMode === 'known' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'
+                      }`}>
+                        {clientMode === 'known' ? 'Client connu' : 'Passager'}
+                      </span>
+                    </div>
+                    {displayPhone && (
                       <div className="text-xs text-gray-400 flex items-center gap-1">
-                        <Phone size={11} /> {customerPhone}
+                        <Phone size={11} /> {displayPhone}
                       </div>
                     )}
                   </div>
@@ -405,42 +589,68 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                 </div>
               </div>
 
-              {/* Payment method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'cash', label: 'Especes' },
-                    { value: 'card', label: 'Carte' },
-                    { value: 'transfer', label: 'Virement' },
-                  ].map((pm) => (
-                    <button key={pm.value} type="button" onClick={() => setPaymentMethod(pm.value)}
-                      className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                        paymentMethod === pm.value
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                      }`}>
-                      {pm.label}
-                    </button>
-                  ))}
+              {/* Deferred payment option for known clients */}
+              {clientMode === 'known' && (
+                <div>
+                  <button type="button" onClick={() => setDeferPayment(!deferPayment)}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${
+                      deferPayment
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}>
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                      deferPayment ? 'border-blue-500 bg-blue-500' : 'border-gray-300'
+                    }`}>
+                      {deferPayment && <Check size={14} className="text-white" />}
+                    </div>
+                    <div className="text-left flex-1">
+                      <p className={`text-sm font-medium ${deferPayment ? 'text-blue-700' : 'text-gray-700'}`}>Reporter le paiement</p>
+                      <p className="text-xs text-gray-400">Une facture sera generee automatiquement pour le suivi</p>
+                    </div>
+                  </button>
                 </div>
-              </div>
+              )}
 
-              {/* Discount + Advance */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Remise (DH)</label>
-                  <input type="number" min="0" step="0.01" value={discountAmount}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                    className="input py-3 w-full text-base" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH)</label>
-                  <input type="number" min="0" step="0.01" value={advanceAmount}
-                    onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
-                    className="input py-3 w-full text-base" />
-                </div>
-              </div>
+              {/* Payment method (hidden when deferred) */}
+              {!deferPayment && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'cash', label: 'Especes' },
+                        { value: 'card', label: 'Carte' },
+                        { value: 'transfer', label: 'Virement' },
+                      ].map((pm) => (
+                        <button key={pm.value} type="button" onClick={() => setPaymentMethod(pm.value)}
+                          className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                            paymentMethod === pm.value
+                              ? 'border-primary-500 bg-primary-50 text-primary-700'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          }`}>
+                          {pm.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Discount + Advance */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Remise (DH)</label>
+                      <input type="number" min="0" step="0.01" value={discountAmount}
+                        onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                        className="input py-3 w-full text-base" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH)</label>
+                      <input type="number" min="0" step="0.01" value={advanceAmount}
+                        onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
+                        className="input py-3 w-full text-base" />
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Notes */}
               <div>
@@ -465,17 +675,26 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <span>Total</span>
                   <span>{total.toFixed(2)} DH</span>
                 </div>
-                {advanceAmount > 0 && (
+                {deferPayment ? (
                   <div className="flex justify-between text-sm pt-1">
-                    <span className="text-green-600 font-medium">Avance versee</span>
-                    <span className="text-green-600 font-medium">{advanceAmount.toFixed(2)} DH</span>
+                    <span className="text-blue-600 font-medium">Paiement reporte</span>
+                    <span className="text-blue-600 font-medium">Facture a emettre</span>
                   </div>
-                )}
-                {advanceAmount > 0 && (
-                  <div className="flex justify-between text-sm font-semibold">
-                    <span>Reste a payer</span>
-                    <span>{Math.max(0, total - advanceAmount).toFixed(2)} DH</span>
-                  </div>
+                ) : (
+                  <>
+                    {advanceAmount > 0 && (
+                      <div className="flex justify-between text-sm pt-1">
+                        <span className="text-green-600 font-medium">Avance versee</span>
+                        <span className="text-green-600 font-medium">{advanceAmount.toFixed(2)} DH</span>
+                      </div>
+                    )}
+                    {advanceAmount > 0 && (
+                      <div className="flex justify-between text-sm font-semibold">
+                        <span>Reste a payer</span>
+                        <span>{Math.max(0, total - advanceAmount).toFixed(2)} DH</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

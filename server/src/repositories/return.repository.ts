@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { adjustProductStock } from './product-stock.helper.js';
+import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -129,9 +130,10 @@ export const returnRepository = {
         exchangeTotal = exchangeItems.reduce((sum, it) => sum + it.subtotal, 0);
 
         // Generate a sale number for the exchange sale
-        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const tz = getUserTimezone();
+        const today = getLocalDateString();
         const saleCountResult = await client.query(
-          `SELECT COUNT(*) FROM sales WHERE created_at::date = CURRENT_DATE`
+          `SELECT COUNT(*) FROM sales WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
         );
         const saleSeq = parseInt(saleCountResult.rows[0].count, 10) + 1;
         const exchangeSaleNumber = `VNT-${today}-${String(saleSeq).padStart(4, '0')}`;
@@ -222,9 +224,10 @@ export const returnRepository = {
 };
 
 async function generateReturnNumber(client: { query: (text: string) => Promise<{ rows: { count: string }[] }> }) {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const tz = getUserTimezone();
+  const today = getLocalDateString();
   const result = await client.query(
-    `SELECT COUNT(*) FROM sale_returns WHERE created_at::date = CURRENT_DATE`
+    `SELECT COUNT(*) FROM sale_returns WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
   );
   const seq = parseInt(result.rows[0].count, 10) + 1;
   return `RET-${today}-${String(seq).padStart(4, '0')}`;

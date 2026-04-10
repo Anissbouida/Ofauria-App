@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { receptionVoucherRepository } from './reception-voucher.repository.js';
 
 export const purchaseOrderRepository = {
   async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
@@ -17,8 +18,9 @@ export const purchaseOrderRepository = {
       `SELECT po.*, s.name as supplier_name,
               u.first_name || ' ' || u.last_name as created_by_name,
               (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id) as item_count,
-              (SELECT COALESCE(SUM(quantity_ordered * unit_price), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount,
-              (SELECT COALESCE(SUM(quantity_delivered * unit_price), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as delivered_amount
+              (SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount,
+              (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as delivered_amount,
+              (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id AND unit_price IS NULL) as items_without_price
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
        LEFT JOIN users u ON u.id = po.created_by
@@ -35,10 +37,10 @@ export const purchaseOrderRepository = {
     const result = await db.query(
       `SELECT po.id, po.order_number, po.order_date, po.status, po.supplier_id,
               s.name as supplier_name,
-              (SELECT COALESCE(SUM(quantity_delivered * unit_price), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
+              (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
-       WHERE po.status IN ('livre_complet', 'livre_partiel', 'envoye', 'en_attente')
+       WHERE po.status IN ('livre_complet', 'livre_partiel', 'envoye', 'en_attente', 'en_attente_facturation')
        ${storeFilter}
        ORDER BY po.order_date DESC`,
       params
@@ -83,7 +85,7 @@ export const purchaseOrderRepository = {
   async create(data: {
     supplierId: string; expectedDeliveryDate?: string; notes?: string;
     createdBy: string; storeId?: string;
-    items: { ingredientId: string; quantityOrdered: number; unitPrice: number }[];
+    items: { ingredientId: string; quantityOrdered: number; unitPrice?: number | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -101,7 +103,7 @@ export const purchaseOrderRepository = {
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, quantity_ordered, unit_price)
            VALUES ($1, $2, $3, $4)`,
-          [poResult.rows[0].id, item.ingredientId, item.quantityOrdered, item.unitPrice]
+          [poResult.rows[0].id, item.ingredientId, item.quantityOrdered, item.unitPrice ?? null]
         );
       }
 
@@ -125,108 +127,96 @@ export const purchaseOrderRepository = {
 
   async confirmDelivery(
     id: string,
-    items: { itemId: string; quantityDelivered: number }[],
+    items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[],
     performedBy: string,
     storeId?: string
   ) {
+    // Get PO items to map ingredientId
+    const po = await this.findById(id);
+    if (!po) throw new Error('Bon de commande non trouve');
+
+    const rvItems = items
+      .filter(it => it.quantityDelivered > 0)
+      .map(it => {
+        const poItem = po.items.find((pi: Record<string, unknown>) => pi.id === it.itemId);
+        return {
+          poItemId: it.itemId,
+          ingredientId: poItem?.ingredient_id as string,
+          quantityReceived: it.quantityDelivered,
+          unitPrice: it.unitPrice ?? (poItem?.unit_price ? parseFloat(poItem.unit_price as string) : null),
+          supplierLotNumber: it.supplierLotNumber,
+          expirationDate: it.expirationDate,
+          manufacturedDate: it.manufacturedDate,
+        };
+      });
+
+    const result = await receptionVoucherRepository.create({
+      purchaseOrderId: id,
+      notes: `Reception depuis confirmation de livraison BC ${po.order_number}`,
+      receivedBy: performedBy,
+      storeId,
+      items: rvItems,
+    });
+
+    return { status: result.status, voucherId: result.id, voucherNumber: result.voucher_number };
+  },
+
+  async updateItemPrices(id: string, items: { itemId: string; unitPrice: number }[]) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
-      // Get PO info
-      const poResult = await client.query(
-        `SELECT po.*, s.name as supplier_name FROM purchase_orders po
-         JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1`,
-        [id]
-      );
-      const po = poResult.rows[0];
-      if (!po) throw new Error('Bon de commande non trouve');
-
-      let totalDeliveredValue = 0;
-
       for (const item of items) {
-        if (item.quantityDelivered <= 0) continue;
-
-        // Update purchase_order_items.quantity_delivered
-        const itemResult = await client.query(
-          `UPDATE purchase_order_items
-           SET quantity_delivered = quantity_delivered + $1
-           WHERE id = $2 RETURNING *`,
-          [item.quantityDelivered, item.itemId]
-        );
-        const poItem = itemResult.rows[0];
-        if (!poItem) continue;
-
-        totalDeliveredValue += item.quantityDelivered * parseFloat(poItem.unit_price);
-
-        // Update inventory
-        const storeFilter = storeId ? ' AND store_id = $3' : '';
-        const invParams: unknown[] = [item.quantityDelivered, poItem.ingredient_id];
-        if (storeId) invParams.push(storeId);
-
         await client.query(
-          `UPDATE inventory SET current_quantity = current_quantity + $1,
-                  last_restocked_at = NOW(), updated_at = NOW()
-           WHERE ingredient_id = $2${storeFilter}`,
-          invParams
-        );
-
-        // Also update ingredient unit_cost from PO price
-        if (parseFloat(poItem.unit_price) > 0) {
-          await client.query(
-            `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
-            [poItem.unit_price, poItem.ingredient_id]
-          );
-        }
-
-        // Insert inventory transaction with traceability
-        await client.query(
-          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, store_id)
-           VALUES ($1, 'purchase_order', $2, $3, $4, $5, $6)`,
-          [poItem.ingredient_id, item.quantityDelivered,
-           `Reception BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
-           performedBy, item.itemId, storeId || null]
+          `UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2 AND purchase_order_id = $3`,
+          [item.unitPrice, item.itemId, id]
         );
       }
 
-      // Determine new PO status
-      const allItems = await client.query(
-        `SELECT quantity_ordered, quantity_delivered FROM purchase_order_items WHERE purchase_order_id = $1`,
+      // Check if all items now have prices
+      const remaining = await client.query(
+        `SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = $1 AND unit_price IS NULL`,
         [id]
       );
-      const allDelivered = allItems.rows.every(
-        (it: Record<string, unknown>) => parseFloat(it.quantity_delivered as string) >= parseFloat(it.quantity_ordered as string)
-      );
-      const someDelivered = allItems.rows.some(
-        (it: Record<string, unknown>) => parseFloat(it.quantity_delivered as string) > 0
-      );
+      const stillMissing = parseInt(remaining.rows[0].count);
 
-      const newStatus = allDelivered ? 'livre_complet' : someDelivered ? 'livre_partiel' : 'non_livre';
-      await client.query(
-        `UPDATE purchase_orders SET status = $1, delivery_date = CURRENT_DATE, updated_at = NOW() WHERE id = $2`,
-        [newStatus, id]
-      );
-
-      // Auto-create invoice for received goods
-      if (totalDeliveredValue > 0) {
-        // Find "Matieres premieres" category
-        const catResult = await client.query(
-          `SELECT id FROM expense_categories WHERE name ILIKE '%matieres%' OR name ILIKE '%matiere%' LIMIT 1`
+      // If was en_attente_facturation and all prices now set, move to livre_complet
+      if (stillMissing === 0) {
+        const poCheck = await client.query(
+          `SELECT status FROM purchase_orders WHERE id = $1`, [id]
         );
-        const categoryId = catResult.rows[0]?.id || null;
+        if (poCheck.rows[0]?.status === 'en_attente_facturation') {
+          // Check if actually all delivered
+          const allItems = await client.query(
+            `SELECT quantity_ordered, quantity_delivered FROM purchase_order_items WHERE purchase_order_id = $1`,
+            [id]
+          );
+          const allDelivered = allItems.rows.every(
+            (it: Record<string, unknown>) => parseFloat(it.quantity_delivered as string) >= parseFloat(it.quantity_ordered as string)
+          );
+          if (allDelivered) {
+            await client.query(
+              `UPDATE purchase_orders SET status = 'livre_complet', updated_at = NOW() WHERE id = $1`, [id]
+            );
+          }
+        }
+      }
 
-        const invNumber = `FC-${po.order_number}`;
-        await client.query(
-          `INSERT INTO invoices (invoice_number, supplier_id, category_id, invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
-           VALUES ($1, $2, $3, CURRENT_DATE, $4, 0, $4, $5, $6, $7)
-           ON CONFLICT DO NOTHING`,
-          [invNumber, po.supplier_id, categoryId, totalDeliveredValue,
-           `Auto-genere depuis reception ${po.order_number}`, performedBy, storeId || null]
+      // Update ingredient unit_costs
+      for (const item of items) {
+        const poItem = await client.query(
+          `SELECT ingredient_id FROM purchase_order_items WHERE id = $1`, [item.itemId]
         );
+        if (poItem.rows[0]) {
+          await client.query(
+            `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
+            [item.unitPrice, poItem.rows[0].ingredient_id]
+          );
+        }
       }
 
       await client.query('COMMIT');
-      return { status: newStatus };
+      return { itemsUpdated: items.length, stillMissingPrices: stillMissing };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -239,10 +229,10 @@ export const purchaseOrderRepository = {
     const result = await db.query(
       `SELECT po.*, s.name as supplier_name,
               (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id) as item_count,
-              (SELECT COALESCE(SUM(quantity_ordered * unit_price), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
+              (SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
-       WHERE po.status IN ('en_attente', 'envoye')
+       WHERE po.status IN ('en_attente', 'envoye', 'livre_partiel')
          AND po.expected_delivery_date IS NOT NULL
          AND po.expected_delivery_date < CURRENT_DATE - $1::int * INTERVAL '1 day'
        ORDER BY po.expected_delivery_date ASC`,

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
+import { productLossesApi } from '../../api/product-losses.api';
+import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
@@ -10,7 +12,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import {
   ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package,
   User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
-  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp
+  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -22,6 +24,15 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string; grad
   in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500', gradient: 'from-amber-500 to-orange-600', label: 'En cours', icon: <Play size={14} /> },
   completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600', label: 'Termine', icon: <CheckCircle size={14} /> },
 };
+
+const PRODUCTION_LOSS_REASONS: { value: string; label: string }[] = [
+  { value: 'brule', label: 'Brule' },
+  { value: 'rate', label: 'Rate' },
+  { value: 'machine', label: 'Probleme machine' },
+  { value: 'matiere_defectueuse', label: 'Matiere defectueuse' },
+  { value: 'erreur_humaine', label: 'Erreur humaine' },
+  { value: 'autre', label: 'Autre' },
+];
 
 const roleConfig: Record<string, { label: string; bg: string; text: string; avatar: string }> = {
   baker: { label: 'Boulanger', bg: 'bg-amber-100', text: 'text-amber-800', avatar: 'bg-amber-500' },
@@ -36,6 +47,7 @@ export default function PlanDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [showCompletion, setShowCompletion] = useState(false);
+  const [singleProduceItem, setSingleProduceItem] = useState<Record<string, unknown> | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
 
@@ -52,6 +64,13 @@ export default function PlanDetailPage() {
     enabled: !!replenishmentId,
   });
 
+  // Reverse traceability: which ingredient lots were used in this production
+  const { data: productionLotUsage = [] } = useQuery({
+    queryKey: ['production-lots', id],
+    queryFn: () => ingredientLotsApi.productionLots(id!),
+    enabled: !!id && (plan?.status === 'completed' || plan?.status === 'in_progress'),
+  });
+
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
@@ -62,6 +81,96 @@ export default function PlanDetailPage() {
       }
     },
   });
+
+  const printProductionTicket = (item: Record<string, unknown>) => {
+    if (!plan) return;
+    const prodTs = item.production_timestamp || item.produced_at;
+    const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
+    const sld = item.shelf_life_days as number;
+    const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
+    const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : '—';
+    const planDate = new Date(plan.plan_date as string);
+    const lotNumber = `LOT-${format(planDate, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
+    const isReexposable = item.is_reexposable as boolean;
+    const isRecyclable = item.is_recyclable as boolean;
+    const cycleVie = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
+    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
+
+    const w = window.open('', '_blank', 'width=400,height=600');
+    if (!w) return;
+
+    w.document.write(`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12px; width: 80mm; }
+  .ticket { border: 2px solid #333; padding: 12px; border-radius: 6px; }
+  .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
+  .header h1 { font-size: 14px; margin-bottom: 2px; }
+  .header h2 { font-size: 11px; font-weight: normal; color: #666; }
+  .header .lot { font-size: 13px; font-weight: bold; margin-top: 6px; letter-spacing: 0.5px; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; }
+  .product-name { text-align: center; font-size: 16px; font-weight: bold; padding: 10px 0; border-bottom: 1px dashed #ccc; margin-bottom: 8px; text-transform: uppercase; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #eee; }
+  .row .label { font-size: 11px; color: #666; text-transform: uppercase; }
+  .row .value { font-weight: bold; font-size: 12px; }
+  .cycle { text-align: center; margin-top: 10px; padding: 6px; border: 1px solid #333; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cycle.dlv { background: #f0fdf4; color: #15803d; border-color: #15803d; }
+  .cycle.recyclable { background: #ecfeff; color: #0e7490; border-color: #0e7490; }
+  .cycle.vdj { background: #fff7ed; color: #c2410c; border-color: #c2410c; }
+  .barcode { text-align: center; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px; letter-spacing: 2px; font-weight: bold; }
+  .footer { text-align: center; margin-top: 10px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
+  .print-btn { position: fixed; top: 10px; right: 10px; background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  @media print { .print-btn { display: none; } body { padding: 0; } }
+</style></head><body>
+<button class="print-btn" onclick="window.print()">Imprimer</button>
+
+<div class="ticket">
+  <div class="header">
+    <h1>${settings.companyName}</h1>
+    <h2>${settings.subtitle || ''}</h2>
+    <div class="lot">${lotNumber}</div>
+  </div>
+
+  <div class="product-name">${item.product_name}</div>
+
+  <div class="row">
+    <span class="label">Quantite produite</span>
+    <span class="value">${item.actual_quantity ?? item.planned_quantity}</span>
+  </div>
+  <div class="row">
+    <span class="label">Date de production</span>
+    <span class="value">${format(prodDate, 'dd/MM/yyyy HH:mm')}</span>
+  </div>
+  <div class="row">
+    <span class="label">Produit par</span>
+    <span class="value">${prodBy}</span>
+  </div>
+  <div class="row">
+    <span class="label">Date d'expiration</span>
+    <span class="value">${dlcDate ? format(dlcDate, 'dd/MM/yyyy') : 'Vente du jour'}</span>
+  </div>
+  <div class="row">
+    <span class="label">N° Plan</span>
+    <span class="value">${(plan.id as string).slice(0, 8).toUpperCase()}</span>
+  </div>
+  <div class="row">
+    <span class="label">Role</span>
+    <span class="value">${plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : '—'}</span>
+  </div>
+
+  <div class="cycle ${isReexposable ? 'dlv' : isRecyclable ? 'recyclable' : 'vdj'}">
+    ${cycleVie}
+  </div>
+
+  <div class="barcode">${lotNumber}</div>
+
+  <div class="footer">
+    Imprime le ${now}<br/>
+    Conservez ce ticket pour la tracabilite
+  </div>
+</div>
+</body></html>`);
+    w.document.close();
+  };
 
   const printBonDeCommande = (planData?: Record<string, unknown>) => {
     const p = planData || plan;
@@ -113,7 +222,7 @@ export default function PlanDetailPage() {
 
 <div class="info">
   <div>
-    <strong>N\u00b0 Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Lot :</strong> LOT-${format(new Date(p.plan_date), 'yyyyMMdd', { locale: fr })}-${(p.id as string).slice(0, 8).toUpperCase()}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -280,7 +389,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 
 <div class="info">
   <div>
-    <strong>N\u00b0 Plan :</strong> ${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Lot :</strong> LOT-${format(new Date(p.plan_date), 'yyyyMMdd', { locale: fr })}-${(p.id as string).slice(0, 8).toUpperCase()}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -307,14 +416,16 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 </div>
 
 <div class="section">
-  <h3>Detail de la production</h3>
+  <h3>Detail de la production — Tracabilite</h3>
   <table>
     <thead><tr>
       <th>Produit</th>
-      <th class="text-right">Qte planifiee</th>
-      <th class="text-right">Qte produite</th>
+      <th class="text-right">Planifie</th>
+      <th class="text-right">Produit</th>
       <th class="text-right">Ecart</th>
-      <th class="text-center">Taux</th>
+      <th class="text-center">Produit par</th>
+      <th class="text-center">Date production</th>
+      <th class="text-center">Date expiration</th>
       <th class="text-center">Statut</th>
     </tr></thead>
     <tbody>
@@ -322,19 +433,24 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
         const planned = (it.planned_quantity as number) || 0;
         const actual = (it.actual_quantity as number) || 0;
         const diff = actual - planned;
-        const rate = planned > 0 ? Math.round((actual / planned) * 100) : 0;
-        const statusClass = rate >= 100 ? 'ok' : rate >= 80 ? 'warning' : 'warning';
-        const statusLabel = rate >= 100 ? 'Complet' : rate >= 80 ? 'Partiel' : 'Insuffisant';
+        const statusClass = actual >= planned ? 'ok' : 'warning';
+        const statusLabel = actual >= planned ? 'Complet' : actual > 0 ? 'Partiel' : 'Non produit';
+        const prodTs = it.production_timestamp || it.produced_at;
+        const prodDateStr = prodTs ? format(new Date(prodTs as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : '-';
+        const producedByStr = it.produced_by_first_name ? `${it.produced_by_first_name} ${it.produced_by_last_name}` : '-';
+        const slDays = it.shelf_life_days as number;
+        const prodD = prodTs ? new Date(prodTs as string) : new Date(p.plan_date);
+        const dlcD = it.expires_at ? new Date(it.expires_at as string) : slDays ? new Date(prodD.getTime() + slDays * 86400000) : null;
+        const dlcStr = dlcD ? format(dlcD, 'dd/MM/yyyy', { locale: fr }) : '-';
         return `
         <tr>
-          <td class="bold">${it.product_name}</td>
+          <td class="bold">${it.product_name}${(it.is_reexposable as boolean) === false ? ' <span style="color:#c05621;font-size:10px">(Non reexp.)</span>' : ''}</td>
           <td class="text-right">${planned}</td>
           <td class="text-right bold">${actual}</td>
           <td class="text-right ${diff > 0 ? 'over' : diff < 0 ? 'warning' : ''}">${diff > 0 ? '+' : ''}${diff}</td>
-          <td class="text-center">
-            ${rate}%
-            <div class="rate-bar"><div class="fill" style="width:${Math.min(rate, 100)}%;background:${rate >= 100 ? '#48bb78' : rate >= 80 ? '#ecc94b' : '#fc8181'}"></div></div>
-          </td>
+          <td class="text-center" style="font-size:11px">${producedByStr}</td>
+          <td class="text-center" style="font-size:11px">${prodDateStr}</td>
+          <td class="text-center" style="font-size:11px">${dlcStr}</td>
           <td class="text-center"><span class="${statusClass}">${statusLabel}</span></td>
         </tr>`;
       }).join('')}
@@ -343,7 +459,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
         <td class="text-right">${totalPlanned}</td>
         <td class="text-right">${totalProduced}</td>
         <td class="text-right ${totalProduced - totalPlanned >= 0 ? 'ok' : 'warning'}">${totalProduced - totalPlanned > 0 ? '+' : ''}${totalProduced - totalPlanned}</td>
-        <td class="text-center">${globalRate}%</td>
+        <td colspan="3" class="text-center">Taux: ${globalRate}%</td>
         <td></td>
       </tr>
     </tbody>
@@ -460,6 +576,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     } else {
       needsMap.set(ingId, { ...n });
     }
+  }
+  // Recalculate is_sufficient after aggregation (needed_quantity was summed)
+  for (const n of needsMap.values()) {
+    n.is_sufficient = parseFloat(n.available_quantity as string) >= parseFloat(n.needed_quantity as string);
   }
   const needs = [...needsMap.values()];
   const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
@@ -595,7 +715,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             <>
               {produciblePending.length > 0 && (
                 <button onClick={() => setShowCompletion(true)} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-                  <Factory size={16} /> Produire ({produciblePending.length})
+                  <Factory size={16} /> Produire tout ({produciblePending.length})
                 </button>
               )}
               {waitingCount > 0 && allProduced && (
@@ -775,148 +895,238 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </div>
             )}
 
-            {/* Production items */}
+            {/* Production items — simple table */}
             {hasProduction && (
-              <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden self-start">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-4 border-b border-blue-200 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-                    <Factory size={18} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-800">A produire</h3>
-                    <span className="text-xs text-blue-600">{items.length} article(s)</span>
-                  </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden self-start">
+                <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
+                  <Factory size={16} className="text-blue-600" />
+                  <h3 className="font-semibold text-gray-900 text-sm">A produire</h3>
+                  <span className="text-xs text-gray-400">{items.length} article(s)</span>
                 </div>
-                <table className="w-full">
-                  <thead className="border-b border-blue-100">
-                    <tr className="bg-blue-50/50">
-                      <th className="text-left px-5 py-2.5 text-xs font-semibold text-blue-700 uppercase">Produit</th>
-                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-blue-700 uppercase">Planifie</th>
-                      <th className="text-right px-5 py-2.5 text-xs font-semibold text-blue-700 uppercase">Produit</th>
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      <th className="text-left px-5 py-2.5">Produit</th>
+                      <th className="text-center px-3 py-2.5 w-14">Qte</th>
+                      <th className="text-center px-3 py-2.5 w-14">Fait</th>
+                      <th className="text-left px-3 py-2.5">N° Lot</th>
+                      <th className="text-center px-3 py-2.5">Date de production</th>
+                      <th className="text-left px-3 py-2.5">Produit par</th>
+                      <th className="text-center px-3 py-2.5">Date d'expiration</th>
+                      <th className="text-center px-3 py-2.5">Cycle de vie</th>
+                      <th className="text-center px-3 py-2.5 w-24">Statut</th>
+                      <th className="text-center px-3 py-2.5 w-24"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-blue-50">
-                    {items.map((item: Record<string, unknown>) => (
-                      <tr key={item.id as string} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
-                            {item.product_image ? (
-                              <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                  <tbody>
+                    {items.map((item: Record<string, unknown>, idx: number) => {
+                      const itemStatus = (item.status as string) || 'pending';
+                      const isPending = itemStatus === 'pending';
+                      const isItemWaiting = item.waiting_status === 'waiting';
+                      const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
+                      const isCancelled = itemStatus === 'cancelled';
+                      const prodTs = item.production_timestamp || item.produced_at;
+                      const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
+                      const sld = item.shelf_life_days as number;
+                      const dlcD = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
+                      const nowD = new Date();
+                      const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
+                      const planDateObj = new Date(plan.plan_date as string);
+                      const lotNumber = `LOT-${format(planDateObj, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
+
+                      return (
+                        <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                          <td className="px-5 py-3">
+                            <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
+                          </td>
+                          <td className="px-3 py-3 text-center font-bold text-gray-600">{item.planned_quantity as number}</td>
+                          <td className="px-3 py-3 text-center">
+                            {item.actual_quantity != null ? (
+                              <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {item.actual_quantity as number}
+                              </span>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
+                            {isProduced ? lotNumber : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
+                            {isProduced && prodTs ? format(prodDate, 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-gray-600">
+                            {isProduced && prodBy ? prodBy : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                            {isProduced && dlcD ? (
+                              <span className={dlcD <= nowD ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+                                {dlcD <= nowD ? 'Expire' : format(dlcD, 'dd/MM/yyyy')}
+                              </span>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-center whitespace-nowrap">
+                            {isProduced ? (
+                              (item.is_reexposable as boolean) ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">DLV</span>
+                              ) : (item.is_recyclable as boolean) ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700">Recyclable</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
+                              )
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {isProduced ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><CheckCircle size={11} /> Produit</span>
+                            ) : isCancelled ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
+                            ) : isItemWaiting ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600"><Clock size={11} /> Attente</span>
                             ) : (
-                              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                                <ClipboardList size={16} className="text-blue-600" />
-                              </div>
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">A faire</span>
                             )}
-                            <div>
-                              <span className="font-medium text-sm">{item.product_name as string}</span>
-                              {(item.notes as string) && <div className="text-xs text-gray-400">{item.notes as string}</div>}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-3 py-3.5 text-right font-semibold text-sm">{item.planned_quantity as number}</td>
-                        <td className="px-5 py-3.5 text-right text-sm">
-                          {item.actual_quantity != null ? (
-                            <span className={`inline-flex items-center gap-1 font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              {(item.actual_quantity as number) >= (item.planned_quantity as number) && <CheckCircle size={14} />}
-                              {item.actual_quantity as number}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {plan.status === 'in_progress' && isChef && isPending && !isItemWaiting ? (
+                              <button onClick={() => setSingleProduceItem(item)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
+                                <Factory size={12} /> Produire
+                              </button>
+                            ) : isProduced ? (
+                              <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
+                                <Printer size={13} /> Ticket
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>
         );
       })() : (
-        /* Non-replenishment plan: card-based items */
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        /* Non-replenishment plan: simple table */
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <Layers size={18} className="text-white" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900">Articles du plan</h2>
-                <span className="text-xs text-gray-500">{items.length} article(s)</span>
-              </div>
+              <Layers size={16} className="text-amber-600" />
+              <h2 className="font-semibold text-gray-900 text-sm">Articles du plan</h2>
+              <span className="text-xs text-gray-400">{items.length} article(s)</span>
             </div>
             {plan.status === 'in_progress' && totalActive > 0 && (
               <div className="flex items-center gap-3">
-                <div className="w-28 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                <div className="w-28 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
                 </div>
-                <span className="text-xs font-medium text-gray-500">{producedCount}/{totalActive} ({progressPct}%)</span>
+                <span className="text-xs font-medium text-gray-500">{producedCount}/{totalActive}</span>
               </div>
             )}
           </div>
-          <div className="divide-y divide-gray-50">
-            {items.map((item: Record<string, unknown>) => {
-              const itemStatus = (item.status as string) || 'pending';
-              const isWaiting = item.waiting_status === 'waiting';
-              const isCancelled = itemStatus === 'cancelled';
-              const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <th className="text-left px-5 py-2.5">Produit</th>
+                <th className="text-center px-3 py-2.5 w-14">Qte</th>
+                <th className="text-center px-3 py-2.5 w-14">Fait</th>
+                <th className="text-left px-3 py-2.5">N° Lot</th>
+                <th className="text-center px-3 py-2.5">Date de production</th>
+                <th className="text-left px-3 py-2.5">Produit par</th>
+                <th className="text-center px-3 py-2.5">Date d'expiration</th>
+                <th className="text-center px-3 py-2.5">Cycle de vie</th>
+                <th className="text-center px-3 py-2.5 w-24">Statut</th>
+                <th className="text-center px-3 py-2.5 w-24"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: Record<string, unknown>, idx: number) => {
+                const itemStatus = (item.status as string) || 'pending';
+                const isWaiting = item.waiting_status === 'waiting';
+                const isCancelled = itemStatus === 'cancelled';
+                const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
+                const prodTimestamp = item.production_timestamp || item.produced_at;
+                const prodDate = prodTimestamp ? new Date(prodTimestamp as string) : new Date(plan.plan_date);
+                const sldays = item.shelf_life_days as number;
+                const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sldays ? new Date(prodDate.getTime() + sldays * 86400000) : null;
+                const now = new Date();
+                const producedBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
+                const planDateObj2 = new Date(plan.plan_date as string);
+                const lotNumber = `LOT-${format(planDateObj2, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
 
-              const statusBadgeConfig = itemStatus === 'produced'
-                ? { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={12} />, label: 'Produit' }
-                : itemStatus === 'transferred'
-                ? { bg: 'bg-purple-100', text: 'text-purple-700', icon: <TrendingUp size={12} />, label: 'Transfere' }
-                : itemStatus === 'received'
-                ? { bg: 'bg-blue-100', text: 'text-blue-700', icon: <Package size={12} />, label: 'Recu' }
-                : isCancelled
-                ? { bg: 'bg-red-100', text: 'text-red-700', icon: <XCircle size={12} />, label: 'Annule' }
-                : isWaiting
-                ? { bg: 'bg-amber-100', text: 'text-amber-700', icon: <Clock size={12} />, label: 'En attente' }
-                : { bg: 'bg-gray-100', text: 'text-gray-600', icon: <Play size={12} />, label: 'En cours' };
-
-              return (
-                <div key={item.id as string} className={`px-5 py-4 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${isCancelled ? 'opacity-50' : ''}`}>
-                  {/* Left color bar */}
-                  <div className={`w-1 h-12 rounded-full flex-shrink-0 ${
-                    isProduced ? 'bg-emerald-500' : isCancelled ? 'bg-red-300' : isWaiting ? 'bg-amber-400' : 'bg-gray-300'
-                  }`} />
-                  {/* Image */}
-                  {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-                      <ClipboardList size={18} className="text-amber-400" />
-                    </div>
-                  )}
-                  {/* Name */}
-                  <div className="flex-1 min-w-0">
-                    <span className={`font-medium text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
-                    {(item.notes as string) && <div className="text-xs text-gray-400 mt-0.5">{item.notes as string}</div>}
-                  </div>
-                  {/* Quantities */}
-                  <div className="flex items-center gap-5 flex-shrink-0">
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Planifie</div>
-                      <div className="text-lg font-bold text-gray-700">{item.planned_quantity as number}</div>
-                    </div>
-                    <div className="text-gray-200">/</div>
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Produit</div>
+                return (
+                  <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                    <td className="px-5 py-3">
+                      <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
+                    </td>
+                    <td className="px-3 py-3 text-center font-bold text-gray-600">{item.planned_quantity as number}</td>
+                    <td className="px-3 py-3 text-center">
                       {item.actual_quantity != null ? (
-                        <div className={`text-lg font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
                           {item.actual_quantity as number}
-                        </div>
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
+                      {isProduced ? lotNumber : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
+                      {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-gray-600">
+                      {isProduced && producedBy ? producedBy : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-center whitespace-nowrap">
+                      {isProduced && dlcDate ? (
+                        <span className={dlcDate <= now ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+                          {dlcDate <= now ? 'Expire' : format(dlcDate, 'dd/MM/yyyy')}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-center whitespace-nowrap">
+                      {isProduced ? (
+                        (item.is_reexposable as boolean) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">DLV</span>
+                        ) : (item.is_recyclable as boolean) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700">Recyclable</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
+                        )
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      {itemStatus === 'produced' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><CheckCircle size={11} /> Produit</span>
+                      ) : itemStatus === 'transferred' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700"><TrendingUp size={11} /> Transfere</span>
+                      ) : itemStatus === 'received' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700"><Package size={11} /> Recu</span>
+                      ) : isCancelled ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
+                      ) : isWaiting ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600"><Clock size={11} /> Attente</span>
                       ) : (
-                        <div className="text-lg text-gray-300 font-bold">—</div>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">A faire</span>
                       )}
-                    </div>
-                  </div>
-                  {/* Status badge */}
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 flex-shrink-0 ${statusBadgeConfig.bg} ${statusBadgeConfig.text}`}>
-                    {statusBadgeConfig.icon} {statusBadgeConfig.label}
-                  </span>
-                </div>
-              );
-            })}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
+                        <button onClick={() => setSingleProduceItem(item)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
+                          <Factory size={12} /> Produire
+                        </button>
+                      ) : isProduced ? (
+                        <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
+                          <Printer size={13} /> Ticket
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
           </div>
         </div>
       )}
@@ -1091,6 +1301,74 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
+      {/* ══════════════ LOT TRACEABILITY ══════════════ */}
+      {(plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+              <Layers size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">Tracabilite des lots</h2>
+              <span className="text-xs text-gray-500">{(productionLotUsage as Record<string, unknown>[]).length} lot(s) d'ingredients utilise(s)</span>
+            </div>
+          </div>
+
+          <div className="divide-y divide-gray-50">
+            {(productionLotUsage as Record<string, unknown>[]).map((usage, idx) => {
+              const expDate = usage.expiration_date ? new Date(usage.expiration_date as string) : null;
+              const isExpired = expDate && expDate < new Date();
+
+              return (
+                <div key={idx} className="px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors">
+                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-400' : 'bg-amber-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-gray-900">{usage.ingredient_name as string}</div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                        {(usage.supplier_lot_number as string) || 'Sans ref.'}
+                      </span>
+                      {expDate && (
+                        <span className={`text-[10px] ${isExpired ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                          DLC: {format(expDate, 'dd/MM/yyyy')}
+                        </span>
+                      )}
+                      {usage.received_at && (
+                        <span className="text-[10px] text-gray-400">
+                          Recu: {format(new Date(usage.received_at as string), 'dd/MM/yyyy')}
+                        </span>
+                      )}
+                      {usage.supplier_name ? <span className="text-[10px] text-gray-400">— {String(usage.supplier_name)}</span> : null}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-sm font-bold text-gray-700">{parseFloat(usage.quantity_used as string).toFixed(2)}</div>
+                    <div className="text-[10px] text-gray-400">{(usage.ingredient_unit as string) || ''} utilise(s)</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ SINGLE ITEM PRODUCTION MODAL ══════════════ */}
+      {singleProduceItem && (
+        <SingleItemProductionModal
+          planId={id!}
+          item={singleProduceItem}
+          onClose={() => setSingleProduceItem(null)}
+          onCompleted={async () => {
+            const freshPlan = await productionApi.getById(id!);
+            // Auto-print if plan was auto-completed
+            const allDone = (freshPlan.items || []).every((it: Record<string, unknown>) => it.status !== 'pending' || it.waiting_status === 'waiting');
+            if (freshPlan.status === 'completed' || allDone) {
+              printFicheProduction(freshPlan);
+            }
+          }}
+        />
+      )}
+
       {/* ══════════════ COMPLETION MODAL ══════════════ */}
       {showCompletion && (
         <CompletionModal
@@ -1108,6 +1386,204 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   );
 }
 
+function SingleItemProductionModal({ planId, item, onClose, onCompleted }: {
+  planId: string;
+  item: Record<string, unknown>;
+  onClose: () => void;
+  onCompleted: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const planned = item.planned_quantity as number;
+  const [actualQty, setActualQty] = useState(planned);
+  const [producedAt, setProducedAt] = useState(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  });
+  const [declareLoss, setDeclareLoss] = useState(false);
+  const [lossQty, setLossQty] = useState(0);
+  const [lossReason, setLossReason] = useState('rate');
+  const [lossNote, setLossNote] = useState('');
+
+  // When loss is toggled on, auto-set loss qty from difference; when loss qty changes, adjust actual
+  const handleToggleLoss = () => {
+    if (!declareLoss) {
+      setDeclareLoss(true);
+      if (lossQty === 0) setLossQty(1);
+      if (actualQty === planned) setActualQty(planned - 1);
+    } else {
+      setDeclareLoss(false);
+    }
+  };
+
+  const handleLossQtyChange = (val: number) => {
+    const clamped = Math.max(0, Math.min(val, planned));
+    setLossQty(clamped);
+    setActualQty(planned - clamped);
+  };
+
+  const handleActualQtyChange = (val: number) => {
+    setActualQty(val);
+    if (declareLoss && val < planned) {
+      setLossQty(planned - val);
+    }
+  };
+
+  const produceMutation = useMutation({
+    mutationFn: async () => {
+      const result = await productionApi.produceItems(planId, [{ planItemId: item.id as string, actualQuantity: actualQty }], producedAt);
+      if (declareLoss && lossQty > 0) {
+        await productLossesApi.create({
+          productId: item.product_id,
+          quantity: lossQty,
+          lossType: 'production',
+          reason: lossReason,
+          reasonNote: lossNote || undefined,
+          productionPlanId: planId,
+        });
+      }
+      return result;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['production'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['product-losses'] });
+      queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
+      const msg = declareLoss && lossQty > 0
+        ? `"${item.product_name}" produit (${actualQty}) — ${lossQty} perte(s) declaree(s)`
+        : `"${item.product_name}" produit — stock mis a jour`;
+      toast.success(msg);
+      if (result.autoCompleted) {
+        toast.success('Plan de production termine automatiquement', { duration: 4000 });
+      }
+      if (result.warnings?.length > 0) {
+        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
+      }
+      onClose();
+      onCompleted();
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error?.message || 'Erreur lors de la production');
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-2xl p-5 text-white flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <Factory size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Produire un article</h2>
+              <p className="text-emerald-100 text-xs mt-0.5">Production individuelle</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex items-center gap-3 mb-5 bg-gray-50 rounded-xl p-3">
+            {item.product_image ? (
+              <img src={item.product_image as string} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+                <ClipboardList size={18} className="text-amber-400" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gray-900 truncate">{item.product_name as string}</div>
+              <div className="text-xs text-gray-500">Planifie : {planned} unite(s)</div>
+            </div>
+          </div>
+
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            <span className="flex items-center gap-1.5"><Clock size={14} className="text-emerald-500" /> Date et heure de production</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={producedAt}
+            onChange={e => setProducedAt(e.target.value)}
+            className="w-full py-2.5 px-4 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all mb-4"
+          />
+
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quantite produite</label>
+          <input
+            type="number" min="0" value={actualQty}
+            onChange={e => handleActualQtyChange(parseInt(e.target.value) || 0)}
+            className="w-full py-3 px-4 border border-gray-200 rounded-xl text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+          />
+
+          {/* Loss declaration — always visible */}
+          <div className={`mt-4 border rounded-xl overflow-hidden ${declareLoss ? 'border-orange-300' : 'border-gray-200'}`}>
+            <button
+              type="button"
+              onClick={handleToggleLoss}
+              className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${declareLoss ? 'bg-orange-50 text-orange-800' : 'bg-gray-50 text-gray-700 hover:bg-orange-50'}`}
+            >
+              <span className="flex items-center gap-2">
+                <Flame size={14} className={declareLoss ? 'text-orange-500' : 'text-gray-400'} />
+                Declarer une perte
+              </span>
+              <div className={`w-9 h-5 rounded-full transition-colors flex items-center ${declareLoss ? 'bg-orange-500 justify-end' : 'bg-gray-300 justify-start'}`}>
+                <div className="w-4 h-4 bg-white rounded-full mx-0.5 shadow-sm" />
+              </div>
+            </button>
+            {declareLoss && (
+              <div className="px-4 py-3 space-y-3 bg-orange-50/50">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantite perdue</label>
+                  <input
+                    type="number" min="1" max={planned}
+                    value={lossQty}
+                    onChange={e => handleLossQtyChange(parseInt(e.target.value) || 0)}
+                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm font-bold text-center bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Motif de la perte</label>
+                  <select
+                    value={lossReason}
+                    onChange={e => setLossReason(e.target.value)}
+                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    {PRODUCTION_LOSS_REASONS.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Note (optionnel)</label>
+                  <input
+                    type="text" value={lossNote}
+                    onChange={e => setLossNote(e.target.value)}
+                    placeholder="Detail supplementaire..."
+                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+                <div className="bg-white rounded-lg p-2.5 border border-orange-100 text-xs text-gray-600">
+                  <span className="font-medium">Resume :</span> {actualQty} produit(s) + {lossQty} perte(s) = {actualQty + lossQty}/{planned} planifie(s)
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-5 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">
+            Annuler
+          </button>
+          <button onClick={() => produceMutation.mutate()} disabled={produceMutation.isPending || actualQty <= 0}
+            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center justify-center gap-2">
+            {produceMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+            {produceMutation.isPending ? 'Production...' : 'Produire'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   planId: string;
   items: Record<string, unknown>[];
@@ -1121,19 +1597,62 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
   const [actuals, setActuals] = useState<Record<string, number>>(
     Object.fromEntries(producibleAllItems.map(it => [it.id as string, it.planned_quantity as number]))
   );
+  const [producedAt, setProducedAt] = useState(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  });
+  const [declareLosses, setDeclareLosses] = useState(false);
+  const [globalLossReason, setGlobalLossReason] = useState('rate');
+  const [globalLossNote, setGlobalLossNote] = useState('');
+
+  // Items that have losses (actual < planned)
+  const itemsWithLosses = producibleAllItems.filter(it => {
+    const actual = actuals[it.id as string] || 0;
+    return actual > 0 && actual < (it.planned_quantity as number);
+  });
+  const totalLossQty = itemsWithLosses.reduce((sum, it) => sum + ((it.planned_quantity as number) - (actuals[it.id as string] || 0)), 0);
+
+  // When toggling losses on, reduce all items by 1 if all are at planned qty (to show intent)
+  const handleToggleLosses = () => {
+    setDeclareLosses(!declareLosses);
+  };
 
   const produceMutation = useMutation({
-    mutationFn: () => productionApi.produceItems(
-      planId,
-      Object.entries(actuals)
-        .filter(([, qty]) => qty > 0)
-        .map(([planItemId, actualQuantity]) => ({ planItemId, actualQuantity }))
-    ),
+    mutationFn: async () => {
+      const result = await productionApi.produceItems(
+        planId,
+        Object.entries(actuals)
+          .filter(([, qty]) => qty > 0)
+          .map(([planItemId, actualQuantity]) => ({ planItemId, actualQuantity })),
+        producedAt
+      );
+      // Declare losses if enabled
+      if (declareLosses && itemsWithLosses.length > 0) {
+        await Promise.all(itemsWithLosses.map(it => {
+          const lossQty = (it.planned_quantity as number) - (actuals[it.id as string] || 0);
+          return productLossesApi.create({
+            productId: it.product_id,
+            quantity: lossQty,
+            lossType: 'production',
+            reason: globalLossReason,
+            reasonNote: globalLossNote || undefined,
+            productionPlanId: planId,
+          });
+        }));
+      }
+      return result;
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['product-losses'] });
+      queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
       const producedCount = Object.values(actuals).filter(q => q > 0).length;
-      toast.success(`${producedCount} article(s) produit(s) — stock mis a jour`);
+      const msg = declareLosses && totalLossQty > 0
+        ? `${producedCount} article(s) produit(s) — ${totalLossQty} perte(s) declaree(s)`
+        : `${producedCount} article(s) produit(s) — stock mis a jour`;
+      toast.success(msg);
       if (result.autoCompleted) {
         toast.success('Plan de production termine automatiquement', { duration: 4000 });
       }
@@ -1167,6 +1686,17 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-5">
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="flex items-center gap-1.5"><Clock size={14} className="text-emerald-500" /> Date et heure de production</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={producedAt}
+              onChange={e => setProducedAt(e.target.value)}
+              className="w-full py-2.5 px-4 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+            />
+          </div>
           <div className="space-y-2">
             {/* Column headers */}
             <div className="grid grid-cols-[1fr_80px_90px] gap-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-2">
@@ -1174,27 +1704,105 @@ function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
               <span className="text-right">Planifie</span>
               <span className="text-right">Produit</span>
             </div>
-            {producibleItems.map((item) => (
-              <div key={item.id as string} className="grid grid-cols-[1fr_80px_90px] gap-3 items-center py-2 hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                      <ClipboardList size={14} className="text-amber-400" />
+            {producibleItems.map((item) => {
+              const actual = actuals[item.id as string] || 0;
+              const planned = item.planned_quantity as number;
+              const hasItemLoss = actual > 0 && actual < planned;
+              return (
+                <div key={item.id as string} className={`grid grid-cols-[1fr_80px_90px] gap-3 items-center py-2 rounded-lg px-2 -mx-2 transition-colors ${hasItemLoss ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {item.product_image ? (
+                      <img src={item.product_image as string} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                        <ClipboardList size={14} className="text-amber-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <span className="font-medium text-sm truncate text-gray-800 block">{item.product_name as string}</span>
+                      {hasItemLoss && (
+                        <span className="text-[10px] text-orange-600 flex items-center gap-0.5">
+                          <Flame size={10} /> {planned - actual} perte(s)
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <span className="font-medium text-sm truncate text-gray-800">{item.product_name as string}</span>
+                  </div>
+                  <span className="text-right text-gray-500 font-medium">{planned}</span>
+                  <input
+                    type="number" min="0"
+                    value={actual}
+                    onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
+                    className={`w-full text-right py-2 px-3 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${hasItemLoss ? 'border-orange-300 focus:ring-orange-400 focus:border-orange-400' : 'border-gray-200 focus:ring-emerald-500 focus:border-emerald-500'}`}
+                  />
                 </div>
-                <span className="text-right text-gray-500 font-medium">{item.planned_quantity as number}</span>
-                <input
-                  type="number" min="0"
-                  value={actuals[item.id as string] || 0}
-                  onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
-                  className="w-full text-right py-2 px-3 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-                />
+              );
+            })}
+          </div>
+
+          {/* Loss declaration section — always visible */}
+          <div className={`mt-4 border rounded-xl overflow-hidden ${declareLosses ? 'border-orange-300' : 'border-gray-200'}`}>
+            <button
+              type="button"
+              onClick={handleToggleLosses}
+              className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${declareLosses ? 'bg-orange-50 text-orange-800' : 'bg-gray-50 text-gray-700 hover:bg-orange-50'}`}
+            >
+              <span className="flex items-center gap-2">
+                <Flame size={14} className={declareLosses ? 'text-orange-500' : 'text-gray-400'} />
+                Declarer des pertes
+                {declareLosses && totalLossQty > 0 && (
+                  <span className="bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{totalLossQty}</span>
+                )}
+              </span>
+              <div className={`w-9 h-5 rounded-full transition-colors flex items-center ${declareLosses ? 'bg-orange-500 justify-end' : 'bg-gray-300 justify-start'}`}>
+                <div className="w-4 h-4 bg-white rounded-full mx-0.5 shadow-sm" />
               </div>
-            ))}
+            </button>
+            {declareLosses && (
+              <div className="px-4 py-3 space-y-3 bg-orange-50/50">
+                <p className="text-xs text-orange-700">Reduisez la quantite produite des articles concernes. La difference sera declaree comme perte.</p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Motif de la perte (pour tous)</label>
+                  <select
+                    value={globalLossReason}
+                    onChange={e => setGlobalLossReason(e.target.value)}
+                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  >
+                    {PRODUCTION_LOSS_REASONS.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Note (optionnel)</label>
+                  <input
+                    type="text" value={globalLossNote}
+                    onChange={e => setGlobalLossNote(e.target.value)}
+                    placeholder="Detail supplementaire..."
+                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+                {/* Summary of losses */}
+                {itemsWithLosses.length > 0 && (
+                  <div className="bg-white rounded-lg p-2.5 border border-orange-100">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Pertes a declarer</div>
+                    {itemsWithLosses.map(it => {
+                      const lossQ = (it.planned_quantity as number) - (actuals[it.id as string] || 0);
+                      return (
+                        <div key={it.id as string} className="flex justify-between text-xs py-0.5">
+                          <span className="text-gray-600 truncate">{it.product_name as string}</span>
+                          <span className="text-orange-600 font-medium flex-shrink-0 ml-2">-{lossQ}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {itemsWithLosses.length === 0 && (
+                  <div className="bg-white rounded-lg p-2.5 border border-orange-100 text-xs text-gray-500 text-center">
+                    Modifiez les quantites ci-dessus pour declarer des pertes
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

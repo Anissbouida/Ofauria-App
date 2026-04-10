@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const orderRepository = {
   async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; limit: number; offset: number }) {
@@ -18,7 +19,7 @@ export const orderRepository = {
 
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone
+      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
        ${where} ORDER BY o.created_at DESC LIMIT $${i++} OFFSET $${i}`,
       values
@@ -29,7 +30,7 @@ export const orderRepository = {
 
   async findById(id: string) {
     const orderResult = await db.query(
-      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone
+      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
       [id]
     );
@@ -45,7 +46,8 @@ export const orderRepository = {
   },
 
   async create(data: {
-    orderNumber: string; customerId?: string; userId: string; type: string;
+    orderNumber: string; customerId?: string; customerName?: string; customerPhone?: string;
+    userId: string; type: string;
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     sessionId?: string; storeId?: string;
@@ -56,9 +58,10 @@ export const orderRepository = {
       await client.query('BEGIN');
 
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
-        [data.orderNumber, data.customerId || null, data.userId, data.type,
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+        [data.orderNumber, data.customerId || null, data.customerName || null, data.customerPhone || null,
+         data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null]
       );
@@ -91,7 +94,8 @@ export const orderRepository = {
   },
 
   async update(id: string, data: {
-    customerId?: string; type?: string; subtotal: number; taxAmount: number;
+    customerId?: string; customerName?: string; customerPhone?: string;
+    type?: string; subtotal: number; taxAmount: number;
     discountAmount: number; total: number; advanceAmount?: number;
     paymentMethod?: string; notes?: string; pickupDate?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
@@ -101,11 +105,13 @@ export const orderRepository = {
       await client.query('BEGIN');
 
       const orderResult = await client.query(
-        `UPDATE orders SET customer_id = COALESCE($1, customer_id), type = COALESCE($2, type),
-         subtotal = $3, tax_amount = $4, discount_amount = $5, total = $6, advance_amount = $7,
-         payment_method = COALESCE($8, payment_method), notes = $9, pickup_date = COALESCE($10, pickup_date)
-         WHERE id = $11 AND status IN ('pending', 'confirmed') RETURNING *`,
-        [data.customerId || null, data.type || null, data.subtotal, data.taxAmount,
+        `UPDATE orders SET customer_id = $1, customer_name = $2, customer_phone = $3,
+         type = COALESCE($4, type),
+         subtotal = $5, tax_amount = $6, discount_amount = $7, total = $8, advance_amount = $9,
+         payment_method = COALESCE($10, payment_method), notes = $11, pickup_date = COALESCE($12, pickup_date)
+         WHERE id = $13 AND status IN ('pending', 'confirmed') RETURNING *`,
+        [data.customerId || null, data.customerName || null, data.customerPhone || null,
+         data.type || null, data.subtotal, data.taxAmount,
          data.discountAmount, data.total, data.advanceAmount || 0,
          data.paymentMethod || null, data.notes || null, data.pickupDate || null, id]
       );
@@ -145,9 +151,10 @@ export const orderRepository = {
   },
 
   async generateOrderNumber() {
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const tz = getUserTimezone();
+    const today = getLocalDateString();
     const result = await db.query(
-      `SELECT COUNT(*) FROM orders WHERE created_at::date = CURRENT_DATE`
+      `SELECT COUNT(*) FROM orders WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
     );
     const seq = parseInt(result.rows[0].count, 10) + 1;
     return `CMD-${today}-${String(seq).padStart(4, '0')}`;
@@ -159,7 +166,7 @@ export const orderRepository = {
     if (storeId) { conditions.push(`o.store_id = $2`); values.push(storeId); }
 
     const result = await db.query(
-      `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name,
+      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name,
               json_agg(json_build_object(
                 'id', oi.id, 'product_id', oi.product_id, 'product_name', p.name,
                 'quantity', oi.quantity, 'unit_price', oi.unit_price, 'notes', oi.notes

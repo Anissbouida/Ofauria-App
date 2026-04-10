@@ -3,30 +3,31 @@ import { useQuery } from '@tanstack/react-query';
 import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { returnsApi } from '../../api/returns.api';
-import { format } from 'date-fns';
+import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
-  ChevronDown, ChevronUp, Search, Banknote, TrendingUp, Hash, Clock,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock,
 } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
+import EmittedInvoicesTab from './EmittedInvoicesTab';
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrateur', manager: 'Gerant', cashier: 'Caissier', baker: 'Boulanger',
-  pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale', saleswoman: 'Vendeuse',
+  admin: 'Administrateur', manager: 'Gérant', cashier: 'Caissier', baker: 'Boulanger',
+  pastry_chef: 'Pâtissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Salé', saleswoman: 'Vendeuse',
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Especes', card: 'Carte bancaire',
+  cash: 'Espèces', card: 'Carte bancaire',
 };
 
 type SalesView = 'receipt' | 'category' | 'product' | 'cashier' | 'payment';
 
 const viewTabs: { key: SalesView; label: string; icon: typeof Receipt }[] = [
-  { key: 'receipt', label: 'Par recu', icon: FileText },
-  { key: 'category', label: 'Par categorie', icon: LayoutGrid },
+  { key: 'receipt', label: 'Par reçu', icon: FileText },
+  { key: 'category', label: 'Par catégorie', icon: LayoutGrid },
   { key: 'product', label: 'Par article', icon: ShoppingBag },
   { key: 'cashier', label: 'Par vendeuse', icon: User },
   { key: 'payment', label: 'Par paiement', icon: CreditCard },
@@ -47,7 +48,7 @@ function formatCurrency(value: number) {
 }
 
 export default function SalesPage() {
-  const [mainTab, setMainTab] = useState<'sales' | 'sessions' | 'returns'>('sales');
+  const [mainTab, setMainTab] = useState<'sales' | 'sessions' | 'returns' | 'invoices'>('sales');
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -76,6 +77,8 @@ export default function SalesPage() {
       discountAmount: parseFloat(sale.discount_amount),
       total: parseFloat(sale.total),
       paymentMethod: sale.payment_method,
+      advanceAmount: sale.advance_amount ? parseFloat(sale.advance_amount) : undefined,
+      advanceDate: sale.advance_date || undefined,
     });
   };
 
@@ -138,7 +141,7 @@ export default function SalesPage() {
     const date = `${dateFrom}_${dateTo}`;
     if (mainTab === 'sessions') {
       exportCSV(`sessions_${date}.csv`,
-        ['Employe', 'Ouverture', 'Fermeture', 'Fond de caisse', 'CA ventes', 'Avances', 'Montant attendu', 'Montant saisi', 'Ecart', 'Statut'],
+        ['Employé', 'Ouverture', 'Fermeture', 'Fond de caisse', 'CA ventes', 'Avances', 'Montant attendu', 'Montant saisi', 'Écart', 'Statut'],
         sessions.map((s: Record<string, unknown>) => [
           `${s.first_name} ${s.last_name}`,
           format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm'),
@@ -149,7 +152,7 @@ export default function SalesPage() {
           s.expected_cash ? parseFloat(s.expected_cash as string).toFixed(2) : '',
           s.actual_amount ? parseFloat(s.actual_amount as string).toFixed(2) : '',
           s.difference !== null ? parseFloat(s.difference as string).toFixed(2) : '',
-          s.status === 'closed' ? 'Ferme' : 'En cours',
+          s.status === 'closed' ? 'Fermé' : 'En cours',
         ])
       );
       return;
@@ -160,7 +163,7 @@ export default function SalesPage() {
         returns.map((r: Record<string, unknown>) => [
           r.return_number as string,
           r.original_sale_number as string,
-          r.type === 'return' ? 'Retour' : 'Echange',
+          r.type === 'return' ? 'Retour' : 'Échange',
           parseFloat(r.refund_amount as string).toFixed(2),
           `${r.user_first_name} ${r.user_last_name}`,
           format(new Date(r.created_at as string), 'dd/MM/yyyy HH:mm'),
@@ -183,7 +186,7 @@ export default function SalesPage() {
       );
     } else if (view === 'category') {
       exportCSV(`ventes_categories_${date}.csv`,
-        ['Categorie', 'Articles vendus', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Catégorie', 'Articles vendus', 'Nb ventes', 'CA (DH)', '% du CA'],
         summary.map((r: Record<string, unknown>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -191,7 +194,7 @@ export default function SalesPage() {
       );
     } else if (view === 'product') {
       exportCSV(`ventes_articles_${date}.csv`,
-        ['Article', 'Categorie', 'Qte vendue', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Article', 'Catégorie', 'Qté vendue', 'Nb ventes', 'CA (DH)', '% du CA'],
         summary.map((r: Record<string, unknown>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, (r.category_name as string) || '', r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -199,7 +202,7 @@ export default function SalesPage() {
       );
     } else if (view === 'cashier') {
       exportCSV(`ventes_vendeuses_${date}.csv`,
-        ['Vendeuse / Caissier', 'Role', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Vendeuse / Caissier', 'Rôle', 'Nb ventes', 'CA (DH)', '% du CA'],
         summary.map((r: Record<string, unknown>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, ROLE_LABELS[r.role as string] || (r.role as string), r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -227,8 +230,9 @@ export default function SalesPage() {
 
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
-    { key: 'returns' as const, label: 'Retours & Echanges', icon: RotateCcw },
-    { key: 'sessions' as const, label: 'Periodes de travail', icon: Lock },
+    { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
+    { key: 'sessions' as const, label: 'Périodes de travail', icon: Lock },
+    { key: 'invoices' as const, label: 'Factures émises', icon: FileText },
   ];
 
   return (
@@ -237,10 +241,36 @@ export default function SalesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Ventes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Historique des ventes, retours et periodes de travail</p>
+          <p className="text-sm text-gray-500 mt-0.5">Historique des ventes, retours et périodes de travail</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => {
+              const from = parseISO(dateFrom);
+              const to = parseISO(dateTo);
+              const span = Math.max(differenceInDays(to, from), 0) + 1;
+              setDateFrom(format(addDays(from, -span), 'yyyy-MM-dd'));
+              setDateTo(format(addDays(to, -span), 'yyyy-MM-dd'));
+            }}
+            className="p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors" title="Période précédente">
+            <ChevronLeft size={18} />
+          </button>
           <DateRangePicker dateFrom={dateFrom} dateTo={dateTo} onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+          <button onClick={() => {
+              const todayStr = format(new Date(), 'yyyy-MM-dd');
+              if (dateTo >= todayStr) return;
+              const from = parseISO(dateFrom);
+              const to = parseISO(dateTo);
+              const span = Math.max(differenceInDays(to, from), 0) + 1;
+              const newFrom = addDays(from, span);
+              let newTo = addDays(to, span);
+              if (format(newTo, 'yyyy-MM-dd') > todayStr) newTo = parseISO(todayStr);
+              setDateFrom(format(newFrom, 'yyyy-MM-dd'));
+              setDateTo(format(newTo, 'yyyy-MM-dd'));
+            }}
+            disabled={dateTo >= format(new Date(), 'yyyy-MM-dd')}
+            className="p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="Période suivante">
+            <ChevronRight size={18} />
+          </button>
           <button onClick={handleExport}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={16} /> Exporter
@@ -425,7 +455,7 @@ export default function SalesPage() {
                     ))}
                   </tbody>
                 </table>
-                {filteredSales.length === 0 && <EmptyState text={searchQuery ? 'Aucun resultat pour cette recherche' : 'Aucune vente pour cette periode'} />}
+                {filteredSales.length === 0 && <EmptyState text={searchQuery ? 'Aucun résultat pour cette recherche' : 'Aucune vente pour cette période'} />}
               </div>
             )
           )}
@@ -437,7 +467,7 @@ export default function SalesPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Categorie</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catégorie</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Articles vendus</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Nb ventes</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">CA</th>
@@ -474,7 +504,7 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-                {summary.length === 0 && <EmptyState text="Aucune donnee pour cette periode" />}
+                {summary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
               </div>
             )
           )}
@@ -487,8 +517,8 @@ export default function SalesPage() {
                   <thead>
                     <tr className="border-b border-gray-100">
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Article</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Categorie</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qte vendue</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catégorie</th>
+                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qté vendue</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Nb ventes</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">CA</th>
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Part</th>
@@ -529,7 +559,7 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-                {summary.length === 0 && <EmptyState text="Aucune donnee pour cette periode" />}
+                {summary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
               </div>
             )
           )}
@@ -572,7 +602,7 @@ export default function SalesPage() {
                   );
                 })}
                 {summary.length === 0 && (
-                  <div className="col-span-full"><EmptyState text="Aucune donnee pour cette periode" /></div>
+                  <div className="col-span-full"><EmptyState text="Aucune donnée pour cette période" /></div>
                 )}
               </div>
             )
@@ -608,7 +638,7 @@ export default function SalesPage() {
                   );
                 })}
                 {summary.length === 0 && (
-                  <div className="col-span-full"><EmptyState text="Aucune donnee pour cette periode" /></div>
+                  <div className="col-span-full"><EmptyState text="Aucune donnée pour cette période" /></div>
                 )}
               </div>
             )
@@ -715,7 +745,7 @@ export default function SalesPage() {
                   })}
                 </tbody>
               </table>
-              {returns.length === 0 && <EmptyState text="Aucun retour ou echange pour cette periode" />}
+              {returns.length === 0 && <EmptyState text="Aucun retour ou échange pour cette période" />}
             </div>
           </>
         )
@@ -725,7 +755,7 @@ export default function SalesPage() {
       {mainTab === 'sessions' && (
         sessionsLoading ? <LoadingState /> : (
           <div className="space-y-4">
-            {sessions.length === 0 && <EmptyState text="Aucune periode de travail pour cette periode" />}
+            {sessions.length === 0 && <EmptyState text="Aucune période de travail pour cette période" />}
             {sessions.map((s: Record<string, unknown>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
               const isClosed = s.status === 'closed';
@@ -831,6 +861,13 @@ export default function SalesPage() {
             })}
           </div>
         )
+      )}
+
+      {/* ═══════════ INVOICES TAB ═══════════ */}
+      {mainTab === 'invoices' && (
+        <div className="space-y-4">
+          <EmittedInvoicesTab />
+        </div>
       )}
 
       {/* Receipt Modal */}

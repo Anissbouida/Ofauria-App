@@ -18,14 +18,14 @@ const STORE_ROLES = ['cashier', 'saleswoman'];
 const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 
 const STATUS_LABELS: Record<string, string> = {
-  submitted: 'Envoyee',
+  submitted: 'Envoyée',
   acknowledged: 'Prise en charge',
-  preparing: 'En preparation',
-  transferred: 'Transfere',
-  partially_delivered: 'Partiellement livre',
-  closed: 'Cloture',
-  closed_with_discrepancy: 'Ecart',
-  cancelled: 'Annule',
+  preparing: 'En préparation',
+  transferred: 'Transféré',
+  partially_delivered: 'Partiellement livré',
+  closed: 'Clôturé',
+  closed_with_discrepancy: 'Écart',
+  cancelled: 'Annulé',
 };
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string; icon: React.ReactNode }> = {
@@ -82,7 +82,7 @@ export default function ReplenishmentPage() {
     mutationFn: replenishmentApi.cancel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
-      toast.success('Demande annulee');
+      toast.success('Demande annulée');
     },
   });
 
@@ -100,11 +100,11 @@ export default function ReplenishmentPage() {
 
   const tabs = [
     { key: '', label: 'Tous', count: allRequests.length },
-    { key: 'submitted', label: 'Envoyee', count: statCounts.submitted },
+    { key: 'submitted', label: 'Envoyée', count: statCounts.submitted },
     { key: 'acknowledged', label: 'Prise en charge', count: statCounts.acknowledged },
-    { key: 'preparing', label: 'En preparation', count: statCounts.preparing },
-    { key: 'transferred', label: 'Transfere', count: statCounts.transferred },
-    { key: 'closed', label: 'Cloture', count: statCounts.closed },
+    { key: 'preparing', label: 'En préparation', count: statCounts.preparing },
+    { key: 'transferred', label: 'Transféré', count: statCounts.transferred },
+    { key: 'closed', label: 'Clôturé', count: statCounts.closed },
   ];
 
   // Filter by search
@@ -119,8 +119,8 @@ export default function ReplenishmentPage() {
   const statsCards = [
     { label: 'En attente', value: statCounts.submitted, gradient: 'from-yellow-500 to-amber-500', icon: <Clock size={20} /> },
     { label: 'En cours', value: statCounts.acknowledged + statCounts.preparing, gradient: 'from-blue-500 to-indigo-500', icon: <PackageCheck size={20} /> },
-    { label: 'Transferees', value: statCounts.transferred, gradient: 'from-purple-500 to-violet-500', icon: <Truck size={20} /> },
-    { label: 'Cloturees', value: statCounts.closed, gradient: 'from-emerald-500 to-green-500', icon: <CheckCircle size={20} /> },
+    { label: 'Transférées', value: statCounts.transferred, gradient: 'from-purple-500 to-violet-500', icon: <Truck size={20} /> },
+    { label: 'Clôturées', value: statCounts.closed, gradient: 'from-emerald-500 to-green-500', icon: <CheckCircle size={20} /> },
   ];
 
   return (
@@ -206,7 +206,7 @@ export default function ReplenishmentPage() {
             <PackageOpen size={32} className="text-gray-400" />
           </div>
           <p className="text-gray-500 font-medium">Aucune demande d'approvisionnement</p>
-          <p className="text-gray-400 text-sm mt-1">Les demandes apparaitront ici</p>
+          <p className="text-gray-400 text-sm mt-1">Les demandes apparaîtront ici</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -433,7 +433,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   const createMutation = useMutation({
     mutationFn: replenishmentApi.create,
-    onSuccess: () => { toast.success('Demande envoyee avec succes'); onCreated(); },
+    onSuccess: () => { toast.success('Demande envoyée avec succès'); onCreated(); },
     onError: (error: unknown) => {
       const errData = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
       const data = errData?.data as Record<string, unknown> | undefined;
@@ -441,7 +441,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
       if (err?.code === 'ALL_PRODUCTS_ALREADY_REQUESTED') {
         toast.error(err.message as string);
       } else {
-        toast.error('Erreur lors de la creation');
+        toast.error('Erreur lors de la création');
       }
     },
   });
@@ -449,7 +449,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [submitting, setSubmitting] = useState(false);
   const handleSubmit = async () => {
     const productIds = Object.keys(selected);
-    if (!productIds.length) { toast.error('Selectionnez au moins un produit'); return; }
+    if (!productIds.length) { toast.error('Sélectionnez au moins un produit'); return; }
 
     if (!validationDone) {
       setSubmitting(true);
@@ -462,15 +462,15 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
           return;
         }
       } catch (err) {
-        console.error('Erreur de verification des articles:', err);
-        toast.error('Erreur lors de la verification des articles');
+        console.error('Erreur de vérification des articles:', err);
+        toast.error('Erreur lors de la vérification des articles');
         setSubmitting(false);
         return;
       }
     }
 
     const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({ productId, requestedQuantity }));
-    if (!items.length) { toast.error('Aucun article eligible a envoyer'); return; }
+    if (!items.length) { toast.error('Aucun article éligible à envoyer'); return; }
     setBlockedItems([]);
     setValidationDone(false);
     setSubmitting(false);
@@ -496,7 +496,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
               <div>
                 <h2 className="text-lg font-bold">Nouvelle demande d'approvisionnement</h2>
-                <p className="text-indigo-200 text-xs mt-0.5">{hasHistory ? `Base sur les ventes de ${getDayName()} dernier (+10%)` : 'Suggestions aleatoires — aucun historique'}</p>
+                <p className="text-indigo-200 text-xs mt-0.5">{hasHistory ? `Basé sur les ventes de ${getDayName()} dernier (+10%)` : 'Suggestions aléatoires — aucun historique'}</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors text-xl leading-none">&times;</button>
@@ -510,7 +510,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                 <Package size={14} className="text-blue-600" />
               </div>
-              <p className="text-xs text-blue-700">{alreadyRequestedIds.length} produit(s) deja demande(s) aujourd'hui — ils ne seront pas inclus dans cette demande.</p>
+              <p className="text-xs text-blue-700">{alreadyRequestedIds.length} produit(s) déjà demandé(s) aujourd'hui — ils ne seront pas inclus dans cette demande.</p>
             </div>
           </div>
         )}
@@ -524,16 +524,16 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-amber-800 text-sm">Attention : {blockedItems.length} article(s) avec du stock non vendu</p>
-                <p className="text-xs text-amber-600 mt-1">Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand meme les envoyer si necessaire.</p>
+                <p className="text-xs text-amber-600 mt-1">Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand même les envoyer si nécessaire.</p>
                 <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
                   {blockedItems.map(bi => (
                     <p key={bi.productId} className="text-xs text-amber-700 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                      {bi.productName} — {bi.unsoldQty} unite(s) restante(s)
+                      {bi.productName} — {bi.unsoldQty} unité(s) restante(s)
                     </p>
                   ))}
                 </div>
-                <p className="text-xs text-amber-700 font-medium mt-2">Cliquez sur « Confirmer l'envoi » pour continuer malgre tout.</p>
+                <p className="text-xs text-amber-700 font-medium mt-2">Cliquez sur « Confirmer l'envoi » pour continuer malgré tout.</p>
               </div>
             </div>
           </div>
@@ -599,7 +599,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                       <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                         {catSelectedCount < filtered.length ? (
                           <button onClick={() => selectAllCat(filtered)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 hover:bg-indigo-50 rounded-lg">
-                            Tout selectionner
+                            Tout sélectionner
                           </button>
                         ) : (
                           <button onClick={() => deselectAllCat(filtered)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded-lg">
@@ -634,13 +634,13 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title="Vendu la semaine derniere">
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title="Vendu la semaine dernière">
                                   <Layers size={10} /> {sold}
                                 </span>
                                 <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
                                   <Package size={10} /> {Math.floor(stock)}
                                 </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title="Quantite suggeree">
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title="Quantité suggérée">
                                   <Lightbulb size={10} /> {suggested}
                                 </span>
                               </div>
@@ -674,9 +674,9 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                 <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                   <Lightbulb size={28} className="text-gray-400" />
                 </div>
-                <p className="text-gray-500">Aucune donnee de vente pour {getDayName()}</p>
+                <p className="text-gray-500">Aucune donnée de vente pour {getDayName()}</p>
                 <button onClick={() => setMode('catalog')} className="mt-3 text-indigo-600 text-sm font-medium hover:underline">
-                  Selectionner manuellement depuis le catalogue
+                  Sélectionner manuellement depuis le catalogue
                 </button>
               </div>
             )}
@@ -729,7 +729,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               {!filteredProducts.length && (
                 <div className="flex flex-col items-center justify-center py-12">
                   <PackageOpen size={32} className="text-gray-300 mb-2" />
-                  <span className="text-gray-400 text-sm">Aucun produit trouve</span>
+                  <span className="text-gray-400 text-sm">Aucun produit trouvé</span>
                 </div>
               )}
             </div>
@@ -742,8 +742,8 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
             <div className="flex items-center gap-4">
               <span className="text-sm font-medium text-gray-700">
                 {totalSelected > 0 ? (
-                  <><strong className="text-indigo-600">{totalSelected}</strong> produit{totalSelected > 1 ? 's' : ''} — <strong className="text-indigo-600">{totalQty}</strong> unites</>
-                ) : 'Aucun produit selectionne'}
+                  <><strong className="text-indigo-600">{totalSelected}</strong> produit{totalSelected > 1 ? 's' : ''} — <strong className="text-indigo-600">{totalQty}</strong> unités</>
+                ) : 'Aucun produit sélectionné'}
               </span>
               {totalSelected > 0 && (
                 <button onClick={() => setSelected({})} className="text-xs text-red-500 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-1 rounded-lg transition-colors">
@@ -756,7 +756,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               <button onClick={handleSubmit} disabled={createMutation.isPending || submitting || !totalSelected}
                 className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center gap-2">
                 {(createMutation.isPending || submitting) && <Loader2 size={14} className="animate-spin" />}
-                {createMutation.isPending || submitting ? 'Verification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}
+                {createMutation.isPending || submitting ? 'Vérification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}
               </button>
             </div>
           </div>

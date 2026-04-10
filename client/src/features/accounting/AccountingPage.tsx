@@ -1,29 +1,30 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { caisseApi, suppliersApi, expenseCategoriesApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
+import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi } from '../../api/accounting.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { useAuth } from '../../context/AuthContext';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, Truck, FileText, Banknote, BookOpen, BarChart3,
-  X, Check, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet, ClipboardList,
-  TrendingDown, Users, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
-  Loader2, Search, Calculator, CreditCard, Coins, ArrowUpRight, ArrowDownRight, Scale,
+  Plus, Pencil, Banknote, BarChart3,
+  X, Check, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
+  TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
+  Loader2, Calculator, CreditCard, Coins, Scale,
+  ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import PurchaseOrdersTab from './PurchaseOrdersTab';
+import LossesTab from './LossesTab';
 
-type AccTab = 'caisse' | 'charges' | 'resume' | 'suppliers' | 'purchase_orders' | 'invoices';
+type AccTab = 'caisse' | 'charges' | 'resume' | 'losses';
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Especes', bank: 'Virement', check: 'Cheque', transfer: 'Virement' };
-const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Depense', income: 'Revenu' };
-const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payee', overdue: 'En retard', cancelled: 'Annulee' };
+const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Espèces', bank: 'Virement', check: 'Chèque', transfer: 'Virement' };
+const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
+const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
 const INVOICE_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700', partial: 'bg-blue-100 text-blue-700',
   paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500',
 };
-const MONTH_NAMES = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
+const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '\uFEFF';
@@ -106,11 +107,11 @@ function buildDailyData(
     const session = sessionMap.get(dateStr) || { cashCaissiere: 0, cashSysteme: 0, card: 0 };
     const daySales = salesMap.get(dateStr) || { total: 0, count: 0, cashSales: 0, cardSales: 0 };
 
-    // Cash systeme = ventes cash reelles (source de verite = table sales)
+    // Cash système = ventes cash reelles (source de verite = table sales)
     const cashSysteme = daySales.cashSales;
     // Carte = ventes carte reelles
     const cardReceipt = daySales.cardSales;
-    // Cash caissiere = total des ventes (cash + carte) = ce que la caissiere a encaisse
+    // Cash caissière = total des ventes (cash + carte) = ce que la caissiere a encaisse
     const hasSession = sessionMap.has(dateStr);
     const cashCaissiere = hasSession
       ? (session.cashCaissiere) // actual_amount saisi par la caissiere
@@ -158,25 +159,18 @@ function buildDailyData(
 }
 
 export default function AccountingPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const isManager = user?.role === 'manager';
-  const [tab, setTab] = useState<AccTab>(isAdmin || isManager ? 'caisse' : 'suppliers');
+  const [tab, setTab] = useState<AccTab>('caisse');
 
-  const allTabs: { key: AccTab; label: string; icon: typeof BookOpen; adminOnly?: boolean }[] = [
+  const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
     { key: 'caisse', label: 'Caisse', icon: Wallet },
-    { key: 'charges', label: 'Charges & Depenses', icon: TrendingDown },
-    { key: 'resume', label: 'Resume', icon: BarChart3 },
-    { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
-    { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList },
-    { key: 'invoices', label: 'Factures', icon: FileText },
+    { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
+    { key: 'resume', label: 'Résumé', icon: BarChart3 },
+    { key: 'losses', label: 'Pertes', icon: AlertTriangle },
   ];
-
-  const tabs = allTabs.filter(t => !t.adminOnly || isAdmin);
 
   return (
     <div className="space-y-6">
-      {/* ══════════════ HEADER ══════════════ */}
+      {/* Header */}
       <div className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
@@ -187,16 +181,16 @@ export default function AccountingPage() {
             <Calculator size={24} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Comptabilite</h1>
-            <p className="text-slate-300 text-sm mt-0.5">Gestion financiere et tresorerie</p>
+            <h1 className="text-2xl font-bold">Comptabilité</h1>
+            <p className="text-slate-300 text-sm mt-0.5">Gestion financière et trésorerie</p>
           </div>
         </div>
       </div>
 
-      {/* ══════════════ TABS ══════════════ */}
+      {/* Tabs */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2">
         <div className="flex gap-1 overflow-x-auto">
-          {tabs.map(t => {
+          {allTabs.map(t => {
             const Icon = t.icon;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
@@ -215,9 +209,7 @@ export default function AccountingPage() {
       {tab === 'caisse' && <CaisseTab />}
       {tab === 'charges' && <ChargesTab />}
       {tab === 'resume' && <ResumeTab />}
-      {tab === 'suppliers' && <SuppliersTab />}
-      {tab === 'purchase_orders' && <PurchaseOrdersTab />}
-      {tab === 'invoices' && <InvoicesTab />}
+      {tab === 'losses' && <LossesTab />}
     </div>
   );
 }
@@ -311,7 +303,7 @@ function CaisseTab() {
             <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
               <ArrowUpRight size={16} className="text-amber-600" />
             </div>
-            <span className="text-amber-800 font-medium text-sm">Report mois precedent</span>
+            <span className="text-amber-800 font-medium text-sm">Report mois précédent</span>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-gray-600">Cash: <span className="font-bold text-amber-900">{n(data.previousBalance.cashNet)} DH</span></span>
@@ -352,12 +344,12 @@ function CaisseTab() {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
               <Scale size={16} className="text-white" />
             </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Ecart caisse</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Écart caisse</p>
           </div>
           <p className={`text-2xl font-bold ${monthTotals.ecart === 0 ? 'text-gray-400' : monthTotals.ecart > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
             {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span className="text-sm font-normal text-gray-400">DH</span>
           </p>
-          <p className="text-xs text-gray-400 mt-1">Caissiere vs Systeme</p>
+          <p className="text-xs text-gray-400 mt-1">Caissière vs Système</p>
         </div>
         <div className={`rounded-2xl shadow-sm border p-4 overflow-hidden relative ${monthTotals.solde >= 0 ? 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200' : 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'}`}>
           <div className="flex items-center gap-2.5 mb-2">
@@ -374,13 +366,13 @@ function CaisseTab() {
         </div>
       </div>
 
-      {/* Ecart caisse alert */}
+      {/* Écart caisse alert */}
       {monthTotals.ecart !== 0 && (
         <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm ${monthTotals.ecart > 0 ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${monthTotals.ecart > 0 ? 'bg-emerald-100' : 'bg-red-100'}`}>
             <AlertTriangle size={16} />
           </div>
-          <span>Ecart caisse du mois : <span className="font-bold">{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</span> (Cash caissiere vs Cash systeme)</span>
+          <span>Écart caisse du mois : <span className="font-bold">{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</span> (Cash caissière vs Cash système)</span>
         </div>
       )}
 
@@ -397,7 +389,7 @@ function CaisseTab() {
           <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
             <Wallet size={28} className="text-gray-400" />
           </div>
-          <p className="text-gray-500">Aucune activite pour ce mois</p>
+          <p className="text-gray-500">Aucune activité pour ce mois</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -440,14 +432,14 @@ function CaisseTab() {
                     {/* Recettes caisse */}
                     {(day.cashCaissiere > 0 || day.cardReceipt > 0) && (
                       <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl p-4 space-y-3">
-                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Recettes encaissees</p>
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Recettes encaissées</p>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                           <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Cash systeme</p>
+                            <p className="text-[10px] text-gray-400 uppercase">Cash système</p>
                             <p className="font-bold text-gray-700">{n(day.cashSysteme)} DH</p>
                           </div>
                           <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Cash caissiere</p>
+                            <p className="text-[10px] text-gray-400 uppercase">Cash caissière</p>
                             <p className="font-bold text-emerald-700">{n(day.cashCaissiere)} DH</p>
                           </div>
                           <div className="bg-white/60 rounded-lg p-2.5 text-center">
@@ -464,10 +456,10 @@ function CaisseTab() {
                       </div>
                     )}
 
-                    {/* Autres entrees (type income) */}
+                    {/* Autres entrées (type income) */}
                     {day.entries > 0 && (
                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
-                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Autres entrees</p>
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Autres entrées</p>
                         {day.payments.filter(p => p.type === 'income').map((p, idx) => {
                           const amount = parseFloat(p.amount as string) || 0;
                           return (
@@ -480,9 +472,9 @@ function CaisseTab() {
                       </div>
                     )}
 
-                    {/* Solde cumule */}
+                    {/* Solde cumulé */}
                     <div className={`rounded-xl p-4 ${day.solde >= 0 ? 'bg-gradient-to-r from-emerald-50 to-green-50' : 'bg-gradient-to-r from-red-50 to-orange-50'}`}>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Solde cumule</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Solde cumulé</p>
                       <div className="grid grid-cols-3 gap-3 text-sm">
                         <div className="bg-white/60 rounded-lg p-2.5 text-center">
                           <p className="text-[10px] text-gray-400 uppercase">Cash</p>
@@ -527,7 +519,7 @@ function CaisseTab() {
                   <td className="py-2 text-right font-bold text-green-700">{n(monthTotals.cashCaissiere)} DH</td>
                 </tr>
                 <tr>
-                  <td className="py-2 text-gray-500">Carte Encaissee</td>
+                  <td className="py-2 text-gray-500">Carte Encaissée</td>
                   <td className="py-2 text-right font-bold text-blue-700">{n(monthTotals.cardReceipts)} DH</td>
                 </tr>
                 {monthTotals.entries > 0 && (
@@ -601,7 +593,7 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Depense enregistree');
+      toast.success('Dépense enregistrée');
       setShowForm(false);
       setFormCategoryId('');
       setFormPOId('');
@@ -614,7 +606,7 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Modifie avec succes');
+      toast.success('Modifié avec succès');
       setEditingPayment(null);
     },
     onError: () => toast.error('Erreur lors de la modification'),
@@ -625,7 +617,7 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Supprime');
+      toast.success('Supprimé');
     },
   });
 
@@ -689,7 +681,7 @@ function ChargesTab() {
             <Download size={14} /> Exporter
           </button>
           <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-            <Plus size={16} /> Nouvelle depense
+            <Plus size={16} /> Nouvelle dépense
           </button>
         </div>
       </div>
@@ -704,7 +696,7 @@ function ChargesTab() {
             <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total sorties</p>
           </div>
           <p className="text-2xl font-bold text-red-700">{n(totals.total)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{outgoing.length} operation{outgoing.length > 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-1">{outgoing.length} opération{outgoing.length > 1 ? 's' : ''}</p>
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <div className="flex items-center gap-2.5 mb-2">
@@ -734,7 +726,7 @@ function ChargesTab() {
             <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Autres</p>
           </div>
           <p className="text-2xl font-bold text-gray-700">{n(totals.expenseTotal)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{expensePayments.length} depense{expensePayments.length > 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-1">{expensePayments.length} dépense{expensePayments.length > 1 ? 's' : ''}</p>
         </div>
       </div>
 
@@ -782,7 +774,7 @@ function ChargesTab() {
           <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
             <Receipt size={28} className="text-gray-300" />
           </div>
-          <p className="text-gray-400 font-medium">Aucune sortie pour cette periode</p>
+          <p className="text-gray-400 font-medium">Aucune sortie pour cette période</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -845,7 +837,7 @@ function ChargesTab() {
             </tbody>
             <tfoot>
               <tr className="bg-gradient-to-r from-red-500 to-rose-500 text-white">
-                <td colSpan={7} className="px-4 py-3 font-medium rounded-bl-2xl">Total ({displayed.length} operation{displayed.length > 1 ? 's' : ''})</td>
+                <td colSpan={7} className="px-4 py-3 font-medium rounded-bl-2xl">Total ({displayed.length} opération{displayed.length > 1 ? 's' : ''})</td>
                 <td className="px-4 py-3 text-right text-lg font-bold">{n(displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0))} DH</td>
                 <td className="rounded-br-2xl"></td>
               </tr>
@@ -863,7 +855,7 @@ function ChargesTab() {
                 <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                   <Plus size={20} className="text-white" />
                 </div>
-                <h2 className="text-lg font-bold text-white">Nouvelle depense</h2>
+                <h2 className="text-lg font-bold text-white">Nouvelle dépense</h2>
               </div>
               <button onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
                 <X size={18} className="text-white" />
@@ -880,15 +872,15 @@ function ChargesTab() {
                 if (selectedPO) fd.supplierId = selectedPO.supplier_id as string;
               }
               if (!fd.supplierId) delete fd.supplierId;
-              if (!fd.categoryId) { toast.error('Veuillez selectionner une categorie'); return; }
-              if (requiresPO && !formPOId) { toast.error('Cette categorie necessite un bon de commande'); return; }
+              if (!fd.categoryId) { toast.error('Veuillez sélectionner une catégorie'); return; }
+              if (requiresPO && !formPOId) { toast.error('Cette catégorie nécessite un bon de commande'); return; }
               createMutation.mutate(fd);
             }} className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie *</label>
                 <select value={formCategoryId} onChange={e => { setFormCategoryId(e.target.value); setFormPOId(''); }}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent" required>
-                  <option value="">Choisir une categorie...</option>
+                  <option value="">Choisir une catégorie...</option>
                   {(categories as Record<string, unknown>[])
                     .filter(c => c.type === 'expense')
                     .map(c => (
@@ -906,7 +898,7 @@ function ChargesTab() {
                   </label>
                   <select value={formPOId} onChange={e => setFormPOId(e.target.value)}
                     className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" required>
-                    <option value="">Selectionner un BC...</option>
+                    <option value="">Sélectionner un BC...</option>
                     {(eligiblePOs as Record<string, unknown>[]).map(po => (
                       <option key={po.id as string} value={po.id as string}>
                         {po.order_number as string} — {po.supplier_name as string} — {n(parseFloat(po.total_amount as string) || 0)} DH
@@ -920,7 +912,7 @@ function ChargesTab() {
                   )}
                   {(eligiblePOs as Record<string, unknown>[]).length === 0 && (
                     <p className="text-xs text-red-600 mt-2">
-                      Aucun bon de commande disponible. Creez d'abord un BC dans l'onglet Bons de commande.
+                      Aucun bon de commande disponible. Créez d'abord un BC dans l'onglet Bons de commande.
                     </p>
                   )}
                 </div>
@@ -1160,14 +1152,14 @@ function ResumeTab() {
         </div>
       </div>
 
-      {/* Solde cumule banner */}
+      {/* Solde cumulé banner */}
       <div className={`rounded-2xl p-4 ${totals.solde >= 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
         <div className="flex items-center justify-between text-white">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
               <Wallet size={18} className="text-white" />
             </div>
-            <span className="font-medium">Solde cumule (depuis le debut)</span>
+            <span className="font-medium">Solde cumulé (depuis le debut)</span>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-center">
@@ -1236,472 +1228,6 @@ function ResumeTab() {
               </tr>
             </tfoot>
           </table>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ═══════════════════════ SUPPLIERS TAB ═══════════════════════ */
-function SuppliersTab() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
-
-  const { data: suppliers = [], isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-
-  const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      editing ? suppliersApi.update(editing.id as string, data) : suppliersApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(editing ? 'Fournisseur modifie' : 'Fournisseur ajoute');
-      setShowForm(false); setEditing(null);
-    },
-    onError: () => toast.error('Erreur'),
-  });
-
-  return (
-    <>
-      {/* Header bar */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-            <Truck size={14} className="text-white" />
-          </div>
-          <p className="text-sm font-medium text-gray-600">{(suppliers as Record<string, unknown>[]).length} fournisseur{(suppliers as Record<string, unknown>[]).length > 1 ? 's' : ''}</p>
-        </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-          <Plus size={16} /> Ajouter un fournisseur
-        </button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-blue-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des fournisseurs...</p>
-        </div>
-      ) : (suppliers as Record<string, unknown>[]).length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
-            <Truck size={28} className="text-blue-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucun fournisseur</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {(suppliers as Record<string, unknown>[]).map(s => (
-            <div key={s.id as string} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center flex-shrink-0">
-                    <Truck size={16} className="text-white" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-gray-800">{s.name as string}</p>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {s.is_active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
-                      {s.contact_name && <span>{s.contact_name as string}</span>}
-                      {s.phone && <><span className="text-gray-200">|</span><span>{s.phone as string}</span></>}
-                      {s.city && <><span className="text-gray-200">|</span><span>{s.city as string}</span></>}
-                      {s.ice && <span className="font-mono text-gray-300 text-[10px]">ICE: {s.ice as string}</span>}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => { setEditing(s); setShowForm(true); }}
-                  className="p-2.5 hover:bg-blue-50 rounded-xl text-blue-400 hover:text-blue-600 transition-colors ml-3">
-                  <Pencil size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Supplier form modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Truck size={18} className="text-white" />
-                </div>
-                <h2 className="text-lg font-bold text-white">{editing ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
-              </div>
-              <button onClick={() => { setShowForm(false); setEditing(null); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
-              </button>
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              saveMutation.mutate(Object.fromEntries(new FormData(e.currentTarget)));
-            }} className="p-5 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Nom *</label>
-                <input name="name" defaultValue={editing?.name as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Contact</label>
-                  <input name="contactName" defaultValue={editing?.contact_name as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Telephone</label>
-                  <input name="phone" defaultValue={editing?.phone as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                  <input name="email" type="email" defaultValue={editing?.email as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ville</label>
-                  <input name="city" defaultValue={editing?.city as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Adresse</label>
-                <input name="address" defaultValue={editing?.address as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">ICE</label>
-                <input name="ice" defaultValue={editing?.ice as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                <textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={saveMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {saveMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ═══════════════════════ INVOICES TAB ═══════════════════════ */
-function InvoicesTab() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [showPayForm, setShowPayForm] = useState<Record<string, unknown> | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
-
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ['invoices', statusFilter],
-    queryFn: () => invoicesApi.list(statusFilter ? { status: statusFilter } : {}),
-  });
-  const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: expenseCategoriesApi.list });
-
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => invoicesApi.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture ajoutee'); setShowForm(false); },
-    onError: () => toast.error('Erreur'),
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: (id: string) => invoicesApi.cancel(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture annulee'); },
-  });
-
-  const payMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => paymentsApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
-      queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Paiement enregistre');
-      setShowPayForm(null);
-    },
-    onError: () => toast.error('Erreur'),
-  });
-
-  const attachMutation = useMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) => invoicesApi.uploadAttachment(id, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Facture jointe avec succes');
-    },
-    onError: () => toast.error('Erreur lors de l\'envoi du fichier'),
-  });
-
-  const removeAttachMutation = useMutation({
-    mutationFn: (id: string) => invoicesApi.removeAttachment(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Piece jointe supprimee');
-    },
-  });
-
-  const handleAttachFile = (invoiceId: string) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.png,.jpg,.jpeg,.webp';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) attachMutation.mutate({ id: invoiceId, file });
-    };
-    input.click();
-  };
-
-  const totalPending = (invoices as Record<string, unknown>[])
-    .filter(inv => inv.status !== 'paid' && inv.status !== 'cancelled')
-    .reduce((sum, inv) => sum + parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string), 0);
-
-  return (
-    <>
-      {/* Header bar */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
-            <option value="">Tous les statuts</option>
-            <option value="pending">En attente</option>
-            <option value="partial">Partiel</option>
-            <option value="paid">Payee</option>
-            <option value="overdue">En retard</option>
-          </select>
-          {totalPending > 0 && (
-            <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-                <AlertTriangle size={12} className="text-white" />
-              </div>
-              <span className="text-red-700">Reste a payer: <span className="font-bold">{n(totalPending)} DH</span></span>
-            </div>
-          )}
-        </div>
-        <button onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-          <Plus size={16} /> Nouvelle facture
-        </button>
-      </div>
-
-      {/* Invoices card list */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-amber-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des factures...</p>
-        </div>
-      ) : (invoices as Record<string, unknown>[]).length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
-            <FileText size={28} className="text-amber-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucune facture</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {(invoices as Record<string, unknown>[]).map(inv => {
-            const total = parseFloat(inv.total_amount as string);
-            const paid = parseFloat(inv.paid_amount as string);
-            const remaining = total - paid;
-            const hasAttachment = !!(inv.attachment_url as string);
-            const progressPct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;
-            const statusColor = INVOICE_STATUS_COLORS[inv.status as string] || 'bg-gray-100 text-gray-500';
-            return (
-              <div key={inv.id as string} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center flex-shrink-0">
-                      <FileText size={16} className="text-white" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="font-bold text-gray-800 font-mono">{inv.invoice_number as string}</p>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>
-                          {INVOICE_STATUS_LABELS[inv.status as string]}
-                        </span>
-                        {hasAttachment && (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-500">
-                            <Paperclip size={10} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-400">
-                        <span className="font-medium text-gray-600">{inv.supplier_name as string}</span>
-                        <span className="text-gray-200">|</span>
-                        <span>{format(new Date(inv.invoice_date as string), 'dd/MM/yyyy')}</span>
-                        {inv.category_name && <><span className="text-gray-200">|</span><span>{inv.category_name as string}</span></>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 ml-3">
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-gray-800">{n(total)} <span className="text-xs font-normal text-gray-400">DH</span></p>
-                      {remaining > 0 && <p className="text-xs text-red-500 font-medium">Reste: {n(remaining)} DH</p>}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {hasAttachment ? (
-                        <>
-                          <a href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer"
-                            className="p-2 hover:bg-blue-50 rounded-xl text-blue-500 hover:text-blue-700 transition-colors" title="Voir">
-                            <Eye size={14} />
-                          </a>
-                          <button onClick={() => removeAttachMutation.mutate(inv.id as string)}
-                            className="p-2 hover:bg-red-50 rounded-xl text-red-400 hover:text-red-600 transition-colors" title="Supprimer piece jointe">
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={() => handleAttachFile(inv.id as string)}
-                          className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors" title="Joindre">
-                          <Upload size={14} />
-                        </button>
-                      )}
-                      {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                        <button onClick={() => setShowPayForm(inv)}
-                          className="px-3 py-1.5 rounded-xl text-xs font-medium bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-sm hover:shadow-md transition-all">
-                          Payer
-                        </button>
-                      )}
-                      {inv.status !== 'cancelled' && inv.status !== 'paid' && (
-                        <button onClick={() => cancelMutation.mutate(inv.id as string)}
-                          className="p-2 hover:bg-red-50 rounded-xl text-red-400 hover:text-red-600 transition-colors">
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {/* Progress bar */}
-                {inv.status !== 'cancelled' && (
-                  <div className="mt-2">
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${progressPct >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`}
-                        style={{ width: `${progressPct}%` }} />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                      <span>Paye: {n(paid)} DH</span>
-                      <span>{Math.round(progressPct)}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Create invoice modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <FileText size={18} className="text-white" />
-                </div>
-                <h2 className="text-lg font-bold text-white">Nouvelle facture</h2>
-              </div>
-              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
-              </button>
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
-              fd.amount = parseFloat(fd.amount as string) || 0;
-              fd.taxAmount = parseFloat(fd.taxAmount as string) || 0;
-              fd.totalAmount = (fd.amount as number) + (fd.taxAmount as number);
-              createMutation.mutate(fd);
-            }} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">N Facture *</label>
-                  <input name="invoiceNumber" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="invoiceDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur *</label>
-                  <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required>
-                    <option value="">Choisir...</option>
-                    {(suppliers as Record<string, unknown>[]).filter(s => s.is_active).map(s => (
-                      <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                    ))}
-                  </select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
-                  <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-                    <option value="">Choisir...</option>
-                    {(categories as Record<string, unknown>[]).filter(c => c.type === 'expense').map(c => (
-                      <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
-                    ))}
-                  </select></div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant HT *</label>
-                  <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">TVA</label>
-                  <input name="taxAmount" type="number" step="0.01" defaultValue="0" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Echeance</label>
-                  <input name="dueDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                <textarea name="notes" rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setShowForm(false)}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Pay invoice modal */}
-      {showPayForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-emerald-500 to-green-500 p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Banknote size={18} className="text-white" />
-                </div>
-                <h2 className="text-lg font-bold text-white">Payer la facture</h2>
-              </div>
-              <div className="bg-white/20 rounded-xl p-3 flex items-center justify-between">
-                <span className="text-white/80 text-sm font-mono">{showPayForm.invoice_number as string}</span>
-                <span className="text-white font-bold">
-                  {n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH
-                </span>
-              </div>
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
-              fd.amount = parseFloat(fd.amount as string);
-              fd.type = 'invoice';
-              fd.invoiceId = showPayForm.id;
-              fd.supplierId = showPayForm.supplier_id;
-              fd.categoryId = showPayForm.category_id || undefined;
-              fd.description = `Paiement facture ${showPayForm.invoice_number}`;
-              payMutation.mutate(fd);
-            }} className="p-5 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-                <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required
-                  defaultValue={(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string)).toFixed(2)} /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
-                  <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <option value="cash">Especes</option><option value="bank">Virement</option><option value="check">Cheque</option>
-                  </select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
-                  <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>
-              </div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setShowPayForm(null)}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={payMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {payMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  <Check size={16} /> Payer
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
     </>

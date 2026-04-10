@@ -3,9 +3,16 @@ import { db } from '../config/database.js';
 export const inventoryRepository = {
   async findAll(storeId?: string) {
     const where = storeId ? 'WHERE inv.store_id = $1' : '';
+    const lotStoreFilter = storeId ? 'AND il.store_id = $1' : '';
     const params = storeId ? [storeId] : [];
     const result = await db.query(
-      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category
+      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
+              -- Lot traceability summary
+              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 ${lotStoreFilter}) as active_lots_count,
+              (SELECT MIN(il.expiration_date) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date IS NOT NULL ${lotStoreFilter}) as nearest_dlc,
+              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date < CURRENT_DATE ${lotStoreFilter}) as expired_lots_count,
+              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 ${lotStoreFilter}) as expiring_soon_count,
+              (SELECT string_agg(DISTINCT il.supplier_lot_number, ', ' ORDER BY il.supplier_lot_number) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.supplier_lot_number IS NOT NULL ${lotStoreFilter}) as active_lot_numbers
        FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
        ${where}
        ORDER BY ing.category, ing.name`,

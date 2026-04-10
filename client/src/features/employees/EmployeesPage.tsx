@@ -13,24 +13,24 @@ import { ROLE_LABELS } from '@ofauria/shared';
 type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'schedule';
 
 const CONTRACT_LABELS: Record<string, string> = { cdi: 'CDI', cdd: 'CDD', stage: 'Stage', interim: 'Interim' };
-const LEAVE_TYPE_LABELS: Record<string, string> = { annual: 'Conge annuel', sick: 'Maladie', unpaid: 'Sans solde', maternity: 'Maternite', other: 'Autre' };
+const LEAVE_TYPE_LABELS: Record<string, string> = { annual: 'Congé annuel', sick: 'Maladie', unpaid: 'Sans solde', maternity: 'Maternité', other: 'Autre' };
 const LEAVE_STATUS_COLORS: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' };
 const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
-  { value: 'present', label: 'Present', color: 'bg-green-100 text-green-700' },
+  { value: 'present', label: 'Présent', color: 'bg-green-100 text-green-700' },
   { value: 'absent', label: 'Absent', color: 'bg-red-100 text-red-700' },
   { value: 'late', label: 'Retard', color: 'bg-yellow-100 text-yellow-700' },
-  { value: 'half_day', label: 'Demi-journee', color: 'bg-blue-100 text-blue-700' },
+  { value: 'half_day', label: 'Demi-journée', color: 'bg-blue-100 text-blue-700' },
 ];
-const MONTH_NAMES = ['Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
+const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<HrTab>('employees');
 
   const tabs: { key: HrTab; label: string; icon: typeof Users; color: string }[] = [
-    { key: 'employees', label: 'Employes', icon: Users, color: 'teal' },
+    { key: 'employees', label: 'Employés', icon: Users, color: 'teal' },
     { key: 'attendance', label: 'Pointage', icon: Clock, color: 'blue' },
-    { key: 'leaves', label: 'Conges', icon: CalendarOff, color: 'purple' },
+    { key: 'leaves', label: 'Congés', icon: CalendarOff, color: 'purple' },
     { key: 'payroll', label: 'Paie', icon: Banknote, color: 'green' },
     { key: 'schedule', label: 'Planning', icon: CalendarDays, color: 'amber' },
   ];
@@ -86,7 +86,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       editing ? employeesApi.update(editing.id as string, data) : employeesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      toast.success(editing ? 'Employe mis a jour' : 'Employe ajoute');
+      toast.success(editing ? 'Employé mis à jour' : 'Employé ajouté');
       setShowForm(false); setEditing(null);
     },
     onError: () => toast.error('Erreur'),
@@ -127,7 +127,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
           </div>
         </div>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
-          <Plus size={18} /> Nouvel employe
+          <Plus size={18} /> Nouvel employé
         </button>
       </div>
 
@@ -140,10 +140,10 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
           <table className="w-full">
             <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Employe</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Employé</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rôle</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contrat</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Telephone</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Téléphone</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Salaire</th>
                 <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
@@ -203,7 +203,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
           {filteredEmp.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-gray-400">
               <Users size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucun employe trouve</p>
+              <p className="text-lg font-medium">Aucun employé trouvé</p>
             </div>
           )}
         </div>
@@ -242,12 +242,12 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
             <div className="p-6">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {([
-                  ['CIN', viewDetail.cin], ['Telephone', viewDetail.phone],
+                  ['CIN', viewDetail.cin], ['Téléphone', viewDetail.phone],
                   ['Date de naissance', viewDetail.birth_date ? format(new Date(viewDetail.birth_date as string), 'dd/MM/yyyy') : null],
                   ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
-                  ['N CNSS', viewDetail.cnss_number],
+                  ['N° CNSS', viewDetail.cnss_number],
                   ['Type de contrat', CONTRACT_LABELS[viewDetail.contract_type as string]],
-                  ['Debut contrat', viewDetail.contract_start ? format(new Date(viewDetail.contract_start as string), 'dd/MM/yyyy') : null],
+                  ['Début contrat', viewDetail.contract_start ? format(new Date(viewDetail.contract_start as string), 'dd/MM/yyyy') : null],
                   ['Fin contrat', viewDetail.contract_end ? format(new Date(viewDetail.contract_end as string), 'dd/MM/yyyy') : null],
                   ['Date d\'embauche', viewDetail.hire_date ? format(new Date(viewDetail.hire_date as string), 'dd/MM/yyyy') : null],
                   ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
@@ -275,7 +275,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
-            <h2 className="text-xl font-bold mb-4">{editing ? 'Modifier l\'employe' : 'Nouvel employe'}</h2>
+            <h2 className="text-xl font-bold mb-4">{editing ? 'Modifier l\'employé' : 'Nouvel employé'}</h2>
             <form onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -285,12 +285,12 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
             }} className="space-y-4">
               <p className="text-sm font-medium text-gray-500 border-b pb-1">Informations personnelles</p>
               <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Prenom *</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
+                <div><label className="block text-sm font-medium mb-1">Prénom *</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
                 <div><label className="block text-sm font-medium mb-1">Nom *</label><input name="lastName" defaultValue={editing?.last_name as string} className="input" required /></div>
                 <div><label className="block text-sm font-medium mb-1">CIN</label><input name="cin" defaultValue={editing?.cin as string} className="input" /></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Telephone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Date de naissance</label><input name="birthDate" type="date" defaultValue={editing?.birth_date as string} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Ville</label><input name="city" defaultValue={editing?.city as string} className="input" /></div>
               </div>
@@ -298,11 +298,11 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
 
               <p className="text-sm font-medium text-gray-500 border-b pb-1 pt-2">Contrat & Salaire</p>
               <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Role *</label>
+                <div><label className="block text-sm font-medium mb-1">Rôle *</label>
                   <select name="role" defaultValue={editing?.role as string || 'baker'} className="input">
-                    <option value="admin">Administrateur</option><option value="manager">Gerant</option>
-                    <option value="baker">Boulanger</option><option value="pastry_chef">Patissier</option>
-                    <option value="viennoiserie">Viennoiserie</option><option value="beldi_sale">Beldi & Sale</option>
+                    <option value="admin">Administrateur</option><option value="manager">Gérant</option>
+                    <option value="baker">Boulanger</option><option value="pastry_chef">Pâtissier</option>
+                    <option value="viennoiserie">Viennoiserie</option><option value="beldi_sale">Beldi & Salé</option>
                     <option value="saleswoman">Vendeuse</option><option value="cashier">Caissier</option>
                   </select></div>
                 <div><label className="block text-sm font-medium mb-1">Type de contrat</label>
@@ -315,7 +315,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Date d'embauche *</label><input name="hireDate" type="date" defaultValue={editing?.hire_date as string} className="input" required={!editing} /></div>
-                <div><label className="block text-sm font-medium mb-1">Debut contrat</label><input name="contractStart" type="date" defaultValue={editing?.contract_start as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Début contrat</label><input name="contractStart" type="date" defaultValue={editing?.contract_start as string} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Fin contrat</label><input name="contractEnd" type="date" defaultValue={editing?.contract_end as string} className="input" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -325,7 +325,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               <p className="text-sm font-medium text-gray-500 border-b pb-1 pt-2">Contact d'urgence</p>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Nom</label><input name="emergencyContactName" defaultValue={editing?.emergency_contact_name as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Telephone</label><input name="emergencyContactPhone" defaultValue={editing?.emergency_contact_phone as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="emergencyContactPhone" defaultValue={editing?.emergency_contact_phone as string} className="input" /></div>
               </div>
 
               <div><label className="block text-sm font-medium mb-1">Notes</label><textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="input" /></div>
@@ -374,7 +374,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
     mutationFn: (data: Record<string, unknown>) => attendanceApi.upsert(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
-      toast.success('Pointage enregistre');
+      toast.success('Pointage enregistré');
     },
     onError: () => toast.error('Erreur'),
   });
@@ -404,7 +404,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
           </button>
           <button onClick={() => setAttView('monthly')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${attView === 'monthly' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-            Recapitulatif mensuel
+            Récapitulatif mensuel
           </button>
         </div>
 
@@ -441,8 +441,8 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employe</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Present</th>
+                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
+                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Présent</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Retard</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Demi-j.</th>
                   <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Absent</th>
@@ -541,10 +541,10 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employe</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Statut</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Arrivee</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Depart</th>
+                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Arrivée</th>
+                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Départ</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">H. Sup (min)</th>
               </tr>
             </thead>
@@ -623,7 +623,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
               })}
             </tbody>
           </table>
-          {activeEmployees.length === 0 && <p className="text-center py-8 text-gray-400">Aucun employe actif</p>}
+          {activeEmployees.length === 0 && <p className="text-center py-8 text-gray-400">Aucun employé actif</p>}
         </div>
         )
       )}
@@ -644,16 +644,16 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => leavesApi.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Conge ajoute'); setShowForm(false); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Congé ajouté'); setShowForm(false); },
     onError: () => toast.error('Erreur'),
   });
   const approveMutation = useMutation({
     mutationFn: (id: string) => leavesApi.approve(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Conge approuve'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Congé approuvé'); },
   });
   const rejectMutation = useMutation({
     mutationFn: (id: string) => leavesApi.reject(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Conge refuse'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); toast.success('Congé refusé'); },
   });
 
   return (
@@ -669,9 +669,9 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employe</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Type</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Periode</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Période</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Jours</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Motif</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Statut</th>
@@ -690,7 +690,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
                   <td className="px-4 py-3 text-sm text-gray-500 max-w-[200px] truncate">{l.reason as string || '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${LEAVE_STATUS_COLORS[l.status as string]}`}>
-                      {l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuve' : 'Refuse'}
+                      {l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuvé' : 'Refusé'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -711,14 +711,14 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               ))}
             </tbody>
           </table>
-          {(leaves as Record<string, unknown>[]).length === 0 && <p className="text-center py-8 text-gray-400">Aucun conge pour cette annee</p>}
+          {(leaves as Record<string, unknown>[]).length === 0 && <p className="text-center py-8 text-gray-400">Aucun congé pour cette année</p>}
         </div>
       )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Nouvelle demande de conge</h2>
+            <h2 className="text-xl font-bold mb-4">Nouvelle demande de congé</h2>
             <form onSubmit={e => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -729,7 +729,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               data.days = diffDays > 0 ? diffDays : 1;
               createMutation.mutate(data);
             }} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Employe *</label>
+              <div><label className="block text-sm font-medium mb-1">Employé *</label>
                 <select name="employeeId" className="input" required>
                   <option value="">Choisir...</option>
                   {(employees as Record<string, unknown>[]).filter(e => e.is_active).map(e => (
@@ -770,13 +770,13 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
 
   const generateMutation = useMutation({
     mutationFn: () => payrollApi.generate(month, year),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); toast.success('Bulletins generes'); },
-    onError: () => toast.error('Erreur lors de la generation'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); toast.success('Bulletins générés'); },
+    onError: () => toast.error('Erreur lors de la génération'),
   });
 
   const payMutation = useMutation({
     mutationFn: ({ id, method }: { id: string; method: string }) => payrollApi.markPaid(id, method),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); toast.success('Paiement enregistre'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); toast.success('Paiement enregistré'); },
   });
 
   const totalNet = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + parseFloat(p.net_salary as string), 0);
@@ -784,7 +784,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
 
   const exportPayroll = () => {
     const BOM = '\uFEFF';
-    const headers = ['Employe', 'Role', 'Salaire de base', 'Jours travailles', 'Jours absences', 'H. Sup', 'Primes', 'Deductions', 'CNSS', 'Salaire net', 'Paye'];
+    const headers = ['Employé', 'Rôle', 'Salaire de base', 'Jours travaillés', 'Jours absences', 'H. Sup', 'Primes', 'Déductions', 'CNSS', 'Salaire net', 'Payé'];
     const rows = (payrolls as Record<string, unknown>[]).map(p => [
       `${p.first_name} ${p.last_name}`,
       ROLE_LABELS[p.employee_role as keyof typeof ROLE_LABELS] || p.employee_role,
@@ -836,7 +836,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
             <p className="text-2xl font-bold">{(payrolls as Record<string, unknown>[]).length}</p>
           </div>
           <div className="card text-center">
-            <p className="text-sm text-gray-500">Payes</p>
+            <p className="text-sm text-gray-500">Payés</p>
             <p className="text-2xl font-bold text-primary-600">{totalPaid} / {(payrolls as Record<string, unknown>[]).length}</p>
           </div>
         </div>
@@ -847,7 +847,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-500">Employe</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-500">Employé</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-500">Base</th>
                 <th className="text-center px-4 py-3 font-medium text-gray-500">J. Trav.</th>
                 <th className="text-center px-4 py-3 font-medium text-gray-500">Abs.</th>
@@ -1005,7 +1005,7 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
               const fd = new FormData(e.currentTarget);
               createMutation.mutate({ ...Object.fromEntries(fd), date: formDate });
             }} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Employe *</label>
+              <div><label className="block text-sm font-medium mb-1">Employé *</label>
                 <select name="employeeId" className="input" required>
                   <option value="">Choisir...</option>
                   {activeEmployees.map(e => (

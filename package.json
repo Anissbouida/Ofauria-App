@@ -21,5 +21,8 @@
   "devDependencies": {
     "concurrently": "^9.1.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "docx": "^9.6.1"
   }
 }

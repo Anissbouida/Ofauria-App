@@ -7,8 +7,8 @@ export const productionApi = {
   updateItems: (id: string, items: Record<string, unknown>[]) => api.put(`/production/${id}/items`, { items }).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
   start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
-  produceItems: (id: string, items: { planItemId: string; actualQuantity: number }[]) =>
-    api.post(`/production/${id}/produce-items`, { items }).then(r => r.data),
+  produceItems: (id: string, items: { planItemId: string; actualQuantity: number }[], producedAt?: string) =>
+    api.post(`/production/${id}/produce-items`, { items, producedAt }).then(r => r.data),
   transferItems: (id: string, itemIds: string[]) =>
     api.post(`/production/${id}/transfer-items`, { itemIds }).then(r => r.data),
   pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),

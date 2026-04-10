@@ -24,7 +24,9 @@ export const invoicesApi = {
   list: (params?: Record<string, string>) => api.get('/invoices', { params }).then(r => r.data.data),
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/invoices', data).then(r => r.data.data),
+  createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
+  downloadDocx: (id: string) => api.get(`/invoices/${id}/download-pdf`, { responseType: 'blob' }).then(r => r),
   uploadAttachment: (id: string, file: File) => {
     const fd = new FormData();
     fd.append('attachment', file);

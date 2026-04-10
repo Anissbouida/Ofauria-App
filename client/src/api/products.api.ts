@@ -5,7 +5,8 @@ export const productsApi = {
   getById: (id: string) => api.get(`/products/${id}`).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/products', data).then(r => r.data.data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/products/${id}`, data).then(r => r.data.data),
-  remove: (id: string) => api.delete(`/products/${id}`),
+  remove: (id: string) => api.delete(`/products/${id}`).then(r => r.data),
+  toggleAvailability: (id: string) => api.patch(`/products/${id}/toggle-availability`).then(r => r.data.data),
   uploadImage: (id: string, file: File) => {
     const form = new FormData();
     form.append('image', file);

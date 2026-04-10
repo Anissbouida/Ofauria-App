@@ -1,12 +1,13 @@
 import { db } from '../config/database.js';
 import { getCategoryRole } from '@ofauria/shared';
+import { getUserTimezone } from '../utils/timezone.js';
 
 export const replenishmentRepository = {
 
   async generateRequestNumber(): Promise<string> {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const result = await db.query(
-      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca') AND batch_id IS NOT NULL`
+      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE '${getUserTimezone()}') = DATE(NOW() AT TIME ZONE '${getUserTimezone()}') AND batch_id IS NOT NULL`
     );
     const num = parseInt(result.rows[0].count, 10) + 1;
     return `DRA-${today}-${String(num).padStart(3, '0')}`;
@@ -511,7 +512,7 @@ export const replenishmentRepository = {
        FROM replenishment_request_items ri
        JOIN replenishment_requests rr ON rr.id = ri.request_id
        WHERE rr.store_id = $1
-         AND DATE(rr.created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca')
+         AND DATE(rr.created_at AT TIME ZONE '${getUserTimezone()}') = DATE(NOW() AT TIME ZONE '${getUserTimezone()}')
          AND rr.status NOT IN ('cancelled', 'closed', 'closed_with_discrepancy')`,
       [storeId]
     );
@@ -579,7 +580,7 @@ export const replenishmentRepository = {
            FROM sale_items si
            JOIN sales s ON s.id = si.sale_id
            WHERE s.store_id = $1
-             AND DATE(s.created_at AT TIME ZONE 'Africa/Casablanca') = DATE(NOW() AT TIME ZONE 'Africa/Casablanca')
+             AND DATE(s.created_at AT TIME ZONE '${getUserTimezone()}') = DATE(NOW() AT TIME ZONE '${getUserTimezone()}')
              AND si.product_id = pss.product_id),
           0
         ) as sold_qty,
@@ -590,7 +591,12 @@ export const replenishmentRepository = {
       FROM product_store_stock pss
       JOIN products p ON p.id = pss.product_id
       LEFT JOIN categories c ON c.id = p.category_id
-      LEFT JOIN product_display_tracking pdt ON pdt.product_id = pss.product_id AND pdt.store_id = $1 AND pdt.status = 'active'
+      LEFT JOIN LATERAL (
+        SELECT pdt2.current_reexposition_count, pdt2.display_expires_at, pdt2.produced_at, pdt2.expires_at
+        FROM product_display_tracking pdt2
+        WHERE pdt2.product_id = pss.product_id AND pdt2.store_id = $1 AND pdt2.status = 'active'
+        ORDER BY pdt2.produced_at DESC LIMIT 1
+      ) pdt ON true
       WHERE pss.store_id = $1
         AND COALESCE(pss.stock_quantity, 0) > 0
       ORDER BY c.name, p.name
@@ -604,7 +610,7 @@ export const replenishmentRepository = {
     storeId: string;
     sessionId?: string;
     checkedBy: string;
-    items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number; destination?: string; displayStatus?: string }[];
+    items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number; destination?: string; displayStatus?: string; lossReason?: string }[];
     notes?: string;
   }) {
     const client = await db.getClient();
@@ -688,6 +694,18 @@ export const replenishmentRepository = {
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
                VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
               [it.productId, -it.remainingQty, `Perte fin de journee: ${it.productName} x${it.remainingQty}`, data.checkedBy, data.storeId]
+            );
+            // Record in product_losses for loss history
+            const lossReason = it.lossReason || 'invendu_fin_journee';
+            const lossType = lossReason === 'perime' ? 'perime' : 'vitrine';
+            const costResult = await client.query(`SELECT cost_price FROM products WHERE id = $1`, [it.productId]);
+            const unitCost = parseFloat(costResult.rows[0]?.cost_price) || 0;
+            await client.query(
+              `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)`,
+              [it.productId, it.remainingQty, lossType, lossReason,
+               `Inventaire fin de journee: ${it.productName} x${it.remainingQty}`,
+               unitCost, unitCost * it.remainingQty, data.checkedBy, data.storeId]
             );
             // Update tracking
             await client.query(

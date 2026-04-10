@@ -15,6 +15,8 @@ router.post('/:id/send', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
 router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.confirmDelivery);
 router.post('/:id/not-delivered', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.markNotDelivered);
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.cancel);
+router.post('/:id/update-prices', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.updatePrices);
+router.get('/:id/download-pdf', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.downloadPdf);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), purchaseOrderController.remove);
 
 export default router;

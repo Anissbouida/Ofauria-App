@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
 import {
   Plus, Trash2, Factory, Calendar, ShoppingBag, Package, Search,
-  Clock, CheckCircle2, Play, Flag, ChevronRight, Eye, AlertCircle,
+  Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
   FileText, User,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -19,9 +19,9 @@ import toast from 'react-hot-toast';
 const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 const ROLE_LABELS: Record<string, string> = {
   baker: 'Boulanger',
-  pastry_chef: 'Patissier',
+  pastry_chef: 'Pâtissier',
   viennoiserie: 'Viennoiserie',
-  beldi_sale: 'Beldi & Sale',
+  beldi_sale: 'Beldi & Salé',
 };
 
 const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
@@ -65,7 +65,7 @@ export default function ProductionPage() {
 
   const deleteMutation = useMutation({
     mutationFn: productionApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); toast.success('Plan supprime'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); toast.success('Plan supprimé'); },
   });
 
   const plans = data?.data || [];
@@ -95,9 +95,9 @@ export default function ProductionPage() {
   const tabs = [
     { key: '', label: 'Tous', count: stats.total, icon: Factory },
     { key: 'draft', label: 'Brouillon', count: stats.draft, icon: FileText },
-    { key: 'confirmed', label: 'Confirme', count: stats.confirmed, icon: CheckCircle2 },
+    { key: 'confirmed', label: 'Confirmé', count: stats.confirmed, icon: CheckCircle2 },
     { key: 'in_progress', label: 'En cours', count: stats.in_progress, icon: Play },
-    { key: 'completed', label: 'Termine', count: stats.completed, icon: Flag },
+    { key: 'completed', label: 'Terminé', count: stats.completed, icon: Flag },
   ];
 
   return (
@@ -118,9 +118,9 @@ export default function ProductionPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Brouillons', value: stats.draft, icon: FileText, gradient: 'from-gray-400 to-gray-500' },
-          { label: 'Confirmes', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
+          { label: 'Confirmés', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
           { label: 'En cours', value: stats.in_progress, icon: Play, gradient: 'from-amber-500 to-amber-600' },
-          { label: 'Termines', value: stats.completed, icon: Flag, gradient: 'from-emerald-500 to-emerald-600' },
+          { label: 'Terminés', value: stats.completed, icon: Flag, gradient: 'from-emerald-500 to-emerald-600' },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between mb-2">
@@ -191,7 +191,7 @@ export default function ProductionPage() {
         </div>
       </div>
 
-      {/* Plans list */}
+      {/* Plans table */}
       {isLoading ? (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <div className="w-8 h-8 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
@@ -202,107 +202,115 @@ export default function ProductionPage() {
           <Factory size={40} className="text-gray-200 mx-auto mb-3" />
           <p className="text-gray-400 font-medium">Aucun plan de production</p>
           <p className="text-xs text-gray-300 mt-1">
-            {searchQuery ? 'Essayez une autre recherche' : 'Creez votre premier plan de production'}
+            {searchQuery ? 'Essayez une autre recherche' : 'Créez votre premier plan de production'}
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredPlans.map((p: Record<string, unknown>) => {
-            const status = p.status as string;
-            const sCfg = statusConfig[status] || statusConfig.draft;
-            const rCfg = roleConfig[p.target_role as string] || roleConfig.baker;
-            const StatusIcon = sCfg.icon;
-            const hasOrder = !!p.order_number;
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50/60">
+                  <th className="text-left px-5 py-3">N° Plan</th>
+                  <th className="text-left px-4 py-3">Date</th>
+                  <th className="text-center px-4 py-3">Statut</th>
+                  <th className="text-center px-4 py-3">Type</th>
+                  {isAdmin && <th className="text-left px-4 py-3">Chef</th>}
+                  <th className="text-center px-4 py-3">Produits</th>
+                  <th className="text-left px-4 py-3">Créé par</th>
+                  <th className="text-left px-4 py-3">Commande liée</th>
+                  <th className="text-center px-4 py-3 w-20"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPlans.map((p: Record<string, unknown>, idx: number) => {
+                  const status = p.status as string;
+                  const sCfg = statusConfig[status] || statusConfig.draft;
+                  const rCfg = roleConfig[p.target_role as string] || roleConfig.baker;
+                  const StatusIcon = sCfg.icon;
+                  const hasOrder = !!p.order_number;
+                  const planDate = new Date(p.plan_date as string);
+                  const planNumber = (p.id as string).slice(0, 8).toUpperCase();
 
-            return (
-              <div key={p.id as string}
-                onClick={() => navigate(`/production/${p.id}`)}
-                className="bg-white rounded-xl border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer group">
-                <div className="flex items-stretch">
-                  {/* Left color bar */}
-                  <div className={`w-1 rounded-l-xl bg-gradient-to-b ${sCfg.gradient} flex-shrink-0`} />
-
-                  {/* Main content */}
-                  <div className="flex-1 p-4 min-w-0">
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Left info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2.5 mb-2 flex-wrap">
-                          {/* Date */}
-                          <span className="flex items-center gap-1.5 text-sm font-bold text-gray-800">
-                            <Calendar size={15} className="text-gray-400" />
-                            {format(new Date(p.plan_date as string), 'EEEE dd MMM yyyy', { locale: fr })}
-                          </span>
-
-                          {/* Status badge */}
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${sCfg.bg} ${sCfg.color}`}>
-                            <StatusIcon size={12} />
-                            {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
-                          </span>
-
-                          {/* Type */}
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-500">
-                            {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
-                          </span>
+                  return (
+                    <tr key={p.id as string}
+                      onClick={() => navigate(`/production/${p.id}`)}
+                      className={`border-b border-gray-50 transition-colors hover:bg-amber-50/40 cursor-pointer ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                      <td className="px-5 py-3.5">
+                        <span className="font-mono font-semibold text-gray-700">{planNumber}</span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className="text-gray-400 flex-shrink-0" />
+                          <span className="font-medium text-gray-800">{format(planDate, 'dd MMM yyyy', { locale: fr })}</span>
                         </div>
-
-                        <div className="flex items-center gap-4 text-sm flex-wrap">
-                          {/* Chef role */}
-                          {p.target_role && isAdmin && (
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${rCfg.bg}`}>
-                                <User size={12} className={rCfg.color} />
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
+                          <StatusIcon size={12} />
+                          {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
+                        </span>
+                      </td>
+                      {isAdmin && (
+                        <td className="px-4 py-3.5">
+                          {p.target_role ? (
+                            <div className="flex items-center gap-2">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${rCfg.bg}`}>
+                                <User size={11} className={rCfg.color} />
                               </div>
-                              <span className={`text-xs font-medium ${rCfg.color}`}>
-                                {ROLE_LABELS[p.target_role as string]}
-                              </span>
+                              <span className={`font-medium ${rCfg.color}`}>{ROLE_LABELS[p.target_role as string]}</span>
                             </div>
-                          )}
-
-                          {/* Items count */}
-                          <div className="flex items-center gap-1.5 text-gray-500">
-                            <Package size={14} className="text-gray-400" />
-                            <span className="text-xs">{p.item_count as number} produit(s)</span>
-                          </div>
-
-                          {/* Created by */}
-                          <div className="flex items-center gap-1.5 text-gray-400">
-                            <User size={12} />
-                            <span className="text-xs">{p.created_by_name as string}</span>
-                          </div>
-
-                          {/* Linked order */}
-                          {hasOrder && (
-                            <div className="flex items-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-full">
-                              <ShoppingBag size={12} className="text-blue-500" />
-                              <span className="text-xs font-medium text-blue-700">{p.order_number as string}</span>
-                              {p.order_customer_name && (
-                                <span className="text-xs text-blue-400">— {p.order_customer_name as string}</span>
-                              )}
-                            </div>
-                          )}
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="inline-flex items-center gap-1.5 font-semibold text-gray-700">
+                          <Package size={14} className="text-gray-400" />
+                          {p.item_count as number}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 text-gray-600">
+                          <User size={13} className="text-gray-400" />
+                          {p.created_by_name as string}
                         </div>
-                      </div>
-
-                      {/* Right: actions */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {status === 'draft' && (
-                          <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer ce plan ?')) deleteMutation.mutate(p.id as string); }}
-                            className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
-                            title="Supprimer">
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                        <div className="w-8 h-8 rounded-lg bg-gray-50 group-hover:bg-amber-50 flex items-center justify-center text-gray-300 group-hover:text-amber-500 transition-colors">
-                          <ChevronRight size={16} />
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {hasOrder ? (
+                          <div className="inline-flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-full">
+                            <ShoppingBag size={12} className="text-blue-500" />
+                            <span className="font-medium text-blue-700">{p.order_number as string}</span>
+                            {p.order_customer_name && (
+                              <span className="text-blue-400">— {p.order_customer_name as string}</span>
+                            )}
+                          </div>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {status === 'draft' && (
+                            <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer ce plan ?')) deleteMutation.mutate(p.id as string); }}
+                              className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
+                              title="Supprimer">
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                          <div className="w-8 h-8 rounded-lg hover:bg-amber-50 flex items-center justify-center text-gray-300 hover:text-amber-500 transition-colors">
+                            <Eye size={15} />
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -416,15 +424,15 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     mutationFn: productionApi.create,
     onSuccess: (plan: Record<string, unknown>) => {
       queryClient.invalidateQueries({ queryKey: ['production'] });
-      toast.success('Plan de production cree');
+      toast.success('Plan de production créé');
       onCreated(plan.id as string);
     },
   });
 
   const handleSubmit = () => {
-    if (isAdminUser && !selectedRole) { toast.error('Selectionnez un chef'); return; }
+    if (isAdminUser && !selectedRole) { toast.error('Sélectionnez un chef'); return; }
     const items = Object.entries(selected).map(([productId, plannedQuantity]) => ({ productId, plannedQuantity }));
-    if (items.length === 0) { toast.error('Selectionnez au moins un produit'); return; }
+    if (items.length === 0) { toast.error('Sélectionnez au moins un produit'); return; }
     createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items });
   };
 
@@ -439,7 +447,7 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             </div>
             <div>
               <h2 className="text-lg font-bold">Nouveau plan de production</h2>
-              <p className="text-sm text-white/70">Selectionnez les produits a produire</p>
+              <p className="text-sm text-white/70">Sélectionnez les produits à produire</p>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors text-xl leading-none">&times;</button>
@@ -476,7 +484,7 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optionnel)</label>
               <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-                className="input text-base py-2.5" placeholder="Ex: commande speciale..." />
+                className="input text-base py-2.5" placeholder="Ex: commande spéciale..." />
             </div>
           </div>
         </div>
@@ -486,8 +494,8 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           <div className="px-5 py-3 bg-blue-50 border-b border-blue-100 shrink-0">
             <div className="flex items-center gap-2 text-blue-800">
               <ShoppingBag size={18} className="text-blue-500" />
-              <span className="text-sm font-medium">{orderCount} pre-commande(s) pour cette date</span>
-              <span className="text-xs text-blue-400 ml-1">— quantites ajoutees automatiquement</span>
+              <span className="text-sm font-medium">{orderCount} commande(s) pour cette date</span>
+              <span className="text-xs text-blue-400 ml-1">— quantités ajoutées automatiquement</span>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {Object.entries(orderQtys).map(([pid, qty]) => {
@@ -502,7 +510,7 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           </div>
         )}
         {ordersLoading && (
-          <div className="px-5 py-2 bg-gray-50 border-b text-sm text-gray-400 shrink-0">Chargement des pre-commandes...</div>
+          <div className="px-5 py-2 bg-gray-50 border-b text-sm text-gray-400 shrink-0">Chargement des commandes...</div>
         )}
 
         {/* Category sidebar + Products grid */}
@@ -590,7 +598,7 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 })}
               </div>
               {filteredProducts.length === 0 && (
-                <div className="text-center py-8 text-gray-400">Aucun produit trouve</div>
+                <div className="text-center py-8 text-gray-400">Aucun produit trouvé</div>
               )}
             </div>
           </div>
@@ -621,16 +629,16 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           )}
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-gray-500">
-              {totalSelected > 0 ? `${totalSelected} produit(s) selectionne(s)` : 'Aucun produit selectionne'}
+              {totalSelected > 0 ? `${totalSelected} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
             </span>
             <div className="flex gap-2">
               <button type="button" onClick={onClose} className="btn-secondary px-5 py-2.5 text-base">Annuler</button>
               <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || totalSelected === 0}
                 className="btn-primary px-6 py-2.5 text-base disabled:opacity-50 flex items-center gap-2">
                 {createMutation.isPending ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creation...</>
+                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Création...</>
                 ) : (
-                  <><Factory size={16} /> Creer le plan ({totalSelected})</>
+                  <><Factory size={16} /> Créer le plan ({totalSelected})</>
                 )}
               </button>
             </div>

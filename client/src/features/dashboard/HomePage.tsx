@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import {
-  LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
+  LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag, Truck,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
@@ -11,7 +11,7 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Tableau de bord', description: 'Vue d\'ensemble de l\'activite', href: '/reports', icon: LayoutDashboard, color: 'bg-blue-500', module: 'dashboard' },
   { name: 'Point de vente', description: 'Caisse et ventes directes', href: '/pos', icon: Monitor, color: 'bg-green-600', module: 'pos' },
   { name: 'Ventes', description: 'Historique des ventes', href: '/sales', icon: Receipt, color: 'bg-emerald-500', module: 'sales' },
-  { name: 'Pre-commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
+  { name: 'Commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
   { name: 'Produits', description: 'Catalogue et tarifs', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', module: 'products' },
   { name: 'Clients', description: 'Fichier clients et fidelite', href: '/customers', icon: Users, color: 'bg-cyan-600', module: 'customers' },
   { name: 'Inventaire', description: 'Stock matieres premieres', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
@@ -19,7 +19,8 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
   { name: 'Approvisionnement', description: 'Demandes et transferts de stock', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
   { name: 'RH', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
-  { name: 'Comptabilite', description: 'Factures, paiements et fournisseurs', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
+  { name: 'Comptabilite', description: 'Caisse, charges et tresorerie', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
+  { name: 'Achats', description: 'Fournisseurs, commandes et factures', href: '/purchasing', icon: Truck, color: 'bg-blue-700', module: 'purchasing' },
   { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
   { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },
   { name: 'Parametres', description: 'Personnalisation de l\'application', href: '/settings', icon: Settings, color: 'bg-slate-600', module: 'settings' },

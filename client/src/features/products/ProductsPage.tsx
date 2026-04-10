@@ -29,7 +29,19 @@ export default function ProductsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: productsApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['products'] }); toast.success('Produit supprime'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['products'] }); toast.success('Produit supprimé définitivement'); },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      toast.error(msg || 'Erreur lors de la suppression');
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: productsApi.toggleAvailability,
+    onSuccess: (product: Record<string, unknown>) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(product.is_available ? 'Produit activé' : 'Produit désactivé');
+    },
   });
 
   const saveMutation = useMutation({
@@ -45,7 +57,7 @@ export default function ProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(editingProduct ? 'Produit mis a jour' : 'Produit cree');
+      toast.success(editingProduct ? 'Produit mis à jour' : 'Produit créé');
       setShowForm(false); setEditingProduct(null);
     },
   });
@@ -160,7 +172,7 @@ export default function ProductsPage() {
             <Filter size={16} className="text-gray-400" />
             <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
               className="py-2.5 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[180px]">
-              <option value="">Toutes les categories</option>
+              <option value="">Toutes les catégories</option>
               {categories.map((c: { id: number; name: string }) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -238,11 +250,16 @@ export default function ProductsPage() {
                   {/* Quick actions overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                     <button onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowForm(true); }}
-                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-white transition-colors">
+                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-white transition-colors" title="Modifier">
                       <Pencil size={14} className="text-gray-700" />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Desactiver ce produit ?')) deleteMutation.mutate(p.id as string); }}
-                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-red-50 transition-colors">
+                    <button onClick={(e) => { e.stopPropagation(); toggleMutation.mutate(p.id as string); }}
+                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-amber-50 transition-colors"
+                      title={p.is_available ? 'Désactiver' : 'Activer'}>
+                      {p.is_available ? <EyeOff size={14} className="text-amber-600" /> : <Eye size={14} className="text-green-600" />}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer définitivement ce produit ? Cette action est irréversible.')) deleteMutation.mutate(p.id as string); }}
+                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-red-50 transition-colors" title="Supprimer">
                       <Trash2 size={14} className="text-red-500" />
                     </button>
                   </div>
@@ -290,7 +307,7 @@ export default function ProductsPage() {
             <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Produit</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Categorie</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Catégorie</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Responsable</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Prix</th>
                 <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
@@ -368,19 +385,16 @@ export default function ProductsPage() {
                     </td>
                     <td className="px-5 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {p.is_reexposable && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700" title="DLV - Reexposable">DLV</span>
+                        {p.shelf_life_days && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700" title={`DLV: ${p.shelf_life_days} jour(s)`}>DLV {p.shelf_life_days as number}j</span>
                         )}
                         {p.is_recyclable && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700" title="Recyclable">REC</span>
                         )}
-                        {p.shelf_life_days && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title={`Duree de vie: ${p.shelf_life_days}j`}>{p.shelf_life_days as number}j</span>
-                        )}
                         {p.display_life_hours && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`Exposition: ${p.display_life_hours}h`}>{p.display_life_hours as number}h</span>
                         )}
-                        {!p.is_reexposable && !p.is_recyclable && !p.shelf_life_days && !p.display_life_hours && (
+                        {!p.shelf_life_days && !p.is_recyclable && !p.display_life_hours && (
                           <span className="text-xs text-gray-300">—</span>
                         )}
                       </div>
@@ -391,7 +405,11 @@ export default function ProductsPage() {
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
                           <Pencil size={15} className="text-gray-500" />
                         </button>
-                        <button onClick={() => { if (confirm('Desactiver ce produit ?')) deleteMutation.mutate(p.id as string); }}
+                        <button onClick={() => toggleMutation.mutate(p.id as string)}
+                          className="p-2 hover:bg-amber-50 rounded-lg transition-colors" title={p.is_available ? 'Désactiver' : 'Activer'}>
+                          {p.is_available ? <EyeOff size={15} className="text-amber-500 hover:text-amber-600" /> : <Eye size={15} className="text-green-500 hover:text-green-600" />}
+                        </button>
+                        <button onClick={() => { if (confirm('Supprimer définitivement ce produit ? Cette action est irréversible.')) deleteMutation.mutate(p.id as string); }}
                           className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer">
                           <Trash2 size={15} className="text-red-400 hover:text-red-600" />
                         </button>
@@ -452,9 +470,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     minProductionQuantity: (product?.min_production_quantity as string) || '0',
     shelfLifeDays: (product?.shelf_life_days as string) || '',
     displayLifeHours: (product?.display_life_hours as string) || '',
-    isReexposable: (product?.is_reexposable as boolean) || false,
+    hasDLV: (product?.is_reexposable as boolean) || false,
     isRecyclable: (product?.is_recyclable as boolean) || false,
-    maxReexpositions: (product?.max_reexpositions as string) || '0',
     recipeId: '',
   });
 
@@ -619,7 +636,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     e.preventDefault();
     // Recipe is mandatory for new products
     if (!product && !form.recipeId) {
-      toast.error('Veuillez selectionner une recette. Creez d\'abord la recette dans le module Recettes.');
+      toast.error('Veuillez sélectionner une recette. Créez d\'abord la recette dans le module Recettes.');
       return;
     }
     const { recipeId, ...rest } = form;
@@ -633,9 +650,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         minProductionQuantity: parseInt(rest.minProductionQuantity) || 0,
         shelfLifeDays: parseInt(rest.shelfLifeDays) || null,
         displayLifeHours: parseInt(rest.displayLifeHours) || null,
-        isReexposable: rest.isReexposable,
+        isReexposable: rest.hasDLV,
         isRecyclable: rest.isRecyclable,
-        maxReexpositions: parseInt(rest.maxReexpositions) || 0,
         ...(recipeId ? { recipeId } : {}),
       },
       imageFile
@@ -760,7 +776,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   {allRecipesList.length === 0 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
                       <AlertTriangle size={14} className="inline mr-1.5" />
-                      Aucune recette dans le systeme. Veuillez d'abord creer une recette dans le module <strong>Recettes</strong> avant de pouvoir ajouter un produit.
+                      Aucune recette dans le système. Veuillez d'abord créer une recette dans le module <strong>Recettes</strong> avant de pouvoir ajouter un produit.
                     </div>
                   ) : (
                     <>
@@ -885,7 +901,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Category + Price */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Categorie</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Catégorie</label>
                     <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1014,7 +1030,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <Clock size={20} className="text-purple-600 mt-0.5 shrink-0" />
                     <div>
                       <h3 className="text-sm font-semibold text-purple-800">Cycle de vie du produit</h3>
-                      <p className="text-xs text-purple-600 mt-0.5">Gerez la duree de conservation, d'exposition et les retours en fin de journee</p>
+                      <p className="text-xs text-purple-600 mt-0.5">Gérez la durée de conservation, d'exposition et les retours en fin de journée</p>
                     </div>
                   </div>
                 </div>
@@ -1037,33 +1053,23 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 </div>
 
                 {/* DLV toggle */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                <div className="bg-white border border-gray-200 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
                         <Eye size={18} className="text-green-600" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-gray-900">DLV — Reexposable</span>
-                        <p className="text-xs text-gray-400">Peut etre remis en vitrine le lendemain</p>
+                        <span className="text-sm font-semibold text-gray-900">DLV</span>
+                        <p className="text-xs text-gray-400">Peut etre conserve pour la vente le lendemain</p>
                       </div>
                     </div>
-                    <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isReexposable ? 'bg-green-500' : 'bg-gray-300'}`}
-                      onClick={() => setForm({ ...form, isReexposable: !form.isReexposable })}>
+                    <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.hasDLV ? 'bg-green-500' : 'bg-gray-300'}`}
+                      onClick={() => setForm({ ...form, hasDLV: !form.hasDLV })}>
                       <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
-                        style={{ transform: form.isReexposable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                        style={{ transform: form.hasDLV ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
                     </div>
                   </div>
-
-                  {form.isReexposable && (
-                    <div className="pl-[52px]">
-                      <label className="block text-sm font-medium text-gray-600 mb-1.5">Nombre max de reexpositions</label>
-                      <input type="number" step="1" min="0"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                        value={form.maxReexpositions} onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })} placeholder="0 = illimite" />
-                      <p className="text-xs text-gray-400 mt-1 ml-1">0 = reexposition illimitee</p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Recyclable toggle */}

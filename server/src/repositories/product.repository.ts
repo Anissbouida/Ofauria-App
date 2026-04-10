@@ -118,6 +118,28 @@ export const productRepository = {
   },
 
   async delete(id: string) {
-    await db.query('UPDATE products SET is_available = false, updated_at = NOW() WHERE id = $1', [id]);
+    // Clean up all related records before hard delete
+    await db.query('DELETE FROM sale_return_items WHERE sale_item_id IN (SELECT id FROM sale_items WHERE product_id = $1)', [id]);
+    await db.query('DELETE FROM sale_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM order_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM daily_inventory_check_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM product_display_tracking WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM product_losses WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM production_ingredient_needs WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM production_plan_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM production_transfer_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM replenishment_request_items WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM stock_deliveries WHERE product_id = $1', [id]);
+    await db.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1', [id]);
+    const result = await db.query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
+    if (!result.rows[0]) throw new Error('Produit introuvable');
+  },
+
+  async toggleAvailability(id: string) {
+    const result = await db.query(
+      'UPDATE products SET is_available = NOT is_available, updated_at = NOW() WHERE id = $1 RETURNING *',
+      [id]
+    );
+    return result.rows[0];
   },
 };

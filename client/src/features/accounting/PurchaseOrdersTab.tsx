@@ -6,7 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
-  Package, ArrowRight, FileText, Filter, Loader2,
+  Package, ArrowRight, FileText, Filter, Loader2, Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -16,11 +16,12 @@ function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits
 
 const STATUS_LABELS: Record<string, string> = {
   en_attente: 'En attente',
-  envoye: 'Envoye',
-  livre_complet: 'Livre',
+  envoye: 'Envoyé',
+  livre_complet: 'Livré',
   livre_partiel: 'Partiel',
-  non_livre: 'Non livre',
-  annule: 'Annule',
+  non_livre: 'Non livré',
+  annule: 'Annulé',
+  en_attente_facturation: 'Att. facturation',
 };
 const STATUS_COLORS: Record<string, string> = {
   en_attente: 'bg-amber-100 text-amber-800 border border-amber-200',
@@ -29,6 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
   livre_partiel: 'bg-orange-100 text-orange-800 border border-orange-200',
   non_livre: 'bg-red-100 text-red-800 border border-red-200',
   annule: 'bg-gray-100 text-gray-500 border border-gray-200',
+  en_attente_facturation: 'bg-purple-100 text-purple-800 border border-purple-200',
 };
 const STATUS_ICONS: Record<string, typeof Clock> = {
   en_attente: Clock,
@@ -37,6 +39,7 @@ const STATUS_ICONS: Record<string, typeof Clock> = {
   livre_partiel: Package,
   non_livre: PackageX,
   annule: Ban,
+  en_attente_facturation: FileText,
 };
 
 type POItem = {
@@ -73,22 +76,39 @@ export default function PurchaseOrdersTab() {
 
   const sendMutation = useMutation({
     mutationFn: purchaseOrdersApi.send,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC envoye au fournisseur'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC envoyé au fournisseur'); },
   });
   const cancelMutation = useMutation({
     mutationFn: purchaseOrdersApi.cancel,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC annule'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC annulé'); },
   });
   const deleteMutation = useMutation({
     mutationFn: purchaseOrdersApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC supprime'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC supprimé'); },
   });
   const notDeliveredMutation = useMutation({
     mutationFn: purchaseOrdersApi.markNotDelivered,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('Marque non livre'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('Marqué non livré'); },
   });
 
   // Stats
+  const handleDownloadPoPdf = async (po: Record<string, unknown>) => {
+    try {
+      const response = await purchaseOrdersApi.downloadPdf(po.id as string);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${po.order_number || 'BC'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch {
+      toast.error('Erreur lors du téléchargement du PDF');
+    }
+  };
+
   const allOrders = orders as Record<string, unknown>[];
   const stats = useMemo(() => {
     const byStatus: Record<string, { count: number; total: number }> = {};
@@ -128,11 +148,12 @@ export default function PurchaseOrdersTab() {
   const statusTabs = [
     { key: '', label: 'Tous', icon: ShoppingBag, color: 'text-gray-600' },
     { key: 'en_attente', label: 'En attente', icon: Clock, color: 'text-amber-600' },
-    { key: 'envoye', label: 'Envoyes', icon: Send, color: 'text-blue-600' },
+    { key: 'envoye', label: 'Envoyés', icon: Send, color: 'text-blue-600' },
     { key: 'livre_partiel', label: 'Partiels', icon: Package, color: 'text-orange-600' },
-    { key: 'livre_complet', label: 'Livres', icon: CheckCircle2, color: 'text-emerald-600' },
-    { key: 'non_livre', label: 'Non livres', icon: PackageX, color: 'text-red-600' },
-    { key: 'annule', label: 'Annules', icon: Ban, color: 'text-gray-400' },
+    { key: 'livre_complet', label: 'Livrés', icon: CheckCircle2, color: 'text-emerald-600' },
+    { key: 'non_livre', label: 'Non livrés', icon: PackageX, color: 'text-red-600' },
+    { key: 'en_attente_facturation', label: 'Att. facture', icon: FileText, color: 'text-purple-600' },
+    { key: 'annule', label: 'Annulés', icon: Ban, color: 'text-gray-400' },
   ];
 
   return (
@@ -160,7 +181,7 @@ export default function PurchaseOrdersTab() {
                   </span>
                   <button onClick={() => setShowDelivery(po.id as string)}
                     className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200">
-                    Confirmer reception
+                    Confirmer réception
                   </button>
                 </div>
               </div>
@@ -270,13 +291,13 @@ export default function PurchaseOrdersTab() {
           <p className="text-gray-400 font-medium">Aucun bon de commande</p>
           <p className="text-gray-400 text-sm mt-1">
             {statusFilter || searchTerm || supplierFilter
-              ? 'Aucun resultat pour ces filtres'
-              : 'Creez votre premier bon de commande'}
+              ? 'Aucun résultat pour ces filtres'
+              : 'Créez votre premier bon de commande'}
           </p>
           {!statusFilter && !searchTerm && (
             <button onClick={() => setShowCreate(true)}
               className="mt-4 px-4 py-2 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2 text-sm">
-              <Plus size={16} /> Creer un BC
+              <Plus size={16} /> Créer un BC
             </button>
           )}
         </div>
@@ -365,13 +386,20 @@ export default function PurchaseOrdersTab() {
                     )}
                     {(po.status === 'envoye' || po.status === 'livre_partiel') && (
                       <button onClick={() => setShowDelivery(po.id as string)}
-                        title="Confirmer reception"
+                        title="Confirmer réception"
                         className="p-2 hover:bg-green-50 rounded-lg transition-colors group">
                         <PackageCheck size={16} className="text-green-500 group-hover:text-green-700" />
                       </button>
                     )}
+                    {po.status !== 'en_attente' && (
+                      <button onClick={() => handleDownloadPoPdf(po)}
+                        title="Télécharger PDF"
+                        className="p-2 hover:bg-violet-50 rounded-lg transition-colors group">
+                        <Download size={16} className="text-violet-400 group-hover:text-violet-600" />
+                      </button>
+                    )}
                     <button onClick={() => setShowDetail(po.id as string)}
-                      title="Voir details"
+                      title="Voir détails"
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors group">
                       <Eye size={16} className="text-gray-400 group-hover:text-gray-600" />
                     </button>
@@ -426,9 +454,9 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
-              <th className="text-left px-3 py-2">Ingredient</th>
-              <th className="text-right px-3 py-2">Qte commandee</th>
-              <th className="text-right px-3 py-2">Qte livree</th>
+              <th className="text-left px-3 py-2">Ingrédient</th>
+              <th className="text-right px-3 py-2">Qté commandée</th>
+              <th className="text-right px-3 py-2">Qté livrée</th>
               <th className="text-right px-3 py-2">Prix unit.</th>
               <th className="text-right px-3 py-2">Total</th>
               <th className="text-right px-3 py-2 w-24">Progression</th>
@@ -439,7 +467,7 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
               const ordered = parseFloat(item.quantity_ordered);
               const delivered = parseFloat(item.quantity_delivered);
               const pct = ordered > 0 ? Math.min(100, (delivered / ordered) * 100) : 0;
-              const price = parseFloat(item.unit_price);
+              const price = item.unit_price != null ? parseFloat(item.unit_price) : null;
               return (
                 <tr key={item.id} className="hover:bg-gray-50/50">
                   <td className="px-3 py-2 font-medium text-gray-700">
@@ -449,8 +477,8 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
                   <td className="px-3 py-2 text-right">
                     <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{delivered}</span>
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-600">{n(price)} DH</td>
-                  <td className="px-3 py-2 text-right font-medium">{n(ordered * price)} DH</td>
+                  <td className="px-3 py-2 text-right text-gray-600">{price != null ? `${n(price)} DH` : <span className="text-amber-500 text-xs">À définir</span>}</td>
+                  <td className="px-3 py-2 text-right font-medium">{price != null ? `${n(ordered * price)} DH` : <span className="text-gray-400">—</span>}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 justify-end">
                       <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -492,11 +520,11 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
           <>
             <button onClick={onDelivery}
               className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 flex items-center gap-1.5 transition-colors">
-              <PackageCheck size={14} /> Confirmer reception
+              <PackageCheck size={14} /> Confirmer réception
             </button>
             <button onClick={onNotDelivered}
               className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-              <PackageX size={14} /> Non livre
+              <PackageX size={14} /> Non livré
             </button>
           </>
         )}
@@ -518,7 +546,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [searchIngredient, setSearchIngredient] = useState('');
-  const [items, setItems] = useState<{ ingredientId: string; ingredientName: string; unit: string; quantityOrdered: number; unitPrice: number }[]>([]);
+  const [items, setItems] = useState<{ ingredientId: string; ingredientName: string; unit: string; quantityOrdered: number; unitPrice: number | null }[]>([]);
+  const [showNewIngredient, setShowNewIngredient] = useState(false);
+  const [newIng, setNewIng] = useState({ name: '', unit: 'kg', category: 'autre', unitCost: '' });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
@@ -527,11 +557,42 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     mutationFn: purchaseOrdersApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      toast.success('Bon de commande cree');
+      toast.success('Bon de commande créé');
       onClose();
     },
-    onError: () => toast.error('Erreur lors de la creation'),
+    onError: () => toast.error('Erreur lors de la création'),
   });
+
+  const createIngredientMutation = useMutation({
+    mutationFn: ingredientsApi.create,
+    onSuccess: (created: Record<string, unknown>) => {
+      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      const cost = parseFloat(created.unit_cost as string) || 0;
+      setItems([...items, {
+        ingredientId: created.id as string,
+        ingredientName: created.name as string,
+        unit: created.unit as string,
+        quantityOrdered: 1,
+        unitPrice: cost > 0 ? cost : null,
+      }]);
+      setShowNewIngredient(false);
+      setNewIng({ name: '', unit: 'kg', category: 'autre', unitCost: '' });
+      setSearchIngredient('');
+      toast.success(`Ingrédient "${created.name}" créé et ajouté`);
+    },
+    onError: () => toast.error('Erreur lors de la création de l\'ingrédient'),
+  });
+
+  const handleCreateIngredient = () => {
+    if (!newIng.name.trim()) { toast.error('Saisissez le nom de l\'ingrédient'); return; }
+    createIngredientMutation.mutate({
+      name: newIng.name.trim(),
+      unit: newIng.unit,
+      category: newIng.category,
+      unitCost: newIng.unitCost ? parseFloat(newIng.unitCost) : 0,
+    });
+  };
 
   // Filtered ingredients (not already added)
   const addedIds = new Set(items.map(it => it.ingredientId));
@@ -542,12 +603,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   });
 
   const addIngredient = (ing: Record<string, unknown>) => {
+    const cost = parseFloat(ing.unit_cost as string) || 0;
     setItems([...items, {
       ingredientId: ing.id as string,
       ingredientName: ing.name as string,
       unit: ing.unit as string,
       quantityOrdered: 1,
-      unitPrice: parseFloat(ing.unit_cost as string) || 0,
+      unitPrice: cost > 0 ? cost : null,
     }]);
     setSearchIngredient('');
   };
@@ -557,18 +619,22 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     setItems(items.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
-  const totalAmount = items.reduce((sum, it) => sum + it.quantityOrdered * it.unitPrice, 0);
+  const totalAmount = items.reduce((sum, it) => sum + it.quantityOrdered * (it.unitPrice || 0), 0);
+  const hasMissingPrices = items.some(it => it.unitPrice == null || it.unitPrice === 0);
 
   const handleSubmit = () => {
-    if (!supplierId) { toast.error('Selectionnez un fournisseur'); return; }
+    if (!supplierId) { toast.error('Sélectionnez un fournisseur'); return; }
     if (items.length === 0) { toast.error('Ajoutez au moins un article'); return; }
     const invalidItems = items.filter(it => it.quantityOrdered <= 0);
-    if (invalidItems.length > 0) { toast.error('Les quantites doivent etre superieures a 0'); return; }
+    if (invalidItems.length > 0) { toast.error('Les quantités doivent être supérieures à 0'); return; }
     createMutation.mutate({
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
-      items: items.map(({ ingredientId, quantityOrdered, unitPrice }) => ({ ingredientId, quantityOrdered, unitPrice })),
+      items: items.map(({ ingredientId, quantityOrdered, unitPrice }) => ({
+        ingredientId, quantityOrdered,
+        unitPrice: unitPrice != null && unitPrice > 0 ? unitPrice : null,
+      })),
     });
   };
 
@@ -583,7 +649,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">Nouveau bon de commande</h2>
-              <p className="text-sm text-white/70">Creez une commande fournisseur avec les articles souhaites</p>
+              <p className="text-sm text-white/70">Créez une commande fournisseur avec les articles souhaités</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
@@ -603,7 +669,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Livraison prevue</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Livraison prévue</label>
               <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
             </div>
@@ -617,11 +683,17 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           {/* Add ingredient search */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des articles</label>
-            <div className="relative">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Chercher un ingredient..."
-                value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Chercher un ingrédient..."
+                  value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+              </div>
+              <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', category: 'autre', unitCost: '' }); }}
+                className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5 border border-emerald-200 whitespace-nowrap shrink-0">
+                <Plus size={14} /> Nouvel ingrédient
+              </button>
             </div>
             {searchIngredient && filteredIngredients.length > 0 && (
               <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
@@ -634,8 +706,67 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             )}
-            {searchIngredient && filteredIngredients.length === 0 && (
-              <p className="text-sm text-gray-400 mt-2">Aucun ingredient trouve</p>
+            {searchIngredient && filteredIngredients.length === 0 && !showNewIngredient && (
+              <p className="text-sm text-gray-400 mt-2">Aucun ingrédient trouvé</p>
+            )}
+            {showNewIngredient && (
+              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-emerald-800 flex items-center gap-1.5">
+                    <Plus size={14} /> Nouvel ingrédient
+                  </h4>
+                  <button onClick={() => setShowNewIngredient(false)} className="p-1 hover:bg-emerald-100 rounded-lg transition-colors">
+                    <X size={14} className="text-emerald-600" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Nom *</label>
+                    <input type="text" value={newIng.name} onChange={e => setNewIng({ ...newIng, name: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" placeholder="Ex: Farine T55" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Unité *</label>
+                    <select value={newIng.unit} onChange={e => setNewIng({ ...newIng, unit: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                      <option value="kg">kg</option><option value="g">g</option><option value="L">L</option>
+                      <option value="mL">mL</option><option value="unit">unité</option><option value="piece">pièce</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Catégorie</label>
+                    <select value={newIng.category} onChange={e => setNewIng({ ...newIng, category: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                      <option value="farines">Farines & Céréales</option>
+                      <option value="sucres">Sucres & Édulcorants</option>
+                      <option value="produits_laitiers">Produits laitiers</option>
+                      <option value="oeufs">Oeufs & Ovoproduits</option>
+                      <option value="matieres_grasses">Matières grasses</option>
+                      <option value="fruits">Fruits & Purées</option>
+                      <option value="chocolat">Chocolat & Cacao</option>
+                      <option value="fruits_secs">Fruits secs & Oléagineux</option>
+                      <option value="epices">Épices & Arômes</option>
+                      <option value="levures">Levures & Agents levants</option>
+                      <option value="emballages">Emballages</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-700 mb-1">Coût unitaire (DH)</label>
+                    <input type="number" step="0.01" min="0" value={newIng.unitCost} onChange={e => setNewIng({ ...newIng, unitCost: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" placeholder="Optionnel" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowNewIngredient(false)}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Annuler</button>
+                  <button onClick={handleCreateIngredient} disabled={createIngredientMutation.isPending}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">
+                    {createIngredientMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
+                    {createIngredientMutation.isPending ? 'Création...' : 'Créer et ajouter'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -645,8 +776,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingredient</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Quantite</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingrédient</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Quantité</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Prix unit. (DH)</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-28">Sous-total</th>
                     <th className="w-10"></th>
@@ -665,12 +796,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                           className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
                       </td>
                       <td className="px-4 py-2.5">
-                        <input type="number" min={0} step="0.01" value={item.unitPrice || ''}
+                        <input type="number" min={0} step="0.01" value={item.unitPrice ?? ''}
                           onChange={(e) => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          placeholder="Optionnel"
                           className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
                       </td>
                       <td className="px-4 py-2.5 text-right font-semibold text-gray-700">
-                        {n(item.quantityOrdered * item.unitPrice)}
+                        {item.unitPrice ? n(item.quantityOrdered * item.unitPrice) : <span className="text-gray-400 text-xs">À définir</span>}
                       </td>
                       <td className="px-4 py-2.5">
                         <button onClick={() => removeItem(idx)}
@@ -683,8 +815,11 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 </tbody>
               </table>
               <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-4 py-3 flex items-center justify-between text-white rounded-b-2xl">
-                <span className="text-sm">{items.length} article{items.length > 1 ? 's' : ''}</span>
-                <span className="text-lg font-bold">Total: {n(totalAmount)} DH</span>
+                <span className="text-sm">
+                  {items.length} article{items.length > 1 ? 's' : ''}
+                  {hasMissingPrices && <span className="ml-2 text-amber-300 text-xs">(prix à définir par le fournisseur)</span>}
+                </span>
+                <span className="text-lg font-bold">{totalAmount > 0 ? `Total: ${n(totalAmount)} DH` : 'Prix à définir'}</span>
               </div>
             </div>
           )}
@@ -694,7 +829,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                 <ShoppingBag size={24} className="text-gray-300" />
               </div>
-              <p className="text-gray-400 text-sm">Recherchez et ajoutez des ingredients ci-dessus</p>
+              <p className="text-gray-400 text-sm">Recherchez et ajoutez des ingrédients ci-dessus</p>
             </div>
           )}
         </div>
@@ -712,7 +847,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <button onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0}
               className="px-5 py-2.5 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50">
               {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
-              {createMutation.isPending ? 'Creation...' : 'Creer le bon de commande'}
+              {createMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
             </button>
           </div>
         </div>
@@ -739,8 +874,8 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   if (!po) return null;
 
   const items = (po.items || []) as POItem[];
-  const totalOrdered = items.reduce((s, it) => s + parseFloat(it.quantity_ordered) * parseFloat(it.unit_price), 0);
-  const totalDelivered = items.reduce((s, it) => s + parseFloat(it.quantity_delivered) * parseFloat(it.unit_price), 0);
+  const totalOrdered = items.reduce((s, it) => s + parseFloat(it.quantity_ordered) * (it.unit_price != null ? parseFloat(it.unit_price) : 0), 0);
+  const totalDelivered = items.reduce((s, it) => s + parseFloat(it.quantity_delivered) * (it.unit_price != null ? parseFloat(it.unit_price) : 0), 0);
   const globalPct = totalOrdered > 0 ? (totalDelivered / totalOrdered) * 100 : 0;
   const StatusIcon = STATUS_ICONS[po.status] || Clock;
 
@@ -759,7 +894,7 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
                 </span>
               </div>
               <p className="text-sm text-white/70 mt-1">
-                {po.supplier_name} — Cree par {po.created_by_name}
+                {po.supplier_name} — Créé par {po.created_by_name}
               </p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
@@ -774,7 +909,7 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
               <p className="font-medium text-sm mt-1">{format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr })}</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Livraison prevue</p>
+              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Livraison prévue</p>
               <p className="font-medium text-sm mt-1">
                 {po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'dd MMM yyyy', { locale: fr }) : '—'}
               </p>
@@ -800,7 +935,7 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
               </div>
               <div className="flex justify-between mt-2 text-xs text-gray-400">
                 <span>Commande: {n(totalOrdered)} DH</span>
-                <span>Livre: {n(totalDelivered)} DH</span>
+                <span>Livré: {n(totalDelivered)} DH</span>
               </div>
             </div>
           )}
@@ -816,12 +951,12 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                 <tr>
-                  <th className="text-left px-4 py-2.5">Ingredient</th>
-                  <th className="text-right px-4 py-2.5">Commande</th>
-                  <th className="text-right px-4 py-2.5">Livre</th>
+                  <th className="text-left px-4 py-2.5">Ingrédient</th>
+                  <th className="text-right px-4 py-2.5">Commandé</th>
+                  <th className="text-right px-4 py-2.5">Livré</th>
                   <th className="text-right px-4 py-2.5">Prix unit.</th>
                   <th className="text-right px-4 py-2.5">Total</th>
-                  <th className="text-right px-4 py-2.5 w-28">Etat</th>
+                  <th className="text-right px-4 py-2.5 w-28">État</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -838,8 +973,8 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
                       <td className="px-4 py-2.5 text-right">
                         <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{delivered}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">{n(parseFloat(item.unit_price))} DH</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{n(ordered * parseFloat(item.unit_price))} DH</td>
+                      <td className="px-4 py-2.5 text-right text-gray-600">{item.unit_price != null ? `${n(parseFloat(item.unit_price))} DH` : <span className="text-amber-500 text-xs">À définir</span>}</td>
+                      <td className="px-4 py-2.5 text-right font-medium">{item.unit_price != null ? `${n(ordered * parseFloat(item.unit_price))} DH` : <span className="text-gray-400">—</span>}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2 justify-end">
                           <div className="w-14 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -859,7 +994,7 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
           {/* Totals */}
           <div className="flex justify-between pt-2 border-t text-sm">
             <span className="font-semibold text-gray-700">Total commande: <span className="text-lg">{n(totalOrdered)} DH</span></span>
-            <span className="font-semibold text-green-700">Total livre: <span className="text-lg">{n(totalDelivered)} DH</span></span>
+            <span className="font-semibold text-green-700">Total livré: <span className="text-lg">{n(totalDelivered)} DH</span></span>
           </div>
         </div>
       </div>
@@ -876,16 +1011,18 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   const [deliveries, setDeliveries] = useState<Record<string, number>>({});
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
 
   const confirmMutation = useMutation({
-    mutationFn: (data: { items: { itemId: string; quantityDelivered: number }[] }) =>
+    mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[] }) =>
       purchaseOrdersApi.confirmDelivery(poId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['eligible-pos'] });
-      toast.success('Reception confirmee — stock et facture mis a jour');
+      toast.success('Réception confirmée — stock et facture mis à jour');
       onClose();
     },
     onError: () => toast.error('Erreur lors de la confirmation'),
@@ -906,37 +1043,46 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   const handleSubmit = () => {
     const deliveredItems = Object.entries(deliveries)
       .filter(([, qty]) => qty > 0)
-      .map(([itemId, quantityDelivered]) => ({ itemId, quantityDelivered }));
-    if (deliveredItems.length === 0) { toast.error('Saisissez au moins une quantite livree'); return; }
+      .map(([itemId, quantityDelivered]) => ({
+        itemId, quantityDelivered,
+        ...(prices[itemId] != null && prices[itemId] > 0 ? { unitPrice: prices[itemId] } : {}),
+        ...lotInfo[itemId],
+      }));
+    if (deliveredItems.length === 0) { toast.error('Saisissez au moins une quantité livrée'); return; }
     confirmMutation.mutate({ items: deliveredItems });
   };
 
   const fillAll = () => {
     const filled: Record<string, number> = {};
+    const filledPrices: Record<string, number> = {};
     items.forEach((item) => {
       const remaining = parseFloat(item.quantity_ordered) - parseFloat(item.quantity_delivered);
-      if (remaining > 0) filled[item.id] = remaining;
+      if (remaining > 0) {
+        filled[item.id] = remaining;
+        if (item.unit_price != null) filledPrices[item.id] = parseFloat(item.unit_price);
+      }
     });
     setDeliveries(filled);
+    setPrices(prev => ({ ...prev, ...filledPrices }));
   };
 
   const totalDelivering = Object.entries(deliveries).reduce((sum, [itemId, qty]) => {
-    const item = items.find(it => it.id === itemId);
-    return sum + qty * (item ? parseFloat(item.unit_price) : 0);
+    const price = prices[itemId] ?? (() => { const item = items.find(it => it.id === itemId); return item?.unit_price != null ? parseFloat(item.unit_price) : 0; })();
+    return sum + qty * price;
   }, 0);
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50">
+      <div className="bg-white w-full h-full flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-5 rounded-t-2xl">
+        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-5 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                 <PackageCheck size={20} className="text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Confirmer la reception</h2>
+                <h2 className="text-lg font-bold text-white">Confirmer la réception</h2>
                 <p className="text-sm text-white/70">{po.order_number} — {po.supplier_name}</p>
               </div>
             </div>
@@ -944,26 +1090,31 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 flex-1 overflow-y-auto">
           {/* Fill all button */}
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">Saisissez les quantites recues pour chaque article</p>
+            <p className="text-sm text-gray-500">Saisissez les quantités reçues pour chaque article</p>
             <button onClick={fillAll}
               className="text-sm text-emerald-700 font-medium flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors">
-              <CheckCircle2 size={14} /> Tout recu
+              <CheckCircle2 size={14} /> Tout reçu
             </button>
           </div>
 
           {/* Items */}
-          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-x-auto">
+            <table className="w-full text-sm min-w-[1050px]">
               <thead>
                 <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingredient</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Commande</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Deja recu</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingrédient</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Commandé</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Déjà reçu</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Restant</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-36">Qte recue</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Qté reçue</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Prix U.</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Total</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Ref. lot</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">DLC</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Date prod.</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -997,6 +1148,48 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                             className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0" />
                         ) : <span className="text-sm text-gray-400 text-right block">—</span>}
                       </td>
+                      <td className="px-4 py-2.5">
+                        {!isComplete ? (
+                          <input type="number" min={0} step="0.01"
+                            value={prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : '')}
+                            onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Prix" />
+                        ) : <span className="text-sm text-gray-400 text-right block">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {(() => {
+                          const qty = deliveries[item.id] || 0;
+                          const price = prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : 0);
+                          const lineTotal = qty * price;
+                          return lineTotal > 0
+                            ? <span className="text-sm font-semibold text-gray-700">{n(lineTotal)}</span>
+                            : <span className="text-sm text-gray-400">—</span>;
+                        })()}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {!isComplete ? (
+                          <input type="text"
+                            value={lotInfo[item.id]?.supplierLotNumber ?? ''}
+                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Lot" />
+                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {!isComplete ? (
+                          <input type="date"
+                            value={lotInfo[item.id]?.expirationDate ?? ''}
+                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {!isComplete ? (
+                          <input type="date"
+                            value={lotInfo[item.id]?.manufacturedDate ?? ''}
+                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })}
+                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                      </td>
                     </tr>
                   );
                 })}
@@ -1009,7 +1202,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-emerald-700 flex items-center gap-1.5">
                 <ArrowRight size={14} />
-                Valeur de cette reception
+                Valeur de cette réception
               </span>
               <span className="font-bold text-emerald-800">{n(totalDelivering)} DH</span>
             </div>
@@ -1017,13 +1210,13 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         </div>
 
         {/* Footer */}
-        <div className="border-t px-6 py-4 flex justify-end gap-2">
+        <div className="border-t px-6 py-4 flex justify-end gap-2 shrink-0 bg-white">
           <button onClick={onClose}
             className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
           <button onClick={handleSubmit} disabled={confirmMutation.isPending}
             className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
             {confirmMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={16} />}
-            {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer la reception'}
+            {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
           </button>
         </div>
       </div>

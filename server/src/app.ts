@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/error.middleware.js';
+import { runWithTimezone } from './utils/timezone.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,12 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', creden
 
 // Body parsing
 app.use(express.json());
+
+// Capture user timezone from request header and store in async context
+app.use((req, res, next) => {
+  const timezone = req.headers['x-timezone'] as string || 'Africa/Casablanca';
+  runWithTimezone(timezone, () => next());
+});
 
 // Static files (uploaded images)
 app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads')));

@@ -27,7 +27,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     '/': 'Accueil',
     '/pos': 'Point de vente',
     '/sales': 'Ventes',
-    '/orders': 'Pre-commandes',
+    '/orders': 'Commandes',
     '/products': 'Produits',
     '/customers': 'Clients',
     '/inventory': 'Inventaire',

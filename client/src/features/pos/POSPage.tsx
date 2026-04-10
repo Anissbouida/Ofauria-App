@@ -39,6 +39,10 @@ interface ReceiptData {
   paymentMethod: string;
   cashGiven?: number;
   changeAmount?: number;
+  advanceAmount?: number;
+  advanceDate?: string;
+  orderTotal?: number;
+  isAdvanceReceipt?: boolean;
 }
 
 type PosTab = 'sell' | 'orders' | 'returns';
@@ -271,11 +275,38 @@ export default function POSPage() {
 
 
   const deliverMutation = useMutation({
-    mutationFn: ({ id, amountPaid, paymentMethod }: { id: string; amountPaid: number; paymentMethod: string }) => ordersApi.deliver(id, { amountPaid, paymentMethod }),
-    onSuccess: () => {
+    mutationFn: ({ id, amountPaid, paymentMethod, order }: { id: string; amountPaid: number; paymentMethod: string; order: Record<string, unknown> }) => ordersApi.deliver(id, { amountPaid, paymentMethod }).then(res => ({ ...res, _order: order, _paymentMethod: paymentMethod })),
+    onSuccess: (data: Record<string, unknown>) => {
       queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+
+      // Show delivery receipt
+      const order = data._order as Record<string, unknown>;
+      const totalAmt = parseFloat(order.total as string);
+      const advanceAmt = parseFloat(order.advance_amount as string || '0');
+      const remaining = totalAmt - advanceAmt;
+      const orderItems = (order.items || []) as Record<string, unknown>[];
+
+      setReceiptData({
+        saleNumber: order.order_number as string,
+        date: new Date().toISOString(),
+        cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+        customerName: (order.customer_first_name as string) || (order.customer_name as string) || undefined,
+        items: orderItems.map((it: Record<string, unknown>) => ({
+          name: (it.product_name as string) || 'Produit',
+          quantity: parseInt(it.quantity as string) || 1,
+          unitPrice: parseFloat(it.unit_price as string),
+          subtotal: parseFloat(it.subtotal as string),
+        })),
+        subtotal: totalAmt,
+        discountAmount: parseFloat(order.discount_amount as string) || 0,
+        total: totalAmt,
+        paymentMethod: data._paymentMethod as string,
+        advanceAmount: advanceAmt > 0 ? advanceAmt : undefined,
+        advanceDate: advanceAmt > 0 ? (order.created_at as string) : undefined,
+      });
+
       setDeliverOrder(null);
       setDeliverAmount('');
       setDeliverPayment('cash');
@@ -328,9 +359,30 @@ export default function POSPage() {
     return (name.includes(q) || num.includes(q) || phone.includes(q)) && o.status !== 'completed' && o.status !== 'cancelled';
   });
 
+  const [stockAlert, setStockAlert] = useState<{ productId: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (stockAlert) {
+      const timer = setTimeout(() => setStockAlert(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [stockAlert]);
+
+  const showStockAlert = (productId: string, stock: number) => {
+    setStockAlert({ productId, message: `Max ${Math.floor(stock)} en stock` });
+  };
+
+  const getProductStock = (productId: string) => {
+    const p = products.find((p: Record<string, unknown>) => p.id === productId);
+    return p ? parseFloat(p.stock_quantity as string) || 0 : 0;
+  };
+
   const addToCart = (product: Record<string, unknown>) => {
+    const stock = parseFloat(product.stock_quantity as string) || 0;
+    if (stock <= 0) return;
     const existing = cart.find(i => i.productId === product.id);
     if (existing) {
+      if (existing.quantity >= stock) { showStockAlert(product.id as string, stock); return; }
       setCart(cart.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i));
     } else {
       setCart([...cart, {
@@ -347,7 +399,12 @@ export default function POSPage() {
     setCart(cart.map(i => {
       if (i.productId === productId) {
         const newQty = i.quantity + delta;
-        return newQty <= 0 ? null! : { ...i, quantity: newQty };
+        if (newQty <= 0) return null!;
+        if (delta > 0) {
+          const stock = getProductStock(productId);
+          if (newQty > stock) { showStockAlert(productId, stock); return i; }
+        }
+        return { ...i, quantity: newQty };
       }
       return i;
     }).filter(Boolean));
@@ -564,19 +621,42 @@ export default function POSPage() {
               </div>
             </div>
             <div className="overflow-y-auto flex-1 grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(4.5cm, 1fr))', gridAutoRows: '5cm' }}>
-              {products.map((p: Record<string, unknown>) => (
-                <button key={p.id as string} onClick={() => addToCart(p)} className="bg-white rounded-xl p-1.5 text-left hover:shadow-md hover:border-primary-300 transition-all border border-gray-100 flex flex-col">
+              {products.map((p: Record<string, unknown>) => {
+                const stock = parseFloat(p.stock_quantity as string) || 0;
+                const outOfStock = stock <= 0;
+                const isAlerted = stockAlert?.productId === p.id;
+                return (
+                <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
+                  disabled={outOfStock}
+                  className={`rounded-xl p-1.5 text-left transition-all border flex flex-col relative ${
+                    outOfStock
+                      ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
+                      : isAlerted
+                        ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+                        : 'bg-white border-gray-100 hover:shadow-md hover:border-primary-300'
+                  }`}>
+                  {outOfStock && (
+                    <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
+                  )}
+                  {isAlerted && (
+                    <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
+                      <span className="bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg">
+                        {stockAlert?.message}
+                      </span>
+                    </span>
+                  )}
                   <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
                     {p.image_url ? (
-                      <img src={p.image_url as string} alt="" className="h-full w-full object-contain" />
+                      <img src={p.image_url as string} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
                     ) : (
                       <span className="text-2xl">🥖</span>
                     )}
                   </div>
                   <span className="font-medium text-xs line-clamp-2 leading-tight mt-1">{p.name as string}</span>
-                  <span className="text-primary-600 font-bold text-xs pt-0.5">{parseFloat(p.price as string).toFixed(2)} DH</span>
+                  <span className={`font-bold text-xs pt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -588,27 +668,38 @@ export default function POSPage() {
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {cart.length === 0 ? (
                 <p className="text-center text-gray-400 py-8">Le panier est vide</p>
-              ) : cart.map((item) => (
-                <div key={item.productId} className="flex items-center gap-3 py-2 border-b border-gray-50">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{item.name}</p>
-                    <p className="text-primary-600 text-sm">{item.price.toFixed(2)} DH</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => updateQuantity(item.productId, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
-                      <Minus size={14} />
+              ) : cart.map((item) => {
+                const itemStock = getProductStock(item.productId);
+                const atMax = item.quantity >= itemStock;
+                const isItemAlerted = stockAlert?.productId === item.productId;
+                return (
+                  <div key={item.productId} className={`flex items-center gap-3 py-2 border-b transition-colors ${isItemAlerted ? 'border-amber-200 bg-amber-50 -mx-4 px-4 rounded-lg' : 'border-gray-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{item.name}</p>
+                      <p className="text-primary-600 text-sm">{item.price.toFixed(2)} DH</p>
+                      {isItemAlerted && (
+                        <p className="text-amber-600 text-[10px] font-semibold mt-0.5 animate-pulse">{stockAlert?.message}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updateQuantity(item.productId, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
+                        <Minus size={14} />
+                      </button>
+                      <span className={`w-6 text-center font-medium text-sm ${atMax ? 'text-amber-600' : ''}`}>{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.productId, 1)}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                          atMax ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-primary-100 hover:bg-primary-200'
+                        }`}>
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <span className="text-sm font-semibold w-16 text-right">{(item.price * item.quantity).toFixed(2)} DH</span>
+                    <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))} className="text-red-400 hover:text-red-600">
+                      <Trash2 size={14} />
                     </button>
-                    <span className="w-6 text-center font-medium text-sm">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.productId, 1)} className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center hover:bg-primary-200">
-                      <Plus size={14} />
-                    </button>
                   </div>
-                  <span className="text-sm font-semibold w-16 text-right">{(item.price * item.quantity).toFixed(2)} DH</span>
-                  <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))} className="text-red-400 hover:text-red-600">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="px-4 py-2 border-t">
               <div className="relative">
@@ -1075,10 +1166,33 @@ export default function POSPage() {
       {showOrderForm && (
         <OrderFormModal
           onClose={() => setShowOrderForm(false)}
-          onSaved={() => {
+          onSaved={(createdOrder?: Record<string, unknown>) => {
             setShowOrderForm(false);
             queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
             queryClient.invalidateQueries({ queryKey: ['orders'] });
+            queryClient.invalidateQueries({ queryKey: ['sales'] });
+            // Show advance receipt if an advance was paid
+            if (createdOrder?.advanceReceipt) {
+              const adv = createdOrder.advanceReceipt as Record<string, unknown>;
+              const items = (createdOrder.items as { productId: string; quantity: number; unitPrice: number; subtotal: number }[]) || [];
+              const allProds = (productsData?.data || []) as Record<string, unknown>[];
+              setReceiptData({
+                saleNumber: adv.orderNumber as string,
+                date: adv.date as string,
+                cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+                customerName: (createdOrder.customer_name as string) || undefined,
+                items: items.map(it => {
+                  const prod = allProds.find((p: Record<string, unknown>) => p.id === it.productId);
+                  return { name: (prod?.name as string) || 'Produit', quantity: it.quantity, unitPrice: it.unitPrice, subtotal: it.subtotal };
+                }),
+                subtotal: parseFloat(createdOrder.total as string),
+                discountAmount: parseFloat(createdOrder.discount_amount as string) || 0,
+                total: parseFloat(adv.advanceAmount as string),
+                paymentMethod: adv.paymentMethod as string,
+                orderTotal: parseFloat(adv.total as string),
+                isAdvanceReceipt: true,
+              });
+            }
           }}
         />
       )}
@@ -1088,6 +1202,7 @@ export default function POSPage() {
         const totalAmt = parseFloat(deliverOrder.total as string);
         const advanceAmt = parseFloat(deliverOrder.advance_amount as string || '0');
         const remaining = totalAmt - advanceAmt;
+        const isDeferred = deliverOrder.payment_method === 'deferred';
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
@@ -1101,32 +1216,45 @@ export default function POSPage() {
                   <span className="text-gray-500">Total commande</span>
                   <span className="font-semibold">{totalAmt.toFixed(2)} DH</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Avance versee</span>
-                  <span className="font-semibold text-green-600">{advanceAmt.toFixed(2)} DH</span>
-                </div>
-                <div className="flex justify-between font-bold border-t pt-2 text-base">
-                  <span>Reste a payer</span>
-                  <span className="text-primary-600">{remaining.toFixed(2)} DH</span>
-                </div>
+                {isDeferred ? (
+                  <div className="flex justify-between items-center font-bold border-t pt-2 text-base">
+                    <span>Paiement</span>
+                    <span className="text-blue-600 text-sm px-3 py-1 bg-blue-50 rounded-full">Reporte — Facture emise</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Avance versee</span>
+                      <span className="font-semibold text-green-600">{advanceAmt.toFixed(2)} DH</span>
+                    </div>
+                    <div className="flex justify-between font-bold border-t pt-2 text-base">
+                      <span>Reste a payer</span>
+                      <span className="text-primary-600">{remaining.toFixed(2)} DH</span>
+                    </div>
+                  </>
+                )}
               </div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse (DH)</label>
-              <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
-                className="input text-center text-xl font-bold mb-4" min="0" step="0.01" autoFocus />
-              <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-              <div className="grid grid-cols-2 gap-2 mb-6">
-                {(['cash', 'card'] as const).map(m => (
-                  <button key={m} onClick={() => setDeliverPayment(m)}
-                    className={`py-2 rounded-xl text-sm font-medium transition-colors ${deliverPayment === m ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                    {m === 'cash' ? 'Especes' : 'Carte bancaire'}
-                  </button>
-                ))}
-              </div>
+              {!isDeferred && (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse (DH)</label>
+                  <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
+                    className="input text-center text-xl font-bold mb-4" min="0" step="0.01" autoFocus />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
+                  <div className="grid grid-cols-2 gap-2 mb-6">
+                    {(['cash', 'card'] as const).map(m => (
+                      <button key={m} onClick={() => setDeliverPayment(m)}
+                        className={`py-2 rounded-xl text-sm font-medium transition-colors ${deliverPayment === m ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                        {m === 'cash' ? 'Especes' : 'Carte bancaire'}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
               <div className="flex gap-3">
                 <button onClick={() => { setDeliverOrder(null); setDeliverAmount(''); }} className="btn-secondary flex-1">Annuler</button>
-                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: parseFloat(deliverAmount) || 0, paymentMethod: deliverPayment })}
+                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: isDeferred ? 0 : (parseFloat(deliverAmount) || 0), paymentMethod: isDeferred ? 'deferred' : deliverPayment, order: deliverOrder })}
                   disabled={deliverMutation.isPending} className="btn-primary flex-1">
-                  {deliverMutation.isPending ? 'En cours...' : 'Confirmer'}
+                  {deliverMutation.isPending ? 'En cours...' : isDeferred ? 'Confirmer la livraison' : 'Confirmer'}
                 </button>
               </div>
             </div>
@@ -1144,7 +1272,7 @@ export default function POSPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">Inventaire & retours fin de journee</h2>
-                    <p className="text-sm text-gray-500 mt-1">Saisissez les quantites restantes et choisissez la destination pour chaque article.</p>
+                    <p className="text-sm text-gray-500 mt-1">Saisissez les quantites restantes. Le systeme determine automatiquement le statut de chaque article.</p>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Package size={18} />
@@ -1155,7 +1283,7 @@ export default function POSPage() {
                 {/* Summary bar at top */}
                 {(() => {
                   let totalDiscrepancy = 0;
-                  let totalReexpose = 0, totalRecycle = 0, totalWaste = 0, totalSold = 0, totalRemaining = 0;
+                  let totalKeep = 0, totalExpired = 0, totalDestroy = 0, totalRecycle = 0, totalSold = 0, totalRemaining = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
                     const rep = parseInt(it.replenished_qty as string) || 0;
@@ -1165,10 +1293,18 @@ export default function POSPage() {
                     totalRemaining += remaining;
                     totalDiscrepancy += rep - sold - remaining;
                     if (remaining > 0) {
-                      const dest = inventoryDestinations[pid] || 'reexpose';
-                      if (dest === 'reexpose') totalReexpose += remaining;
-                      else if (dest === 'recycle') totalRecycle += remaining;
-                      else if (dest === 'waste') totalWaste += remaining;
+                      // Auto-determine status based on DLV toggle (is_reexposable)
+                      const displayExpiresAt = it.display_expires_at as string | null;
+                      const expiresAt = it.expires_at as string | null;
+                      const hasDLV = it.is_reexposable as boolean;
+                      const isRecyclable = it.is_recyclable as boolean;
+                      const now = new Date();
+                      const dlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= now : (expiresAt ? new Date(expiresAt) <= now : false);
+
+                      if (hasDLV && !dlvExpired) totalKeep += remaining;
+                      else if (hasDLV && dlvExpired) totalExpired += remaining;
+                      else if (isRecyclable) totalRecycle += remaining;
+                      else totalDestroy += remaining;
                     }
                   });
                   return (
@@ -1181,10 +1317,10 @@ export default function POSPage() {
                         <div className="text-2xl font-bold text-gray-700">{totalRemaining}</div>
                         <div className="text-xs text-gray-600 font-medium">Restants</div>
                       </div>
-                      {totalReexpose > 0 && (
+                      {totalKeep > 0 && (
                         <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-green-700">{totalReexpose}</div>
-                          <div className="text-xs text-green-600 font-medium">A reexposer</div>
+                          <div className="text-2xl font-bold text-green-700">{totalKeep}</div>
+                          <div className="text-xs text-green-600 font-medium">Garder au vitrine</div>
                         </div>
                       )}
                       {totalRecycle > 0 && (
@@ -1193,10 +1329,16 @@ export default function POSPage() {
                           <div className="text-xs text-cyan-600 font-medium">A recycler</div>
                         </div>
                       )}
-                      {totalWaste > 0 && (
+                      {totalExpired > 0 && (
                         <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-red-700">{totalWaste}</div>
-                          <div className="text-xs text-red-600 font-medium">A detruire</div>
+                          <div className="text-2xl font-bold text-red-700">{totalExpired}</div>
+                          <div className="text-xs text-red-600 font-medium">Perimes a retirer</div>
+                        </div>
+                      )}
+                      {totalDestroy > 0 && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-orange-700">{totalDestroy}</div>
+                          <div className="text-xs text-orange-600 font-medium">A detruire</div>
                         </div>
                       )}
                     </div>
@@ -1211,7 +1353,7 @@ export default function POSPage() {
                     <span className="col-span-1 text-center">Vendu</span>
                     <span className="col-span-2 text-center">Restant</span>
                     <span className="col-span-1 text-center">Ecart</span>
-                    <span className="col-span-3 text-center">Destination</span>
+                    <span className="col-span-3 text-center">Statut</span>
                   </div>
                   <div className="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto">
                     {inventoryItems.map((it) => {
@@ -1220,59 +1362,50 @@ export default function POSPage() {
                       const sold = parseInt(it.sold_qty as string) || 0;
                       const remaining = inventoryQtys[pid] ?? 0;
                       const discrepancy = rep - sold - remaining;
-                      const destination = inventoryDestinations[pid] || 'reexpose';
-
-                      // Compute display status
-                      const displayLifeHours = it.display_life_hours as number | null;
-                      const isReexposable = it.is_reexposable as boolean;
+                      // Auto-determine status based on DLV toggle (is_reexposable)
+                      const displayExpiresAt = it.display_expires_at as string | null;
+                      const expiresAt = it.expires_at as string | null;
+                      const hasDLV = it.is_reexposable as boolean;
                       const isRecyclable = it.is_recyclable as boolean;
-                      const maxReex = (it.max_reexpositions as number) || 0;
-                      const reexCount = parseInt(it.reexposition_count as string) || 0;
-                      const canReexpose = isReexposable && (maxReex === 0 || reexCount < maxReex);
+                      const now = new Date();
+                      const dlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= now : (expiresAt ? new Date(expiresAt) <= now : false);
 
-                      // Auto-suggest destination
-                      const suggestedDest = !canReexpose && isRecyclable ? 'recycle'
-                        : !canReexpose && !isRecyclable ? 'waste'
-                        : 'reexpose';
+                      // System-determined destination (no user choice)
+                      let autoStatus: 'keep' | 'expired' | 'recycle' | 'destroy' = 'destroy';
+                      let autoLabel = 'Produit a detruire';
+                      let autoDest = 'waste';
 
-                      // Initialize destination on first render
-                      if (!inventoryDestinations[pid] && remaining > 0) {
-                        inventoryDestinations[pid] = suggestedDest;
+                      if (hasDLV && !dlvExpired) {
+                        autoStatus = 'keep';
+                        autoLabel = 'Garder au vitrine';
+                        autoDest = 'reexpose';
+                      } else if (hasDLV && dlvExpired) {
+                        autoStatus = 'expired';
+                        autoLabel = 'Perime — a retirer';
+                        autoDest = 'waste';
+                      } else if (isRecyclable) {
+                        autoStatus = 'recycle';
+                        autoLabel = 'Recyclable';
+                        autoDest = 'recycle';
                       }
 
-                      // Exposition status
-                      let expoStatus: 'ok' | 'expiring' | 'expired' = 'ok';
-                      let expoLabel = '';
-                      if (displayLifeHours) {
-                        const hoursLeft = displayLifeHours - 10;
-                        if (hoursLeft <= 0) { expoStatus = 'expired'; expoLabel = 'Expire'; }
-                        else if (hoursLeft <= 4) { expoStatus = 'expiring'; expoLabel = `${hoursLeft}h restantes`; }
+                      // Auto-set destination (system decides)
+                      if (remaining > 0 && inventoryDestinations[pid] !== autoDest) {
+                        inventoryDestinations[pid] = autoDest;
                       }
 
                       return (
                         <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
-                          expoStatus === 'expired' ? 'bg-red-50' : discrepancy !== 0 ? 'bg-amber-50' : 'hover:bg-gray-50'
+                          autoStatus === 'expired' ? 'bg-red-50' : autoStatus === 'destroy' ? 'bg-orange-50' : autoStatus === 'recycle' ? 'bg-cyan-50' : discrepancy !== 0 ? 'bg-amber-50' : 'hover:bg-gray-50'
                         }`}>
                           {/* Product name */}
                           <div className="col-span-4 min-w-0">
                             <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
                               {it.product_name as string}
                             </span>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {it.category_name && (
-                                <span className="text-[11px] text-gray-400">{it.category_name as string}</span>
-                              )}
-                              {expoStatus !== 'ok' && (
-                                <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${expoStatus === 'expired' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                  {expoStatus === 'expired' ? 'Expire' : expoLabel}
-                                </span>
-                              )}
-                              {reexCount > 0 && (
-                                <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-                                  Reexp. {reexCount}x
-                                </span>
-                              )}
-                            </div>
+                            {it.category_name && (
+                              <span className="text-[11px] text-gray-400">{it.category_name as string}</span>
+                            )}
                           </div>
                           {/* Stock */}
                           <div className="col-span-1 text-center">
@@ -1314,44 +1447,20 @@ export default function POSPage() {
                               <span className="text-sm text-gray-300">0</span>
                             )}
                           </div>
-                          {/* Destination */}
+                          {/* Statut (auto-determine) */}
                           <div className="col-span-3">
                             {remaining > 0 ? (
-                              <div className="flex gap-1">
-                                {canReexpose && (
-                                  <button
-                                    onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'reexpose' }))}
-                                    className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
-                                      (inventoryDestinations[pid] || suggestedDest) === 'reexpose'
-                                        ? 'bg-green-500 text-white border-green-500 shadow-sm'
-                                        : 'bg-white text-green-700 border-green-200 hover:bg-green-50'
-                                    }`}
-                                  >
-                                    Reexposer
-                                  </button>
-                                )}
-                                {isRecyclable && (
-                                  <button
-                                    onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'recycle' }))}
-                                    className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
-                                      (inventoryDestinations[pid] || suggestedDest) === 'recycle'
-                                        ? 'bg-cyan-500 text-white border-cyan-500 shadow-sm'
-                                        : 'bg-white text-cyan-700 border-cyan-200 hover:bg-cyan-50'
-                                    }`}
-                                  >
-                                    Recycler
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => setInventoryDestinations(prev => ({ ...prev, [pid]: 'waste' }))}
-                                  className={`flex-1 text-xs font-semibold py-2 px-2 rounded-lg border transition-all ${
-                                    (inventoryDestinations[pid] || suggestedDest) === 'waste'
-                                      ? 'bg-red-500 text-white border-red-500 shadow-sm'
-                                      : 'bg-white text-red-700 border-red-200 hover:bg-red-50'
-                                  }`}
-                                >
-                                  Detruire
-                                </button>
+                              <div className={`text-center text-xs font-bold py-2 px-3 rounded-lg ${
+                                autoStatus === 'keep' ? 'bg-green-100 text-green-800 border border-green-300' :
+                                autoStatus === 'recycle' ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' :
+                                autoStatus === 'expired' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                'bg-orange-100 text-orange-800 border border-orange-300'
+                              }`}>
+                                {autoStatus === 'keep' && '✓ '}
+                                {autoStatus === 'recycle' && '♻ '}
+                                {autoStatus === 'expired' && '⚠ '}
+                                {autoStatus === 'destroy' && '✗ '}
+                                {autoLabel}
                               </div>
                             ) : (
                               <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
@@ -1395,35 +1504,36 @@ export default function POSPage() {
                   <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); }}
                     className="btn-secondary flex-1 py-3 text-base">Annuler</button>
                   <button onClick={async () => {
-                    // Check all expired items have a valid destination (not reexpose)
-                    let hasError = false;
-                    inventoryItems.forEach((it) => {
-                      const pid = it.product_id as string;
-                      const remaining = inventoryQtys[pid] ?? 0;
-                      if (remaining > 0) {
-                        const displayLifeHours = it.display_life_hours as number | null;
-                        if (displayLifeHours && displayLifeHours <= 10) {
-                          const dest = inventoryDestinations[pid] || 'reexpose';
-                          const isReexposable = it.is_reexposable as boolean;
-                          if (dest === 'reexpose' && !isReexposable) hasError = true;
-                        }
-                      }
-                    });
-                    if (hasError) {
-                      toast.error('Certains produits expires ne peuvent pas etre reexposes');
-                      return;
-                    }
                     try {
                       const items = inventoryItems.map((it) => {
                         const pid = it.product_id as string;
                         const remaining = inventoryQtys[pid] ?? 0;
+
+                        // Recompute auto-destination for submission (based on DLV toggle)
+                        const displayExpiresAt = it.display_expires_at as string | null;
+                        const itemExpiresAt = it.expires_at as string | null;
+                        const itemHasDLV = it.is_reexposable as boolean;
+                        const itemIsRecyclable = it.is_recyclable as boolean;
+                        const nowTs = new Date();
+                        const itemDlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= nowTs : (itemExpiresAt ? new Date(itemExpiresAt) <= nowTs : false);
+
+                        let dest = 'waste';
+                        let reason = 'invendu_fin_journee';
+                        if (remaining > 0) {
+                          if (itemHasDLV && !itemDlvExpired) { dest = 'reexpose'; reason = ''; }
+                          else if (itemHasDLV && itemDlvExpired) { dest = 'waste'; reason = 'perime'; }
+                          else if (itemIsRecyclable) { dest = 'recycle'; reason = 'recycle'; }
+                          else { dest = 'waste'; reason = 'invendu_fin_journee'; }
+                        }
+
                         return {
                           productId: pid,
                           productName: it.product_name as string,
                           replenishedQty: parseInt(it.replenished_qty as string) || 0,
                           soldQty: parseInt(it.sold_qty as string) || 0,
                           remainingQty: remaining,
-                          destination: remaining > 0 ? (inventoryDestinations[pid] || 'reexpose') : undefined,
+                          destination: remaining > 0 ? dest : undefined,
+                          lossReason: remaining > 0 && dest === 'waste' ? reason : undefined,
                         };
                       });
                       await replenishmentApi.saveInventoryCheck({

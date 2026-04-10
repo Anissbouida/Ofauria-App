@@ -1,8 +1,10 @@
 import { db } from '../config/database.js';
+import { getUserTimezone } from '../utils/timezone.js';
 
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
   async getRegister(year: number, month: number, storeId?: string) {
+    const tz = getUserTimezone();
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
@@ -29,7 +31,7 @@ export const caisseRepository = {
 
     // Cash register sessions grouped by date (cashier-reported + system amounts)
     const sessions = await db.query(
-      `SELECT TO_CHAR(DATE(closed_at AT TIME ZONE 'Africa/Casablanca'), 'YYYY-MM-DD') as session_date,
+      `SELECT TO_CHAR(DATE(closed_at AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as session_date,
               COALESCE(SUM(actual_amount), 0) as cash_caissiere,
               COALESCE(SUM(cash_revenue), 0) as cash_systeme,
               COALESCE(SUM(card_revenue), 0) as card_revenue,
@@ -37,24 +39,24 @@ export const caisseRepository = {
               COUNT(*) as session_count
        FROM cash_register_sessions
        WHERE status = 'closed'
-         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') BETWEEN $1 AND $2${storeFilterS}
-       GROUP BY DATE(closed_at AT TIME ZONE 'Africa/Casablanca')
-       ORDER BY DATE(closed_at AT TIME ZONE 'Africa/Casablanca')`,
+         AND DATE(closed_at AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterS}
+       GROUP BY DATE(closed_at AT TIME ZONE '${tz}')
+       ORDER BY DATE(closed_at AT TIME ZONE '${tz}')`,
       params
     );
 
     // Daily sales totals with payment method breakdown (source of truth for cash/card)
     const sales = await db.query(
-      `SELECT TO_CHAR(DATE(created_at), 'YYYY-MM-DD') as sale_date,
+      `SELECT TO_CHAR(DATE(created_at AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
               COALESCE(SUM(total), 0) as total_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
               COUNT(*) as sale_count
        FROM sales
-       WHERE DATE(created_at) BETWEEN $1 AND $2${storeFilterSales}
-       GROUP BY DATE(created_at)
-       ORDER BY DATE(created_at)`,
+       WHERE DATE(created_at AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
+       GROUP BY DATE(created_at AT TIME ZONE '${tz}')
+       ORDER BY DATE(created_at AT TIME ZONE '${tz}')`,
       params
     );
 
@@ -81,7 +83,7 @@ export const caisseRepository = {
       `SELECT COALESCE(SUM(actual_amount), 0) as cash_total
        FROM cash_register_sessions
        WHERE status = 'closed'
-         AND DATE(closed_at AT TIME ZONE 'Africa/Casablanca') < $1${prevStoreFilterS}`,
+         AND DATE(closed_at AT TIME ZONE '${tz}') < $1${prevStoreFilterS}`,
       prevSessionParams
     );
 
@@ -94,7 +96,7 @@ export const caisseRepository = {
         COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
         COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
        FROM sales
-       WHERE DATE(created_at) < $1${prevSalesFilterS}`,
+       WHERE DATE(created_at AT TIME ZONE '${tz}') < $1${prevSalesFilterS}`,
       prevSalesParams
     );
 
@@ -197,53 +199,188 @@ export const expenseCategoryRepository = {
 
 /* ═══ Invoices ═══ */
 export const invoiceRepository = {
-  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
+  async findAll(params: { supplierId?: string; customerId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; invoiceType?: string }) {
     const conditions: string[] = []; const values: unknown[] = []; let i = 1;
+    const invoiceType = params.invoiceType || 'received';
+    conditions.push(`inv.invoice_type = $${i++}`); values.push(invoiceType);
     if (params.storeId) { conditions.push(`inv.store_id = $${i++}`); values.push(params.storeId); }
     if (params.supplierId) { conditions.push(`inv.supplier_id = $${i++}`); values.push(params.supplierId); }
+    if (params.customerId) { conditions.push(`inv.customer_id = $${i++}`); values.push(params.customerId); }
     if (params.status) { conditions.push(`inv.status = $${i++}`); values.push(params.status); }
     if (params.dateFrom) { conditions.push(`inv.invoice_date >= $${i++}`); values.push(params.dateFrom); }
     if (params.dateTo) { conditions.push(`inv.invoice_date <= $${i++}`); values.push(params.dateTo); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const result = await db.query(
-      `SELECT inv.*, s.name as supplier_name, ec.name as category_name
+      `SELECT inv.*,
+              s.name as supplier_name,
+              c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
+              ec.name as category_name,
+              po.order_number as purchase_order_number,
+              rv.voucher_number as reception_voucher_number,
+              o.order_number as order_number_ref
        FROM invoices inv
-       JOIN suppliers s ON s.id = inv.supplier_id
+       LEFT JOIN suppliers s ON s.id = inv.supplier_id
+       LEFT JOIN customers c ON c.id = inv.customer_id
        LEFT JOIN expense_categories ec ON ec.id = inv.category_id
+       LEFT JOIN purchase_orders po ON po.id = inv.purchase_order_id
+       LEFT JOIN reception_vouchers rv ON rv.id = inv.reception_voucher_id
+       LEFT JOIN orders o ON o.id = inv.order_id
        ${where}
        ORDER BY inv.invoice_date DESC`,
       values
     );
     return result.rows;
   },
+
   async findById(id: string) {
     const result = await db.query(
-      `SELECT inv.*, s.name as supplier_name, ec.name as category_name
+      `SELECT inv.*,
+              s.name as supplier_name, s.phone as supplier_phone, s.ice as supplier_ice, s.address as supplier_address, s.city as supplier_city,
+              c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.email as customer_email,
+              ec.name as category_name,
+              po.order_number as purchase_order_number,
+              rv.voucher_number as reception_voucher_number
        FROM invoices inv
-       JOIN suppliers s ON s.id = inv.supplier_id
+       LEFT JOIN suppliers s ON s.id = inv.supplier_id
+       LEFT JOIN customers c ON c.id = inv.customer_id
        LEFT JOIN expense_categories ec ON ec.id = inv.category_id
+       LEFT JOIN purchase_orders po ON po.id = inv.purchase_order_id
+       LEFT JOIN reception_vouchers rv ON rv.id = inv.reception_voucher_id
        WHERE inv.id = $1`, [id]
     );
-    return result.rows[0] || null;
-  },
-  async create(data: {
-    invoiceNumber: string; supplierId: string; categoryId?: string;
-    invoiceDate: string; dueDate?: string; amount: number;
-    taxAmount?: number; totalAmount: number; notes?: string; createdBy: string; storeId?: string;
-  }) {
-    const result = await db.query(
-      `INSERT INTO invoices (invoice_number, supplier_id, category_id, invoice_date, due_date,
-        amount, tax_amount, total_amount, notes, created_by, store_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [data.invoiceNumber, data.supplierId, data.categoryId || null,
-       data.invoiceDate, data.dueDate || null, data.amount,
-       data.taxAmount || 0, data.totalAmount, data.notes || null, data.createdBy,
-       data.storeId || null]
+    if (!result.rows[0]) return null;
+
+    // Get invoice items
+    const itemsResult = await db.query(
+      `SELECT ii.*, p.name as product_name, ing.name as ingredient_name
+       FROM invoice_items ii
+       LEFT JOIN products p ON p.id = ii.product_id
+       LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id
+       WHERE ii.invoice_id = $1
+       ORDER BY ii.created_at`, [id]
     );
-    return result.rows[0];
+
+    // Get payments linked to this invoice
+    const paymentsResult = await db.query(
+      `SELECT p.* FROM payments p WHERE p.invoice_id = $1 ORDER BY p.payment_date DESC`, [id]
+    );
+
+    return { ...result.rows[0], items: itemsResult.rows, payments: paymentsResult.rows };
   },
+
+  async generateInvoiceNumber(type: 'received' | 'emitted'): Promise<string> {
+    const prefix = type === 'received' ? 'FR' : 'FE';
+    const year = new Date().getFullYear();
+    const result = await db.query(
+      `SELECT COUNT(*) FROM invoices WHERE invoice_type = $1 AND EXTRACT(YEAR FROM invoice_date) = $2`,
+      [type, year]
+    );
+    const seq = parseInt(result.rows[0].count) + 1;
+    return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+  },
+
+  async create(data: {
+    invoiceNumber?: string; invoiceType?: string;
+    supplierId?: string; customerId?: string; categoryId?: string;
+    purchaseOrderId?: string; receptionVoucherId?: string; orderId?: string;
+    invoiceDate: string; dueDate?: string; amount: number;
+    taxAmount?: number; totalAmount?: number; notes?: string; createdBy: string; storeId?: string;
+    items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const invoiceType = data.invoiceType || 'received';
+      const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted');
+      const totalAmount = data.totalAmount || ((data.amount || 0) + (data.taxAmount || 0));
+
+      const invResult = await client.query(
+        `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
+          purchase_order_id, reception_voucher_id, order_id,
+          invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
+         data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
+         data.orderId || null, data.invoiceDate, data.dueDate || null,
+         data.amount, data.taxAmount || 0, totalAmount,
+         data.notes || null, data.createdBy, data.storeId || null]
+      );
+
+      // Insert invoice items if provided
+      if (data.items && data.items.length > 0) {
+        for (const item of data.items) {
+          await client.query(
+            `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [invResult.rows[0].id, item.productId || null, item.ingredientId || null,
+             item.description || null, item.quantity, item.unitPrice, item.subtotal]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return invResult.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  async createFromOrder(orderId: string, createdBy: string, storeId?: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Get order + items
+      const orderResult = await client.query(
+        `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name
+         FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId]
+      );
+      const order = orderResult.rows[0];
+      if (!order) throw new Error('Commande non trouvee');
+
+      const itemsResult = await client.query(
+        `SELECT oi.*, p.name as product_name FROM order_items oi
+         JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1`, [orderId]
+      );
+
+      const invoiceNumber = await this.generateInvoiceNumber('emitted');
+
+      const invResult = await client.query(
+        `INSERT INTO invoices (invoice_number, invoice_type, customer_id, order_id,
+          invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
+         VALUES ($1, 'emitted', $2, $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [invoiceNumber, order.customer_id, orderId,
+         parseFloat(order.subtotal), parseFloat(order.tax_amount),
+         parseFloat(order.total),
+         `Facture generee depuis commande ${order.order_number}`,
+         createdBy, storeId || null]
+      );
+
+      for (const item of itemsResult.rows) {
+        await client.query(
+          `INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [invResult.rows[0].id, item.product_id, item.product_name,
+           item.quantity, parseFloat(item.unit_price), parseFloat(item.subtotal)]
+        );
+      }
+
+      await client.query('COMMIT');
+      return invResult.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   async updatePaidAmount(id: string) {
-    // Recalculate paid amount from payments
     const paymentsResult = await db.query(
       `SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = $1`, [id]
     );
@@ -260,10 +397,12 @@ export const invoiceRepository = {
     );
     return result.rows[0];
   },
+
   async updateStatus(id: string, status: string) {
     const result = await db.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
     return result.rows[0];
   },
+
   async updateAttachment(id: string, url: string | null) {
     const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
     return result.rows[0];
@@ -301,16 +440,18 @@ export const paymentRepository = {
     reference?: string; type: string; categoryId?: string; invoiceId?: string;
     supplierId?: string; employeeId?: string; amount: number;
     paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
-    purchaseOrderId?: string;
+    purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
   }) {
     const result = await db.query(
       `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
-        amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
+        check_number, check_date, check_attachment_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [data.reference || null, data.type, data.categoryId || null, data.invoiceId || null,
        data.supplierId || null, data.employeeId || null, data.amount,
        data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
-       data.storeId || null, data.purchaseOrderId || null]
+       data.storeId || null, data.purchaseOrderId || null,
+       data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
     );
     // Update invoice paid amount if linked
     if (data.invoiceId) {

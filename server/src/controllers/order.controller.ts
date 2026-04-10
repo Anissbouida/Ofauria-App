@@ -2,12 +2,11 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
-import { customerRepository } from '../repositories/customer.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { createNotification } from '../utils/notify.js';
-import { paymentRepository } from '../repositories/accounting.repository.js';
+import { paymentRepository, invoiceRepository } from '../repositories/accounting.repository.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -46,30 +45,9 @@ export const orderController = {
     let { customerId } = req.body;
     const { customerName, customerPhone, type, items, paymentMethod, notes, pickupDate, discountAmount = 0, advanceAmount = 0 } = req.body;
 
-    // If no customerId, find or create customer by name/phone
-    if (!customerId && customerName) {
-      const nameParts = customerName.trim().split(/\s+/);
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      // Try to find existing customer by phone
-      if (customerPhone) {
-        const existing = await customerRepository.findByPhone(customerPhone);
-        if (existing) {
-          customerId = existing.id;
-        }
-      }
-
-      // Create new customer if not found
-      if (!customerId) {
-        const newCustomer = await customerRepository.create({
-          firstName, lastName, phone: customerPhone || undefined,
-        });
-        customerId = newCustomer.id;
-      }
-    }
-
-    if (!customerId) {
+    // Walk-in clients: store name/phone on order directly, no customer record
+    // Known clients: customerId is provided by the frontend
+    if (!customerId && !customerName) {
       res.status(400).json({ success: false, error: { message: 'Le nom du client est requis' } });
       return;
     }
@@ -108,25 +86,47 @@ export const orderController = {
     const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
 
     const order = await orderRepository.create({
-      orderNumber, customerId, userId: req.user!.userId, type: type || 'custom',
+      orderNumber, customerId, customerName, customerPhone,
+      userId: req.user!.userId, type: type || 'custom',
       subtotal, taxAmount, discountAmount, total, advanceAmount, paymentMethod, notes, pickupDate, items: orderItems,
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
 
-    // Record advance payment in accounting if > 0
-    if (advanceAmount > 0) {
+    // Advance info for receipt (no sale created — sale is recorded at delivery)
+    const advanceReceipt = advanceAmount > 0 && paymentMethod !== 'deferred' ? {
+      orderNumber,
+      advanceAmount,
+      total,
+      remaining: total - advanceAmount,
+      paymentMethod: paymentMethod || 'cash',
+      date: new Date().toISOString(),
+    } : null;
+
+    // Auto-create emitted invoice for deferred payment (known clients)
+    if (req.body.deferPayment && customerId) {
       try {
-        await paymentRepository.create({
-          reference: `AVA-${orderNumber}`,
-          type: 'income',
-          amount: advanceAmount,
-          paymentMethod: paymentMethod || 'cash',
-          paymentDate: new Date().toISOString().split('T')[0],
-          description: `Avance commande ${orderNumber}`,
+        await invoiceRepository.create({
+          invoiceType: 'emitted',
+          customerId,
+          orderId: order.id,
+          invoiceDate: new Date().toISOString().split('T')[0],
+          amount: total,
+          taxAmount: 0,
+          totalAmount: total,
+          notes: `Facture commande ${orderNumber} — Paiement reporte`,
           createdBy: req.user!.userId,
           storeId: req.user!.storeId,
+          items: orderItems.map(it => ({
+            productId: it.productId,
+            description: items.find((i: Record<string, unknown>) => i.productId === it.productId)?.notes || undefined,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            subtotal: it.subtotal,
+          })),
         });
-      } catch { /* non-blocking: advance is still tracked in order */ }
+      } catch (err) {
+        console.error('Failed to auto-create invoice for deferred order:', err);
+      }
     }
 
     // Auto-confirm and send order to production
@@ -178,28 +178,11 @@ export const orderController = {
       });
     }
 
-    res.status(201).json({ success: true, data: { ...order, status: 'in_production' } });
+    res.status(201).json({ success: true, data: { ...order, status: 'in_production', advanceReceipt, items: orderItems } });
   },
 
   async update(req: AuthRequest, res: Response) {
-    let { customerId } = req.body;
-    const { customerName, customerPhone, type, items, paymentMethod, notes, pickupDate, discountAmount = 0, advanceAmount = 0 } = req.body;
-
-    // Find or create customer if name provided
-    if (!customerId && customerName) {
-      const nameParts = customerName.trim().split(/\s+/);
-      const firstName = nameParts[0];
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      if (customerPhone) {
-        const existing = await customerRepository.findByPhone(customerPhone);
-        if (existing) customerId = existing.id;
-      }
-      if (!customerId) {
-        const newCustomer = await customerRepository.create({ firstName, lastName, phone: customerPhone || undefined });
-        customerId = newCustomer.id;
-      }
-    }
+    const { customerId, customerName, customerPhone, type, items, paymentMethod, notes, pickupDate, discountAmount = 0, advanceAmount = 0 } = req.body;
 
     const orderItems = [];
     let subtotal = 0;
@@ -218,7 +201,7 @@ export const orderController = {
     const total = subtotal - discountAmount + taxAmount;
 
     const order = await orderRepository.update(req.params.id, {
-      customerId, type, subtotal, taxAmount, discountAmount, total, advanceAmount,
+      customerId, customerName, customerPhone, type, subtotal, taxAmount, discountAmount, total, advanceAmount,
       paymentMethod, notes, pickupDate, items: orderItems,
     });
 
@@ -331,33 +314,45 @@ export const orderController = {
     const advanceAmount = parseFloat(order.advance_amount);
     const remaining = total - advanceAmount;
     const paid = parseFloat(amountPaid) || 0;
+    const isDeferred = order.payment_method === 'deferred';
 
-    // Create a sale for the remaining amount, linked to the active session
-    const saleItems = order.items.map((item: Record<string, unknown>) => ({
-      productId: item.product_id as string,
-      quantity: item.quantity as number,
-      unitPrice: parseFloat(item.unit_price as string),
-      subtotal: parseFloat(item.subtotal as string),
-    }));
+    if (isDeferred) {
+      // Deferred payment: no sale created — sale will be recorded when invoice is paid
+      await orderRepository.updateStatus(orderId, 'completed');
+      res.json({ success: true, data: { remaining: total, paid: 0, orderNumber: order.order_number, deferred: true } });
+    } else {
+      // Normal flow: create a sale for the remaining amount
+      const saleItems = order.items.map((item: Record<string, unknown>) => ({
+        productId: item.product_id as string,
+        quantity: item.quantity as number,
+        unitPrice: parseFloat(item.unit_price as string),
+        subtotal: parseFloat(item.subtotal as string),
+      }));
 
-    await saleRepository.create({
-      customerId: order.customer_id,
-      userId: req.user!.userId,
-      subtotal: parseFloat(order.subtotal),
-      taxAmount: parseFloat(order.tax_amount),
-      discountAmount: parseFloat(order.discount_amount),
-      total: remaining,
-      paymentMethod,
-      notes: `Livraison commande ${order.order_number} — Avance: ${advanceAmount.toFixed(2)} DH, Reste paye: ${paid.toFixed(2)} DH`,
-      sessionId: activeSession?.id,
-      storeId: req.user!.storeId,
-      items: saleItems,
-    });
+      await saleRepository.create({
+        customerId: order.customer_id,
+        userId: req.user!.userId,
+        subtotal: parseFloat(order.subtotal),
+        taxAmount: parseFloat(order.tax_amount),
+        discountAmount: parseFloat(order.discount_amount),
+        total,
+        paymentMethod,
+        notes: advanceAmount > 0
+          ? `Livraison commande ${order.order_number} — Avance: ${advanceAmount.toFixed(2)} DH (${new Date(order.created_at).toLocaleDateString('fr-FR')}), Reste: ${remaining.toFixed(2)} DH`
+          : `Livraison commande ${order.order_number}`,
+        sessionId: activeSession?.id,
+        storeId: req.user!.storeId,
+        items: saleItems,
+        advanceAmount,
+        advanceDate: advanceAmount > 0 ? order.created_at : null,
+        orderId: orderId,
+      });
 
-    // Mark order as completed
-    await orderRepository.updateStatus(orderId, 'completed');
+      // Mark order as completed
+      await orderRepository.updateStatus(orderId, 'completed');
 
-    res.json({ success: true, data: { remaining, paid, orderNumber: order.order_number } });
+      res.json({ success: true, data: { remaining, paid, orderNumber: order.order_number } });
+    }
   },
 
   // Get pending orders for a specific date (for production planning)

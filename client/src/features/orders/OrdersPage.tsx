@@ -25,7 +25,7 @@ const statusConfig: Record<string, { color: string; bg: string; icon: typeof Clo
 const typeConfig: Record<string, { label: string; color: string }> = {
   custom: { label: 'Sur mesure', color: 'bg-violet-100 text-violet-700' },
   online: { label: 'En ligne',  color: 'bg-sky-100 text-sky-700' },
-  event:  { label: 'Evenement', color: 'bg-rose-100 text-rose-700' },
+  event:  { label: 'Événement', color: 'bg-rose-100 text-rose-700' },
 };
 
 const statusSteps = ['pending', 'confirmed', 'in_production', 'ready', 'completed'];
@@ -35,7 +35,7 @@ function StatusProgress({ status }: { status: string }) {
     return (
       <div className="flex items-center gap-1.5">
         <Ban size={14} className="text-red-400" />
-        <span className="text-xs font-medium text-red-500">Annulee</span>
+        <span className="text-xs font-medium text-red-500">Annulée</span>
       </div>
     );
   }
@@ -87,8 +87,8 @@ export default function OrdersPage() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => ordersApi.updateStatus(id, status),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); toast.success('Statut mis a jour'); },
-    onError: () => toast.error('Erreur lors de la mise a jour'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); toast.success('Statut mis à jour'); },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   });
 
   const deliverMutation = useMutation({
@@ -100,7 +100,7 @@ export default function OrdersPage() {
       setDeliverOrder(null);
       setDeliverAmount('');
       setDeliverPayment('cash');
-      toast.success('Commande livree avec succes !');
+      toast.success('Commande livrée avec succès !');
     },
     onError: () => toast.error('Erreur lors de la livraison'),
   });
@@ -132,9 +132,9 @@ export default function OrdersPage() {
   const tabs = [
     { key: '', label: 'Toutes', count: stats.total, icon: ClipboardList, color: 'blue' },
     { key: 'pending', label: 'Brouillon', count: stats.pending, icon: Clock, color: 'gray' },
-    { key: 'confirmed', label: 'Confirmees', count: stats.confirmed, icon: CheckCircle2, color: 'blue' },
+    { key: 'confirmed', label: 'Confirmées', count: stats.confirmed, icon: CheckCircle2, color: 'blue' },
     { key: 'in_production', label: 'En production', count: stats.in_production, icon: Factory, color: 'amber' },
-    { key: 'ready', label: 'Pretes', count: stats.ready, icon: Package, color: 'emerald' },
+    { key: 'ready', label: 'Prêtes', count: stats.ready, icon: Package, color: 'emerald' },
   ];
 
   return (
@@ -142,7 +142,7 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Pre-commandes</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Commandes</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gestion des commandes clients pour la production</p>
         </div>
         <button onClick={() => setShowForm(true)}
@@ -155,10 +155,10 @@ export default function OrdersPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: 'En attente', value: stats.pending, icon: Clock, gradient: 'from-gray-400 to-gray-500', bg: 'bg-gray-50' },
-          { label: 'Confirmees', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600', bg: 'bg-blue-50' },
+          { label: 'Confirmées', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600', bg: 'bg-blue-50' },
           { label: 'En production', value: stats.in_production, icon: Factory, gradient: 'from-amber-500 to-amber-600', bg: 'bg-amber-50' },
-          { label: 'Pretes', value: stats.ready, icon: Package, gradient: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Terminees', value: stats.completed, icon: Truck, gradient: 'from-violet-500 to-violet-600', bg: 'bg-violet-50' },
+          { label: 'Prêtes', value: stats.ready, icon: Package, gradient: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Terminées', value: stats.completed, icon: Truck, gradient: 'from-violet-500 to-violet-600', bg: 'bg-violet-50' },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
             <div className="flex items-center justify-between mb-2">
@@ -206,7 +206,7 @@ export default function OrdersPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par n°, client ou telephone..."
+            placeholder="Rechercher par n°, client ou téléphone..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400"
           />
         </div>
@@ -221,9 +221,9 @@ export default function OrdersPage() {
       ) : filteredOrders.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
           <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">Aucune commande trouvee</p>
+          <p className="text-gray-400 font-medium">Aucune commande trouvée</p>
           <p className="text-xs text-gray-300 mt-1">
-            {searchQuery ? 'Essayez une autre recherche' : 'Creez votre premiere pre-commande'}
+            {searchQuery ? 'Essayez une autre recherche' : 'Créez votre première commande'}
           </p>
         </div>
       ) : (
@@ -312,7 +312,7 @@ export default function OrdersPage() {
                         <div className="flex items-center gap-1.5">
                           <button onClick={() => setViewingOrder(o)}
                             className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-                            title="Voir le detail">
+                            title="Voir le détail">
                             <Eye size={16} />
                           </button>
 
@@ -444,7 +444,7 @@ export default function OrdersPage() {
                   </div>
 
                   <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Details</p>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Détails</p>
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-500">Type</span>
@@ -457,7 +457,7 @@ export default function OrdersPage() {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Creee le</span>
+                        <span className="text-gray-500">Créée le</span>
                         <span className="text-gray-600 text-xs">
                           {o.created_at ? format(new Date(o.created_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}
                         </span>
@@ -468,7 +468,7 @@ export default function OrdersPage() {
 
                 {/* Items */}
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Articles commandes</p>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Articles commandés</p>
                   {orderDetail?.items && orderDetail.items.length > 0 ? (
                     <div className="border border-gray-100 rounded-xl overflow-hidden">
                       {orderDetail.items.map((item: Record<string, unknown>, idx: number) => (
@@ -517,11 +517,11 @@ export default function OrdersPage() {
                   {advanceAmt > 0 && (
                     <>
                       <div className="flex justify-between text-sm">
-                        <span className="text-emerald-600 font-medium">Avance versee</span>
+                        <span className="text-emerald-600 font-medium">Avance versée</span>
                         <span className="text-emerald-600 font-medium">{formatCurrency(advanceAmt)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
-                        <span>Reste a payer</span>
+                        <span>Reste à payer</span>
                         <span className="text-orange-600">{formatCurrency(remaining)}</span>
                       </div>
                     </>
@@ -624,18 +624,18 @@ export default function OrdersPage() {
                     <span className="font-semibold">{formatCurrency(totalAmt)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Avance versee</span>
+                    <span className="text-gray-600">Avance versée</span>
                     <span className="font-semibold text-emerald-600">{formatCurrency(advanceAmt)}</span>
                   </div>
                   <div className="flex justify-between font-bold border-t border-emerald-200 pt-2 text-base">
-                    <span>Reste a payer</span>
+                    <span>Reste à payer</span>
                     <span className="text-emerald-700">{formatCurrency(remaining)}</span>
                   </div>
                 </div>
 
                 {/* Amount input */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaissé</label>
                   <div className="relative">
                     <Banknote size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
@@ -655,7 +655,7 @@ export default function OrdersPage() {
                           ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                           : 'border-gray-200 text-gray-600 hover:border-gray-300'
                       }`}>
-                      <Banknote size={18} /> Especes
+                      <Banknote size={18} /> Espèces
                     </button>
                     <button onClick={() => setDeliverPayment('card')}
                       className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium border-2 transition-all ${
@@ -673,7 +673,7 @@ export default function OrdersPage() {
                   <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
                     <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
                     <p className="text-xs text-amber-700">
-                      Le client doit encore <strong>{formatCurrency(remaining - parseFloat(deliverAmount || '0'))}</strong> apres cet encaissement
+                      Le client doit encore <strong>{formatCurrency(remaining - parseFloat(deliverAmount || '0'))}</strong> après cet encaissement
                     </p>
                   </div>
                 )}

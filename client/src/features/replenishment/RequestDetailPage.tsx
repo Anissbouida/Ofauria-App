@@ -16,14 +16,14 @@ import {
 /* ─── Constants ─── */
 
 const STATUS_LABELS: Record<string, string> = {
-  submitted: 'Envoyee',
+  submitted: 'Envoyée',
   acknowledged: 'Prise en charge',
-  preparing: 'En preparation',
-  transferred: 'Transfere',
-  partially_delivered: 'Partiellement livre',
-  closed: 'Cloture',
-  closed_with_discrepancy: 'Cloture (ecart)',
-  cancelled: 'Annule',
+  preparing: 'En préparation',
+  transferred: 'Transféré',
+  partially_delivered: 'Partiellement livré',
+  closed: 'Clôturé',
+  closed_with_discrepancy: 'Clôturé (écart)',
+  cancelled: 'Annulé',
 };
 
 const STATUS_GRADIENT: Record<string, string> = {
@@ -42,11 +42,11 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 const STEPPER_STEPS = [
-  { key: 'submitted', label: 'Envoyee', icon: Package },
+  { key: 'submitted', label: 'Envoyée', icon: Package },
   { key: 'acknowledged', label: 'Prise en charge', icon: ClipboardCheck },
-  { key: 'preparing', label: 'En preparation', icon: PackageCheck },
-  { key: 'transferred', label: 'Transfere', icon: Truck },
-  { key: 'closed', label: 'Cloture', icon: CheckCircle2 },
+  { key: 'preparing', label: 'En préparation', icon: PackageCheck },
+  { key: 'transferred', label: 'Transféré', icon: Truck },
+  { key: 'closed', label: 'Clôturé', icon: CheckCircle2 },
 ];
 
 function stepIndex(status: string): number {
@@ -113,7 +113,7 @@ export default function RequestDetailPage() {
       replenishmentApi.startPreparing(id!, items),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
-      toast.success('Preparation lancee');
+      toast.success('Préparation lancée');
     },
     onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
       const msg = err?.response?.data?.error?.message || 'Erreur';
@@ -125,7 +125,7 @@ export default function RequestDetailPage() {
     mutationFn: () => replenishmentApi.transfer(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
-      toast.success('Transfert valide');
+      toast.success('Transfert validé');
     },
     onError: () => toast.error('Erreur'),
   });
@@ -137,9 +137,9 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
       if (data?.status === 'closed_with_discrepancy') {
-        toast('Reception confirmee avec ecart', { icon: '\u26a0\ufe0f' });
+        toast('Réception confirmée avec écart', { icon: '\u26a0\ufe0f' });
       } else {
-        toast.success('Reception confirmee');
+        toast.success('Réception confirmée');
       }
     },
     onError: () => toast.error('Erreur'),
@@ -150,7 +150,7 @@ export default function RequestDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
-      toast.success('Demande annulee');
+      toast.success('Demande annulée');
     },
     onError: () => toast.error('Erreur'),
   });
@@ -171,7 +171,7 @@ export default function RequestDetailPage() {
       <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
         <Package size={32} className="text-gray-400" />
       </div>
-      <p className="text-gray-500">Demande non trouvee</p>
+      <p className="text-gray-500">Demande non trouvée</p>
       <button onClick={() => navigate('/replenishment')} className="text-indigo-600 hover:text-indigo-700 text-sm font-medium flex items-center gap-1">
         <ArrowLeft size={16} /> Retour
       </button>
@@ -375,7 +375,7 @@ function SubRequestDetailView({
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
               <div className="text-2xl font-bold">{receivedItems.length}</div>
-              <div className="text-xs text-white/70">Recus</div>
+              <div className="text-xs text-white/70">Reçus</div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
               <div className="text-2xl font-bold">{readyItems.length}</div>
@@ -413,7 +413,7 @@ function SubRequestDetailView({
                         : isActive ? 'text-indigo-700' : 'text-gray-400'
                     }`}>
                       {isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
-                        ? 'Partiellement livre'
+                        ? 'Partiellement livré'
                         : step.label}
                     </span>
                   </div>
@@ -434,8 +434,8 @@ function SubRequestDetailView({
             <XCircle size={22} className="text-gray-500" />
           </div>
           <div>
-            <p className="font-semibold text-gray-700">Demande annulee</p>
-            <p className="text-sm text-gray-500">Cette demande a ete annulee et ne sera pas traitee.</p>
+            <p className="font-semibold text-gray-700">Demande annulée</p>
+            <p className="text-sm text-gray-500">Cette demande a été annulée et ne sera pas traitée.</p>
           </div>
         </div>
       )}
@@ -452,13 +452,13 @@ function SubRequestDetailView({
           </div>
           <div className="flex-1">
             <h4 className={`font-semibold text-sm ${productionComplete ? 'text-emerald-800' : 'text-blue-800'}`}>
-              {productionComplete ? 'Production terminee' : 'Production en cours'}
+              {productionComplete ? 'Production terminée' : 'Production en cours'}
             </h4>
             <p className={`text-xs mt-0.5 ${productionComplete ? 'text-emerald-600' : 'text-blue-600'}`}>
               {productionComplete
-                ? 'Tous les articles ont ete produits.'
+                ? 'Tous les articles ont été produits.'
                 : pendingProductionItems.length > 0
-                  ? `${pendingProductionItems.length} article(s) en attente de production — les articles en stock peuvent etre transferes immediatement`
+                  ? `${pendingProductionItems.length} article(s) en attente de production — les articles en stock peuvent être transférés immédiatement`
                   : `${items.filter(i => i.source_type === 'production' || i.source_type === 'mixed').length} article(s) en production`
               }
             </p>
@@ -520,7 +520,7 @@ function SubRequestDetailView({
                 <Truck size={16} className="text-purple-600" />
               </div>
               <div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Transfere par</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Transféré par</div>
                 <div className="text-sm font-medium text-gray-800">{request.transferred_by_name as string}</div>
               </div>
             </div>
@@ -567,10 +567,10 @@ function SubRequestDetailView({
                 <PackageCheck size={20} className="text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-blue-800">Preparation des articles</h3>
+                <h3 className="font-bold text-blue-800">Préparation des articles</h3>
                 <p className="text-xs text-blue-600 mt-0.5">
                   {!hasPreparableItems
-                    ? 'Aucun article pret — en attente de production'
+                    ? 'Aucun article prêt — en attente de production'
                     : pendingProductionItems.length > 0
                       ? `${preparableItems.length} article(s) pret(s) — ${pendingProductionItems.length} en attente de production`
                       : 'Renseignez les quantites a envoyer au magasin et a garder en stock'}
@@ -580,7 +580,7 @@ function SubRequestDetailView({
             <button onClick={handleStartPreparing} disabled={prepareMutation.isPending || !hasPreparableItems}
               className={`px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {prepareMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
-              {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente' : pendingProductionItems.length > 0 ? 'Preparer le lot disponible' : 'Commencer la preparation'}
+              {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente' : pendingProductionItems.length > 0 ? 'Préparer le lot disponible' : 'Commencer la préparation'}
             </button>
           </div>
 
@@ -651,7 +651,7 @@ function SubRequestDetailView({
                     </div>
                   ) : (
                     <div className="w-48 flex-shrink-0 text-xs text-gray-400 text-center">
-                      {isReceived ? `Magasin: ${item.qty_to_store || '\u2014'} | Recu: ${item.qty_received || '\u2014'}` : '\u2014'}
+                      {isReceived ? `Magasin: ${item.qty_to_store || '\u2014'} | Reçu: ${item.qty_received || '\u2014'}` : '\u2014'}
                     </div>
                   )}
                 </div>
@@ -679,7 +679,7 @@ function SubRequestDetailView({
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mx-auto mb-4">
             <Truck size={28} className="text-white" />
           </div>
-          <h3 className="font-bold text-indigo-800 text-lg mb-1">Preparation en cours</h3>
+          <h3 className="font-bold text-indigo-800 text-lg mb-1">Préparation en cours</h3>
           <p className="text-sm text-indigo-600 mb-5">Une fois les articles prets, validez le transfert vers le magasin.</p>
           <button onClick={() => transferMutation.mutate()} disabled={transferMutation.isPending}
             className="px-8 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
@@ -695,8 +695,8 @@ function SubRequestDetailView({
             <PackageCheck size={22} className="text-indigo-600" />
           </div>
           <div>
-            <p className="font-semibold text-indigo-800">En preparation</p>
-            <p className="text-sm text-indigo-600">Vos articles sont en cours de preparation.</p>
+            <p className="font-semibold text-indigo-800">En préparation</p>
+            <p className="text-sm text-indigo-600">Vos articles sont en cours de préparation.</p>
           </div>
         </div>
       )}
@@ -710,18 +710,18 @@ function SubRequestDetailView({
                 <Truck size={20} className="text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-purple-800">Confirmation de reception</h3>
+                <h3 className="font-bold text-purple-800">Confirmation de réception</h3>
                 <p className="text-xs text-purple-600 mt-0.5">
                   {pendingItems.length > 0
                     ? `Transfert partiel — ${readyItems.length} article(s) a confirmer, ${pendingItems.length} en attente`
-                    : 'Verifiez les quantites recues article par article'}
+                    : 'Vérifiez les quantités reçues article par article'}
                 </p>
               </div>
             </div>
             <button onClick={handleConfirmReception} disabled={receptionMutation.isPending}
               className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
               {receptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              {receptionMutation.isPending ? 'Confirmation...' : 'Confirmer la reception'}
+              {receptionMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
             </button>
           </div>
           <div className="divide-y divide-purple-50">
@@ -742,7 +742,7 @@ function SubRequestDetailView({
                     <div className="text-sm font-bold text-gray-700">{expected}</div>
                   </div>
                   <div className="text-center flex-shrink-0">
-                    <div className="text-[10px] text-gray-400 uppercase">Recu</div>
+                    <div className="text-[10px] text-gray-400 uppercase">Reçu</div>
                     <input type="number" min={0} value={received}
                       onChange={(e) => setReceptionValue(itemId, 'qtyReceived', parseInt(e.target.value) || 0)}
                       className={`w-16 text-center py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 ${diff !== 0 ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
@@ -776,8 +776,8 @@ function SubRequestDetailView({
             <Truck size={22} className="text-purple-600" />
           </div>
           <div>
-            <p className="font-semibold text-purple-800">Transfere — en attente de reception</p>
-            <p className="text-sm text-purple-600">La caissiere doit confirmer la reception des articles.</p>
+            <p className="font-semibold text-purple-800">Transféré — en attente de réception</p>
+            <p className="text-sm text-purple-600">La caissière doit confirmer la réception des articles.</p>
           </div>
         </div>
       )}
@@ -791,11 +791,11 @@ function SubRequestDetailView({
             </div>
             <div>
               <h3 className={`font-bold ${status === 'closed_with_discrepancy' ? 'text-orange-800' : 'text-emerald-800'}`}>
-                {status === 'closed_with_discrepancy' ? 'Cloture avec ecart' : 'Cloture — tout est conforme'}
+                {status === 'closed_with_discrepancy' ? 'Clôturé avec écart' : 'Clôturé — tout est conforme'}
               </h3>
               {request.closed_by_name && (
                 <p className={`text-xs mt-0.5 ${status === 'closed_with_discrepancy' ? 'text-orange-600' : 'text-emerald-600'}`}>
-                  Confirme par {request.closed_by_name as string} le {request.closed_at ? format(new Date(request.closed_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
+                  Confirmé par {request.closed_by_name as string} le {request.closed_at ? format(new Date(request.closed_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
                 </p>
               )}
             </div>
@@ -867,7 +867,7 @@ function SubRequestDetailView({
                 {isClosed && (
                   <>
                     <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-[10px] text-gray-400 uppercase">Recu</div>
+                      <div className="text-[10px] text-gray-400 uppercase">Reçu</div>
                       <div className="text-sm font-semibold">{qtyReceived ?? '\u2014'}</div>
                     </div>
                     <div className="text-center flex-shrink-0 w-12">

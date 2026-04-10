@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { adjustProductStock } from './product-stock.helper.js';
+import { ingredientLotRepository } from './ingredient-lot.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
@@ -55,10 +56,27 @@ export const productionRepository = {
 
     const itemsResult = await db.query(
       `SELECT ppi.*, p.name as product_name, p.image_url as product_image,
-              c.slug as category_slug, c.name as category_name
+              c.slug as category_slug, c.name as category_name,
+              p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.cost_price,
+              pdt.produced_at, pdt.expires_at, pdt.display_expires_at,
+              pst.created_at as production_timestamp,
+              pu.first_name as produced_by_first_name, pu.last_name as produced_by_last_name
        FROM production_plan_items ppi
        JOIN products p ON p.id = ppi.product_id
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN LATERAL (
+         SELECT pdt2.produced_at, pdt2.expires_at, pdt2.display_expires_at
+         FROM product_display_tracking pdt2
+         WHERE pdt2.product_id = ppi.product_id AND pdt2.status = 'active'
+         ORDER BY pdt2.produced_at DESC LIMIT 1
+       ) pdt ON true
+       LEFT JOIN LATERAL (
+         SELECT pst2.created_at, pst2.performed_by
+         FROM product_stock_transactions pst2
+         WHERE pst2.product_id = ppi.product_id AND pst2.type = 'production' AND pst2.reference_id = $1
+         ORDER BY pst2.created_at DESC LIMIT 1
+       ) pst ON true
+       LEFT JOIN users pu ON pu.id = pst.performed_by
        WHERE ppi.plan_id = $1
        ORDER BY p.name`,
       [id]
@@ -323,10 +341,10 @@ export const productionRepository = {
     try {
       await client.query('BEGIN');
 
-      // Update actual quantities
+      // Update actual quantities and mark as produced
       for (const item of actualItems) {
         await client.query(
-          `UPDATE production_plan_items SET actual_quantity = $1 WHERE id = $2 AND plan_id = $3`,
+          `UPDATE production_plan_items SET actual_quantity = $1, status = CASE WHEN $1 > 0 THEN 'produced' ELSE status END WHERE id = $2 AND plan_id = $3`,
           [item.actualQuantity, item.planItemId, planId]
         );
       }
@@ -398,6 +416,11 @@ export const productionRepository = {
             [ingredientId, -consumption, `Production: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
           );
 
+          // FEFO lot consumption for ONSSA traceability
+          try {
+            await ingredientLotRepository.consumeFEFO(client, ingredientId, consumption, planId, storeId);
+          } catch (_) { /* graceful degradation if no lots exist yet */ }
+
           // Check if stock went negative
           const checkStoreFilter = storeId ? ' AND store_id = $2' : '';
           const checkResult = await client.query(
@@ -425,6 +448,24 @@ export const productionRepository = {
           [item.product_id, item.actual_quantity, stockAfter,
            `Production: ${item.product_name} x${item.actual_quantity}`, planId, userId, storeId || null]
         );
+
+        // Create product_display_tracking for lifecycle management
+        if (storeId) {
+          const productLifecycle = await client.query(
+            `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
+            [item.product_id]
+          );
+          if (productLifecycle.rows[0]?.shelf_life_days) {
+            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
+            const expiresAt = `NOW() + INTERVAL '${parseInt(shelf_life_days)} days'`;
+            const displayExpiresAt = display_life_hours ? `NOW() + INTERVAL '${parseInt(display_life_hours)} hours'` : 'NULL';
+            await client.query(
+              `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
+               VALUES ($1, $2, NOW(), ${expiresAt}, ${displayExpiresAt}, 'active')`,
+              [item.product_id, storeId]
+            );
+          }
+        }
       }
 
       // Point 8: For partial closure, auto-cancel remaining pending/waiting items
@@ -483,7 +524,7 @@ export const productionRepository = {
   },
 
   // ═══ Partial Production: produce selected items ═══
-  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string): Promise<{ warnings: string[] }> {
+  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, producedAt?: string): Promise<{ warnings: string[] }> {
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
@@ -517,64 +558,65 @@ export const productionRepository = {
       for (const item of producedItems.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
 
+        // Deduct ingredients if recipe exists
         const recipeResult = await client.query(
           `SELECT r.id, r.yield_quantity FROM recipes r WHERE r.product_id = $1`,
           [item.product_id]
         );
-        if (!recipeResult.rows[0]) continue;
+        if (recipeResult.rows[0]) {
+          const recipe = recipeResult.rows[0];
+          const ingredientNeeds = new Map<string, number>();
 
-        const recipe = recipeResult.rows[0];
-        const ingredientNeeds = new Map<string, number>();
-
-        // Recursive ingredient collection
-        async function collectNeeds(recipeId: string, yieldQty: number, multiplier: number) {
-          const ingsResult = await client.query(
-            `SELECT ingredient_id, quantity FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]
-          );
-          for (const ri of ingsResult.rows) {
-            const consumption = (parseFloat(ri.quantity) / yieldQty) * multiplier;
-            ingredientNeeds.set(ri.ingredient_id, (ingredientNeeds.get(ri.ingredient_id) || 0) + consumption);
+          // Recursive ingredient collection
+          async function collectNeeds(recipeId: string, yieldQty: number, multiplier: number) {
+            const ingsResult = await client.query(
+              `SELECT ingredient_id, quantity FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]
+            );
+            for (const ri of ingsResult.rows) {
+              const consumption = (parseFloat(ri.quantity) / yieldQty) * multiplier;
+              ingredientNeeds.set(ri.ingredient_id, (ingredientNeeds.get(ri.ingredient_id) || 0) + consumption);
+            }
+            const subsResult = await client.query(
+              `SELECT rsr.sub_recipe_id, rsr.quantity, r.yield_quantity
+               FROM recipe_sub_recipes rsr JOIN recipes r ON r.id = rsr.sub_recipe_id
+               WHERE rsr.recipe_id = $1`, [recipeId]
+            );
+            for (const sub of subsResult.rows) {
+              await collectNeeds(sub.sub_recipe_id, sub.yield_quantity, (parseFloat(sub.quantity) / yieldQty) * multiplier);
+            }
           }
-          const subsResult = await client.query(
-            `SELECT rsr.sub_recipe_id, rsr.quantity, r.yield_quantity
-             FROM recipe_sub_recipes rsr JOIN recipes r ON r.id = rsr.sub_recipe_id
-             WHERE rsr.recipe_id = $1`, [recipeId]
-          );
-          for (const sub of subsResult.rows) {
-            await collectNeeds(sub.sub_recipe_id, sub.yield_quantity, (parseFloat(sub.quantity) / yieldQty) * multiplier);
+
+          await collectNeeds(recipe.id, recipe.yield_quantity, item.actual_quantity);
+
+          for (const [ingredientId, consumption] of ingredientNeeds) {
+            const storeFilter = storeId ? ' AND store_id = $3' : '';
+            const invParams: unknown[] = [consumption, ingredientId];
+            if (storeId) invParams.push(storeId);
+
+            await client.query(
+              `UPDATE inventory SET current_quantity = current_quantity - $1, updated_at = NOW()
+               WHERE ingredient_id = $2${storeFilter}`, invParams
+            );
+            await client.query(
+              `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
+               VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
+              [ingredientId, -consumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
+            );
+
+            // Check negative stock
+            const checkFilter = storeId ? ' AND store_id = $2' : '';
+            const checkResult = await client.query(
+              `SELECT current_quantity FROM inventory WHERE ingredient_id = $1${checkFilter}`,
+              [ingredientId, ...(storeId ? [storeId] : [])]
+            );
+            if (checkResult.rows[0] && parseFloat(checkResult.rows[0].current_quantity) < 0) {
+              const ingName = await client.query('SELECT name, unit FROM ingredients WHERE id = $1', [ingredientId]);
+              warnings.push(`Stock negatif: ${ingName.rows[0]?.name} (${parseFloat(checkResult.rows[0].current_quantity).toFixed(2)} ${ingName.rows[0]?.unit || ''})`);
+            }
           }
         }
 
-        await collectNeeds(recipe.id, recipe.yield_quantity, item.actual_quantity);
-
-        for (const [ingredientId, consumption] of ingredientNeeds) {
-          const storeFilter = storeId ? ' AND store_id = $3' : '';
-          const invParams: unknown[] = [consumption, ingredientId];
-          if (storeId) invParams.push(storeId);
-
-          await client.query(
-            `UPDATE inventory SET current_quantity = current_quantity - $1, updated_at = NOW()
-             WHERE ingredient_id = $2${storeFilter}`, invParams
-          );
-          await client.query(
-            `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
-             VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
-            [ingredientId, -consumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
-          );
-
-          // Check negative stock
-          const checkFilter = storeId ? ' AND store_id = $2' : '';
-          const checkResult = await client.query(
-            `SELECT current_quantity FROM inventory WHERE ingredient_id = $1${checkFilter}`,
-            [ingredientId, ...(storeId ? [storeId] : [])]
-          );
-          if (checkResult.rows[0] && parseFloat(checkResult.rows[0].current_quantity) < 0) {
-            const ingName = await client.query('SELECT name, unit FROM ingredients WHERE id = $1', [ingredientId]);
-            warnings.push(`Stock negatif: ${ingName.rows[0]?.name} (${parseFloat(checkResult.rows[0].current_quantity).toFixed(2)} ${ingName.rows[0]?.unit || ''})`);
-          }
-        }
-
-        // Update product stock
+        // Update product stock (always, even without recipe)
         const stockAfter = await adjustProductStock(client, item.product_id, item.actual_quantity, storeId);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
@@ -582,6 +624,27 @@ export const productionRepository = {
           [item.product_id, item.actual_quantity, stockAfter,
            `Production partielle: ${item.product_name} x${item.actual_quantity}`, planId, userId, storeId || null]
         );
+
+        // Calculate and store expiration date based on shelf_life_days
+        if (storeId) {
+          const productLifecycle = await client.query(
+            `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
+            [item.product_id]
+          );
+          if (productLifecycle.rows[0]?.shelf_life_days) {
+            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
+            const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';
+            const expiresAt = `${baseTime} + INTERVAL '${parseInt(shelf_life_days)} days'`;
+            const displayExpiresAt = display_life_hours ? `${baseTime} + INTERVAL '${parseInt(display_life_hours)} hours'` : 'NULL';
+            const params: unknown[] = [item.product_id, storeId];
+            if (producedAt) params.push(producedAt);
+            await client.query(
+              `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
+               VALUES ($1, $2, ${baseTime}, ${expiresAt}, ${displayExpiresAt}, 'active')`,
+              params
+            );
+          }
+        }
       }
 
       // ═══ Auto-complete: if all items are now produced/cancelled (no more pending), complete the plan ═══
@@ -604,6 +667,41 @@ export const productionRepository = {
           [planId, completionType]
         );
         autoCompleted = true;
+
+        // Mark related pre-orders as 'ready' when plan is auto-completed
+        const planResult = await client.query(
+          `SELECT plan_date, order_id FROM production_plans WHERE id = $1`, [planId]
+        );
+        if (planResult.rows[0]) {
+          const { plan_date: planDate, order_id: directOrderId } = planResult.rows[0];
+
+          // If plan is directly linked to an order, update that order
+          if (directOrderId) {
+            await client.query(
+              `UPDATE orders SET status = 'ready' WHERE id = $1 AND status = 'in_production'`,
+              [directOrderId]
+            );
+          }
+
+          // Also update any orders matched by date + product
+          const planProductIds = await client.query(
+            `SELECT DISTINCT product_id FROM production_plan_items WHERE plan_id = $1 AND status IN ('produced', 'transferred', 'received')`,
+            [planId]
+          );
+          const prodIds = planProductIds.rows.map((r: Record<string, unknown>) => r.product_id);
+          if (prodIds.length > 0) {
+            await client.query(
+              `UPDATE orders SET status = 'ready'
+               WHERE pickup_date::date = $1::date
+                 AND status = 'in_production'
+                 AND id IN (
+                   SELECT DISTINCT oi.order_id FROM order_items oi
+                   WHERE oi.product_id = ANY($2)
+                 )`,
+              [planDate, prodIds]
+            );
+          }
+        }
       }
 
       await client.query('COMMIT');
@@ -726,6 +824,37 @@ export const productionRepository = {
           [planId, cType]
         );
         planCompleted = true;
+
+        // Mark related pre-orders as 'ready' when plan is auto-completed via receive
+        const planResult = await client.query(
+          `SELECT plan_date, order_id FROM production_plans WHERE id = $1`, [planId]
+        );
+        if (planResult.rows[0]) {
+          const { plan_date: planDate, order_id: directOrderId } = planResult.rows[0];
+          if (directOrderId) {
+            await client.query(
+              `UPDATE orders SET status = 'ready' WHERE id = $1 AND status = 'in_production'`,
+              [directOrderId]
+            );
+          }
+          const planProductIds = await client.query(
+            `SELECT DISTINCT product_id FROM production_plan_items WHERE plan_id = $1 AND status IN ('produced', 'transferred', 'received')`,
+            [planId]
+          );
+          const prodIds = planProductIds.rows.map((r: Record<string, unknown>) => r.product_id);
+          if (prodIds.length > 0) {
+            await client.query(
+              `UPDATE orders SET status = 'ready'
+               WHERE pickup_date::date = $1::date
+                 AND status = 'in_production'
+                 AND id IN (
+                   SELECT DISTINCT oi.order_id FROM order_items oi
+                   WHERE oi.product_id = ANY($2)
+                 )`,
+              [planDate, prodIds]
+            );
+          }
+        }
       }
 
       await client.query('COMMIT');

@@ -21,6 +21,7 @@ const navigation: { name: string; href: string; icon: typeof LayoutDashboard; mo
   { name: 'Approvisionnement', href: '/replenishment', icon: Package, module: 'replenishment' },
   { name: 'RH', href: '/employees', icon: UserCog, module: 'employees' },
   { name: 'Comptabilite', href: '/accounting', icon: Calculator, module: 'accounting' },
+  { name: 'Achats', href: '/purchasing', icon: ShoppingBag, module: 'purchasing' },
   { name: 'Utilisateurs', href: '/users', icon: Lock, module: 'users' },
   { name: 'Rapports', href: '/reports', icon: BarChart3, module: 'reports' },
 ];

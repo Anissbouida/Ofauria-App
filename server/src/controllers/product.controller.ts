@@ -77,8 +77,21 @@ export const productController = {
     res.json({ success: true, data: product });
   },
   async remove(req: AuthRequest, res: Response) {
-    await productRepository.delete(req.params.id);
-    res.json({ success: true, data: null });
+    try {
+      await productRepository.delete(req.params.id);
+      res.json({ success: true, data: null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('foreign key') || msg.includes('violates')) {
+        res.status(409).json({ success: false, error: { message: 'Ce produit est utilise dans des commandes, ventes ou plans de production. Desactivez-le plutot.' } });
+      } else {
+        throw err;
+      }
+    }
+  },
+  async toggleAvailability(req: AuthRequest, res: Response) {
+    const product = await productRepository.toggleAvailability(req.params.id);
+    res.json({ success: true, data: product });
   },
   async uploadImage(req: AuthRequest, res: Response) {
     if (!req.file) { res.status(400).json({ success: false, error: { message: 'Aucune image fournie' } }); return; }
