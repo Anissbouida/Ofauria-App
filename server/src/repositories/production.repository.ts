@@ -60,10 +60,14 @@ export const productionRepository = {
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.cost_price,
               pdt.produced_at, pdt.expires_at, pdt.display_expires_at,
               pst.created_at as production_timestamp,
-              pu.first_name as produced_by_first_name, pu.last_name as produced_by_last_name
+              pu.first_name as produced_by_first_name, pu.last_name as produced_by_last_name,
+              su.first_name as started_by_first_name, su.last_name as started_by_last_name,
+              pln.lot_number
        FROM production_plan_items ppi
        JOIN products p ON p.id = ppi.product_id
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN users su ON su.id = ppi.started_by
+       LEFT JOIN production_lot_numbers pln ON pln.plan_item_id = ppi.id
        LEFT JOIN LATERAL (
          SELECT pdt2.produced_at, pdt2.expires_at, pdt2.display_expires_at
          FROM product_display_tracking pdt2
@@ -312,11 +316,17 @@ export const productionRepository = {
         }
       }
 
-      // Update plan status
+      // Update plan status and persist warnings
       await client.query(
-        `UPDATE production_plans SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW() WHERE id = $1`,
-        [planId]
+        `UPDATE production_plans SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW(), warnings = $2 WHERE id = $1`,
+        [planId, warnings]
       );
+
+      // Assign lot numbers (LOT-AAMMJJ-NNN) to plan items
+      const planDateResult = await client.query(`SELECT plan_date FROM production_plans WHERE id = $1`, [planId]);
+      if (planDateResult.rows[0]) {
+        await assignLotNumbersInternal(client, planId, planDateResult.rows[0].plan_date);
+      }
 
       await client.query('COMMIT');
       return { warnings, waitingProductIds };
@@ -485,10 +495,12 @@ export const productionRepository = {
       );
       const effectiveType = parseInt(cancelledCheck.rows[0].cnt) > 0 ? 'partial' : 'complete';
 
-      // Update plan status
+      // Update plan status and append warnings
       await client.query(
-        `UPDATE production_plans SET status = 'completed', completed_at = NOW(), updated_at = NOW(), completion_type = $2 WHERE id = $1`,
-        [planId, effectiveType]
+        `UPDATE production_plans SET status = 'completed', completed_at = NOW(), updated_at = NOW(), completion_type = $2,
+         warnings = COALESCE(warnings, '{}') || $3::text[]
+         WHERE id = $1`,
+        [planId, effectiveType, warnings]
       );
 
       // Note: Replenishment V2 decouples production from replenishment.
@@ -523,8 +535,42 @@ export const productionRepository = {
     }
   },
 
-  // ═══ Partial Production: produce selected items ═══
-  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, producedAt?: string): Promise<{ warnings: string[] }> {
+  // ═══ Start items: pending → in_progress (chef launches production) ═══
+  async startItems(planId: string, itemIds: string[], userId: string, startedAt?: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const planCheck = await client.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
+      if (!planCheck.rows[0] || planCheck.rows[0].status !== 'in_progress') {
+        throw new Error('Le plan doit etre en cours pour lancer des productions');
+      }
+
+      const startTime = startedAt || new Date().toISOString();
+      const started: string[] = [];
+
+      for (const itemId of itemIds) {
+        const result = await client.query(
+          `UPDATE production_plan_items SET status = 'in_progress', started_at = $1, started_by = $2
+           WHERE id = $3 AND plan_id = $4 AND status = 'pending' AND (waiting_status IS NULL OR waiting_status = 'restored')
+           RETURNING id`,
+          [startTime, userId, itemId, planId]
+        );
+        if (result.rows[0]) started.push(result.rows[0].id);
+      }
+
+      await client.query('COMMIT');
+      return { startedIds: started };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // ═══ Partial Production: produce selected items (in_progress → produced) ═══
+  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, producedAt?: string): Promise<{ warnings: string[]; autoCompleted: boolean }> {
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
@@ -541,7 +587,7 @@ export const productionRepository = {
         if (item.actualQuantity <= 0) continue;
         await client.query(
           `UPDATE production_plan_items SET actual_quantity = $1, status = 'produced'
-           WHERE id = $2 AND plan_id = $3 AND status = 'pending' AND (waiting_status IS NULL OR waiting_status = 'restored')`,
+           WHERE id = $2 AND plan_id = $3 AND status IN ('pending', 'in_progress') AND (waiting_status IS NULL OR waiting_status = 'restored')`,
           [item.actualQuantity, item.planItemId, planId]
         );
       }
@@ -647,13 +693,13 @@ export const productionRepository = {
         }
       }
 
-      // ═══ Auto-complete: if all items are now produced/cancelled (no more pending), complete the plan ═══
-      const remainingPending = await client.query(
+      // ═══ Auto-complete: if all items are now produced/cancelled (no more pending or in_progress), complete the plan ═══
+      const remainingActive = await client.query(
         `SELECT COUNT(*) as cnt FROM production_plan_items
-         WHERE plan_id = $1 AND status = 'pending'`,
+         WHERE plan_id = $1 AND status IN ('pending', 'in_progress')`,
         [planId]
       );
-      const pendingCount = parseInt(remainingPending.rows[0].cnt);
+      const pendingCount = parseInt(remainingActive.rows[0].cnt);
       let autoCompleted = false;
 
       if (pendingCount === 0) {
@@ -702,6 +748,14 @@ export const productionRepository = {
             );
           }
         }
+      }
+
+      // Persist new warnings
+      if (warnings.length > 0) {
+        await client.query(
+          `UPDATE production_plans SET warnings = COALESCE(warnings, '{}') || $2::text[], updated_at = NOW() WHERE id = $1`,
+          [planId, warnings]
+        );
       }
 
       await client.query('COMMIT');
@@ -956,6 +1010,13 @@ export const productionRepository = {
         );
       }
 
+      if (warnings.length > 0) {
+        await client.query(
+          `UPDATE production_plans SET warnings = COALESCE(warnings, '{}') || $2::text[], updated_at = NOW() WHERE id = $1`,
+          [planId, warnings]
+        );
+      }
+
       await client.query('COMMIT');
       return { warnings };
     } catch (err) {
@@ -1000,10 +1061,132 @@ export const productionRepository = {
     }
   },
 
+  // ═══ Assign lot numbers in LOT-AAMMJJ-NNN format ═══
+  async assignLotNumbers(client: import('pg').PoolClient, planId: string, planDate: string): Promise<void> {
+    await assignLotNumbersInternal(client, planId, planDate);
+  },
+
+  async analyzeSubRecipes(planId: string) {
+    // Get plan items with their recipes
+    const itemsResult = await db.query(
+      `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity,
+              p.name as product_name,
+              r.id as recipe_id, r.yield_quantity
+       FROM production_plan_items ppi
+       JOIN products p ON p.id = ppi.product_id
+       LEFT JOIN recipes r ON r.product_id = ppi.product_id
+       WHERE ppi.plan_id = $1 AND ppi.status = 'pending'
+         AND (ppi.waiting_status IS NULL OR ppi.waiting_status = 'restored')`,
+      [planId]
+    );
+
+    // For each item, find sub-recipes
+    const baseMap = new Map<string, {
+      subRecipeId: string;
+      subRecipeName: string;
+      yieldQuantity: number;
+      totalNeeded: number;
+      usedBy: { planItemId: string; productName: string; quantityNeeded: number }[];
+      ingredients: { ingredientId: string; ingredientName: string; unit: string; quantity: number }[];
+    }>();
+
+    for (const item of itemsResult.rows) {
+      if (!item.recipe_id) continue;
+
+      const subsResult = await db.query(
+        `SELECT rsr.sub_recipe_id, rsr.quantity,
+                sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity
+         FROM recipe_sub_recipes rsr
+         JOIN recipes sr ON sr.id = rsr.sub_recipe_id
+         WHERE rsr.recipe_id = $1`,
+        [item.recipe_id]
+      );
+
+      for (const sub of subsResult.rows) {
+        const qtyNeeded = (parseFloat(sub.quantity) / item.yield_quantity) * item.planned_quantity;
+
+        const existing = baseMap.get(sub.sub_recipe_id);
+        if (existing) {
+          existing.totalNeeded += qtyNeeded;
+          existing.usedBy.push({
+            planItemId: item.plan_item_id,
+            productName: item.product_name,
+            quantityNeeded: qtyNeeded,
+          });
+        } else {
+          // Get ingredients for this sub-recipe
+          const ingsResult = await db.query(
+            `SELECT ri.ingredient_id, ing.name as ingredient_name, ing.unit, ri.quantity
+             FROM recipe_ingredients ri
+             JOIN ingredients ing ON ing.id = ri.ingredient_id
+             WHERE ri.recipe_id = $1`,
+            [sub.sub_recipe_id]
+          );
+
+          baseMap.set(sub.sub_recipe_id, {
+            subRecipeId: sub.sub_recipe_id,
+            subRecipeName: sub.sub_recipe_name,
+            yieldQuantity: parseFloat(sub.sub_yield_quantity),
+            totalNeeded: qtyNeeded,
+            usedBy: [{
+              planItemId: item.plan_item_id,
+              productName: item.product_name,
+              quantityNeeded: qtyNeeded,
+            }],
+            ingredients: ingsResult.rows.map((ing: any) => ({
+              ingredientId: ing.ingredient_id,
+              ingredientName: ing.ingredient_name,
+              unit: ing.unit,
+              quantity: parseFloat(ing.quantity),
+            })),
+          });
+        }
+      }
+    }
+
+    return [...baseMap.values()];
+  },
+
   async remove(planId: string) {
     await db.query('DELETE FROM production_plans WHERE id = $1', [planId]);
   },
 };
+
+async function assignLotNumbersInternal(client: import('pg').PoolClient, planId: string, planDate: string | Date): Promise<void> {
+  // Get items that don't yet have lot numbers
+  const itemsResult = await client.query(
+    `SELECT ppi.id FROM production_plan_items ppi
+     LEFT JOIN production_lot_numbers pln ON pln.plan_item_id = ppi.id
+     WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled' AND pln.id IS NULL
+     ORDER BY ppi.id`,
+    [planId]
+  );
+
+  if (itemsResult.rows.length === 0) return;
+
+  const date = planDate instanceof Date ? planDate : new Date(planDate);
+  const dateStr = `${String(date.getFullYear() % 100).padStart(2, '0')}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+
+  // Format planDate as ISO string for the query (lot_date is DATE column)
+  const lotDateStr = date.toISOString().slice(0, 10);
+
+  // Get current max sequence for this date
+  const seqResult = await client.query(
+    `SELECT COALESCE(MAX(sequence_number), 0) as max_seq FROM production_lot_numbers WHERE lot_date = $1`,
+    [lotDateStr]
+  );
+  let seq = parseInt(seqResult.rows[0].max_seq);
+
+  for (const item of itemsResult.rows) {
+    seq++;
+    const lotNumber = `LOT-${dateStr}-${String(seq).padStart(3, '0')}`;
+    await client.query(
+      `INSERT INTO production_lot_numbers (plan_item_id, plan_id, lot_number, lot_date, sequence_number)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [item.id, planId, lotNumber, lotDateStr, seq]
+    );
+  }
+}
 
 function getISOWeek(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));

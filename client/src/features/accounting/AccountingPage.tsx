@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi } from '../../api/accounting.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
@@ -31,9 +31,11 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = BOM + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
+  // Compatible web et mobile (Capacitor)
   const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 }
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -574,16 +576,31 @@ function ChargesTab() {
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: expenseCategoriesApi.list });
+  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
   const { data: eligiblePOs = [] } = useQuery({ queryKey: ['eligible-pos'], queryFn: purchaseOrdersApi.eligible });
 
   // Form state for new expense
   const [formCategoryId, setFormCategoryId] = useState<string>('');
   const [formPOId, setFormPOId] = useState<string>('');
 
-  // Check if selected category requires a PO
-  const selectedCategory = (categories as Record<string, unknown>[]).find(c => c.id === formCategoryId);
+  // Check if selected category requires a PO (look up the leaf category)
+  const selectedCategory = (categories as Record<string, unknown>[]).find(c => String(c.id) === formCategoryId);
   const requiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
+
+  // Build full path label for display: "Categorie > Sous-cat > Type"
+  const getCategoryPath = (catId: string) => {
+    const all = categories as Record<string, unknown>[];
+    const cat = all.find(c => String(c.id) === catId);
+    if (!cat) return '';
+    const parts: string[] = [String(cat.name)];
+    let current = cat;
+    while (current.parent_id) {
+      const parent = all.find(c => String(c.id) === String(current.parent_id));
+      if (parent) { parts.unshift(String(parent.name)); current = parent; }
+      else break;
+    }
+    return parts.join(' > ');
+  };
 
   // Auto-fill from selected PO
   const selectedPO = (eligiblePOs as Record<string, unknown>[]).find(po => po.id === formPOId);
@@ -878,17 +895,11 @@ function ChargesTab() {
             }} className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie *</label>
-                <select value={formCategoryId} onChange={e => { setFormCategoryId(e.target.value); setFormPOId(''); }}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent" required>
-                  <option value="">Choisir une catégorie...</option>
-                  {(categories as Record<string, unknown>[])
-                    .filter(c => c.type === 'expense')
-                    .map(c => (
-                      <option key={c.id as string} value={c.id as string}>
-                        {c.name as string} {(c.requires_po as boolean) ? '(BC requis)' : ''}
-                      </option>
-                    ))}
-                </select>
+                <CascadeCategorySelect
+                  categories={categories as Record<string, unknown>[]}
+                  value={formCategoryId}
+                  onChange={(id) => { setFormCategoryId(id); setFormPOId(''); }}
+                />
               </div>
 
               {requiresPO && (
@@ -999,8 +1010,8 @@ function ChargesTab() {
                   <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.category_id as string || ''}>
                     <option value="">Choisir...</option>
                     {(categories as Record<string, unknown>[])
-                      .filter(c => c.type === 'expense')
-                      .map(c => <option key={c.id as string} value={c.id as string}>{c.name as string}</option>)}
+                      .filter(c => (c.level as number) === 3 || (!(categories as Record<string, unknown>[]).some(ch => String(ch.parent_id) === String(c.id))))
+                      .map(c => <option key={String(c.id)} value={String(c.id)}>{getCategoryPath(String(c.id))}</option>)}
                   </select></div>
               </div>
 
@@ -1231,5 +1242,73 @@ function ResumeTab() {
         </div>
       )}
     </>
+  );
+}
+
+/* ============ CASCADE CATEGORY SELECTOR ============ */
+
+function CascadeCategorySelect({
+  categories, value, onChange,
+}: {
+  categories: Record<string, unknown>[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const level1 = useMemo(() => categories.filter(c => (c.level as number) === 1), [categories]);
+  const level2 = useMemo(() => categories.filter(c => (c.level as number) === 2), [categories]);
+  const level3 = useMemo(() => categories.filter(c => (c.level as number) === 3), [categories]);
+
+  const [selL1, setSelL1] = useState('');
+  const [selL2, setSelL2] = useState('');
+
+  // Resolve ancestors from current value
+  useEffect(() => {
+    if (!value || categories.length === 0) return;
+    const leaf = categories.find(c => String(c.id) === value);
+    if (!leaf) return;
+    if ((leaf.level as number) === 3) {
+      const parent = categories.find(c => String(c.id) === String(leaf.parent_id));
+      if (parent && (parent.level as number) === 2) {
+        setSelL2(String(parent.id));
+        setSelL1(String(parent.parent_id || ''));
+      } else if (parent && (parent.level as number) === 1) {
+        setSelL1(String(parent.id));
+        setSelL2('');
+      }
+    }
+  }, [value, categories]);
+
+  const filteredL2 = useMemo(() => selL1 ? level2.filter(c => String(c.parent_id) === selL1) : [], [selL1, level2]);
+  const filteredL3 = useMemo(() => {
+    if (selL2) return level3.filter(c => String(c.parent_id) === selL2);
+    if (selL1) return level3.filter(c => String(c.parent_id) === selL1);
+    return [];
+  }, [selL1, selL2, level3]);
+
+  const cls = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent';
+
+  return (
+    <div className="space-y-2">
+      <select value={selL1} onChange={e => { setSelL1(e.target.value); setSelL2(''); onChange(''); }} className={cls}>
+        <option value="">Categorie...</option>
+        {level1.map(c => <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>)}
+      </select>
+      {filteredL2.length > 0 && (
+        <select value={selL2} onChange={e => { setSelL2(e.target.value); onChange(''); }} className={cls}>
+          <option value="">Sous-categorie...</option>
+          {filteredL2.map(c => <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>)}
+        </select>
+      )}
+      {filteredL3.length > 0 && (
+        <select value={value} onChange={e => onChange(e.target.value)} className={cls} required>
+          <option value="">Type...</option>
+          {filteredL3.map(c => (
+            <option key={String(c.id)} value={String(c.id)}>
+              {String(c.name)}{Boolean(c.requires_po) ? ' (BC requis)' : ''}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }

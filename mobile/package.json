@@ -1,0 +1,25 @@
+{
+  "name": "@ofauria/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Application mobile Android Ofauria (Capacitor)",
+  "scripts": {
+    "build": "cd ../client && npm run build && cd ../mobile && npx cap sync",
+    "open": "npx cap open android",
+    "run:android": "npx cap run android",
+    "sync": "npx cap sync",
+    "copy": "npx cap copy"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/keyboard": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

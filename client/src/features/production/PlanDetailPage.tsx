@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
-import { productLossesApi } from '../../api/product-losses.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -17,6 +16,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import ProductionLaunchModal from './ProductionLaunchModal';
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
@@ -24,15 +24,6 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string; grad
   in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500', gradient: 'from-amber-500 to-orange-600', label: 'En cours', icon: <Play size={14} /> },
   completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600', label: 'Termine', icon: <CheckCircle size={14} /> },
 };
-
-const PRODUCTION_LOSS_REASONS: { value: string; label: string }[] = [
-  { value: 'brule', label: 'Brule' },
-  { value: 'rate', label: 'Rate' },
-  { value: 'machine', label: 'Probleme machine' },
-  { value: 'matiere_defectueuse', label: 'Matiere defectueuse' },
-  { value: 'erreur_humaine', label: 'Erreur humaine' },
-  { value: 'autre', label: 'Autre' },
-];
 
 const roleConfig: Record<string, { label: string; bg: string; text: string; avatar: string }> = {
   baker: { label: 'Boulanger', bg: 'bg-amber-100', text: 'text-amber-800', avatar: 'bg-amber-500' },
@@ -46,8 +37,9 @@ export default function PlanDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [showCompletion, setShowCompletion] = useState(false);
-  const [singleProduceItem, setSingleProduceItem] = useState<Record<string, unknown> | null>(null);
+  const [showProductionLaunch, setShowProductionLaunch] = useState(false);
+  const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
+  const [expandedFefoIngredients, setExpandedFefoIngredients] = useState<Set<string>>(new Set());
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
 
@@ -71,6 +63,13 @@ export default function PlanDetailPage() {
     enabled: !!id && (plan?.status === 'completed' || plan?.status === 'in_progress'),
   });
 
+  // FEFO preview: which lots will be used (read-only preview before production)
+  const { data: fefoPreview = [] } = useQuery({
+    queryKey: ['fefo-preview', id],
+    queryFn: () => ingredientLotsApi.fefoPreview(id!),
+    enabled: !!id && ['confirmed', 'in_progress'].includes(plan?.status),
+  });
+
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
@@ -82,6 +81,19 @@ export default function PlanDetailPage() {
     },
   });
 
+  const getPlanLotPrefix = (planData?: Record<string, unknown>) => {
+    const p = planData || plan;
+    if (!p) return '';
+    const d = new Date(p.plan_date as string);
+    const dateStr = `${String(d.getFullYear() % 100).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const firstLot = ((p.items || items || []) as Record<string, unknown>[]).find(it => it.lot_number);
+    if (firstLot) {
+      const ln = firstLot.lot_number as string;
+      return ln.substring(0, ln.lastIndexOf('-'));
+    }
+    return `LOT-${dateStr}`;
+  };
+
   const printProductionTicket = (item: Record<string, unknown>) => {
     if (!plan) return;
     const prodTs = item.production_timestamp || item.produced_at;
@@ -90,7 +102,7 @@ export default function PlanDetailPage() {
     const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
     const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : '—';
     const planDate = new Date(plan.plan_date as string);
-    const lotNumber = `LOT-${format(planDate, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
+    const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-${String(1).padStart(3, '0')}`;
     const isReexposable = item.is_reexposable as boolean;
     const isRecyclable = item.is_recyclable as boolean;
     const cycleVie = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
@@ -222,7 +234,7 @@ export default function PlanDetailPage() {
 
 <div class="info">
   <div>
-    <strong>N\u00b0 Lot :</strong> LOT-${format(new Date(p.plan_date), 'yyyyMMdd', { locale: fr })}-${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Lot :</strong> ${getPlanLotPrefix(p)}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -299,6 +311,215 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 
 <div class="footer">
   ${settings.companyName} - Bon de commande interne - Imprime le ${now}
+</div>
+
+</body></html>`);
+    w.document.close();
+  };
+
+  const printBonSortieIngredients = () => {
+    if (!plan) return;
+    const dateStr = format(new Date(plan.plan_date as string), 'dd/MM/yyyy');
+    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
+    const planDate = new Date(plan.plan_date as string);
+    const bsiDateStr = `${String(planDate.getFullYear() % 100).padStart(2, '0')}${String(planDate.getMonth() + 1).padStart(2, '0')}${String(planDate.getDate()).padStart(2, '0')}`;
+    const hour = new Date().getHours();
+    const shift = hour < 14 ? 'Matin' : 'Apres-midi';
+
+    // Build ingredient rows from fefoPreview data (FEFO lot allocation)
+    const fefoItems = (fefoPreview as Record<string, unknown>[]) || [];
+
+    // Aggregate needs (same as the needs variable) for ingredients without FEFO lots
+    const needsForPrint = needs;
+
+    // Build rows: one row per ingredient, with FEFO lot info when available
+    type BsiRow = {
+      ingredientName: string;
+      neededQty: number;
+      unit: string;
+      lotNumber: string;
+      expirationDate: string;
+      daysUntilExpiry: number | null;
+      urgency: 'urgent' | 'priority' | 'normal';
+    };
+
+    const rows: BsiRow[] = [];
+
+    for (const need of needsForPrint) {
+      const ingredientId = need.ingredient_id as string;
+      const ingredientName = need.ingredient_name as string;
+      const neededQty = parseFloat(need.needed_quantity as string);
+      const unit = (need.unit as string) || '';
+
+      // Find matching FEFO preview entry
+      const fefoEntry = fefoItems.find((f) => (f.ingredientId as string) === ingredientId);
+      const lots = fefoEntry ? (fefoEntry.lots as Record<string, unknown>[]) || [] : [];
+
+      if (lots.length > 0) {
+        // One row per lot used for this ingredient
+        for (const lot of lots) {
+          const expDate = lot.expirationDate as string | null;
+          const daysLeft = lot.daysUntilExpiry as number | null;
+          let urgency: 'urgent' | 'priority' | 'normal' = 'normal';
+          if (daysLeft !== null && daysLeft < 3) urgency = 'urgent';
+          else if (daysLeft !== null && daysLeft < 7) urgency = 'priority';
+
+          rows.push({
+            ingredientName,
+            neededQty: parseFloat((lot.quantityToUse as number).toFixed(2)),
+            unit,
+            lotNumber: (lot.supplierLotNumber as string) || '—',
+            expirationDate: expDate ? format(new Date(expDate), 'dd/MM/yyyy') : '—',
+            daysUntilExpiry: daysLeft,
+            urgency,
+          });
+        }
+      } else {
+        // No FEFO lot data — show ingredient without lot info
+        rows.push({
+          ingredientName,
+          neededQty,
+          unit,
+          lotNumber: '—',
+          expirationDate: '—',
+          daysUntilExpiry: null,
+          urgency: 'normal',
+        });
+      }
+    }
+
+    // Generate BSI number
+    const bsiNumber = `BSI-${bsiDateStr}-${String(1).padStart(3, '0')}`;
+
+    const roleLabel = plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : (plan.created_by_name || '—');
+
+    const w = window.open('', '_blank', 'width=800,height=700');
+    if (!w) return;
+
+    w.document.write(`<!DOCTYPE html><html><head><title>BSI - ${dateStr}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; padding: 25px; color: #333; font-size: 12px; }
+  .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px; }
+  .header h1 { font-size: 20px; margin-bottom: 3px; }
+  .header h2 { font-size: 14px; font-weight: normal; color: #666; }
+  .header .doc-title { font-size: 16px; font-weight: bold; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; color: #1a1a1a; }
+  .header .doc-number { font-size: 13px; font-weight: bold; margin-top: 4px; font-family: 'Courier New', monospace; color: #444; }
+  .meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; background: #fafafa; }
+  .meta div { line-height: 1.8; }
+  .meta strong { color: #333; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
+  thead th { background: #2d2d2d; color: white; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  thead th:first-child { border-radius: 4px 0 0 0; }
+  thead th:last-child { border-radius: 0 4px 0 0; }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #e5e5e5; font-size: 11px; }
+  tbody tr:nth-child(even) { background: #f9f9f9; }
+  .text-right { text-align: right; }
+  .text-center { text-align: center; }
+  .bold { font-weight: bold; }
+  .row-urgent { background: #fff5f5 !important; }
+  .row-urgent td { color: #c53030; font-weight: 600; }
+  .row-priority { background: #fffaf0 !important; }
+  .row-priority td { color: #c05621; }
+  .urgency-tag { font-size: 9px; font-weight: bold; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-left: 6px; }
+  .urgency-tag.urgent { background: #fed7d7; color: #c53030; }
+  .urgency-tag.priority { background: #feebc8; color: #c05621; }
+  .checkbox { width: 16px; height: 16px; border: 2px solid #666; display: inline-block; border-radius: 2px; }
+  .lot-badge { font-family: 'Courier New', monospace; font-size: 10px; background: #edf2f7; padding: 2px 6px; border-radius: 3px; color: #2d3748; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 15px; }
+  .sig-block { text-align: center; width: 220px; }
+  .sig-block .title { font-size: 11px; font-weight: bold; color: #333; margin-bottom: 5px; text-transform: uppercase; }
+  .sig-block .line { border-bottom: 1px solid #333; height: 45px; margin-bottom: 5px; }
+  .sig-block .sub { font-size: 10px; color: #666; }
+  .observations { margin-top: 20px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; }
+  .observations .title { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+  .observations .lines { min-height: 60px; border-top: 1px dotted #ccc; padding-top: 8px; }
+  .observations .line-row { border-bottom: 1px dotted #ddd; height: 22px; }
+  .footer { text-align: center; margin-top: 25px; font-size: 9px; color: #999; border-top: 1px dashed #ccc; padding-top: 8px; }
+  .print-btn { position: fixed; top: 10px; right: 10px; background: #2d8a4e; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; z-index: 10; }
+  .print-btn:hover { background: #276e3e; }
+  @media print { .print-btn { display: none; } body { padding: 15px; } }
+</style></head><body>
+<button class="print-btn" onclick="window.print()">Imprimer</button>
+
+<div class="header">
+  <h1>${settings.companyName}</h1>
+  <h2>${settings.subtitle || ''}</h2>
+  <div class="doc-title">Bon de Sortie Ingredients</div>
+  <div class="doc-number">${bsiNumber}</div>
+</div>
+
+<div class="meta">
+  <div>
+    <strong>Date de production :</strong> ${dateStr}<br/>
+    <strong>Shift :</strong> ${shift}<br/>
+    <strong>N\u00b0 Plan :</strong> ${getPlanLotPrefix()}
+  </div>
+  <div style="text-align:right">
+    <strong>Chef de production :</strong> ${roleLabel}<br/>
+    <strong>Magasinier :</strong> ___________________<br/>
+    <strong>Emis le :</strong> ${now}
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:28px">#</th>
+      <th style="width:200px">Ingredient</th>
+      <th class="text-right" style="width:75px">Qte requise</th>
+      <th class="text-center" style="width:50px">Unite</th>
+      <th style="width:140px">Lot a utiliser</th>
+      <th class="text-center" style="width:95px">Date d'exp.</th>
+      <th class="text-center" style="width:45px">Servi</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows.map((row, idx) => {
+      const rowClass = row.urgency === 'urgent' ? 'row-urgent' : row.urgency === 'priority' ? 'row-priority' : '';
+      const urgencyTag = row.urgency === 'urgent'
+        ? '<span class="urgency-tag urgent">URGENT — utiliser en priorite</span>'
+        : row.urgency === 'priority'
+          ? '<span class="urgency-tag priority">Prioritaire</span>'
+          : '';
+      return `
+      <tr class="${rowClass}">
+        <td class="text-center bold">${idx + 1}</td>
+        <td>${row.ingredientName}${urgencyTag}</td>
+        <td class="text-right bold">${row.neededQty.toFixed(2)}</td>
+        <td class="text-center">${row.unit}</td>
+        <td><span class="lot-badge">${row.lotNumber}</span></td>
+        <td class="text-center">${row.expirationDate}${row.daysUntilExpiry !== null && row.daysUntilExpiry <= 7 ? ' <small>(' + row.daysUntilExpiry + 'j)</small>' : ''}</td>
+        <td class="text-center"><span class="checkbox"></span></td>
+      </tr>`;
+    }).join('')}
+  </tbody>
+</table>
+
+<div class="observations">
+  <div class="title">Observations / Ecarts / Substitutions</div>
+  <div class="lines">
+    <div class="line-row"></div>
+    <div class="line-row"></div>
+    <div class="line-row"></div>
+  </div>
+</div>
+
+<div class="signatures">
+  <div class="sig-block">
+    <div class="title">Chef de production</div>
+    <div class="line"></div>
+    <div class="sub">Nom : ${roleLabel}<br/>Signature</div>
+  </div>
+  <div class="sig-block">
+    <div class="title">Magasinier</div>
+    <div class="line"></div>
+    <div class="sub">Nom : ___________________<br/>Signature & date de remise</div>
+  </div>
+</div>
+
+<div class="footer">
+  ${settings.companyName} — Bon de Sortie Ingredients — ${bsiNumber} — Imprime le ${now}
 </div>
 
 </body></html>`);
@@ -389,7 +610,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 
 <div class="info">
   <div>
-    <strong>N\u00b0 Lot :</strong> LOT-${format(new Date(p.plan_date), 'yyyyMMdd', { locale: fr })}-${(p.id as string).slice(0, 8).toUpperCase()}<br/>
+    <strong>N\u00b0 Lot :</strong> ${getPlanLotPrefix(p)}<br/>
     <strong>Date de production :</strong> ${dateStr}<br/>
     <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
   </div>
@@ -525,6 +746,17 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
+  // Start item: pending → in_progress
+  const handleStartItem = async (itemId: string) => {
+    try {
+      await productionApi.startItems(id!, [itemId]);
+      await queryClient.invalidateQueries({ queryKey: ['production', id] });
+      toast.success('Production lancee');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error?.message || 'Erreur lors du lancement');
+    }
+  };
+
   const { getModuleConfig } = usePermissions();
   const prodConfig = getModuleConfig('production');
   const userRole = user?.role || '';
@@ -589,6 +821,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
   // Progress stats
   const producedCount = items.filter((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
+  const inProgressCount = items.filter((it: Record<string, unknown>) => it.status === 'in_progress').length;
   const cancelledCount = items.filter((it: Record<string, unknown>) => it.status === 'cancelled').length;
   const waitingCount = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting').length;
   const pendingCount = items.filter((it: Record<string, unknown>) => it.status === 'pending' && it.waiting_status !== 'waiting').length;
@@ -677,8 +910,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </div>
               <div className="flex justify-between text-xs text-white/60 mt-1">
                 <span>{producedCount} produit(s)</span>
+                {inProgressCount > 0 && <span>{inProgressCount} en cours</span>}
                 {waitingCount > 0 && <span>{waitingCount} en attente</span>}
-                {pendingCount > 0 && <span>{pendingCount} en cours</span>}
+                {pendingCount > 0 && <span>{pendingCount} a faire</span>}
               </div>
             </div>
           )}
@@ -692,6 +926,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
             {confirmMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
+          </button>
+        )}
+        {['confirmed', 'in_progress'].includes(plan.status) && (
+          <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
+            <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients
           </button>
         )}
         {plan.status === 'confirmed' && (
@@ -709,13 +948,26 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </>
         )}
         {plan.status === 'in_progress' && isChef && (() => {
-          const produciblePending = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
-          const allProduced = produciblePending.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
+          const pendingItems = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
+          const inProgressItems = items.filter((it: Record<string, unknown>) => it.status === 'in_progress');
+          const allProduced = pendingItems.length === 0 && inProgressItems.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
           return (
             <>
-              {produciblePending.length > 0 && (
-                <button onClick={() => setShowCompletion(true)} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-                  <Factory size={16} /> Produire tout ({produciblePending.length})
+              {pendingItems.length > 0 && (
+                <button onClick={async () => {
+                  const ids = pendingItems.map((it: Record<string, unknown>) => it.id as string);
+                  try {
+                    await productionApi.startItems(id!, ids);
+                    await queryClient.invalidateQueries({ queryKey: ['production', id] });
+                    toast.success(`${ids.length} production(s) lancee(s)`);
+                  } catch (e: any) { toast.error(e?.response?.data?.error?.message || 'Erreur'); }
+                }} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                  <Play size={16} /> Lancer tout ({pendingItems.length})
+                </button>
+              )}
+              {inProgressItems.length > 0 && (
+                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                  <Factory size={16} /> Enregistrer tout ({inProgressItems.length})
                 </button>
               )}
               {waitingCount > 0 && allProduced && (
@@ -824,6 +1076,26 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
+      {/* ══════════════ WARNINGS BANNER ══════════════ */}
+      {plan.warnings && (plan.warnings as string[]).length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />
+            <span className="text-sm font-semibold text-amber-800">
+              Alertes ({(plan.warnings as string[]).length})
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {[...new Set(plan.warnings as string[])].map((w: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-amber-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                {w}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ══════════════ ROLE FILTER BANNER ══════════════ */}
       {allowedSlugs && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
@@ -923,20 +1195,23 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     {items.map((item: Record<string, unknown>, idx: number) => {
                       const itemStatus = (item.status as string) || 'pending';
                       const isPending = itemStatus === 'pending';
+                      const isInProgress = itemStatus === 'in_progress';
                       const isItemWaiting = item.waiting_status === 'waiting';
                       const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
                       const isCancelled = itemStatus === 'cancelled';
                       const prodTs = item.production_timestamp || item.produced_at;
+                      const startTs = item.started_at as string | null;
                       const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
                       const sld = item.shelf_life_days as number;
                       const dlcD = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
                       const nowD = new Date();
                       const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
+                      const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
                       const planDateObj = new Date(plan.plan_date as string);
-                      const lotNumber = `LOT-${format(planDateObj, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
+                      const lotNumber = (item.lot_number as string) || `LOT-${format(planDateObj, 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
 
                       return (
-                        <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                        <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                           <td className="px-5 py-3">
                             <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
                           </td>
@@ -949,13 +1224,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                             ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
-                            {isProduced ? lotNumber : <span className="text-gray-300">—</span>}
+                            {(isProduced || isInProgress) ? lotNumber : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
-                            {isProduced && prodTs ? format(prodDate, 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
+                            {isProduced && prodTs ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-3 text-gray-600">
-                            {isProduced && prodBy ? prodBy : <span className="text-gray-300">—</span>}
+                            {isProduced && prodBy ? prodBy : isInProgress && startedBy ? startedBy : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-3 text-center whitespace-nowrap">
                             {isProduced && dlcD ? (
@@ -978,6 +1253,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                           <td className="px-3 py-3 text-center">
                             {isProduced ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><CheckCircle size={11} /> Produit</span>
+                            ) : isInProgress ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 animate-pulse"><Play size={11} /> En cours</span>
                             ) : isCancelled ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
                             ) : isItemWaiting ? (
@@ -988,8 +1265,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                           </td>
                           <td className="px-3 py-3 text-center">
                             {plan.status === 'in_progress' && isChef && isPending && !isItemWaiting ? (
-                              <button onClick={() => setSingleProduceItem(item)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
-                                <Factory size={12} /> Produire
+                              <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
+                                <Play size={12} /> Lancer
+                              </button>
+                            ) : plan.status === 'in_progress' && isChef && isInProgress ? (
+                              <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
+                                <Play size={12} /> Continuer
                               </button>
                             ) : isProduced ? (
                               <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
@@ -1044,20 +1325,23 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             <tbody>
               {items.map((item: Record<string, unknown>, idx: number) => {
                 const itemStatus = (item.status as string) || 'pending';
+                const isInProgress = itemStatus === 'in_progress';
                 const isWaiting = item.waiting_status === 'waiting';
                 const isCancelled = itemStatus === 'cancelled';
                 const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
                 const prodTimestamp = item.production_timestamp || item.produced_at;
+                const startTs = item.started_at as string | null;
                 const prodDate = prodTimestamp ? new Date(prodTimestamp as string) : new Date(plan.plan_date);
                 const sldays = item.shelf_life_days as number;
                 const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sldays ? new Date(prodDate.getTime() + sldays * 86400000) : null;
                 const now = new Date();
                 const producedBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
+                const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
                 const planDateObj2 = new Date(plan.plan_date as string);
-                const lotNumber = `LOT-${format(planDateObj2, 'yyyyMMdd')}-${(plan.id as string).slice(0, 4).toUpperCase()}-${(item.id as string).slice(0, 4).toUpperCase()}`;
+                const lotNumber = (item.lot_number as string) || `LOT-${format(planDateObj2, 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
 
                 return (
-                  <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                  <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                     <td className="px-5 py-3">
                       <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
                     </td>
@@ -1070,13 +1354,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                       ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
-                      {isProduced ? lotNumber : <span className="text-gray-300">—</span>}
+                      {(isProduced || isInProgress) ? lotNumber : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
-                      {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
+                      {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-gray-600">
-                      {isProduced && producedBy ? producedBy : <span className="text-gray-300">—</span>}
+                      {isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       {isProduced && dlcDate ? (
@@ -1103,6 +1387,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700"><TrendingUp size={11} /> Transfere</span>
                       ) : itemStatus === 'received' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700"><Package size={11} /> Recu</span>
+                      ) : isInProgress ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 animate-pulse"><Play size={11} /> En cours</span>
                       ) : isCancelled ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
                       ) : isWaiting ? (
@@ -1113,8 +1399,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     </td>
                     <td className="px-3 py-3 text-center">
                       {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
-                        <button onClick={() => setSingleProduceItem(item)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
-                          <Factory size={12} /> Produire
+                        <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
+                          <Play size={12} /> Lancer
+                        </button>
+                      ) : plan.status === 'in_progress' && isChef && isInProgress ? (
+                        <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
+                          <Play size={12} /> Continuer
                         </button>
                       ) : isProduced ? (
                         <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
@@ -1301,6 +1591,119 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
+      {/* ══════════════ FEFO LOT SELECTION PREVIEW ══════════════ */}
+      {['confirmed', 'in_progress'].includes(plan.status) && (fefoPreview as Record<string, unknown>[]).length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
+              <Layers size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">Selection FEFO des lots</h2>
+              <span className="text-xs text-gray-500">{(fefoPreview as Record<string, unknown>[]).length} ingredient(s)</span>
+            </div>
+          </div>
+
+          <div className="divide-y divide-gray-50">
+            {(fefoPreview as Record<string, unknown>[]).map((item: Record<string, unknown>) => {
+              const ingredientId = item.ingredientId as string;
+              const lots = (item.lots || []) as Record<string, unknown>[];
+              const shortfall = item.shortfall as number;
+              const hasExpiringSoon = lots.some((l) => l.isExpiringSoon);
+              const isExpanded = expandedFefoIngredients.has(ingredientId);
+              const barColor = shortfall > 0 ? 'bg-red-400' : hasExpiringSoon ? 'bg-orange-400' : 'bg-emerald-500';
+
+              return (
+                <div key={ingredientId}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExpandedFefoIngredients((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(ingredientId)) next.delete(ingredientId);
+                        else next.add(ingredientId);
+                        return next;
+                      });
+                    }}
+                    className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors text-left"
+                  >
+                    <div className={`w-1 h-10 rounded-full flex-shrink-0 ${barColor}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-gray-900">{item.ingredientName as string}</div>
+                      <div className="text-xs text-gray-400">{item.ingredientUnit as string}</div>
+                    </div>
+                    <div className="text-center flex-shrink-0">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
+                      <div className="text-sm font-bold text-gray-700">{(item.neededQuantity as number).toFixed(2)}</div>
+                    </div>
+                    <div className="text-center flex-shrink-0">
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Lots</div>
+                      <div className="text-sm font-bold text-gray-700">{lots.length}</div>
+                    </div>
+                    {shortfall > 0 && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
+                        <AlertTriangle size={10} /> -{shortfall.toFixed(2)}
+                      </span>
+                    )}
+                    {hasExpiringSoon && !shortfall && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 flex items-center gap-1 flex-shrink-0">
+                        <Flame size={10} /> DLC proche
+                      </span>
+                    )}
+                    {!shortfall && !hasExpiringSoon && (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
+                        <CheckCircle size={10} /> OK
+                      </span>
+                    )}
+                    <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isExpanded && lots.length > 0 && (
+                    <div className="bg-gray-50/50 px-5 pb-3">
+                      <div className="ml-5 space-y-1.5">
+                        {lots.map((lot: Record<string, unknown>) => {
+                          const isExpiringSoon = lot.isExpiringSoon as boolean;
+                          const daysUntilExpiry = lot.daysUntilExpiry as number | null;
+                          return (
+                            <div key={lot.lotId as string} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs ${isExpiringSoon ? 'bg-orange-50 border border-orange-200' : 'bg-white border border-gray-100'}`}>
+                              <span className="font-mono px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 font-medium">
+                                {(lot.lotNumber as string) || '—'}
+                              </span>
+                              <span className="text-gray-500">
+                                {(lot.supplierLotNumber as string) || 'Sans ref.'}
+                              </span>
+                              <span className="font-bold text-gray-700">
+                                {(lot.quantityToUse as number).toFixed(2)} / {(lot.quantityAvailable as number).toFixed(2)}
+                              </span>
+                              {lot.expirationDate && (
+                                <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${isExpiringSoon ? 'bg-orange-100 text-orange-700 font-medium' : 'bg-gray-100 text-gray-600'}`}>
+                                  {isExpiringSoon && <Flame size={10} className="text-orange-500" />}
+                                  DLC: {format(new Date(lot.expirationDate as string), 'dd/MM/yyyy')}
+                                </span>
+                              )}
+                              {daysUntilExpiry !== null && (
+                                <span className={`px-1.5 py-0.5 rounded ${daysUntilExpiry < 3 ? 'bg-orange-100 text-orange-700 font-medium' : daysUntilExpiry < 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  {daysUntilExpiry < 0 ? 'Expire' : `J-${daysUntilExpiry}`}
+                                </span>
+                              )}
+                              {lot.supplierName && (
+                                <span className="text-gray-400 ml-auto">{String(lot.supplierName)}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ══════════════ LOT TRACEABILITY ══════════════ */}
       {(plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1352,472 +1755,20 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ SINGLE ITEM PRODUCTION MODAL ══════════════ */}
-      {singleProduceItem && (
-        <SingleItemProductionModal
+      {/* ══════════════ PRODUCTION LAUNCH MODAL (4-step) ══════════════ */}
+      {showProductionLaunch && (
+        <ProductionLaunchModal
           planId={id!}
-          item={singleProduceItem}
-          onClose={() => setSingleProduceItem(null)}
-          onCompleted={async () => {
-            const freshPlan = await productionApi.getById(id!);
-            // Auto-print if plan was auto-completed
-            const allDone = (freshPlan.items || []).every((it: Record<string, unknown>) => it.status !== 'pending' || it.waiting_status === 'waiting');
-            if (freshPlan.status === 'completed' || allDone) {
-              printFicheProduction(freshPlan);
-            }
-          }}
-        />
-      )}
-
-      {/* ══════════════ COMPLETION MODAL ══════════════ */}
-      {showCompletion && (
-        <CompletionModal
-          planId={id!}
-          items={items}
-          allItems={allItems}
-          onClose={() => setShowCompletion(false)}
-          onCompleted={async () => {
-            const freshPlan = await productionApi.getById(id!);
-            printFicheProduction(freshPlan);
-          }}
+          plan={plan}
+          items={items.filter((it: Record<string, unknown>) => it.status === 'in_progress' || it.status === 'pending')}
+          targetItemId={launchTargetItemId}
+          needs={needs}
+          fefoPreview={fefoPreview}
+          onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); }}
+          onCompleted={() => {}}
         />
       )}
     </div>
   );
 }
 
-function SingleItemProductionModal({ planId, item, onClose, onCompleted }: {
-  planId: string;
-  item: Record<string, unknown>;
-  onClose: () => void;
-  onCompleted: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const planned = item.planned_quantity as number;
-  const [actualQty, setActualQty] = useState(planned);
-  const [producedAt, setProducedAt] = useState(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  });
-  const [declareLoss, setDeclareLoss] = useState(false);
-  const [lossQty, setLossQty] = useState(0);
-  const [lossReason, setLossReason] = useState('rate');
-  const [lossNote, setLossNote] = useState('');
-
-  // When loss is toggled on, auto-set loss qty from difference; when loss qty changes, adjust actual
-  const handleToggleLoss = () => {
-    if (!declareLoss) {
-      setDeclareLoss(true);
-      if (lossQty === 0) setLossQty(1);
-      if (actualQty === planned) setActualQty(planned - 1);
-    } else {
-      setDeclareLoss(false);
-    }
-  };
-
-  const handleLossQtyChange = (val: number) => {
-    const clamped = Math.max(0, Math.min(val, planned));
-    setLossQty(clamped);
-    setActualQty(planned - clamped);
-  };
-
-  const handleActualQtyChange = (val: number) => {
-    setActualQty(val);
-    if (declareLoss && val < planned) {
-      setLossQty(planned - val);
-    }
-  };
-
-  const produceMutation = useMutation({
-    mutationFn: async () => {
-      const result = await productionApi.produceItems(planId, [{ planItemId: item.id as string, actualQuantity: actualQty }], producedAt);
-      if (declareLoss && lossQty > 0) {
-        await productLossesApi.create({
-          productId: item.product_id,
-          quantity: lossQty,
-          lossType: 'production',
-          reason: lossReason,
-          reasonNote: lossNote || undefined,
-          productionPlanId: planId,
-        });
-      }
-      return result;
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['production'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['product-losses'] });
-      queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
-      const msg = declareLoss && lossQty > 0
-        ? `"${item.product_name}" produit (${actualQty}) — ${lossQty} perte(s) declaree(s)`
-        : `"${item.product_name}" produit — stock mis a jour`;
-      toast.success(msg);
-      if (result.autoCompleted) {
-        toast.success('Plan de production termine automatiquement', { duration: 4000 });
-      }
-      if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
-      }
-      onClose();
-      onCompleted();
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || 'Erreur lors de la production');
-    },
-  });
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-2xl p-5 text-white flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Factory size={20} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Produire un article</h2>
-              <p className="text-emerald-100 text-xs mt-0.5">Production individuelle</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="flex items-center gap-3 mb-5 bg-gray-50 rounded-xl p-3">
-            {item.product_image ? (
-              <img src={item.product_image as string} alt="" className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-                <ClipboardList size={18} className="text-amber-400" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-gray-900 truncate">{item.product_name as string}</div>
-              <div className="text-xs text-gray-500">Planifie : {planned} unite(s)</div>
-            </div>
-          </div>
-
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            <span className="flex items-center gap-1.5"><Clock size={14} className="text-emerald-500" /> Date et heure de production</span>
-          </label>
-          <input
-            type="datetime-local"
-            value={producedAt}
-            onChange={e => setProducedAt(e.target.value)}
-            className="w-full py-2.5 px-4 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all mb-4"
-          />
-
-          <label className="block text-sm font-medium text-gray-700 mb-2">Quantite produite</label>
-          <input
-            type="number" min="0" value={actualQty}
-            onChange={e => handleActualQtyChange(parseInt(e.target.value) || 0)}
-            className="w-full py-3 px-4 border border-gray-200 rounded-xl text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-          />
-
-          {/* Loss declaration — always visible */}
-          <div className={`mt-4 border rounded-xl overflow-hidden ${declareLoss ? 'border-orange-300' : 'border-gray-200'}`}>
-            <button
-              type="button"
-              onClick={handleToggleLoss}
-              className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${declareLoss ? 'bg-orange-50 text-orange-800' : 'bg-gray-50 text-gray-700 hover:bg-orange-50'}`}
-            >
-              <span className="flex items-center gap-2">
-                <Flame size={14} className={declareLoss ? 'text-orange-500' : 'text-gray-400'} />
-                Declarer une perte
-              </span>
-              <div className={`w-9 h-5 rounded-full transition-colors flex items-center ${declareLoss ? 'bg-orange-500 justify-end' : 'bg-gray-300 justify-start'}`}>
-                <div className="w-4 h-4 bg-white rounded-full mx-0.5 shadow-sm" />
-              </div>
-            </button>
-            {declareLoss && (
-              <div className="px-4 py-3 space-y-3 bg-orange-50/50">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantite perdue</label>
-                  <input
-                    type="number" min="1" max={planned}
-                    value={lossQty}
-                    onChange={e => handleLossQtyChange(parseInt(e.target.value) || 0)}
-                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm font-bold text-center bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Motif de la perte</label>
-                  <select
-                    value={lossReason}
-                    onChange={e => setLossReason(e.target.value)}
-                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  >
-                    {PRODUCTION_LOSS_REASONS.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Note (optionnel)</label>
-                  <input
-                    type="text" value={lossNote}
-                    onChange={e => setLossNote(e.target.value)}
-                    placeholder="Detail supplementaire..."
-                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                </div>
-                <div className="bg-white rounded-lg p-2.5 border border-orange-100 text-xs text-gray-600">
-                  <span className="font-medium">Resume :</span> {actualQty} produit(s) + {lossQty} perte(s) = {actualQty + lossQty}/{planned} planifie(s)
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="p-5 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">
-            Annuler
-          </button>
-          <button onClick={() => produceMutation.mutate()} disabled={produceMutation.isPending || actualQty <= 0}
-            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center justify-center gap-2">
-            {produceMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-            {produceMutation.isPending ? 'Production...' : 'Produire'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CompletionModal({ planId, items, allItems, onClose, onCompleted }: {
-  planId: string;
-  items: Record<string, unknown>[];
-  allItems: Record<string, unknown>[];
-  onClose: () => void;
-  onCompleted: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const producibleItems = items.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
-  const producibleAllItems = allItems.filter((it) => it.status === 'pending' && it.waiting_status !== 'waiting');
-  const [actuals, setActuals] = useState<Record<string, number>>(
-    Object.fromEntries(producibleAllItems.map(it => [it.id as string, it.planned_quantity as number]))
-  );
-  const [producedAt, setProducedAt] = useState(() => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
-  });
-  const [declareLosses, setDeclareLosses] = useState(false);
-  const [globalLossReason, setGlobalLossReason] = useState('rate');
-  const [globalLossNote, setGlobalLossNote] = useState('');
-
-  // Items that have losses (actual < planned)
-  const itemsWithLosses = producibleAllItems.filter(it => {
-    const actual = actuals[it.id as string] || 0;
-    return actual > 0 && actual < (it.planned_quantity as number);
-  });
-  const totalLossQty = itemsWithLosses.reduce((sum, it) => sum + ((it.planned_quantity as number) - (actuals[it.id as string] || 0)), 0);
-
-  // When toggling losses on, reduce all items by 1 if all are at planned qty (to show intent)
-  const handleToggleLosses = () => {
-    setDeclareLosses(!declareLosses);
-  };
-
-  const produceMutation = useMutation({
-    mutationFn: async () => {
-      const result = await productionApi.produceItems(
-        planId,
-        Object.entries(actuals)
-          .filter(([, qty]) => qty > 0)
-          .map(([planItemId, actualQuantity]) => ({ planItemId, actualQuantity })),
-        producedAt
-      );
-      // Declare losses if enabled
-      if (declareLosses && itemsWithLosses.length > 0) {
-        await Promise.all(itemsWithLosses.map(it => {
-          const lossQty = (it.planned_quantity as number) - (actuals[it.id as string] || 0);
-          return productLossesApi.create({
-            productId: it.product_id,
-            quantity: lossQty,
-            lossType: 'production',
-            reason: globalLossReason,
-            reasonNote: globalLossNote || undefined,
-            productionPlanId: planId,
-          });
-        }));
-      }
-      return result;
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['production'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['product-losses'] });
-      queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
-      const producedCount = Object.values(actuals).filter(q => q > 0).length;
-      const msg = declareLosses && totalLossQty > 0
-        ? `${producedCount} article(s) produit(s) — ${totalLossQty} perte(s) declaree(s)`
-        : `${producedCount} article(s) produit(s) — stock mis a jour`;
-      toast.success(msg);
-      if (result.autoCompleted) {
-        toast.success('Plan de production termine automatiquement', { duration: 4000 });
-      }
-      if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
-      }
-      onClose();
-      onCompleted();
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.error?.message || error?.message || 'Erreur lors de la production';
-      toast.error(message);
-    },
-  });
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        {/* Header gradient */}
-        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-2xl p-5 text-white flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Factory size={20} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Produire les articles</h2>
-              <p className="text-emerald-100 text-xs mt-0.5">{producibleItems.length} article(s) a produire — Le stock sera mis a jour</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <span className="flex items-center gap-1.5"><Clock size={14} className="text-emerald-500" /> Date et heure de production</span>
-            </label>
-            <input
-              type="datetime-local"
-              value={producedAt}
-              onChange={e => setProducedAt(e.target.value)}
-              className="w-full py-2.5 px-4 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
-            />
-          </div>
-          <div className="space-y-2">
-            {/* Column headers */}
-            <div className="grid grid-cols-[1fr_80px_90px] gap-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-2">
-              <span>Produit</span>
-              <span className="text-right">Planifie</span>
-              <span className="text-right">Produit</span>
-            </div>
-            {producibleItems.map((item) => {
-              const actual = actuals[item.id as string] || 0;
-              const planned = item.planned_quantity as number;
-              const hasItemLoss = actual > 0 && actual < planned;
-              return (
-                <div key={item.id as string} className={`grid grid-cols-[1fr_80px_90px] gap-3 items-center py-2 rounded-lg px-2 -mx-2 transition-colors ${hasItemLoss ? 'bg-orange-50' : 'hover:bg-gray-50'}`}>
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {item.product_image ? (
-                      <img src={item.product_image as string} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                        <ClipboardList size={14} className="text-amber-400" />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <span className="font-medium text-sm truncate text-gray-800 block">{item.product_name as string}</span>
-                      {hasItemLoss && (
-                        <span className="text-[10px] text-orange-600 flex items-center gap-0.5">
-                          <Flame size={10} /> {planned - actual} perte(s)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-right text-gray-500 font-medium">{planned}</span>
-                  <input
-                    type="number" min="0"
-                    value={actual}
-                    onChange={(e) => setActuals({ ...actuals, [item.id as string]: parseInt(e.target.value) || 0 })}
-                    className={`w-full text-right py-2 px-3 border rounded-xl text-sm font-medium focus:outline-none focus:ring-2 transition-all ${hasItemLoss ? 'border-orange-300 focus:ring-orange-400 focus:border-orange-400' : 'border-gray-200 focus:ring-emerald-500 focus:border-emerald-500'}`}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Loss declaration section — always visible */}
-          <div className={`mt-4 border rounded-xl overflow-hidden ${declareLosses ? 'border-orange-300' : 'border-gray-200'}`}>
-            <button
-              type="button"
-              onClick={handleToggleLosses}
-              className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${declareLosses ? 'bg-orange-50 text-orange-800' : 'bg-gray-50 text-gray-700 hover:bg-orange-50'}`}
-            >
-              <span className="flex items-center gap-2">
-                <Flame size={14} className={declareLosses ? 'text-orange-500' : 'text-gray-400'} />
-                Declarer des pertes
-                {declareLosses && totalLossQty > 0 && (
-                  <span className="bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{totalLossQty}</span>
-                )}
-              </span>
-              <div className={`w-9 h-5 rounded-full transition-colors flex items-center ${declareLosses ? 'bg-orange-500 justify-end' : 'bg-gray-300 justify-start'}`}>
-                <div className="w-4 h-4 bg-white rounded-full mx-0.5 shadow-sm" />
-              </div>
-            </button>
-            {declareLosses && (
-              <div className="px-4 py-3 space-y-3 bg-orange-50/50">
-                <p className="text-xs text-orange-700">Reduisez la quantite produite des articles concernes. La difference sera declaree comme perte.</p>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Motif de la perte (pour tous)</label>
-                  <select
-                    value={globalLossReason}
-                    onChange={e => setGlobalLossReason(e.target.value)}
-                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  >
-                    {PRODUCTION_LOSS_REASONS.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Note (optionnel)</label>
-                  <input
-                    type="text" value={globalLossNote}
-                    onChange={e => setGlobalLossNote(e.target.value)}
-                    placeholder="Detail supplementaire..."
-                    className="w-full py-2 px-3 border border-orange-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                </div>
-                {/* Summary of losses */}
-                {itemsWithLosses.length > 0 && (
-                  <div className="bg-white rounded-lg p-2.5 border border-orange-100">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Pertes a declarer</div>
-                    {itemsWithLosses.map(it => {
-                      const lossQ = (it.planned_quantity as number) - (actuals[it.id as string] || 0);
-                      return (
-                        <div key={it.id as string} className="flex justify-between text-xs py-0.5">
-                          <span className="text-gray-600 truncate">{it.product_name as string}</span>
-                          <span className="text-orange-600 font-medium flex-shrink-0 ml-2">-{lossQ}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {itemsWithLosses.length === 0 && (
-                  <div className="bg-white rounded-lg p-2.5 border border-orange-100 text-xs text-gray-500 text-center">
-                    Modifiez les quantites ci-dessus pour declarer des pertes
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-5 pt-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">
-            Annuler
-          </button>
-          <button onClick={() => produceMutation.mutate()} disabled={produceMutation.isPending || Object.values(actuals).every(q => q <= 0)}
-            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center justify-center gap-2">
-            {produceMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-            {produceMutation.isPending ? 'Production...' : 'Produire et mettre a jour'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

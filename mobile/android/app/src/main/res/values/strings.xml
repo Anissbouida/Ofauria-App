@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ofauria</string>
+    <string name="title_activity_main">Ofauria</string>
+    <string name="package_name">com.ofauria.app</string>
+    <string name="custom_url_scheme">com.ofauria.app</string>
+</resources>

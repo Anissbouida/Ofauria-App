@@ -6,4 +6,6 @@ export const salesApi = {
   checkout: (data: Record<string, unknown>) => api.post('/sales/checkout', data).then(r => r.data.data),
   todayStats: () => api.get('/sales/today').then(r => r.data.data),
   summary: (params: Record<string, string>) => api.get('/sales/summary', { params }).then(r => r.data.data),
+  importCSV: (data: { days: { date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }[] }) =>
+    api.post('/sales/import', data).then(r => r.data.data),
 };

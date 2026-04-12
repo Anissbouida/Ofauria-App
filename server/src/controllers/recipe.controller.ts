@@ -12,6 +12,11 @@ export const recipeController = {
     if (!recipe) { res.status(404).json({ success: false, error: { message: 'Recette non trouvée' } }); return; }
     res.json({ success: true, data: recipe });
   },
+  async getByProductId(req: AuthRequest, res: Response) {
+    const recipe = await recipeRepository.findByProductId(req.params.productId);
+    if (!recipe) { res.status(404).json({ success: false, error: { message: 'Aucune recette pour ce produit' } }); return; }
+    res.json({ success: true, data: recipe });
+  },
   async baseRecipes(_req: AuthRequest, res: Response) {
     const recipes = await recipeRepository.findBaseRecipes();
     res.json({ success: true, data: recipes });

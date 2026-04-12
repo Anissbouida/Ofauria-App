@@ -67,4 +67,31 @@ export const saleController = {
     const result = await saleRepository.summary({ dateFrom, dateTo, groupBy, storeId: req.user!.storeId });
     res.json({ success: true, data: result });
   },
+
+  async importCSV(req: AuthRequest, res: Response) {
+    const { days } = req.body as {
+      days: {
+        date: string;
+        items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[];
+      }[];
+    };
+
+    if (!days || !Array.isArray(days) || days.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'Données manquantes' } });
+      return;
+    }
+
+    const results = [];
+    for (const day of days) {
+      const result = await saleRepository.importDailySales({
+        date: day.date,
+        userId: req.user!.userId,
+        storeId: req.user!.storeId,
+        items: day.items,
+      });
+      results.push({ date: day.date, ...result });
+    }
+
+    res.json({ success: true, data: results });
+  },
 };

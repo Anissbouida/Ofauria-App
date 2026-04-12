@@ -4,9 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { settingsApi } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
+import { referentielApi } from '../../api/referentiel.api';
 import {
   Save, Palette, Building2, RotateCcw, MapPin, Plus, Pencil, Trash2, Store,
   Printer, Upload, Image, Eye, Type, FileText, ToggleLeft, ToggleRight,
+  Database, Tag, Check, X, ShieldCheck, ArrowDownUp, Search, Download,
+  ChevronLeft, RotateCw, History, BarChart3, AlertTriangle, EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -24,7 +27,7 @@ const PRESET_COLORS = [
   { name: 'Marron', primary: '#6d4c41', secondary: '#5d4037' },
 ];
 
-type SettingsTab = 'general' | 'print' | 'stores';
+type SettingsTab = 'general' | 'print' | 'stores' | 'referentiel';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -81,6 +84,7 @@ export default function SettingsPage() {
     { key: 'general', label: 'General', icon: <Building2 size={18} /> },
     { key: 'print', label: 'Impression', icon: <Printer size={18} /> },
     { key: 'stores', label: 'Points de vente', icon: <Store size={18} /> },
+    { key: 'referentiel', label: 'Referentiel', icon: <Database size={18} /> },
   ];
 
   return (
@@ -131,6 +135,8 @@ export default function SettingsPage() {
       {activeTab === 'print' && <PrintTab />}
 
       {activeTab === 'stores' && <StoresSection />}
+
+      {activeTab === 'referentiel' && <ReferentielTab />}
     </div>
   );
 }
@@ -871,6 +877,695 @@ function StoresSection() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ============ REFERENTIEL TAB ============ */
+
+function ReferentielTab() {
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [view, setView] = useState<'dashboard' | 'table'>('dashboard');
+
+  const openTable = (tableId: string) => {
+    setSelectedTable(tableId);
+    setView('table');
+  };
+
+  const goBack = () => {
+    setSelectedTable(null);
+    setView('dashboard');
+  };
+
+  if (view === 'table' && selectedTable) {
+    return <ParamTable tableId={selectedTable} onBack={goBack} />;
+  }
+
+  return <RefDashboard onOpenTable={openTable} />;
+}
+
+/* ============ REFERENTIEL DASHBOARD ============ */
+
+function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['ref-dashboard'],
+    queryFn: referentielApi.dashboard,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" />
+      </div>
+    );
+  }
+
+  const tables = (data?.tables || []) as Record<string, unknown>[];
+  const recentChanges = (data?.recentChanges || []) as Record<string, unknown>[];
+  const totalActive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.active_count as number) || 0), 0);
+  const totalInactive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.inactive_count as number) || 0), 0);
+
+  return (
+    <div className="space-y-5">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border p-4 text-center">
+          <p className="text-2xl font-bold text-gray-800">{tables.length}</p>
+          <p className="text-xs text-gray-500 mt-1">Tables de reference</p>
+        </div>
+        <div className="bg-white rounded-xl border p-4 text-center">
+          <p className="text-2xl font-bold text-green-600">{totalActive}</p>
+          <p className="text-xs text-gray-500 mt-1">Entrees actives</p>
+        </div>
+        <div className="bg-white rounded-xl border p-4 text-center">
+          <p className="text-2xl font-bold text-amber-500">{totalInactive}</p>
+          <p className="text-xs text-gray-500 mt-1">Inactives</p>
+        </div>
+      </div>
+
+      {/* Table cards */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+            <Database size={20} className="text-gray-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Tables de parametrage</h2>
+            <p className="text-sm text-gray-500">Cliquez pour gerer les entrees</p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          {tables.map((t) => (
+            <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
+              className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all text-left group">
+              <div className="w-10 h-10 rounded-lg bg-gray-50 group-hover:bg-gray-100 flex items-center justify-center flex-shrink-0">
+                <Tag size={18} className="text-gray-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-800 text-sm truncate">{String(t.label)}</p>
+                {Boolean(t.description) && (
+                  <p className="text-xs text-gray-400 truncate">{String(t.description)}</p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-sm font-bold text-gray-700">{String(t.active_count)}</span>
+                {((t.inactive_count as number) || 0) > 0 && (
+                  <span className="text-[10px] text-amber-500">{String(t.inactive_count)} inactif(s)</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent changes */}
+      {recentChanges.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+              <History size={20} className="text-gray-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">Dernieres modifications</h2>
+              <p className="text-sm text-gray-500">Historique des changements</p>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {recentChanges.slice(0, 15).map((log) => {
+              const actionLabels: Record<string, string> = {
+                create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
+              };
+              const actionColors: Record<string, string> = {
+                create: 'bg-green-50 text-green-700', update: 'bg-blue-50 text-blue-700',
+                deactivate: 'bg-red-50 text-red-700', reactivate: 'bg-amber-50 text-amber-700',
+              };
+              const action = String(log.action);
+              return (
+                <div key={String(log.id)} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-50">
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${actionColors[action] || 'bg-gray-50 text-gray-600'}`}>
+                    {actionLabels[action] || action}
+                  </span>
+                  <span className="text-xs text-gray-500 font-medium">{String(log.table_label || log.table_id)}</span>
+                  <span className="flex-1" />
+                  <span className="text-xs text-gray-400">
+                    {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : ''}
+                  </span>
+                  <span className="text-[10px] text-gray-300">
+                    {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM HH:mm', { locale: fr }) : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============ UNIVERSAL PARAM TABLE COMPONENT ============ */
+
+function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showAudit, setShowAudit] = useState(false);
+
+  // Form state
+  const [fLabel, setFLabel] = useState('');
+  const [fCode, setFCode] = useState('');
+  const [fDescription, setFDescription] = useState('');
+  const [fColor, setFColor] = useState('');
+  const [fMetadata, setFMetadata] = useState<Record<string, unknown>>({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['ref-entries', tableId, showInactive],
+    queryFn: () => referentielApi.entries(tableId, showInactive),
+  });
+
+  const { data: auditData } = useQuery({
+    queryKey: ['ref-audit', tableId],
+    queryFn: () => referentielApi.audit(tableId),
+    enabled: showAudit,
+  });
+
+  const table = data?.table as Record<string, unknown> | undefined;
+  const entries = (data?.entries || []) as Record<string, unknown>[];
+  const isNative = table?.source === 'native';
+  const isHierarchical = tableId === 'expense_categories' || tableId === 'revenue_categories';
+
+  const createMutation = useMutation({
+    mutationFn: (d: Record<string, unknown>) => referentielApi.create(tableId, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['ref-audit', tableId] });
+      // Also invalidate native caches so dropdowns update
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Entree ajoutee');
+      resetForm();
+    },
+    onError: () => toast.error('Erreur lors de la creation'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, d }: { id: string; d: Record<string, unknown> }) => referentielApi.update(tableId, id, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['ref-audit', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Entree modifiee');
+      resetForm();
+    },
+    onError: () => toast.error('Erreur lors de la modification'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => referentielApi.remove(tableId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(isNative ? 'Entree supprimee' : 'Entree desactivee');
+    },
+    onError: (err: Error & { response?: { data?: { error?: { message?: string; usageCount?: number } } } }) => {
+      const msg = err.response?.data?.error?.message || 'Impossible de supprimer';
+      toast.error(msg);
+    },
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (id: string) => referentielApi.reactivate(tableId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
+      toast.success('Entree reactivee');
+    },
+  });
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditItem(null);
+    setFLabel(''); setFCode(''); setFDescription(''); setFColor('');
+    setFMetadata({});
+  };
+
+  const openEdit = (entry: Record<string, unknown>) => {
+    setEditItem(entry);
+    setFLabel(String(entry.label || ''));
+    setFCode(String(entry.code || ''));
+    setFDescription(String(entry.description || ''));
+    setFColor(String(entry.color || ''));
+    setFMetadata((entry.metadata as Record<string, unknown>) || {});
+    setShowForm(true);
+  };
+
+  const handleSubmit = () => {
+    if (!fLabel.trim()) return;
+    const payload: Record<string, unknown> = {
+      label: fLabel.trim(),
+      code: fCode.trim() || undefined,
+      description: fDescription.trim() || undefined,
+      color: fColor || undefined,
+      metadata: Object.keys(fMetadata).length > 0 ? fMetadata : undefined,
+    };
+    if (editItem) {
+      updateMutation.mutate({ id: String(editItem.id), d: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  };
+
+  // Filter by search
+  const filtered = entries.filter((e) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return String(e.label || '').toLowerCase().includes(q)
+      || String(e.code || '').toLowerCase().includes(q)
+      || String(e.description || '').toLowerCase().includes(q);
+  });
+
+  const activeCount = entries.filter(e => e.is_active !== false).length;
+  const inactiveCount = entries.filter(e => e.is_active === false).length;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header with back button */}
+      <div className="bg-white rounded-xl shadow-sm border p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <ChevronLeft size={20} className="text-gray-500" />
+            </button>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">{String(table?.label || tableId)}</h2>
+              <p className="text-sm text-gray-500">
+                {activeCount} actif{activeCount > 1 ? 's' : ''}
+                {inactiveCount > 0 && <span className="text-amber-500 ml-1">· {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</span>}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowAudit(!showAudit)}
+              className={`p-2 rounded-lg transition-colors ${showAudit ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-400'}`}
+              title="Historique">
+              <History size={18} />
+            </button>
+            <button onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))}
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-400" title="Exporter CSV">
+              <Download size={18} />
+            </button>
+            <button onClick={() => { resetForm(); setShowForm(true); }}
+              className="btn-primary flex items-center gap-2 text-sm">
+              <Plus size={16} /> Ajouter
+            </button>
+          </div>
+        </div>
+
+        {/* Search + filters */}
+        <div className="flex items-center gap-3 mt-4">
+          <div className="flex-1 relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 text-sm" placeholder="Rechercher..." />
+          </div>
+          {!isNative && (
+            <button onClick={() => setShowInactive(!showInactive)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                showInactive
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}>
+              <EyeOff size={14} />
+              {showInactive ? 'Masquer inactifs' : 'Voir inactifs'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Audit log panel */}
+      {showAudit && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <History size={16} /> Historique des modifications
+          </h3>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {(auditData as Record<string, unknown>[] || []).length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">Aucune modification enregistree</p>
+            )}
+            {(auditData as Record<string, unknown>[] || []).slice(0, 30).map((log: Record<string, unknown>) => {
+              const actionLabels: Record<string, string> = {
+                create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
+              };
+              const actionColors: Record<string, string> = {
+                create: 'text-green-600', update: 'text-blue-600',
+                deactivate: 'text-red-600', reactivate: 'text-amber-600',
+              };
+              const action = String(log.action);
+              return (
+                <div key={String(log.id)} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-gray-50">
+                  <span className={`font-medium ${actionColors[action] || 'text-gray-600'}`}>
+                    {actionLabels[action] || action}
+                  </span>
+                  <span className="text-gray-400">—</span>
+                  <span className="text-gray-600">
+                    {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : 'Systeme'}
+                  </span>
+                  <span className="flex-1" />
+                  <span className="text-gray-300">
+                    {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Entries list — hierarchical or flat */}
+      <div className="bg-white rounded-xl shadow-sm border p-5">
+        {isHierarchical ? (
+          <HierarchicalEntryList
+            entries={filtered}
+            onEdit={openEdit}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            onReactivate={(id) => reactivateMutation.mutate(id)}
+            onAddChild={(parent) => {
+              resetForm();
+              const parentLevel = (parent._level as number) || (parent.metadata as Record<string, unknown>)?.level as number || 1;
+              setFMetadata({
+                ...fMetadata,
+                parent_id: String(parent.id),
+                level: parentLevel + 1,
+              });
+              setShowForm(true);
+            }}
+            isNative={isNative}
+          />
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((entry) => (
+              <EntryRow key={String(entry.id)} entry={entry} onEdit={openEdit}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onReactivate={(id) => reactivateMutation.mutate(id)}
+                isNative={isNative} indent={0} />
+            ))}
+          </div>
+        )}
+        {filtered.length === 0 && (
+          <p className="text-center py-8 text-gray-400 text-sm">
+            {search ? 'Aucun resultat pour cette recherche' : 'Aucune entree dans cette table'}
+          </p>
+        )}
+      </div>
+
+      {/* Add/Edit form */}
+      {showForm && (
+        <div className="bg-white rounded-xl shadow-sm border p-5">
+          <h3 className="font-semibold text-gray-700 mb-4">
+            {editItem ? 'Modifier l\'entree' : 'Nouvelle entree'}
+            {Boolean(fMetadata.parent_id) && (
+              <span className="text-xs font-normal text-gray-400 ml-2">
+                (sous {String(entries.find(e => String(e.id) === String(fMetadata.parent_id))?.label || '...')})
+              </span>
+            )}
+          </h3>
+          <div className="grid sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Libelle *</label>
+              <input type="text" value={fLabel} onChange={(e) => setFLabel(e.target.value)}
+                className="input" placeholder={isHierarchical ? 'Ex: Charges sociales' : 'Ex: Kilogramme'} />
+            </div>
+            {!isHierarchical && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Code (optionnel)</label>
+                <input type="text" value={fCode} onChange={(e) => setFCode(e.target.value)}
+                  className="input font-mono" placeholder="Ex: kg" />
+              </div>
+            )}
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+            <input type="text" value={fDescription} onChange={(e) => setFDescription(e.target.value)}
+              className="input" placeholder="Description optionnelle" />
+          </div>
+
+          {!isHierarchical && (
+            <div className="grid sm:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Couleur</label>
+                <div className="flex gap-2">
+                  <input type="color" value={fColor || '#6b7280'} onChange={(e) => setFColor(e.target.value)}
+                    className="w-10 h-10 rounded cursor-pointer border border-gray-200" />
+                  <input type="text" value={fColor} onChange={(e) => setFColor(e.target.value)}
+                    className="input flex-1 font-mono text-sm" placeholder="#6b7280" />
+                  {fColor && (
+                    <button onClick={() => setFColor('')} className="p-2 hover:bg-gray-100 rounded-lg">
+                      <X size={16} className="text-gray-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Expense-specific: requires_po toggle */}
+          {tableId === 'expense_categories' && (
+            <div className="mb-4">
+              <ToggleSwitch
+                label="Bon de commande requis"
+                checked={Boolean(fMetadata.requires_po)}
+                onChange={(v) => setFMetadata({ ...fMetadata, requires_po: v })}
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end">
+            <button onClick={resetForm} className="btn-secondary text-sm">Annuler</button>
+            <button onClick={handleSubmit}
+              disabled={!fLabel.trim() || createMutation.isPending || updateMutation.isPending}
+              className="btn-primary text-sm">
+              {editItem ? 'Enregistrer' : 'Ajouter'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============ HIERARCHICAL ENTRY LIST ============ */
+
+const LEVEL_LABELS = ['Categorie', 'Sous-categorie', 'Type'];
+const LEVEL_COLORS = [
+  'bg-gray-800 text-white',
+  'bg-gray-100 text-gray-700',
+  'bg-white text-gray-600 border border-gray-100',
+];
+
+function HierarchicalEntryList({
+  entries,
+  onEdit,
+  onDelete,
+  onReactivate,
+  onAddChild,
+  isNative,
+}: {
+  entries: Record<string, unknown>[];
+  onEdit: (e: Record<string, unknown>) => void;
+  onDelete: (id: string) => void;
+  onReactivate: (id: string) => void;
+  onAddChild: (parent: Record<string, unknown>) => void;
+  isNative: boolean;
+}) {
+  // Build tree structure
+  const level1 = entries.filter(e => (e._level as number) === 1);
+  const level2 = entries.filter(e => (e._level as number) === 2);
+  const level3 = entries.filter(e => (e._level as number) === 3);
+
+  const getChildren = (parentId: string, fromLevel: Record<string, unknown>[]) =>
+    fromLevel.filter(e => String(e._parent_id) === parentId);
+
+  if (level1.length === 0 && entries.length > 0) {
+    // Flat list fallback
+    return (
+      <div className="space-y-2">
+        {entries.map((entry) => (
+          <EntryRow key={String(entry.id)} entry={entry} onEdit={onEdit}
+            onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={0} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {level1.map((cat) => {
+        const children2 = getChildren(String(cat.id), level2);
+        const directChildren3 = getChildren(String(cat.id), level3);
+        const inactive = cat.is_active === false;
+
+        return (
+          <div key={String(cat.id)} className={`rounded-xl border ${inactive ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}>
+            {/* Level 1 header */}
+            <div className={`flex items-center justify-between p-3 ${LEVEL_COLORS[0]} rounded-t-xl`}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">{String(cat.label)}</span>
+                <span className="text-[10px] opacity-70">{LEVEL_LABELS[0]}</span>
+                {Boolean(cat._requires_po) && (
+                  <span className="text-[10px] bg-blue-500/20 text-blue-200 px-1.5 py-0.5 rounded">BC requis</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {!inactive && (
+                  <button onClick={() => onAddChild(cat)} className="p-1 hover:bg-white/10 rounded"
+                    title="Ajouter une sous-categorie">
+                    <Plus size={14} />
+                  </button>
+                )}
+                <button onClick={() => onEdit(cat)} className="p-1 hover:bg-white/10 rounded">
+                  <Pencil size={14} />
+                </button>
+                <button onClick={() => { if (confirm('Desactiver cette categorie et tous ses enfants ?')) onDelete(String(cat.id)); }}
+                  className="p-1 hover:bg-white/10 rounded">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Level 2 subcategories */}
+            <div className="divide-y divide-gray-100">
+              {children2.map((sub) => {
+                const children3 = getChildren(String(sub.id), level3);
+                const subInactive = sub.is_active === false;
+                return (
+                  <div key={String(sub.id)} className={subInactive ? 'opacity-50' : ''}>
+                    {/* Level 2 row */}
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                        <span className="font-medium text-sm text-gray-700">{String(sub.label)}</span>
+                        <span className="text-[10px] text-gray-400">{LEVEL_LABELS[1]}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!subInactive && (
+                          <button onClick={() => onAddChild(sub)} className="p-1 hover:bg-gray-200 rounded"
+                            title="Ajouter un type">
+                            <Plus size={13} className="text-gray-500" />
+                          </button>
+                        )}
+                        <button onClick={() => onEdit(sub)} className="p-1 hover:bg-gray-200 rounded">
+                          <Pencil size={13} className="text-gray-400" />
+                        </button>
+                        <button onClick={() => { if (confirm('Desactiver cette sous-categorie ?')) onDelete(String(sub.id)); }}
+                          className="p-1 hover:bg-red-50 rounded">
+                          <Trash2 size={13} className="text-red-400" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Level 3 types under this subcategory */}
+                    {children3.map((type) => (
+                      <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
+                        onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={2} />
+                    ))}
+                  </div>
+                );
+              })}
+
+              {/* Level 3 types directly under level 1 (no subcategory) */}
+              {directChildren3.map((type) => (
+                <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
+                  onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={1} />
+              ))}
+            </div>
+
+            {children2.length === 0 && directChildren3.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">Aucun element</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============ SINGLE ENTRY ROW ============ */
+
+function EntryRow({
+  entry, onEdit, onDelete, onReactivate, isNative, indent,
+}: {
+  entry: Record<string, unknown>;
+  onEdit: (e: Record<string, unknown>) => void;
+  onDelete: (id: string) => void;
+  onReactivate: (id: string) => void;
+  isNative: boolean;
+  indent: number;
+}) {
+  const inactive = entry.is_active === false;
+  const paddingLeft = indent === 0 ? 'pl-3' : indent === 1 ? 'pl-8' : 'pl-12';
+
+  return (
+    <div className={`flex items-center justify-between py-2 pr-3 ${paddingLeft} ${
+      inactive ? 'opacity-50 bg-gray-50' : 'hover:bg-gray-50'
+    } transition-colors`}>
+      <div className="flex items-center gap-2 min-w-0">
+        {entry.color ? (
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: String(entry.color) }} />
+        ) : (
+          <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+        )}
+        <span className="text-sm text-gray-700">{String(entry.label)}</span>
+        {Boolean(entry.code) && (
+          <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+            {String(entry.code)}
+          </span>
+        )}
+        {inactive && (
+          <span className="text-[10px] font-medium bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">Inactif</span>
+        )}
+        {Boolean(entry._requires_po) && (
+          <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">BC requis</span>
+        )}
+        {Boolean(entry.description) && (
+          <span className="text-[10px] text-gray-400 hidden sm:inline truncate max-w-[200px]">{String(entry.description)}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+        {inactive ? (
+          <button onClick={() => onReactivate(String(entry.id))}
+            className="p-1 hover:bg-green-50 rounded" title="Reactiver">
+            <RotateCw size={13} className="text-green-500" />
+          </button>
+        ) : (
+          <>
+            <button onClick={() => onEdit(entry)} className="p-1 hover:bg-gray-100 rounded">
+              <Pencil size={13} className="text-gray-400" />
+            </button>
+            <button onClick={() => {
+              if (confirm(isNative ? 'Desactiver cette entree ?' : 'Desactiver cette entree ?'))
+                onDelete(String(entry.id));
+            }} className="p-1 hover:bg-red-50 rounded">
+              <Trash2 size={13} className="text-red-400" />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

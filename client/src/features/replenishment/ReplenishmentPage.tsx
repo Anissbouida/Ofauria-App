@@ -338,9 +338,10 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   const MARGIN = 1.10;
 
-  const getDayName = () => {
+  /** Nom du jour CIBLE (= lendemain, car la demande se fait le soir) */
+  const getTargetDayName = () => {
     const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-    return days[new Date().getDay()];
+    return days[(new Date().getDay() + 1) % 7];
   };
 
   const { data: recommendations, isLoading: recoLoading } = useQuery({
@@ -496,7 +497,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
               <div>
                 <h2 className="text-lg font-bold">Nouvelle demande d'approvisionnement</h2>
-                <p className="text-indigo-200 text-xs mt-0.5">{hasHistory ? `Basé sur les ventes de ${getDayName()} dernier (+10%)` : 'Suggestions aléatoires — aucun historique'}</p>
+                <p className="text-indigo-200 text-xs mt-0.5">{hasHistory ? `Suggestions pour ${getTargetDayName()} basees sur l'historique du meme jour (+10%)` : 'Aucun historique — saisie manuelle'}</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors text-xl leading-none">&times;</button>
@@ -616,9 +617,18 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                           const pid = item.product_id as string;
                           const sold = parseInt(item.last_week_qty as string) || 0;
                           const stock = parseFloat(item.current_stock as string) || 0;
+                          const refType = (item.reference_type as string) || 'j7';
+                          const refLabel = (item.reference_label as string) || '';
                           const suggested = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
                           const qty = selected[pid] || 0;
                           const isSelected = qty > 0;
+
+                          // Badge couleur selon la source de la suggestion
+                          const refBadge = refType === 'j7'
+                            ? { bg: 'bg-green-50 text-green-700 border-green-200', label: 'J-7' }
+                            : refType === 'j14'
+                              ? { bg: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'J-14' }
+                              : { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Moy.' };
 
                           return (
                             <div key={pid} className={`flex items-center gap-4 px-6 py-3 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
@@ -633,14 +643,18 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                                 </span>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title="Vendu la semaine dernière">
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {/* Reference source badge */}
+                                <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
+                                  {refBadge.label}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
                                   <Layers size={10} /> {sold}
                                 </span>
                                 <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
                                   <Package size={10} /> {Math.floor(stock)}
                                 </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title="Quantité suggérée">
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
                                   <Lightbulb size={10} /> {suggested}
                                 </span>
                               </div>
@@ -674,7 +688,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                 <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                   <Lightbulb size={28} className="text-gray-400" />
                 </div>
-                <p className="text-gray-500">Aucune donnée de vente pour {getDayName()}</p>
+                <p className="text-gray-500">Aucune donnée de vente pour {getTargetDayName()}</p>
                 <button onClick={() => setMode('catalog')} className="mt-3 text-indigo-600 text-sm font-medium hover:underline">
                   Sélectionner manuellement depuis le catalogue
                 </button>

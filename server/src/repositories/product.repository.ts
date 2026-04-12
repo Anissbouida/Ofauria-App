@@ -30,7 +30,7 @@ export const productRepository = {
               p.image_url, p.is_available, p.is_custom_orderable, p.preparation_time_min,
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
-              p.recycle_ingredient_id, p.max_reexpositions,
+              p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.created_at, p.updated_at,
               ${stockColumns}
               c.name as category_name, c.slug as category_slug,
@@ -93,6 +93,7 @@ export const productRepository = {
       isRecyclable: 'is_recyclable',
       recycleIngredientId: 'recycle_ingredient_id',
       maxReexpositions: 'max_reexpositions',
+      saleType: 'sale_type',
     };
 
     const fields: string[] = [];

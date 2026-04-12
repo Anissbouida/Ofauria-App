@@ -228,14 +228,9 @@ export default function EmittedInvoicesTab() {
     try {
       const response = await invoicesApi.downloadDocx(inv.id as string);
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${inv.invoice_number || 'facture'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { toast.error('Erreur lors du téléchargement'); }
   };
 

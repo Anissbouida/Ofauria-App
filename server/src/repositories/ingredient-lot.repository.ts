@@ -212,6 +212,87 @@ export const ingredientLotRepository = {
     return consumed;
   },
 
+  /** Preview FEFO lot allocation for a production plan (read-only, no consumption) */
+  async previewFEFO(planId: string, storeId?: string) {
+    // 1. Get ingredient needs for this plan
+    const needsResult = await db.query(
+      `SELECT pin.ingredient_id, ing.name AS ingredient_name, ing.unit AS ingredient_unit,
+              SUM(pin.needed_quantity) AS needed_quantity
+       FROM production_ingredient_needs pin
+       JOIN ingredients ing ON ing.id = pin.ingredient_id
+       WHERE pin.plan_id = $1
+       GROUP BY pin.ingredient_id, ing.name, ing.unit
+       ORDER BY ing.name`,
+      [planId]
+    );
+
+    const preview = [];
+
+    for (const need of needsResult.rows) {
+      const neededQty = parseFloat(need.needed_quantity);
+
+      // 2. Get active lots with remaining quantity, FEFO order
+      const conditions = [`il.ingredient_id = $1`, `il.status = 'active'`, `il.quantity_remaining > 0`];
+      const values: unknown[] = [need.ingredient_id];
+      if (storeId) { conditions.push(`il.store_id = $2`); values.push(storeId); }
+
+      const lotsResult = await db.query(
+        `SELECT il.id AS lot_id, il.lot_number, il.supplier_lot_number, il.quantity_remaining,
+                il.expiration_date, il.received_at,
+                s.name AS supplier_name,
+                CASE WHEN il.expiration_date IS NOT NULL
+                     THEN il.expiration_date - CURRENT_DATE
+                     ELSE NULL END AS days_until_expiry
+         FROM ingredient_lots il
+         LEFT JOIN suppliers s ON s.id = il.supplier_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY il.expiration_date ASC NULLS LAST, il.received_at ASC`,
+        values
+      );
+
+      // 3. Simulate FEFO allocation (read-only)
+      const lots = [];
+      let remaining = neededQty;
+      let totalAvailable = 0;
+
+      for (const lot of lotsResult.rows) {
+        const available = parseFloat(lot.quantity_remaining);
+        totalAvailable += available;
+
+        if (remaining <= 0) continue; // still count totalAvailable but don't allocate
+
+        const take = Math.min(available, remaining);
+        const daysUntilExpiry = lot.days_until_expiry !== null ? parseInt(lot.days_until_expiry) : null;
+
+        lots.push({
+          lotId: lot.lot_id,
+          lotNumber: lot.lot_number || '',
+          supplierLotNumber: lot.supplier_lot_number || '',
+          quantityAvailable: available,
+          quantityToUse: take,
+          expirationDate: lot.expiration_date ? lot.expiration_date.toISOString().split('T')[0] : null,
+          daysUntilExpiry,
+          isExpiringSoon: daysUntilExpiry !== null && daysUntilExpiry < 3,
+          supplierName: lot.supplier_name || null,
+        });
+
+        remaining -= take;
+      }
+
+      preview.push({
+        ingredientId: need.ingredient_id,
+        ingredientName: need.ingredient_name,
+        ingredientUnit: need.ingredient_unit,
+        neededQuantity: neededQty,
+        lots,
+        totalAvailableFromLots: totalAvailable,
+        shortfall: Math.max(0, neededQty - totalAvailable),
+      });
+    }
+
+    return preview;
+  },
+
   /** Quarantine a lot */
   async quarantine(id: string) {
     const result = await db.query(

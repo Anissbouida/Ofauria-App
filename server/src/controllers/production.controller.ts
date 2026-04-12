@@ -103,6 +103,24 @@ export const productionController = {
     res.json({ success: true, data: updated });
   },
 
+  // ═══ Start items: pending → in_progress ═══
+  async startItems(req: AuthRequest, res: Response) {
+    const plan = await productionRepository.findById(req.params.id);
+    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    if (plan.status !== 'in_progress') {
+      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour lancer des productions' } });
+      return;
+    }
+    const { itemIds, startedAt } = req.body;
+    if (!itemIds || itemIds.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'Aucun article a lancer' } });
+      return;
+    }
+    const result = await productionRepository.startItems(req.params.id, itemIds, req.user!.userId, startedAt);
+    const updated = await productionRepository.findById(req.params.id);
+    res.json({ success: true, data: updated, meta: result });
+  },
+
   // ═══ Partial Production: produce selected items ═══
   async produceItems(req: AuthRequest, res: Response) {
     const plan = await productionRepository.findById(req.params.id);
@@ -235,6 +253,13 @@ export const productionController = {
       const message = err instanceof Error ? err.message : 'Erreur lors de la restauration';
       res.status(409).json({ success: false, error: { message } });
     }
+  },
+
+  async analyzeSubRecipes(req: AuthRequest, res: Response) {
+    const plan = await productionRepository.findById(req.params.id);
+    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const analysis = await productionRepository.analyzeSubRecipes(req.params.id);
+    res.json({ success: true, data: analysis });
   },
 
   async complete(req: AuthRequest, res: Response) {

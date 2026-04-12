@@ -92,15 +92,40 @@ export const orderController = {
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
 
-    // Advance info for receipt (no sale created — sale is recorded at delivery)
-    const advanceReceipt = advanceAmount > 0 && paymentMethod !== 'deferred' ? {
-      orderNumber,
-      advanceAmount,
-      total,
-      remaining: total - advanceAmount,
-      paymentMethod: paymentMethod || 'cash',
-      date: new Date().toISOString(),
-    } : null;
+    // Create a sale record for the advance so it appears in cash register & sales reports
+    let advanceReceipt = null;
+    if (advanceAmount > 0 && paymentMethod !== 'deferred' && activeSession) {
+      await saleRepository.create({
+        customerId: customerId || undefined,
+        userId: req.user!.userId,
+        subtotal: advanceAmount,
+        taxAmount: 0,
+        discountAmount: 0,
+        total: advanceAmount,
+        paymentMethod: paymentMethod || 'cash',
+        notes: `Avance commande ${orderNumber} — Total: ${total.toFixed(2)} DH, Reste: ${(total - advanceAmount).toFixed(2)} DH`,
+        sessionId: activeSession.id,
+        storeId: req.user!.storeId,
+        orderId: order.id,
+        saleType: 'advance',
+        skipStockDeduction: true, // stock is deducted at delivery
+        items: orderItems.map(it => ({
+          productId: it.productId,
+          quantity: 0, // zero qty = no stock impact, items listed for reference only
+          unitPrice: it.unitPrice,
+          subtotal: 0,
+        })),
+      });
+
+      advanceReceipt = {
+        orderNumber,
+        advanceAmount,
+        total,
+        remaining: total - advanceAmount,
+        paymentMethod: paymentMethod || 'cash',
+        date: new Date().toISOString(),
+      };
+    }
 
     // Auto-create emitted invoice for deferred payment (known clients)
     if (req.body.deferPayment && customerId) {
@@ -321,7 +346,8 @@ export const orderController = {
       await orderRepository.updateStatus(orderId, 'completed');
       res.json({ success: true, data: { remaining: total, paid: 0, orderNumber: order.order_number, deferred: true } });
     } else {
-      // Normal flow: create a sale for the remaining amount
+      // Create a sale for the REMAINING amount only
+      // (advance was already recorded as a sale on the order creation day)
       const saleItems = order.items.map((item: Record<string, unknown>) => ({
         productId: item.product_id as string,
         quantity: item.quantity as number,
@@ -329,23 +355,27 @@ export const orderController = {
         subtotal: parseFloat(item.subtotal as string),
       }));
 
+      const hasAdvance = advanceAmount > 0;
+      const saleTotal = hasAdvance ? remaining : total;
+
       await saleRepository.create({
         customerId: order.customer_id,
         userId: req.user!.userId,
         subtotal: parseFloat(order.subtotal),
         taxAmount: parseFloat(order.tax_amount),
         discountAmount: parseFloat(order.discount_amount),
-        total,
+        total: Math.max(0, saleTotal),
         paymentMethod,
-        notes: advanceAmount > 0
-          ? `Livraison commande ${order.order_number} — Avance: ${advanceAmount.toFixed(2)} DH (${new Date(order.created_at).toLocaleDateString('fr-FR')}), Reste: ${remaining.toFixed(2)} DH`
+        notes: hasAdvance
+          ? `Livraison commande ${order.order_number} — Reste apres avance de ${advanceAmount.toFixed(2)} DH`
           : `Livraison commande ${order.order_number}`,
         sessionId: activeSession?.id,
         storeId: req.user!.storeId,
         items: saleItems,
-        advanceAmount,
-        advanceDate: advanceAmount > 0 ? order.created_at : null,
         orderId: orderId,
+        saleType: hasAdvance ? 'delivery' : 'standard',
+        advanceAmount: hasAdvance ? advanceAmount : 0,
+        advanceDate: hasAdvance ? order.created_at : null,
       });
 
       // Mark order as completed

@@ -96,14 +96,10 @@ export default function PurchaseOrdersTab() {
     try {
       const response = await purchaseOrdersApi.downloadPdf(po.id as string);
       const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${po.order_number || 'BC'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
+      // Ouvrir le PDF directement — compatible web et mobile (Capacitor)
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       toast.error('Erreur lors du téléchargement du PDF');
     }

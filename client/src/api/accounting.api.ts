@@ -14,10 +14,19 @@ export const suppliersApi = {
 };
 
 export const expenseCategoriesApi = {
-  list: () => api.get('/expense-categories').then(r => r.data.data),
+  list: (all = false) => api.get('/expense-categories', { params: all ? { all: 'true' } : {} }).then(r => r.data.data),
+  children: (parentId: string) => api.get(`/expense-categories/${parentId}/children`).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/expense-categories', data).then(r => r.data.data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/expense-categories/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/expense-categories/${id}`),
+};
+
+export const revenueCategoriesApi = {
+  list: (all = false) => api.get('/revenue-categories', { params: all ? { all: 'true' } : {} }).then(r => r.data.data),
+  children: (parentId: string) => api.get(`/revenue-categories/${parentId}/children`).then(r => r.data.data),
+  create: (data: Record<string, unknown>) => api.post('/revenue-categories', data).then(r => r.data.data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/revenue-categories/${id}`, data).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/revenue-categories/${id}`),
 };
 
 export const invoicesApi = {

@@ -16,8 +16,7 @@ const MONTH_NAMES = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juil
 
 const LOSS_TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; gradient: string; icon: typeof Flame }> = {
   production: { label: 'Production', color: 'text-orange-700', bg: 'bg-orange-100', gradient: 'from-orange-500 to-amber-500', icon: Factory },
-  casse: { label: 'Casse', color: 'text-red-700', bg: 'bg-red-100', gradient: 'from-red-500 to-rose-500', icon: Package },
-  non_vendu: { label: 'Non vendu', color: 'text-amber-700', bg: 'bg-amber-100', gradient: 'from-amber-500 to-yellow-500', icon: ShoppingBag },
+  vitrine: { label: 'Invendu / Destruction', color: 'text-red-700', bg: 'bg-red-100', gradient: 'from-red-500 to-rose-500', icon: Package },
   perime: { label: 'Perime', color: 'text-purple-700', bg: 'bg-purple-100', gradient: 'from-purple-500 to-violet-500', icon: Clock },
   recyclage: { label: 'Recyclage', color: 'text-emerald-700', bg: 'bg-emerald-100', gradient: 'from-emerald-500 to-green-500', icon: Recycle },
 };
@@ -32,8 +31,7 @@ const REASON_LABELS: Record<string, string> = {
 
 const REASONS_BY_TYPE: Record<string, string[]> = {
   production: ['brule', 'rate', 'machine', 'matiere_defectueuse', 'erreur_humaine', 'autre'],
-  casse: ['chute', 'casse', 'qualite_non_conforme', 'retour_client', 'autre'],
-  non_vendu: ['invendu_fin_journee', 'invendu_vitrine', 'autre'],
+  vitrine: ['invendu_fin_journee', 'invendu_vitrine', 'chute', 'casse', 'qualite_non_conforme', 'retour_client', 'autre'],
   perime: ['perime', 'invendu_fin_journee', 'autre'],
   recyclage: ['recycle', 'autre'],
 };
@@ -151,7 +149,7 @@ export default function LossesTab() {
           <p className="text-2xl font-bold text-red-700">{n(totalsByType.totalCost)} <span className="text-sm font-normal text-gray-400">DH</span></p>
           <p className="text-xs text-gray-400 mt-1">{totalsByType.totalCount} declaration{totalsByType.totalCount > 1 ? 's' : ''}</p>
         </div>
-        {(['production', 'casse', 'non_vendu', 'perime', 'recyclage'] as const).map(type => {
+        {Object.keys(LOSS_TYPE_CONFIG).map(type => {
           const config = LOSS_TYPE_CONFIG[type];
           const data = totalsByType.map[type] || { count: 0, quantity: 0, cost: 0 };
           const Icon = config.icon;

@@ -64,6 +64,34 @@ export const saleRepository = {
     );
     if (!saleResult.rows[0]) return null;
 
+    const sale = saleResult.rows[0];
+
+    // For advance/delivery sales linked to an order, fetch order items (with real quantities)
+    if (sale.order_id && (sale.sale_type === 'advance' || sale.sale_type === 'delivery')) {
+      const orderResult = await db.query(
+        `SELECT o.subtotal as order_subtotal, o.total as order_total, o.discount_amount as order_discount,
+                o.advance_amount as order_advance, o.order_number
+         FROM orders o WHERE o.id = $1`,
+        [sale.order_id]
+      );
+      const orderItemsResult = await db.query(
+        `SELECT oi.*, p.name as product_name, p.image_url as product_image
+         FROM order_items oi JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1`,
+        [sale.order_id]
+      );
+      const orderData = orderResult.rows[0] || {};
+      return {
+        ...sale,
+        items: orderItemsResult.rows,
+        order_subtotal: orderData.order_subtotal,
+        order_total: orderData.order_total,
+        order_discount: orderData.order_discount,
+        order_advance: orderData.order_advance,
+        order_number: orderData.order_number,
+      };
+    }
+
     const itemsResult = await db.query(
       `SELECT si.*, p.name as product_name, p.image_url as product_image
        FROM sale_items si JOIN products p ON p.id = si.product_id
@@ -71,7 +99,7 @@ export const saleRepository = {
       [id]
     );
 
-    return { ...saleResult.rows[0], items: itemsResult.rows };
+    return { ...sale, items: itemsResult.rows };
   },
 
   async findBySaleNumber(saleNumber: string) {
@@ -102,6 +130,7 @@ export const saleRepository = {
     paymentMethod: string; notes?: string; sessionId?: string; storeId?: string;
     advanceAmount?: number; advanceDate?: string | null; orderId?: string;
     skipStockDeduction?: boolean;
+    saleType?: 'standard' | 'advance' | 'delivery';
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number }[];
   }) {
     const client = await db.getClient();
@@ -111,11 +140,11 @@ export const saleRepository = {
       const saleNumber = await generateSaleNumber(client);
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
         [saleNumber, data.customerId || null, data.userId, data.subtotal,
          data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
-         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null]
+         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard']
       );
 
       for (const item of data.items) {
@@ -322,6 +351,103 @@ export const saleRepository = {
     }
 
     return [];
+  },
+
+  async importDailySales(data: {
+    date: string;
+    userId: string;
+    storeId?: string;
+    items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Match products by SKU or name
+      const matchedItems: { productId: string; quantity: number; unitPrice: number; subtotal: number }[] = [];
+      const unmatchedItems: string[] = [];
+
+      for (const item of data.items) {
+        // Try matching by SKU first, then by name
+        let productResult = await client.query(
+          `SELECT id, price FROM products WHERE sku = $1 LIMIT 1`,
+          [item.sku]
+        );
+        if (!productResult.rows[0]) {
+          productResult = await client.query(
+            `SELECT id, price FROM products WHERE UPPER(name) = UPPER($1) LIMIT 1`,
+            [item.productName]
+          );
+        }
+        if (productResult.rows[0]) {
+          matchedItems.push({
+            productId: productResult.rows[0].id,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal: item.netSales,
+          });
+          // Update SKU if not set
+          if (item.sku) {
+            await client.query(
+              `UPDATE products SET sku = $1 WHERE id = $2 AND sku IS NULL`,
+              [item.sku, productResult.rows[0].id]
+            );
+          }
+        } else {
+          unmatchedItems.push(`${item.productName} (UGS: ${item.sku})`);
+        }
+      }
+
+      if (matchedItems.length === 0) {
+        await client.query('ROLLBACK');
+        return { created: false, unmatchedItems, saleNumber: null };
+      }
+
+      const subtotal = matchedItems.reduce((sum, i) => sum + i.subtotal, 0);
+      const total = subtotal;
+
+      // Generate sale number for the import date
+      const prefix = `IMP-${data.date}-`;
+      const seqResult = await client.query(
+        `SELECT sale_number FROM sales WHERE sale_number LIKE $1 ORDER BY sale_number DESC LIMIT 1`,
+        [prefix + '%']
+      );
+      let seq = 1;
+      if (seqResult.rows.length > 0) {
+        const lastSeq = parseInt(seqResult.rows[0].sale_number.split('-').pop() || '0', 10);
+        seq = lastSeq + 1;
+      }
+      const saleNumber = `${prefix}${String(seq).padStart(4, '0')}`;
+
+      const saleResult = await client.query(
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, store_id, created_at)
+         VALUES ($1, NULL, $2, $3, 0, 0, $4, 'cash', $5, $6, $7::date + TIME '23:59:00') RETURNING *`,
+        [saleNumber, data.userId, subtotal, total, `Import CSV du ${data.date}`, data.storeId || null, data.date]
+      );
+
+      for (const item of matchedItems) {
+        await client.query(
+          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
+        );
+      }
+
+      await client.query('COMMIT');
+      return {
+        created: true,
+        saleNumber,
+        saleId: saleResult.rows[0].id,
+        matchedCount: matchedItems.length,
+        unmatchedItems,
+        total,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };
 

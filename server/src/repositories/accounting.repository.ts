@@ -165,35 +165,152 @@ export const supplierRepository = {
   },
 };
 
-/* ═══ Expense Categories ═══ */
+/* ═══ Expense Categories (hierarchical) ═══ */
 export const expenseCategoryRepository = {
   async findAll() {
-    const result = await db.query('SELECT * FROM expense_categories ORDER BY type, name');
+    const result = await db.query(
+      `SELECT ec.*, p.name as parent_name
+       FROM expense_categories ec
+       LEFT JOIN expense_categories p ON p.id = ec.parent_id
+       WHERE ec.is_active = true
+       ORDER BY ec.level, ec.display_order, ec.name`
+    );
+    return result.rows;
+  },
+  async findAllTree() {
+    const result = await db.query(
+      `SELECT ec.*, p.name as parent_name
+       FROM expense_categories ec
+       LEFT JOIN expense_categories p ON p.id = ec.parent_id
+       ORDER BY ec.level, ec.display_order, ec.name`
+    );
     return result.rows;
   },
   async findById(id: string) {
     const result = await db.query('SELECT * FROM expense_categories WHERE id = $1', [id]);
     return result.rows[0] || null;
   },
-  async create(data: { name: string; type: string; description?: string }) {
+  async findByLevel(level: number) {
     const result = await db.query(
-      `INSERT INTO expense_categories (name, type, description) VALUES ($1,$2,$3) RETURNING *`,
-      [data.name, data.type, data.description || null]
+      'SELECT * FROM expense_categories WHERE level = $1 AND is_active = true ORDER BY display_order, name',
+      [level]
+    );
+    return result.rows;
+  },
+  async findChildren(parentId: string) {
+    const result = await db.query(
+      'SELECT * FROM expense_categories WHERE parent_id = $1 AND is_active = true ORDER BY display_order, name',
+      [parentId]
+    );
+    return result.rows;
+  },
+  async create(data: { name: string; description?: string; parent_id?: string; level?: number; requires_po?: boolean; display_order?: number }) {
+    const level = data.level || (data.parent_id ? 2 : 1);
+    const result = await db.query(
+      `INSERT INTO expense_categories (name, type, description, parent_id, level, requires_po, display_order)
+       VALUES ($1, 'expense', $2, $3, $4, $5, $6) RETURNING *`,
+      [data.name, data.description || null, data.parent_id || null, level,
+       data.requires_po ?? false, data.display_order || 0]
     );
     return result.rows[0];
   },
   async update(id: string, data: Record<string, unknown>) {
+    const mapping: Record<string, string> = {
+      name: 'name', description: 'description', parent_id: 'parent_id',
+      level: 'level', requires_po: 'requires_po', display_order: 'display_order', is_active: 'is_active',
+    };
     const fields: string[] = []; const values: unknown[] = []; let i = 1;
-    if (data.name !== undefined) { fields.push(`name = $${i++}`); values.push(data.name); }
-    if (data.type !== undefined) { fields.push(`type = $${i++}`); values.push(data.type); }
-    if (data.description !== undefined) { fields.push(`description = $${i++}`); values.push(data.description); }
+    for (const [key, col] of Object.entries(mapping)) {
+      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
+    }
     if (fields.length === 0) return null;
     values.push(id);
     const result = await db.query(`UPDATE expense_categories SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
     return result.rows[0];
   },
+  async deactivate(id: string) {
+    // Soft-delete: deactivate self + all children recursively
+    await db.query(`
+      WITH RECURSIVE tree AS (
+        SELECT id FROM expense_categories WHERE id = $1
+        UNION ALL
+        SELECT ec.id FROM expense_categories ec JOIN tree t ON ec.parent_id = t.id
+      )
+      UPDATE expense_categories SET is_active = false WHERE id IN (SELECT id FROM tree)
+    `, [id]);
+  },
   async delete(id: string) {
-    await db.query('DELETE FROM expense_categories WHERE id = $1', [id]);
+    await db.query('UPDATE expense_categories SET is_active = false WHERE id = $1', [id]);
+  },
+};
+
+/* ═══ Revenue Categories (hierarchical) ═══ */
+export const revenueCategoryRepository = {
+  async findAll() {
+    const result = await db.query(
+      `SELECT rc.*, p.name as parent_name
+       FROM revenue_categories rc
+       LEFT JOIN revenue_categories p ON p.id = rc.parent_id
+       WHERE rc.is_active = true
+       ORDER BY rc.level, rc.display_order, rc.name`
+    );
+    return result.rows;
+  },
+  async findAllTree() {
+    const result = await db.query(
+      `SELECT rc.*, p.name as parent_name
+       FROM revenue_categories rc
+       LEFT JOIN revenue_categories p ON p.id = rc.parent_id
+       ORDER BY rc.level, rc.display_order, rc.name`
+    );
+    return result.rows;
+  },
+  async findById(id: string) {
+    const result = await db.query('SELECT * FROM revenue_categories WHERE id = $1', [id]);
+    return result.rows[0] || null;
+  },
+  async findChildren(parentId: string) {
+    const result = await db.query(
+      'SELECT * FROM revenue_categories WHERE parent_id = $1 AND is_active = true ORDER BY display_order, name',
+      [parentId]
+    );
+    return result.rows;
+  },
+  async create(data: { name: string; description?: string; parent_id?: string; level?: number; display_order?: number }) {
+    const level = data.level || (data.parent_id ? 2 : 1);
+    const result = await db.query(
+      `INSERT INTO revenue_categories (name, description, parent_id, level, display_order)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [data.name, data.description || null, data.parent_id || null, level, data.display_order || 0]
+    );
+    return result.rows[0];
+  },
+  async update(id: string, data: Record<string, unknown>) {
+    const mapping: Record<string, string> = {
+      name: 'name', description: 'description', parent_id: 'parent_id',
+      level: 'level', display_order: 'display_order', is_active: 'is_active',
+    };
+    const fields: string[] = []; const values: unknown[] = []; let i = 1;
+    for (const [key, col] of Object.entries(mapping)) {
+      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
+    }
+    if (fields.length === 0) return null;
+    values.push(id);
+    const result = await db.query(`UPDATE revenue_categories SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
+    return result.rows[0];
+  },
+  async deactivate(id: string) {
+    await db.query(`
+      WITH RECURSIVE tree AS (
+        SELECT id FROM revenue_categories WHERE id = $1
+        UNION ALL
+        SELECT rc.id FROM revenue_categories rc JOIN tree t ON rc.parent_id = t.id
+      )
+      UPDATE revenue_categories SET is_active = false WHERE id IN (SELECT id FROM tree)
+    `, [id]);
+  },
+  async delete(id: string) {
+    await db.query('UPDATE revenue_categories SET is_active = false WHERE id = $1', [id]);
   },
 };
 

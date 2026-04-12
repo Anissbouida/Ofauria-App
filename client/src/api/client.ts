@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+// En mode web, utilise le proxy Vite (/api/v1)
+// En mode mobile (Capacitor), utilise l'URL complète du serveur via VITE_API_URL
+const baseURL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : '/api/v1';
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   headers: { 'Content-Type': 'application/json' },
 });
 

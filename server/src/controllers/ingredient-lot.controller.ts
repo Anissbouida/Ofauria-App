@@ -73,6 +73,11 @@ export const ingredientLotController = {
     res.json({ success: true, data: qc });
   },
 
+  async fefoPreview(req: AuthRequest, res: Response) {
+    const preview = await ingredientLotRepository.previewFEFO(req.params.planId, req.user!.storeId);
+    res.json({ success: true, data: preview });
+  },
+
   async getQualityCheck(req: AuthRequest, res: Response) {
     const qc = await ingredientLotRepository.findQualityCheck(req.params.id);
     res.json({ success: true, data: qc });

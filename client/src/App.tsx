@@ -25,6 +25,7 @@ import AccountingPage from './features/accounting/AccountingPage';
 import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
 import RequestDetailPage from './features/replenishment/RequestDetailPage';
+import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
+              <Route path="/unsold" element={<UnsoldDecisionsPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/accounting" element={<AccountingPage />} />

@@ -21,6 +21,7 @@ export const ingredientLotsApi = {
   markAsWaste: (id: string) => api.post(`/ingredient-lots/${id}/waste`).then(r => r.data.data),
   saveQualityCheck: (rvId: string, data: Record<string, unknown>) => api.post(`/ingredient-lots/quality-check/${rvId}`, data).then(r => r.data.data),
   getQualityCheck: (rvId: string) => api.get(`/ingredient-lots/quality-check/${rvId}`).then(r => r.data.data),
+  fefoPreview: (planId: string) => api.get(`/ingredient-lots/production/${planId}/fefo-preview`).then(r => r.data.data),
 };
 
 export const ingredientsApi = {

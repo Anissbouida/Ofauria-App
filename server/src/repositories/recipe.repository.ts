@@ -42,6 +42,39 @@ export const recipeRepository = {
     };
   },
 
+  /** Find recipe by product ID (with ingredients & sub-recipes) */
+  async findByProductId(productId: string) {
+    const recipeResult = await db.query(
+      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price
+       FROM recipes r LEFT JOIN products p ON p.id = r.product_id WHERE r.product_id = $1`,
+      [productId]
+    );
+    if (!recipeResult.rows[0]) return null;
+
+    const recipeId = recipeResult.rows[0].id;
+    const ingredientsResult = await db.query(
+      `SELECT ri.*, ing.name as ingredient_name, ing.unit, ing.unit_cost
+       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
+       WHERE ri.recipe_id = $1`,
+      [recipeId]
+    );
+    const subRecipesResult = await db.query(
+      `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
+              sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
+              sr.total_cost as sub_total_cost
+       FROM recipe_sub_recipes rsr
+       JOIN recipes sr ON sr.id = rsr.sub_recipe_id
+       WHERE rsr.recipe_id = $1`,
+      [recipeId]
+    );
+
+    return {
+      ...recipeResult.rows[0],
+      ingredients: ingredientsResult.rows,
+      sub_recipes: subRecipesResult.rows,
+    };
+  },
+
   /** List only base recipes (for sub-recipe picker) */
   async findBaseRecipes() {
     const result = await db.query(

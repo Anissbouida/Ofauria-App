@@ -30,7 +30,10 @@ export const cashRegisterRepository = {
          dic.total_replenished as inv_total_replenished,
          dic.total_sold as inv_total_sold,
          dic.total_remaining as inv_total_remaining,
-         dic.total_discrepancy as inv_total_discrepancy
+         dic.total_discrepancy as inv_total_discrepancy,
+         (SELECT COUNT(DISTINCT o.id) FROM orders o JOIN sales s ON s.order_id = o.id
+          WHERE s.session_id = cs.id AND s.sale_type = 'advance'
+          AND o.status NOT IN ('completed', 'cancelled')) as pending_orders
        FROM cash_register_sessions cs
        JOIN users u ON u.id = cs.user_id
        LEFT JOIN daily_inventory_checks dic ON dic.session_id = cs.id
@@ -49,7 +52,10 @@ export const cashRegisterRepository = {
          dic.total_replenished as inv_total_replenished,
          dic.total_sold as inv_total_sold,
          dic.total_remaining as inv_total_remaining,
-         dic.total_discrepancy as inv_total_discrepancy
+         dic.total_discrepancy as inv_total_discrepancy,
+         (SELECT COUNT(DISTINCT o.id) FROM orders o JOIN sales s ON s.order_id = o.id
+          WHERE s.session_id = cs.id AND s.sale_type = 'advance'
+          AND o.status NOT IN ('completed', 'cancelled')) as pending_orders
        FROM cash_register_sessions cs
        JOIN users u ON u.id = cs.user_id
        LEFT JOIN daily_inventory_checks dic ON dic.session_id = cs.id
@@ -94,14 +100,22 @@ export const cashRegisterRepository = {
     try {
       await client.query('BEGIN');
 
-      // Calculate sales stats for this session
+      // Calculate sales stats for this session, broken down by sale_type
+      // Each sale.total reflects the REAL cash received for that transaction:
+      //   standard = regular POS sale, advance = advance payment on order, delivery = remaining balance at delivery
       const statsResult = await client.query(
         `SELECT
           COUNT(*) as total_sales,
           COALESCE(SUM(total), 0) as total_revenue,
           COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_revenue,
           COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_revenue,
-          COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_revenue
+          COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_revenue,
+          COALESCE(SUM(CASE WHEN sale_type = 'standard' THEN total ELSE 0 END), 0) as standard_revenue,
+          COALESCE(SUM(CASE WHEN sale_type = 'advance' THEN total ELSE 0 END), 0) as advance_revenue,
+          COALESCE(SUM(CASE WHEN sale_type = 'delivery' THEN total ELSE 0 END), 0) as delivery_revenue,
+          COUNT(CASE WHEN sale_type = 'standard' THEN 1 END) as standard_count,
+          COUNT(CASE WHEN sale_type = 'advance' THEN 1 END) as advance_count,
+          COUNT(CASE WHEN sale_type = 'delivery' THEN 1 END) as delivery_count
         FROM sales WHERE session_id = $1`,
         [sessionId]
       );
@@ -114,28 +128,31 @@ export const cashRegisterRepository = {
         [sessionId]
       );
 
-      // Calculate order advances for this session
-      const advancesResult = await client.query(
-        `SELECT
-          COUNT(*) as total_orders,
-          COALESCE(SUM(advance_amount), 0) as total_advances
-        FROM orders WHERE session_id = $1 AND advance_amount > 0`,
-        [sessionId]
-      );
-
       const stats = statsResult.rows[0];
-      const advances = advancesResult.rows[0];
       const totalRefunds = parseFloat(refundsResult.rows[0].total_refunds);
       const session = await client.query(`SELECT opening_amount FROM cash_register_sessions WHERE id = $1`, [sessionId]);
       const openingAmount = parseFloat(session.rows[0].opening_amount);
-      const totalAdvances = parseFloat(advances.total_advances);
+
+      const totalAdvances = parseFloat(stats.advance_revenue);
+
+      // Count only orders that are NOT yet completed (truly pending delivery)
+      const pendingOrdersResult = await client.query(
+        `SELECT COUNT(DISTINCT o.id) as pending_count
+         FROM orders o
+         JOIN sales s ON s.order_id = o.id
+         WHERE s.session_id = $1
+           AND s.sale_type = 'advance'
+           AND o.status NOT IN ('completed', 'cancelled')`,
+        [sessionId]
+      );
+      const totalOrders = parseInt(pendingOrdersResult.rows[0].pending_count);
 
       const grossCashRevenue = parseFloat(stats.cash_revenue);
-      const netCashRevenue = grossCashRevenue - totalRefunds; // refunds are always cash
+      const netCashRevenue = grossCashRevenue - totalRefunds;
       const netTotalRevenue = parseFloat(stats.total_revenue) - totalRefunds;
 
-      // Expected cash = opening + net cash sales + advances (advances are always cash)
-      const expectedCash = openingAmount + netCashRevenue + totalAdvances;
+      // Expected cash = opening + net cash sales (advances already included in sales)
+      const expectedCash = openingAmount + netCashRevenue;
 
       await client.query(
         `UPDATE cash_register_sessions SET
@@ -145,13 +162,22 @@ export const cashRegisterRepository = {
         WHERE id = $9`,
         [parseInt(stats.total_sales), netTotalRevenue,
          netCashRevenue, parseFloat(stats.card_revenue), parseFloat(stats.mobile_revenue),
-         expectedCash, totalAdvances, parseInt(advances.total_orders), sessionId]
+         expectedCash, totalAdvances, totalOrders, sessionId]
       );
 
       await client.query('COMMIT');
 
-      // Return updated session (expected_cash calculated but not yet shown to user)
-      return this.findById(sessionId);
+      // Return updated session enriched with sale type breakdown
+      const sessionData = await this.findById(sessionId);
+      if (sessionData) {
+        sessionData.standard_revenue = parseFloat(stats.standard_revenue);
+        sessionData.standard_count = parseInt(stats.standard_count);
+        sessionData.advance_revenue = parseFloat(stats.advance_revenue);
+        sessionData.advance_count = parseInt(stats.advance_count);
+        sessionData.delivery_revenue = parseFloat(stats.delivery_revenue);
+        sessionData.delivery_count = parseInt(stats.delivery_count);
+      }
+      return sessionData;
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

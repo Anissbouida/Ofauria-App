@@ -7,13 +7,14 @@ import { customersApi } from '../../api/customers.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { replenishmentApi } from '../../api/replenishment.api';
+import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { productionApi } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
 import api from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -66,9 +67,10 @@ export default function POSPage() {
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
-  const [showPayment, setShowPayment] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
 
   // Cash register state
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -77,6 +79,26 @@ export default function POSPage() {
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
   const [closeStep, setCloseStep] = useState<'inventory' | 'input' | 'result'>('inventory');
+  const DENOMINATIONS = [
+    { value: 0.5, label: '0.50', type: 'coin', img: '/images/money/coin-050.svg' },
+    { value: 1, label: '1', type: 'coin', img: '/images/money/coin-1.svg' },
+    { value: 2, label: '2', type: 'coin', img: '/images/money/coin-2.svg' },
+    { value: 5, label: '5', type: 'coin', img: '/images/money/coin-5.svg' },
+    { value: 10, label: '10', type: 'coin', img: '/images/money/coin-10.svg' },
+    { value: 20, label: '20', type: 'bill', img: '/images/money/bill-20.svg' },
+    { value: 50, label: '50', type: 'bill', img: '/images/money/bill-50.svg' },
+    { value: 100, label: '100', type: 'bill', img: '/images/money/bill-100.svg' },
+    { value: 200, label: '200', type: 'bill', img: '/images/money/bill-200.svg' },
+  ] as const;
+  const [denomCounts, setDenomCounts] = useState<Record<number, number>>(
+    () => Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))
+  );
+  const denomTotal = DENOMINATIONS.reduce((sum, d) => sum + d.value * (denomCounts[d.value] || 0), 0);
+  const [closeInputMode, setCloseInputMode] = useState<'direct' | 'counting'>('direct');
+  // Keep actualAmount synced with denomination total when in counting mode
+  useEffect(() => {
+    if (closeStep === 'input' && closeInputMode === 'counting') setActualAmount(denomTotal.toString());
+  }, [denomTotal, closeStep, closeInputMode]);
   const [closeResult, setCloseResult] = useState<Record<string, unknown> | null>(null);
   const [inventoryItems, setInventoryItems] = useState<Record<string, unknown>[]>([]);
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
@@ -206,21 +228,20 @@ export default function POSPage() {
   const closeMutation = useMutation({
     mutationFn: async () => {
       const data = await cashRegisterApi.close();
-      // Load replenished items for inventory check (Rule 3)
+      // Load unsold items with intelligent suggestions
       let invItems: Record<string, unknown>[] = [];
-      try { invItems = await replenishmentApi.closingInventory() || []; } catch { /* no items */ }
+      try { invItems = await unsoldDecisionApi.suggestions() || []; } catch { /* no items */ }
       return { data, invItems };
     },
     onSuccess: ({ data, invItems }) => {
       setCloseResult(data);
       if (invItems.length > 0) {
         setInventoryItems(invItems);
-        // Pre-fill remaining qty = replenished - sold (suggestion)
+        // Pre-fill remaining qty = current stock
         const qtys: Record<string, number> = {};
         for (const it of invItems) {
-          const rep = parseInt(it.replenished_qty as string) || 0;
-          const sold = parseInt(it.sold_qty as string) || 0;
-          qtys[it.product_id as string] = Math.max(0, rep - sold);
+          const stock = parseInt(it.current_stock as string) || 0;
+          qtys[it.product_id as string] = Math.max(0, stock);
         }
         setInventoryQtys(qtys);
         setCloseStep('inventory');
@@ -264,10 +285,10 @@ export default function POSPage() {
         cashGiven: paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
         changeAmount: paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
       };
-      setReceiptData(receipt);
+      setLastReceipt(receipt);
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setCart([]); setCustomerId(''); setCustomerSearch(''); setShowPayment(false); setCashGiven(null);
+      setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
       toast.success('Vente enregistree !');
     },
     onError: () => toast.error('Erreur lors de la vente'),
@@ -275,18 +296,24 @@ export default function POSPage() {
 
 
   const deliverMutation = useMutation({
-    mutationFn: ({ id, amountPaid, paymentMethod, order }: { id: string; amountPaid: number; paymentMethod: string; order: Record<string, unknown> }) => ordersApi.deliver(id, { amountPaid, paymentMethod }).then(res => ({ ...res, _order: order, _paymentMethod: paymentMethod })),
+    mutationFn: async ({ id, amountPaid, paymentMethod }: { id: string; amountPaid: number; paymentMethod: string }) => {
+      const res = await ordersApi.deliver(id, { amountPaid, paymentMethod });
+      // Fetch full order with items for receipt
+      const fullOrder = await ordersApi.getById(id);
+      return { ...res, _order: fullOrder, _paymentMethod: paymentMethod };
+    },
     onSuccess: (data: Record<string, unknown>) => {
       queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['sales'] });
 
-      // Show delivery receipt
+      // Show delivery receipt with full order data (including items)
       const order = data._order as Record<string, unknown>;
-      const totalAmt = parseFloat(order.total as string);
-      const advanceAmt = parseFloat(order.advance_amount as string || '0');
-      const remaining = totalAmt - advanceAmt;
       const orderItems = (order.items || []) as Record<string, unknown>[];
+      const orderSubtotal = parseFloat(order.subtotal as string) || 0;
+      const discount = parseFloat(order.discount_amount as string) || 0;
+      const orderTotal = parseFloat(order.total as string) || (orderSubtotal - discount);
+      const advanceAmt = parseFloat(order.advance_amount as string || '0');
 
       setReceiptData({
         saleNumber: order.order_number as string,
@@ -295,13 +322,13 @@ export default function POSPage() {
         customerName: (order.customer_first_name as string) || (order.customer_name as string) || undefined,
         items: orderItems.map((it: Record<string, unknown>) => ({
           name: (it.product_name as string) || 'Produit',
-          quantity: parseInt(it.quantity as string) || 1,
+          quantity: parseInt(String(it.quantity)) || 1,
           unitPrice: parseFloat(it.unit_price as string),
           subtotal: parseFloat(it.subtotal as string),
         })),
-        subtotal: totalAmt,
-        discountAmount: parseFloat(order.discount_amount as string) || 0,
-        total: totalAmt,
+        subtotal: orderSubtotal,
+        discountAmount: discount,
+        total: orderTotal,
         paymentMethod: data._paymentMethod as string,
         advanceAmount: advanceAmt > 0 ? advanceAmt : undefined,
         advanceDate: advanceAmt > 0 ? (order.created_at as string) : undefined,
@@ -441,14 +468,15 @@ export default function POSPage() {
                 Ouvrez la caisse pour commencer a vendre
               </p>
             </div>
-            <button onClick={() => { setOpeningAmount(String(lastClosedData?.amount || 0)); setShowOpenModal(true); }} className="btn-primary px-8 py-3 text-lg">
-              <Unlock size={20} className="inline mr-2" />
-              Ouvrir la caisse
+            <button onClick={() => { setOpeningAmount(''); setShowOpenModal(true); }}
+              className="mx-auto flex flex-col items-center gap-1.5 px-8 py-4 bg-primary-50 text-primary-700 rounded-xl font-bold text-lg hover:bg-primary-100 transition-colors">
+              <Unlock size={24} />
+              <span>Ouvrir la caisse</span>
             </button>
             {isCashierRole && (
-              <button onClick={logout} className="block mx-auto text-sm text-gray-400 hover:text-gray-600 transition-colors mt-4">
-                <LogOut size={16} className="inline mr-1" />
-                Deconnexion
+              <button onClick={logout} className="flex flex-col items-center gap-1 mx-auto px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors mt-4">
+                <LogOut size={18} />
+                <span className="text-[10px] font-medium">Déconnexion</span>
               </button>
             )}
           </div>
@@ -456,17 +484,11 @@ export default function POSPage() {
         {showOpenModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-              <h2 className="text-xl font-bold mb-4">Ouverture de caisse</h2>
-              {(lastClosedData?.amount || 0) > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
-                  <p className="text-sm text-blue-700">
-                    <strong>Report automatique :</strong> la derniere fermeture indiquait <strong>{(lastClosedData?.amount || 0).toFixed(2)} DH</strong> en caisse.
-                  </p>
-                </div>
-              )}
+              <h2 className="text-xl font-bold mb-2">Ouverture de caisse</h2>
+              <p className="text-sm text-gray-500 mb-4">Saisissez le montant du fond de caisse.</p>
               <label className="block text-sm font-medium text-gray-700 mb-2">Fond de caisse (DH)</label>
               <input type="number" value={openingAmount} onChange={(e) => setOpeningAmount(e.target.value)}
-                className="input text-center text-2xl font-bold mb-6" min="0" step="0.01" autoFocus />
+                className="input text-center text-2xl font-bold mb-6" min="0" step="0.01" placeholder="0.00" autoFocus />
               <div className="flex gap-3">
                 <button onClick={() => setShowOpenModal(false)} className="btn-secondary flex-1">Annuler</button>
                 <button onClick={() => openMutation.mutate(parseFloat(openingAmount) || 0)}
@@ -482,128 +504,73 @@ export default function POSPage() {
   }
 
   return (
-    <div className={`flex gap-4 ${isCashierRole ? 'h-screen p-4' : 'h-[calc(100vh-7rem)]'}`}>
-      {/* Left sidebar */}
-      <div className="w-44 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden shrink-0">
-        {/* Cashier identity header */}
+    <div className={`flex flex-col ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`}>
+      {/* ═══ Top Bar: Cashier + Tabs + Actions ═══ */}
+      <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-3 shrink-0">
+        {/* Cashier identity */}
         {isCashierRole && (
-          <div className="p-3 border-b bg-primary-50">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold">
-                {user?.firstName?.[0]}{user?.lastName?.[0]}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{user?.firstName}</p>
-                <p className="text-xs text-gray-500">Caisse</p>
-              </div>
+          <div className="flex items-center gap-2 pr-3 border-r border-gray-200">
+            <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold">
+              {user?.firstName?.[0]}{user?.lastName?.[0]}
+            </div>
+            <div className="hidden sm:block min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">{user?.firstName}</p>
+              <p className="text-[10px] text-gray-400">Caisse</p>
             </div>
           </div>
         )}
 
         {/* Tab switcher */}
-        <div className="p-2 border-b space-y-1">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
           <button onClick={() => setPosTab('sell')}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-              posTab === 'sell' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              posTab === 'sell' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}>
-            <ShoppingCart size={16} /> Vente
+            <ShoppingCart size={15} /> Vente
           </button>
           <button onClick={() => setPosTab('orders')}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-              posTab === 'orders' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              posTab === 'orders' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}>
-            <ClipboardList size={16} /> Commandes
+            <ClipboardList size={15} /> Commandes
           </button>
           <button onClick={() => { setPosTab('returns'); setReturnStep('search'); setReturnSale(null); setReturnSearch(''); }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-              posTab === 'returns' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              posTab === 'returns' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}>
-            <RotateCcw size={16} /> Retours
+            <RotateCcw size={15} /> Retours
           </button>
         </div>
 
-        {/* Categories (only in sell tab) */}
-        {posTab === 'sell' && (
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <div className="px-2 py-1.5">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Categories</h3>
-            </div>
-            <button onClick={() => setSelectedCategory('')}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                !selectedCategory ? 'bg-primary-100 text-primary-700' : 'text-gray-700 hover:bg-gray-100'
-              }`}>
-              Tous
-            </button>
-            {categories.map((c: { id: number; name: string }) => (
-              <button key={c.id} onClick={() => setSelectedCategory(String(c.id))}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  selectedCategory === String(c.id) ? 'bg-primary-100 text-primary-700' : 'text-gray-700 hover:bg-gray-100'
-                }`}>
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex-1" />
 
-        {/* Orders sidebar content */}
-        {posTab === 'orders' && (
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <button onClick={() => setShowOrderForm(true)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors">
-              <Plus size={16} /> Nouvelle commande
-            </button>
-            <div className="px-2 py-1.5 mt-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtrer</h3>
-            </div>
-            <p className="px-2 text-xs text-gray-400">{orders.length} commande{orders.length > 1 ? 's' : ''} en cours</p>
-          </div>
-        )}
-
-        {/* Bottom actions */}
-        <div className="p-2 border-t space-y-1">
-          {/* Pending transfers — always visible */}
+        {/* Right actions */}
+        <div className="flex items-center gap-1">
           {(() => {
             const repCount = (pendingTransfers as Record<string, unknown>[]).length;
             const prodCount = (pendingProductionTransfers as Record<string, unknown>[]).length;
             const totalCount = repCount + prodCount;
             return (
               <button onClick={() => setShowTransfers(true)}
-                className={`w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                  totalCount > 0
-                    ? 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-purple-300 animate-pulse font-bold'
-                    : 'text-purple-600 hover:bg-purple-50'
-                }`}>
-                <Truck size={16} />
-                <span className="flex-1 text-left">Reception transferts</span>
-                {totalCount > 0 && (
-                  <span className="bg-purple-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-bold">
-                    {totalCount}
-                  </span>
-                )}
+                className={`relative flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${totalCount > 0 ? 'text-purple-700 bg-purple-50 animate-pulse' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}>
+                <Truck size={17} />
+                <span className="text-[9px] font-medium">Transferts</span>
+                {totalCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-purple-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">{totalCount}</span>}
               </button>
             );
           })()}
-
-          {/* Replenishment request */}
-          <button onClick={() => setShowProductionForm(true)}
-            className="w-full px-3 py-2.5 rounded-lg text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2">
-            <Package size={16} />
-            Approvisionnement
+          <button onClick={() => setShowProductionForm(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+            <Package size={17} />
+            <span className="text-[9px] font-medium">Approv.</span>
           </button>
-
-          {/* Close register */}
-          <button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending}
-            className="w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
-            <Lock size={16} />
-            Fermer la caisse
+          <button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+            <Lock size={17} />
+            <span className="text-[9px] font-medium">Fermer</span>
           </button>
-
-          {/* Logout for cashier */}
           {isCashierRole && (
-            <button onClick={logout}
-              className="w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors flex items-center gap-2">
-              <LogOut size={16} />
-              Deconnexion
+            <button onClick={logout} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+              <LogOut size={17} />
+              <span className="text-[9px] font-medium">Sortir</span>
             </button>
           )}
         </div>
@@ -611,133 +578,333 @@ export default function POSPage() {
 
       {/* ═══════════ SELL TAB ═══════════ */}
       {posTab === 'sell' && (
-        <>
-          {/* Center: Product Grid */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="mb-3">
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-10" />
-              </div>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left sidebar: Categories */}
+          <div className="hidden md:flex w-44 bg-white border-r border-gray-200 flex-col shrink-0">
+            <div className="px-3 py-2.5 border-b border-gray-100">
+              <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Catégories</h3>
             </div>
-            <div className="overflow-y-auto flex-1 grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(4.5cm, 1fr))', gridAutoRows: '5cm' }}>
-              {products.map((p: Record<string, unknown>) => {
-                const stock = parseFloat(p.stock_quantity as string) || 0;
-                const outOfStock = stock <= 0;
-                const isAlerted = stockAlert?.productId === p.id;
-                return (
-                <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
-                  disabled={outOfStock}
-                  className={`rounded-xl p-1.5 text-left transition-all border flex flex-col relative ${
-                    outOfStock
-                      ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
-                      : isAlerted
-                        ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
-                        : 'bg-white border-gray-100 hover:shadow-md hover:border-primary-300'
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <button onClick={() => setSelectedCategory('')}
+                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  !selectedCategory ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200' : 'text-gray-600 hover:bg-gray-50'
+                }`}>
+                Tous
+              </button>
+              {categories.map((c: { id: number; name: string }) => (
+                <button key={c.id} onClick={() => setSelectedCategory(String(c.id))}
+                  className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
+                    selectedCategory === String(c.id) ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200' : 'text-gray-600 hover:bg-gray-50'
                   }`}>
-                  {outOfStock && (
-                    <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
-                  )}
-                  {isAlerted && (
-                    <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
-                      <span className="bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg">
-                        {stockAlert?.message}
-                      </span>
-                    </span>
-                  )}
-                  <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
-                    {p.image_url ? (
-                      <img src={p.image_url as string} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
-                    ) : (
-                      <span className="text-2xl">🥖</span>
-                    )}
-                  </div>
-                  <span className="font-medium text-xs line-clamp-2 leading-tight mt-1">{p.name as string}</span>
-                  <span className={`font-bold text-xs pt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
+                  {c.name}
                 </button>
-                );
-              })}
+              ))}
             </div>
           </div>
 
-          {/* Right: Cart */}
-          <div className="w-96 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col">
-            <div className="p-4 border-b">
-              <h2 className="font-bold text-lg">Panier</h2>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {cart.length === 0 ? (
-                <p className="text-center text-gray-400 py-8">Le panier est vide</p>
-              ) : cart.map((item) => {
-                const itemStock = getProductStock(item.productId);
-                const atMax = item.quantity >= itemStock;
-                const isItemAlerted = stockAlert?.productId === item.productId;
-                return (
-                  <div key={item.productId} className={`flex items-center gap-3 py-2 border-b transition-colors ${isItemAlerted ? 'border-amber-200 bg-amber-50 -mx-4 px-4 rounded-lg' : 'border-gray-50'}`}>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{item.name}</p>
-                      <p className="text-primary-600 text-sm">{item.price.toFixed(2)} DH</p>
-                      {isItemAlerted && (
-                        <p className="text-amber-600 text-[10px] font-semibold mt-0.5 animate-pulse">{stockAlert?.message}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => updateQuantity(item.productId, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
-                        <Minus size={14} />
-                      </button>
-                      <span className={`w-6 text-center font-medium text-sm ${atMax ? 'text-amber-600' : ''}`}>{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.productId, 1)}
-                        className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                          atMax ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-primary-100 hover:bg-primary-200'
-                        }`}>
-                        <Plus size={14} />
-                      </button>
-                    </div>
-                    <span className="text-sm font-semibold w-16 text-right">{(item.price * item.quantity).toFixed(2)} DH</span>
-                    <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))} className="text-red-400 hover:text-red-600">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="px-4 py-2 border-t">
-              <div className="relative">
-                <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Client (optionnel)..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} className="input pl-9 text-sm py-1.5" />
+          {/* Center: Products */}
+          <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
+            {/* Mobile: horizontal categories */}
+            <div className="md:hidden bg-white border-b border-gray-200 px-3 py-2 shrink-0">
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+                <button onClick={() => setSelectedCategory('')}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    !selectedCategory ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}>Tous</button>
+                {categories.map((c: { id: number; name: string }) => (
+                  <button key={c.id} onClick={() => setSelectedCategory(String(c.id))}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      selectedCategory === String(c.id) ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}>{c.name}</button>
+                ))}
               </div>
-              {customersData?.data?.length > 0 && customerSearch.length >= 2 && (
-                <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                  {customersData.data.map((c: Record<string, unknown>) => (
-                    <button key={c.id as string} onClick={() => { setCustomerId(c.id as string); setCustomerSearch(`${c.first_name} ${c.last_name}`); }}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">{c.first_name as string} {c.last_name as string}</button>
-                  ))}
+            </div>
+
+            {/* Search */}
+            <div className="px-3 py-2 shrink-0">
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400" />
+              </div>
+            </div>
+
+            {/* Product Grid */}
+            <div className="flex-1 overflow-y-auto px-3 pb-3">
+              <div className="grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                {products.map((p: Record<string, unknown>) => {
+                  const stock = parseFloat(p.stock_quantity as string) || 0;
+                  const outOfStock = stock <= 0;
+                  const isAlerted = stockAlert?.productId === p.id;
+                  return (
+                    <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
+                      disabled={outOfStock}
+                      className={`rounded-xl p-2 text-left transition-all border flex flex-col relative h-[140px] ${
+                        outOfStock
+                          ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
+                          : isAlerted
+                            ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+                            : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
+                      }`}>
+                      {outOfStock && (
+                        <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
+                      )}
+                      {isAlerted && (
+                        <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
+                          <span className="bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg">
+                            {stockAlert?.message}
+                          </span>
+                        </span>
+                      )}
+                      <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                        {p.image_url ? (
+                          <img src={p.image_url as string} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
+                        ) : (
+                          <span className="text-3xl">🥖</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-xs line-clamp-2 leading-tight mt-1.5">{p.name as string}</span>
+                      <span className={`font-bold text-sm mt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Cart Panel */}
+          <div className="w-full md:w-[380px] bg-white border-l border-gray-200 flex flex-col shrink-0">
+            {/* Cart header */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-base text-gray-800">Panier</h2>
+                {cart.length > 0 && (
+                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{cart.reduce((s, i) => s + i.quantity, 0)} article{cart.reduce((s, i) => s + i.quantity, 0) > 1 ? 's' : ''}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Cart items - scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                  <ShoppingCart size={40} className="mb-2" />
+                  <p className="text-sm">Le panier est vide</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {cart.map((item) => {
+                    const itemStock = getProductStock(item.productId);
+                    const atMax = item.quantity >= itemStock;
+                    const isItemAlerted = stockAlert?.productId === item.productId;
+                    return (
+                      <div key={item.productId} className={`px-4 py-3 transition-colors ${isItemAlerted ? 'bg-amber-50' : 'hover:bg-gray-50/50'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{item.price.toFixed(2)} DH / unité</p>
+                            {isItemAlerted && (
+                              <p className="text-amber-600 text-[10px] font-semibold mt-0.5 animate-pulse">{stockAlert?.message}</p>
+                            )}
+                          </div>
+                          <span className="font-bold text-sm text-gray-800 shrink-0">{(item.price * item.quantity).toFixed(2)} DH</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="flex items-center bg-gray-100 rounded-lg">
+                            <button onClick={() => updateQuantity(item.productId, -1)}
+                              className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600">
+                              <Minus size={14} />
+                            </button>
+                            <span className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'}`}>{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.productId, 1)}
+                              className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${
+                                atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'
+                              }`}>
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <div className="flex-1" />
+                          <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-            <div className="p-4 border-t space-y-3">
-              <div className="flex justify-between text-lg font-bold">
-                <span>Total</span>
-                <span className="text-primary-600">{total.toFixed(2)} DH</span>
-              </div>
-              <button onClick={() => setShowPayment(true)} disabled={cart.length === 0} className="btn-primary w-full py-3 text-lg">
-                Encaisser
-              </button>
+
+            {/* Cart footer — contextual: elements appear only when relevant */}
+            <div className="border-t border-gray-200 shrink-0">
+
+              {/* Customer search — only visible when toggled */}
+              {showCustomerSearch && (
+                <div className="px-4 py-2 border-b border-gray-100 animate-in slide-in-from-top">
+                  <div className="relative">
+                    <User size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input type="text" placeholder="Rechercher un client..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}
+                      className="w-full pl-8 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400"
+                      autoFocus />
+                    <button onClick={() => { setShowCustomerSearch(false); if (!customerId) setCustomerSearch(''); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                      <XCircle size={16} />
+                    </button>
+                  </div>
+                  {customersData?.data?.length > 0 && customerSearch.length >= 2 && (
+                    <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                      {customersData.data.map((c: Record<string, unknown>) => (
+                        <button key={c.id as string} onClick={() => { setCustomerId(c.id as string); setCustomerSearch(`${c.first_name} ${c.last_name}`); setShowCustomerSearch(false); }}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">{c.first_name as string} {c.last_name as string}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quick actions bar — only shows buttons that are relevant */}
+              {(lastReceipt || cart.length > 0 || customerId) && (
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    {/* Imprimer — only if there's a receipt */}
+                    {lastReceipt && (
+                      <button onClick={() => setReceiptData({ ...lastReceipt })}
+                        className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-primary-600 transition-colors">
+                        <Printer size={17} />
+                        <span className="text-[9px] font-medium">Imprimer</span>
+                      </button>
+                    )}
+
+                    {/* Client — toggle search or show selected */}
+                    {customerId ? (
+                      <button onClick={() => { setCustomerId(''); setCustomerSearch(''); }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary-50 text-primary-700 ring-1 ring-primary-200 transition-colors">
+                        <User size={15} />
+                        <span className="text-[10px] font-semibold truncate max-w-[80px]">{customerSearch}</span>
+                        <XCircle size={12} className="text-primary-400 shrink-0" />
+                      </button>
+                    ) : (
+                      <button onClick={() => setShowCustomerSearch(!showCustomerSearch)}
+                        className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                          showCustomerSearch ? 'bg-primary-50 text-primary-700' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                        }`}>
+                        <User size={17} />
+                        <span className="text-[9px] font-medium">Client</span>
+                      </button>
+                    )}
+
+                    <div className="flex-1" />
+
+                    {/* Payment method — only when cart has items */}
+                    {cart.length > 0 && (
+                      <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                        <button onClick={() => setPaymentMethod('cash')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            paymentMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
+                          }`}>
+                          <Banknote size={14} /> Espèces
+                        </button>
+                        <button onClick={() => setPaymentMethod('card')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                            paymentMethod === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
+                          }`}>
+                          <CreditCard size={14} /> Carte
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cash change calculator — only when cash + cart has items */}
+              {paymentMethod === 'cash' && cart.length > 0 && (
+                <div className="px-4 py-2.5 border-b border-gray-100">
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Billet donné</p>
+                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                    {[20, 50, 100, 200].map(amount => (
+                      <button key={amount} onClick={() => setCashGiven(cashGiven === amount ? null : amount)}
+                        className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-md text-sm font-bold transition-all ${
+                          cashGiven === amount
+                            ? 'bg-white text-primary-700 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        <Banknote size={14} className={cashGiven === amount ? 'text-primary-600' : 'text-gray-400'} />
+                        <span>{amount}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {cashGiven !== null && cashGiven >= total && (
+                    <div className="mt-2 flex items-center justify-center gap-2 bg-green-50 rounded-xl py-2.5 px-3 ring-1 ring-green-200">
+                      <Banknote size={18} className="text-green-600" />
+                      <div className="text-center">
+                        <p className="text-[10px] font-medium text-green-600">Monnaie à rendre</p>
+                        <p className="text-lg font-bold text-green-700">{(cashGiven - total).toFixed(2)} DH</p>
+                      </div>
+                    </div>
+                  )}
+                  {cashGiven !== null && cashGiven < total && (
+                    <div className="mt-2 flex items-center justify-center gap-2 bg-red-50 rounded-xl py-2.5 px-3 ring-1 ring-red-200">
+                      <AlertTriangle size={16} className="text-red-500" />
+                      <p className="text-xs font-semibold text-red-600">Insuffisant — il manque {(total - cashGiven).toFixed(2)} DH</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Totals + Actions — only when cart has items */}
+              {cart.length > 0 ? (
+                <>
+                  <div className="px-4 py-3 space-y-1">
+                    <div className="flex justify-between text-sm text-gray-500">
+                      <span>Articles</span>
+                      <span>{cart.reduce((s, i) => s + i.quantity, 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-xl font-bold text-gray-800 pt-1">
+                      <span>Total</span>
+                      <span className="text-primary-600">{total.toFixed(2)} DH</span>
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 flex gap-2">
+                    <button onClick={() => { setCart([]); setCashGiven(null); }}
+                      className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 size={18} />
+                      <span className="text-[10px] font-semibold">Vider</span>
+                    </button>
+                    <button onClick={handleCheckout}
+                      disabled={checkoutMutation.isPending || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)}
+                      className="flex-1 flex flex-col items-center justify-center gap-1 py-3 bg-primary-50 text-primary-700 rounded-xl font-bold text-base hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
+                      <ShoppingCart size={20} />
+                      <span className="text-sm">{checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-xs text-gray-300">Ajoutez des produits pour commencer</p>
+                </div>
+              )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* ═══════════ ORDERS TAB ═══════════ */}
       {posTab === 'orders' && (
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="mb-3">
-            <div className="relative">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="p-3 shrink-0 bg-white border-b border-gray-200 flex items-center gap-3">
+            <div className="relative flex-1">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Rechercher par nom, telephone ou n° commande..." value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} className="input pl-10" />
+              <input type="text" placeholder="Rechercher par nom, téléphone ou n° commande..." value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)}
+                className="w-full pl-10 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
             </div>
+            <button onClick={() => setShowOrderForm(true)}
+              className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0">
+              <Plus size={17} />
+              <span className="text-[10px] font-semibold">Commande</span>
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {orders.length === 0 && <p className="text-center py-12 text-gray-400">Aucune commande en cours</p>}
             {orders.map((o: Record<string, unknown>) => {
               const totalAmt = parseFloat(o.total as string);
@@ -776,18 +943,27 @@ export default function POSPage() {
                       <p className="text-xs text-gray-400">Avance: {advanceAmt.toFixed(2)} | Reste: {remaining.toFixed(2)}</p>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-1.5 shrink-0">
                     {o.status === 'pending' && (
                       <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'confirmed' })}
-                        className="text-xs bg-blue-600 text-white hover:bg-blue-700 py-1.5 px-3 rounded-lg">Confirmer</button>
+                        className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
+                        <CheckCircle size={16} />
+                        <span className="text-[10px] font-semibold">Confirmer</span>
+                      </button>
                     )}
                     {o.status === 'confirmed' && (
                       <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'in_production' })}
-                        className="text-xs bg-indigo-600 text-white hover:bg-indigo-700 py-1.5 px-3 rounded-lg">En production</button>
+                        className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors">
+                        <Factory size={16} />
+                        <span className="text-[10px] font-semibold">Production</span>
+                      </button>
                     )}
                     {o.status === 'ready' && (
                       <button onClick={() => { setDeliverOrder(o); setDeliverAmount(String(remaining.toFixed(2))); }}
-                        className="text-xs btn-primary py-1.5 px-3">Livrer</button>
+                        className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors">
+                        <Truck size={16} />
+                        <span className="text-[10px] font-semibold">Livrer</span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -799,7 +975,7 @@ export default function POSPage() {
 
       {/* ═══════════ RETURNS TAB ═══════════ */}
       {posTab === 'returns' && (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-50">
           {returnStep === 'search' && (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center space-y-4 w-full max-w-md px-4">
@@ -868,8 +1044,9 @@ export default function POSPage() {
                     setReturnReason('');
                     setReturnStep('search');
                   }}
-                  className="mt-4 px-6 py-3 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-700 transition-colors">
-                  Nouvelle operation
+                  className="mt-4 flex flex-col items-center gap-1 px-6 py-3 bg-primary-50 text-primary-700 rounded-xl font-semibold hover:bg-primary-100 transition-colors">
+                  <RotateCcw size={20} />
+                  <span className="text-sm">Nouvelle opération</span>
                 </button>
               </div>
             </div>
@@ -914,7 +1091,10 @@ export default function POSPage() {
                       <p className="text-sm font-semibold text-primary-600 mt-1">Total: {parseFloat(returnSale.total as string).toFixed(2)} DH</p>
                     </div>
                     <button onClick={() => { setReturnStep('search'); setReturnSale(null); setReturnItems({}); setExchangeProducts({}); }}
-                      className="text-sm text-gray-400 hover:text-gray-600">Autre vente</button>
+                      className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                      <Search size={15} />
+                      <span className="text-[10px] font-medium">Autre vente</span>
+                    </button>
                   </div>
                 </div>
 
@@ -928,18 +1108,18 @@ export default function POSPage() {
                 ) : (
                   <>
                     {/* Return type */}
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-3">
                       <button onClick={() => { setReturnType('return'); setExchangeProducts({}); }}
-                        className={`p-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                          returnType === 'return' ? 'bg-red-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                          returnType === 'return' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                         }`}>
-                        <RotateCcw size={18} /> Retour (remboursement)
+                        <RotateCcw size={16} /> Retour
                       </button>
                       <button onClick={() => setReturnType('exchange')}
-                        className={`p-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                          returnType === 'exchange' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                          returnType === 'exchange' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                         }`}>
-                        <ArrowLeftRight size={18} /> Echange
+                        <ArrowLeftRight size={16} /> Echange
                       </button>
                     </div>
 
@@ -1108,59 +1288,7 @@ export default function POSPage() {
       {/* ═══════════ MODALS ═══════════ */}
 
       {/* Payment Modal */}
-      {showPayment && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
-            <h2 className="text-xl font-bold mb-4">Paiement</h2>
-            <p className="text-3xl font-bold text-primary-600 text-center mb-4">{total.toFixed(2)} DH</p>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {(['cash', 'card'] as const).map(m => (
-                <button key={m} onClick={() => { setPaymentMethod(m); if (m !== 'cash') setCashGiven(null); }}
-                  className={`py-3 rounded-xl text-sm font-medium transition-colors ${paymentMethod === m ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                  {m === 'cash' ? 'Especes' : 'Carte bancaire'}
-                </button>
-              ))}
-            </div>
-
-            {/* Cash change calculator */}
-            {paymentMethod === 'cash' && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-xl space-y-3">
-                <p className="text-sm font-medium text-gray-600">Montant donne par le client</p>
-                <div className="grid grid-cols-4 gap-2">
-                  {[20, 50, 100, 200].map(amount => (
-                    <button key={amount} onClick={() => setCashGiven(cashGiven === amount ? null : amount)}
-                      className={`py-2.5 rounded-lg text-sm font-semibold transition-colors ${cashGiven === amount ? 'bg-primary-600 text-white ring-2 ring-primary-300' : 'bg-white border border-gray-200 text-gray-700 hover:border-primary-400'}`}>
-                      {amount} DH
-                    </button>
-                  ))}
-                </div>
-                {cashGiven !== null && (
-                  <div className={`p-3 rounded-lg text-center ${cashGiven >= total ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-                    {cashGiven >= total ? (
-                      <>
-                        <p className="text-sm text-green-700">Monnaie a rendre</p>
-                        <p className="text-2xl font-bold text-green-700">{(cashGiven - total).toFixed(2)} DH</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-red-600">Montant insuffisant</p>
-                        <p className="text-lg font-bold text-red-600">Il manque {(total - cashGiven).toFixed(2)} DH</p>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button onClick={() => { setShowPayment(false); setCashGiven(null); }} className="btn-secondary flex-1">Annuler</button>
-              <button onClick={handleCheckout} disabled={checkoutMutation.isPending || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)} className="btn-primary flex-1">
-                {checkoutMutation.isPending ? 'En cours...' : 'Confirmer'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Payment popup removed — checkout is now inline in the cart panel */}
 
       {/* New Order Modal — same interface as pre-orders */}
       {showOrderForm && (
@@ -1174,22 +1302,27 @@ export default function POSPage() {
             // Show advance receipt if an advance was paid
             if (createdOrder?.advanceReceipt) {
               const adv = createdOrder.advanceReceipt as Record<string, unknown>;
-              const items = (createdOrder.items as { productId: string; quantity: number; unitPrice: number; subtotal: number }[]) || [];
+              const orderItems = (createdOrder.items as { productId: string; quantity: number; unitPrice: number; subtotal: number }[]) || [];
               const allProds = (productsData?.data || []) as Record<string, unknown>[];
+              const orderSubtotal = parseFloat(createdOrder.subtotal as string) || 0;
+              const orderDiscount = parseFloat(createdOrder.discount_amount as string) || 0;
+              const orderTotal = parseFloat(adv.total as string) || (orderSubtotal - orderDiscount);
+              const advanceAmount = parseFloat(adv.advanceAmount as string) || 0;
+
               setReceiptData({
                 saleNumber: adv.orderNumber as string,
                 date: adv.date as string,
                 cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
-                customerName: (createdOrder.customer_name as string) || undefined,
-                items: items.map(it => {
-                  const prod = allProds.find((p: Record<string, unknown>) => p.id === it.productId);
-                  return { name: (prod?.name as string) || 'Produit', quantity: it.quantity, unitPrice: it.unitPrice, subtotal: it.subtotal };
+                customerName: (createdOrder.customer_name as string) || (createdOrder.customerName as string) || undefined,
+                items: orderItems.map(it => {
+                  const prod = allProds.find((p: Record<string, unknown>) => String(p.id) === String(it.productId));
+                  return { name: (prod?.name as string) || 'Produit', quantity: it.quantity, unitPrice: it.unitPrice, subtotal: it.quantity * it.unitPrice };
                 }),
-                subtotal: parseFloat(createdOrder.total as string),
-                discountAmount: parseFloat(createdOrder.discount_amount as string) || 0,
-                total: parseFloat(adv.advanceAmount as string),
+                subtotal: orderSubtotal,
+                discountAmount: orderDiscount,
+                total: advanceAmount,
                 paymentMethod: adv.paymentMethod as string,
-                orderTotal: parseFloat(adv.total as string),
+                orderTotal: orderTotal,
                 isAdvanceReceipt: true,
               });
             }
@@ -1240,19 +1373,25 @@ export default function POSPage() {
                   <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
                     className="input text-center text-xl font-bold mb-4" min="0" step="0.01" autoFocus />
                   <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-                  <div className="grid grid-cols-2 gap-2 mb-6">
-                    {(['cash', 'card'] as const).map(m => (
-                      <button key={m} onClick={() => setDeliverPayment(m)}
-                        className={`py-2 rounded-xl text-sm font-medium transition-colors ${deliverPayment === m ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                        {m === 'cash' ? 'Especes' : 'Carte bancaire'}
-                      </button>
-                    ))}
+                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-6">
+                    <button onClick={() => setDeliverPayment('cash')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                        deliverPayment === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
+                      }`}>
+                      <Banknote size={16} /> Espèces
+                    </button>
+                    <button onClick={() => setDeliverPayment('card')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                        deliverPayment === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
+                      }`}>
+                      <CreditCard size={16} /> Carte
+                    </button>
                   </div>
                 </>
               )}
               <div className="flex gap-3">
                 <button onClick={() => { setDeliverOrder(null); setDeliverAmount(''); }} className="btn-secondary flex-1">Annuler</button>
-                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: isDeferred ? 0 : (parseFloat(deliverAmount) || 0), paymentMethod: isDeferred ? 'deferred' : deliverPayment, order: deliverOrder })}
+                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: isDeferred ? 0 : (parseFloat(deliverAmount) || 0), paymentMethod: isDeferred ? 'deferred' : deliverPayment })}
                   disabled={deliverMutation.isPending} className="btn-primary flex-1">
                   {deliverMutation.isPending ? 'En cours...' : isDeferred ? 'Confirmer la livraison' : 'Confirmer'}
                 </button>
@@ -1265,14 +1404,14 @@ export default function POSPage() {
       {/* Close Register Modal */}
       {showCloseModal && closeResult && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : 'max-w-lg max-h-[90vh]'} overflow-y-auto`}>
-            {/* ═══ RULE 3: Inventory step ═══ */}
+          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : closeStep === 'input' ? (closeInputMode === 'counting' ? 'max-w-2xl h-[95vh]' : 'max-w-lg max-h-[90vh]') : 'max-w-lg max-h-[90vh]'} overflow-y-auto transition-all flex flex-col`}>
+            {/* ═══ Inventaire & decisions invendus (systeme intelligent) ═══ */}
             {closeStep === 'inventory' ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Inventaire & retours fin de journee</h2>
-                    <p className="text-sm text-gray-500 mt-1">Saisissez les quantites restantes. Le systeme determine automatiquement le statut de chaque article.</p>
+                    <h2 className="text-2xl font-bold text-gray-900">Inventaire de fin de journee</h2>
+                    <p className="text-sm text-gray-500 mt-1">Verifiez les quantites et decidez du devenir de chaque produit invendu.</p>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Package size={18} />
@@ -1280,35 +1419,30 @@ export default function POSPage() {
                   </div>
                 </div>
 
-                {/* Summary bar at top */}
+                {/* Summary bar */}
                 {(() => {
-                  let totalDiscrepancy = 0;
-                  let totalKeep = 0, totalExpired = 0, totalDestroy = 0, totalRecycle = 0, totalSold = 0, totalRemaining = 0;
+                  let totalKeep = 0, totalRecycle = 0, totalDestroy = 0, totalSold = 0, totalRemaining = 0, totalInitial = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
-                    const rep = parseInt(it.replenished_qty as string) || 0;
+                    const stock = parseInt(it.current_stock as string) || 0;
                     const sold = parseInt(it.sold_qty as string) || 0;
                     const remaining = inventoryQtys[pid] ?? 0;
                     totalSold += sold;
                     totalRemaining += remaining;
-                    totalDiscrepancy += rep - sold - remaining;
+                    totalInitial += stock + sold;
                     if (remaining > 0) {
-                      // Auto-determine status based on DLV toggle (is_reexposable)
-                      const displayExpiresAt = it.display_expires_at as string | null;
-                      const expiresAt = it.expires_at as string | null;
-                      const hasDLV = it.is_reexposable as boolean;
-                      const isRecyclable = it.is_recyclable as boolean;
-                      const now = new Date();
-                      const dlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= now : (expiresAt ? new Date(expiresAt) <= now : false);
-
-                      if (hasDLV && !dlvExpired) totalKeep += remaining;
-                      else if (hasDLV && dlvExpired) totalExpired += remaining;
-                      else if (isRecyclable) totalRecycle += remaining;
+                      const dest = inventoryDestinations[pid] || (it.suggested_destination as string) || 'waste';
+                      if (dest === 'reexpose') totalKeep += remaining;
+                      else if (dest === 'recycle') totalRecycle += remaining;
                       else totalDestroy += remaining;
                     }
                   });
                   return (
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-indigo-700">{totalInitial}</div>
+                        <div className="text-xs text-indigo-600 font-medium">Initial</div>
+                      </div>
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
                         <div className="text-2xl font-bold text-blue-700">{totalSold}</div>
                         <div className="text-xs text-blue-600 font-medium">Vendus</div>
@@ -1320,169 +1454,184 @@ export default function POSPage() {
                       {totalKeep > 0 && (
                         <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
                           <div className="text-2xl font-bold text-green-700">{totalKeep}</div>
-                          <div className="text-xs text-green-600 font-medium">Garder au vitrine</div>
+                          <div className="text-xs text-green-600 font-medium">Vitrine J+1</div>
                         </div>
                       )}
                       {totalRecycle > 0 && (
                         <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-center">
                           <div className="text-2xl font-bold text-cyan-700">{totalRecycle}</div>
-                          <div className="text-xs text-cyan-600 font-medium">A recycler</div>
-                        </div>
-                      )}
-                      {totalExpired > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-red-700">{totalExpired}</div>
-                          <div className="text-xs text-red-600 font-medium">Perimes a retirer</div>
+                          <div className="text-xs text-cyan-600 font-medium">Recyclage</div>
                         </div>
                       )}
                       {totalDestroy > 0 && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-orange-700">{totalDestroy}</div>
-                          <div className="text-xs text-orange-600 font-medium">A detruire</div>
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-red-700">{totalDestroy}</div>
+                          <div className="text-xs text-red-600 font-medium">Destruction</div>
                         </div>
                       )}
                     </div>
                   );
                 })()}
 
-                {/* Items table */}
-                <div className="border border-gray-200 rounded-xl overflow-hidden mb-4">
-                  <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <span className="col-span-4">Produit</span>
-                    <span className="col-span-1 text-center">Stock</span>
-                    <span className="col-span-1 text-center">Vendu</span>
-                    <span className="col-span-2 text-center">Restant</span>
-                    <span className="col-span-1 text-center">Ecart</span>
-                    <span className="col-span-3 text-center">Statut</span>
-                  </div>
-                  <div className="divide-y divide-gray-100 max-h-[50vh] overflow-y-auto">
-                    {inventoryItems.map((it) => {
-                      const pid = it.product_id as string;
-                      const rep = parseInt(it.replenished_qty as string) || 0;
-                      const sold = parseInt(it.sold_qty as string) || 0;
-                      const remaining = inventoryQtys[pid] ?? 0;
-                      const discrepancy = rep - sold - remaining;
-                      // Auto-determine status based on DLV toggle (is_reexposable)
-                      const displayExpiresAt = it.display_expires_at as string | null;
-                      const expiresAt = it.expires_at as string | null;
-                      const hasDLV = it.is_reexposable as boolean;
-                      const isRecyclable = it.is_recyclable as boolean;
-                      const now = new Date();
-                      const dlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= now : (expiresAt ? new Date(expiresAt) <= now : false);
+                {/* Items grouped by category */}
+                {(() => {
+                  const destStyles: Record<string, { bg: string; text: string; label: string; icon: string }> = {
+                    reexpose: { bg: 'bg-green-100 border-green-300', text: 'text-green-800', label: 'Vitrine J+1', icon: '✓' },
+                    recycle: { bg: 'bg-cyan-100 border-cyan-300', text: 'text-cyan-800', label: 'Recycler', icon: '♻' },
+                    waste: { bg: 'bg-red-100 border-red-300', text: 'text-red-800', label: 'Detruire', icon: '✗' },
+                  };
+                  // Group items by category
+                  const grouped: Record<string, typeof inventoryItems> = {};
+                  inventoryItems.forEach((it) => {
+                    const cat = (it.category_name as string) || 'Sans categorie';
+                    if (!grouped[cat]) grouped[cat] = [];
+                    grouped[cat].push(it);
+                  });
+                  const categoryNames = Object.keys(grouped).sort();
 
-                      // System-determined destination (no user choice)
-                      let autoStatus: 'keep' | 'expired' | 'recycle' | 'destroy' = 'destroy';
-                      let autoLabel = 'Produit a detruire';
-                      let autoDest = 'waste';
+                  return (
+                    <div className="space-y-3 mb-4 max-h-[50vh] overflow-y-auto">
+                      {categoryNames.map((catName) => {
+                        const catItems = grouped[catName];
+                        const catCount = catItems.reduce((sum, it) => {
+                          const pid = it.product_id as string;
+                          return sum + (inventoryQtys[pid] ?? 0);
+                        }, 0);
 
-                      if (hasDLV && !dlvExpired) {
-                        autoStatus = 'keep';
-                        autoLabel = 'Garder au vitrine';
-                        autoDest = 'reexpose';
-                      } else if (hasDLV && dlvExpired) {
-                        autoStatus = 'expired';
-                        autoLabel = 'Perime — a retirer';
-                        autoDest = 'waste';
-                      } else if (isRecyclable) {
-                        autoStatus = 'recycle';
-                        autoLabel = 'Recyclable';
-                        autoDest = 'recycle';
-                      }
+                        return (
+                          <div key={catName} className="border border-gray-200 rounded-xl overflow-hidden">
+                            {/* Category header */}
+                            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-gray-800">{catName}</span>
+                                <span className="text-[11px] font-medium text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">{catItems.length} article{catItems.length > 1 ? 's' : ''}</span>
+                              </div>
+                              <span className="text-xs font-semibold text-gray-500">{catCount} restant{catCount > 1 ? 's' : ''}</span>
+                            </div>
 
-                      // Auto-set destination (system decides)
-                      if (remaining > 0 && inventoryDestinations[pid] !== autoDest) {
-                        inventoryDestinations[pid] = autoDest;
-                      }
+                            {/* Column headers */}
+                            <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                              <span className="col-span-3">Produit</span>
+                              <span className="col-span-1 text-center">Stock</span>
+                              <span className="col-span-1 text-center">Vendu</span>
+                              <span className="col-span-2 text-center">Compte</span>
+                              <span className="col-span-1 text-center">Ecart</span>
+                              <span className="col-span-4 text-center">Decision</span>
+                            </div>
 
-                      return (
-                        <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
-                          autoStatus === 'expired' ? 'bg-red-50' : autoStatus === 'destroy' ? 'bg-orange-50' : autoStatus === 'recycle' ? 'bg-cyan-50' : discrepancy !== 0 ? 'bg-amber-50' : 'hover:bg-gray-50'
-                        }`}>
-                          {/* Product name */}
-                          <div className="col-span-4 min-w-0">
-                            <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
-                              {it.product_name as string}
-                            </span>
-                            {it.category_name && (
-                              <span className="text-[11px] text-gray-400">{it.category_name as string}</span>
-                            )}
-                          </div>
-                          {/* Stock */}
-                          <div className="col-span-1 text-center">
-                            <span className="text-sm font-bold text-blue-700">{rep}</span>
-                          </div>
-                          {/* Sold */}
-                          <div className="col-span-1 text-center">
-                            <span className="text-sm font-bold text-green-700">{sold}</span>
-                          </div>
-                          {/* Remaining - larger input */}
-                          <div className="col-span-2 flex justify-center">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
-                                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
-                              >
-                                <Minus size={14} />
-                              </button>
-                              <input type="number" min={0}
-                                value={remaining}
-                                onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                                className="w-16 h-8 text-center text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                              />
-                              <button
-                                onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
-                                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold transition-colors"
-                              >
-                                <Plus size={14} />
-                              </button>
+                            {/* Items */}
+                            <div className="divide-y divide-gray-100">
+                              {catItems.map((it) => {
+                                const pid = it.product_id as string;
+                                const stock = parseInt(it.current_stock as string) || 0;
+                                const sold = parseInt(it.sold_qty as string) || 0;
+                                const remaining = inventoryQtys[pid] ?? 0;
+                                const discrepancy = stock - remaining;
+
+                                const sugDest = (it.suggested_destination as string) || 'waste';
+                                const sugReason = (it.suggested_reason as string) || '';
+                                const finalDest = inventoryDestinations[pid] || sugDest;
+                                const isOverride = finalDest !== sugDest;
+
+                                if (remaining > 0 && !inventoryDestinations[pid]) {
+                                  inventoryDestinations[pid] = sugDest;
+                                }
+
+                                return (
+                                  <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
+                                    finalDest === 'waste' ? 'bg-red-50/30' : finalDest === 'recycle' ? 'bg-cyan-50/30' : discrepancy !== 0 ? 'bg-amber-50/50' : 'hover:bg-gray-50'
+                                  }`}>
+                                    {/* Product */}
+                                    <div className="col-span-3 min-w-0">
+                                      <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
+                                        {it.product_name as string}
+                                      </span>
+                                      {sugReason && remaining > 0 && (
+                                        <span className="text-[10px] text-blue-500 block mt-0.5 truncate" title={sugReason}>{sugReason}</span>
+                                      )}
+                                    </div>
+                                    {/* Stock */}
+                                    <div className="col-span-1 text-center">
+                                      <span className="text-sm font-bold text-indigo-700">{stock + sold}</span>
+                                    </div>
+                                    {/* Sold */}
+                                    <div className="col-span-1 text-center">
+                                      <span className="text-sm font-bold text-blue-700">{sold}</span>
+                                    </div>
+                                    {/* Counted */}
+                                    <div className="col-span-2 flex justify-center">
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
+                                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
+                                          <Minus size={12} />
+                                        </button>
+                                        <input type="number" min={0} value={remaining}
+                                          onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                          className="w-14 h-7 text-center text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500" />
+                                        <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
+                                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
+                                          <Plus size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {/* Discrepancy */}
+                                    <div className="col-span-1 text-center">
+                                      {discrepancy !== 0 ? (
+                                        <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                          {discrepancy > 0 ? `-${discrepancy}` : `+${Math.abs(discrepancy)}`}
+                                        </span>
+                                      ) : <span className="text-sm text-gray-300">0</span>}
+                                    </div>
+                                    {/* Decision buttons */}
+                                    <div className="col-span-4">
+                                      {remaining > 0 ? (
+                                        <div className="flex items-center gap-1 justify-center">
+                                          {(['reexpose', 'recycle', 'waste'] as const).map(d => {
+                                            const dConf = destStyles[d];
+                                            const isActive = finalDest === d;
+                                            const canReexpose = it.is_reexposable || sugDest === 'reexpose';
+                                            const canRecycle = it.is_recyclable && it.recycle_ingredient_id;
+                                            const disabled = (d === 'reexpose' && !canReexpose) || (d === 'recycle' && !canRecycle);
+                                            return (
+                                              <button key={d}
+                                                onClick={() => !disabled && setInventoryDestinations(prev => ({ ...prev, [pid]: d }))}
+                                                disabled={disabled as boolean}
+                                                title={d === 'reexpose' && disabled ? 'Non re-exposable' : d === 'recycle' && disabled ? 'Non recyclable' : dConf.label}
+                                                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                                  isActive ? `${dConf.bg} ${dConf.text} ring-2 ring-offset-1 ${d === 'reexpose' ? 'ring-green-400' : d === 'recycle' ? 'ring-cyan-400' : 'ring-red-400'}` :
+                                                  disabled ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' :
+                                                  'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                                }`}>
+                                                {dConf.icon} {dConf.label}
+                                              </button>
+                                            );
+                                          })}
+                                          {isOverride && <span className="text-amber-500 text-[10px] font-semibold ml-1">modifie</span>}
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                          {/* Discrepancy */}
-                          <div className="col-span-1 text-center">
-                            {discrepancy !== 0 ? (
-                              <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                {discrepancy > 0 ? `-${discrepancy}` : `+${Math.abs(discrepancy)}`}
-                              </span>
-                            ) : (
-                              <span className="text-sm text-gray-300">0</span>
-                            )}
-                          </div>
-                          {/* Statut (auto-determine) */}
-                          <div className="col-span-3">
-                            {remaining > 0 ? (
-                              <div className={`text-center text-xs font-bold py-2 px-3 rounded-lg ${
-                                autoStatus === 'keep' ? 'bg-green-100 text-green-800 border border-green-300' :
-                                autoStatus === 'recycle' ? 'bg-cyan-100 text-cyan-800 border border-cyan-300' :
-                                autoStatus === 'expired' ? 'bg-red-100 text-red-800 border border-red-300' :
-                                'bg-orange-100 text-orange-800 border border-orange-300'
-                              }`}>
-                                {autoStatus === 'keep' && '✓ '}
-                                {autoStatus === 'recycle' && '♻ '}
-                                {autoStatus === 'expired' && '⚠ '}
-                                {autoStatus === 'destroy' && '✗ '}
-                                {autoLabel}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* Discrepancy alert */}
                 {(() => {
                   let totalDiscrepancy = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
-                    const rep = parseInt(it.replenished_qty as string) || 0;
-                    const sold = parseInt(it.sold_qty as string) || 0;
+                    const stock = parseInt(it.current_stock as string) || 0;
                     const remaining = inventoryQtys[pid] ?? 0;
-                    totalDiscrepancy += rep - sold - remaining;
+                    totalDiscrepancy += stock - remaining;
                   });
-
                   return totalDiscrepancy !== 0 ? (
                     <div className={`rounded-xl p-4 flex items-center gap-3 text-sm mb-4 ${totalDiscrepancy > 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
                       <AlertTriangle size={20} className={totalDiscrepancy > 0 ? 'text-red-500' : 'text-blue-500'} />
@@ -1501,72 +1650,197 @@ export default function POSPage() {
                 })()}
 
                 <div className="flex gap-3">
-                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); }}
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="btn-secondary flex-1 py-3 text-base">Annuler</button>
                   <button onClick={async () => {
                     try {
-                      const items = inventoryItems.map((it) => {
-                        const pid = it.product_id as string;
-                        const remaining = inventoryQtys[pid] ?? 0;
+                      // Build decisions using intelligent suggestion data
+                      const decisions = inventoryItems
+                        .filter(it => {
+                          const pid = it.product_id as string;
+                          const remaining = inventoryQtys[pid] ?? 0;
+                          return remaining > 0;
+                        })
+                        .map((it) => {
+                          const pid = it.product_id as string;
+                          const remaining = inventoryQtys[pid] ?? 0;
+                          const stock = parseInt(it.current_stock as string) || 0;
+                          const soldQty = parseInt(it.sold_qty as string) || 0;
+                          const sugDest = (it.suggested_destination as string) || 'waste';
+                          const finalDest = inventoryDestinations[pid] || sugDest;
+                          const isOvr = finalDest !== sugDest;
 
-                        // Recompute auto-destination for submission (based on DLV toggle)
-                        const displayExpiresAt = it.display_expires_at as string | null;
-                        const itemExpiresAt = it.expires_at as string | null;
-                        const itemHasDLV = it.is_reexposable as boolean;
-                        const itemIsRecyclable = it.is_recyclable as boolean;
-                        const nowTs = new Date();
-                        const itemDlvExpired = displayExpiresAt ? new Date(displayExpiresAt) <= nowTs : (itemExpiresAt ? new Date(itemExpiresAt) <= nowTs : false);
+                          return {
+                            productId: pid,
+                            productName: it.product_name as string,
+                            categoryName: (it.category_name as string) || undefined,
+                            initialQty: stock + soldQty,
+                            soldQty: soldQty,
+                            remainingQty: remaining,
+                            suggestedDestination: sugDest,
+                            suggestedReason: (it.suggested_reason as string) || '',
+                            finalDestination: finalDest,
+                            overrideReason: isOvr ? 'Decision operateur' : undefined,
+                            shelfLifeDays: it.shelf_life_days as number | undefined,
+                            displayLifeHours: it.display_life_hours as number | undefined,
+                            isReexposable: it.is_reexposable as boolean | undefined,
+                            maxReexpositions: it.max_reexpositions as number | undefined,
+                            currentReexpositionCount: (it.reexposition_count as number) || 0,
+                            isRecyclable: it.is_recyclable as boolean | undefined,
+                            recycleIngredientId: (it.recycle_ingredient_id as string) || undefined,
+                            saleType: (it.sale_type as string) || undefined,
+                            displayExpiresAt: (it.display_expires_at as string) || undefined,
+                            expiresAt: (it.expires_at as string) || undefined,
+                            producedAt: (it.produced_at as string) || undefined,
+                            unitCost: parseFloat(String(it.cost_price)) || 0,
+                          };
+                        });
 
-                        let dest = 'waste';
-                        let reason = 'invendu_fin_journee';
-                        if (remaining > 0) {
-                          if (itemHasDLV && !itemDlvExpired) { dest = 'reexpose'; reason = ''; }
-                          else if (itemHasDLV && itemDlvExpired) { dest = 'waste'; reason = 'perime'; }
-                          else if (itemIsRecyclable) { dest = 'recycle'; reason = 'recycle'; }
-                          else { dest = 'waste'; reason = 'invendu_fin_journee'; }
-                        }
-
-                        return {
-                          productId: pid,
-                          productName: it.product_name as string,
-                          replenishedQty: parseInt(it.replenished_qty as string) || 0,
-                          soldQty: parseInt(it.sold_qty as string) || 0,
-                          remainingQty: remaining,
-                          destination: remaining > 0 ? dest : undefined,
-                          lossReason: remaining > 0 && dest === 'waste' ? reason : undefined,
-                        };
-                      });
-                      await replenishmentApi.saveInventoryCheck({
-                        sessionId: closeResult?.id as string,
-                        items,
-                      });
-                      toast.success('Inventaire et retours enregistres');
-                    } catch {
-                      toast.error('Erreur lors de l\'enregistrement');
+                      if (decisions.length > 0) {
+                        await unsoldDecisionApi.save({
+                          sessionId: closeResult?.id as string,
+                          decisions,
+                        });
+                        toast.success(`${decisions.length} decisions invendus enregistrees`);
+                      } else {
+                        toast.success('Aucun invendu a traiter');
+                      }
+                    } catch (err: unknown) {
+                      console.error('Erreur sauvegarde invendus:', err);
+                      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Erreur lors de l\'enregistrement';
+                      toast.error(msg);
                     }
                     setInventoryDone(true);
                     setCloseStep('input');
                   }}
                     className="btn-primary flex-1 py-3 text-base font-semibold">
-                    Valider l'inventaire
+                    Valider les decisions
                   </button>
                 </div>
               </>
             ) : closeStep === 'input' ? (
               <>
-                <h2 className="text-xl font-bold mb-2">Fermeture de caisse</h2>
-                <p className="text-sm text-gray-500 mb-6">Comptez l'argent dans la caisse et saisissez le montant trouve.</p>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Montant trouve dans la caisse (DH)</label>
-                <input type="number" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)}
-                  className="input text-center text-2xl font-bold mb-4" min="0" step="0.01" placeholder="0.00" autoFocus />
-                <label className="block text-sm font-medium text-gray-700 mb-2">Observations (optionnel)</label>
+                <h2 className="text-xl font-bold mb-1">Fermeture de caisse</h2>
+                <p className="text-sm text-gray-500 mb-4">Saisissez le montant trouve dans la caisse.</p>
+
+                {/* Mode toggle: Direct / Counting */}
+                <div className="bg-gray-100 rounded-lg p-0.5 flex mb-4">
+                  <button onClick={() => { setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${closeInputMode === 'direct' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <Banknote size={15} />
+                    Saisie directe
+                  </button>
+                  <button onClick={() => { setCloseInputMode('counting'); setActualAmount(''); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all ${closeInputMode === 'counting' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <Coins size={15} />
+                    Comptage detaille
+                  </button>
+                </div>
+
+                {closeInputMode === 'direct' ? (
+                  <>
+                    {/* Direct amount input */}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Montant total trouve (DH)</label>
+                    <input type="number" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)}
+                      className="input text-center text-2xl font-bold mb-4" min="0" step="0.01" placeholder="0.00" autoFocus />
+                  </>
+                ) : (
+                  <>
+                    {/* Denomination counter – full-width */}
+                    <div className="space-y-2 mb-3 flex-1">
+                      {/* Coins – 4 columns (one row) */}
+                      <div className="bg-amber-50 rounded-xl p-2.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-2">
+                          <Coins size={13} />
+                          <span>Pieces</span>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {DENOMINATIONS.filter(d => d.type === 'coin').map(d => {
+                            const count = denomCounts[d.value] || 0;
+                            const subtotal = d.value * count;
+                            return (
+                              <div key={d.value} className="flex flex-col items-center gap-1 bg-white rounded-lg py-2 px-1 ring-1 ring-amber-100">
+                                <img src={d.img} alt={`${d.label} DH`} className="w-12 h-12 object-contain" />
+                                <div className="flex items-center gap-0.5">
+                                  <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, (prev[d.value] || 0) - 1) }))}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
+                                    <Minus size={11} />
+                                  </button>
+                                  <input type="number" min="0" value={count || ''}
+                                    onChange={(e) => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                    className="w-10 h-6 text-center text-xs font-semibold border border-gray-200 rounded focus:ring-2 focus:ring-primary-300 focus:border-primary-400 outline-none"
+                                    placeholder="0" />
+                                  <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: (prev[d.value] || 0) + 1 }))}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
+                                    <Plus size={11} />
+                                  </button>
+                                </div>
+                                <span className={`text-[10px] font-medium ${subtotal > 0 ? 'text-amber-800' : 'text-gray-300'}`}>
+                                  {subtotal.toFixed(2)} DH
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Bills – 5 columns (one row) + overflow */}
+                      <div className="bg-green-50 rounded-xl p-2.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-green-700 mb-2">
+                          <Banknote size={13} />
+                          <span>Billets</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {DENOMINATIONS.filter(d => d.type === 'bill').map(d => {
+                            const count = denomCounts[d.value] || 0;
+                            const subtotal = d.value * count;
+                            return (
+                              <div key={d.value} className="flex flex-col items-center gap-1 bg-white rounded-lg py-2 px-1 ring-1 ring-green-100">
+                                <img src={d.img} alt={`${d.label} DH`} className="w-16 h-10 object-contain" />
+                                <div className="flex items-center gap-0.5">
+                                  <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, (prev[d.value] || 0) - 1) }))}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
+                                    <Minus size={11} />
+                                  </button>
+                                  <input type="number" min="0" value={count || ''}
+                                    onChange={(e) => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                    className="w-10 h-6 text-center text-xs font-semibold border border-gray-200 rounded focus:ring-2 focus:ring-primary-300 focus:border-primary-400 outline-none"
+                                    placeholder="0" />
+                                  <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: (prev[d.value] || 0) + 1 }))}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
+                                    <Plus size={11} />
+                                  </button>
+                                </div>
+                                <span className={`text-[10px] font-medium ${subtotal > 0 ? 'text-green-800' : 'text-gray-300'}`}>
+                                  {subtotal.toFixed(2)} DH
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Counting total */}
+                    <div className="bg-gray-900 text-white rounded-xl p-3 mb-3 flex justify-between items-center">
+                      <span className="text-sm font-medium">Total trouve dans la caisse</span>
+                      <span className="text-2xl font-bold">{denomTotal.toFixed(2)} DH</span>
+                    </div>
+                  </>
+                )}
+
+                <label className="block text-xs font-medium text-gray-700 mb-1">Observations (optionnel)</label>
                 <textarea value={closeNotes} onChange={(e) => setCloseNotes(e.target.value)}
-                  className="input mb-6" rows={2} placeholder="Remarques..." />
+                  className="input mb-3" rows={1} placeholder="Remarques..." />
                 <div className="flex gap-3">
-                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); }}
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="btn-secondary flex-1">Annuler</button>
                   <button onClick={() => submitAmountMutation.mutate()}
-                    disabled={!actualAmount || submitAmountMutation.isPending} className="btn-primary flex-1">
+                    disabled={
+                      (closeInputMode === 'direct' ? !actualAmount || parseFloat(actualAmount) < 0 : denomTotal <= 0)
+                      || submitAmountMutation.isPending
+                    }
+                    className="btn-primary flex-1">
                     {submitAmountMutation.isPending ? 'En cours...' : 'Valider'}
                   </button>
                 </div>
@@ -1580,16 +1854,27 @@ export default function POSPage() {
                       <span className="text-gray-500">Fond de caisse</span>
                       <span className="font-medium">{parseFloat(closeResult.opening_amount as string).toFixed(2)} DH</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Ventes en especes</span>
-                      <span className="font-medium">{parseFloat(closeResult.cash_revenue as string).toFixed(2)} DH</span>
-                    </div>
-                    {parseFloat(closeResult.total_advances as string) > 0 && (
+
+                    {/* Breakdown by sale type */}
+                    {(closeResult.standard_count as number) > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Avances commandes ({closeResult.total_orders as number})</span>
-                        <span className="font-medium">{parseFloat(closeResult.total_advances as string).toFixed(2)} DH</span>
+                        <span className="text-gray-500">Ventes directes ({closeResult.standard_count as number})</span>
+                        <span className="font-medium">{parseFloat(String(closeResult.standard_revenue || 0)).toFixed(2)} DH</span>
                       </div>
                     )}
+                    {(closeResult.advance_count as number) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Avances commandes ({closeResult.advance_count as number})</span>
+                        <span className="font-medium text-orange-600">+{parseFloat(String(closeResult.advance_revenue || 0)).toFixed(2)} DH</span>
+                      </div>
+                    )}
+                    {(closeResult.delivery_count as number) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Soldes livraisons ({closeResult.delivery_count as number})</span>
+                        <span className="font-medium text-blue-600">+{parseFloat(String(closeResult.delivery_revenue || 0)).toFixed(2)} DH</span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between font-semibold border-t pt-2">
                       <span>Montant attendu</span>
                       <span>{parseFloat(closeResult.expected_cash as string).toFixed(2)} DH</span>
@@ -1644,7 +1929,7 @@ export default function POSPage() {
                     </div>
                   </div>
 
-                  {/* ═══ Bilan produits : Approvisionné / Vendu / Restant / Écart ═══ */}
+                  {/* ═══ Bilan produits : Initial / Vendu / Restant / Écart ═══ */}
                   {inventoryItems.length > 0 && (
                     <div className="bg-gray-50 rounded-xl p-4 text-sm">
                       <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -1653,7 +1938,7 @@ export default function POSPage() {
                       </h3>
                       <div className="grid grid-cols-5 gap-1 text-xs font-medium text-gray-500 border-b pb-2 mb-2">
                         <span className="col-span-1">Produit</span>
-                        <span className="text-center">Approv.</span>
+                        <span className="text-center">Initial</span>
                         <span className="text-center">Vendu</span>
                         <span className="text-center">Restant</span>
                         <span className="text-center">Écart</span>
@@ -1661,17 +1946,18 @@ export default function POSPage() {
                       <div className="max-h-48 overflow-y-auto space-y-1">
                         {inventoryItems.map((it) => {
                           const pid = it.product_id as string;
-                          const rep = parseInt(it.replenished_qty as string) || 0;
+                          const stock = parseInt(it.current_stock as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
+                          const initial = stock + sold;
                           const remaining = inventoryQtys[pid] ?? 0;
-                          const ecart = rep - sold - remaining;
+                          const ecart = stock - remaining;
                           return (
                             <div key={pid} className={`grid grid-cols-5 gap-1 items-center py-1.5 px-1 rounded ${ecart !== 0 ? (ecart > 0 ? 'bg-red-50' : 'bg-blue-50') : ''}`}>
                               <span className="text-xs font-medium truncate" title={it.product_name as string}>
                                 {it.product_name as string}
                               </span>
-                              <span className="text-center text-xs font-semibold text-blue-700">{rep}</span>
-                              <span className="text-center text-xs font-semibold text-green-700">{sold}</span>
+                              <span className="text-center text-xs font-semibold text-indigo-700">{initial}</span>
+                              <span className="text-center text-xs font-semibold text-blue-700">{sold}</span>
                               <span className="text-center text-xs font-semibold text-gray-700">{remaining}</span>
                               <span className={`text-center text-xs font-bold ${ecart > 0 ? 'text-red-600' : ecart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
                                 {ecart === 0 ? '✓' : ecart > 0 ? `-${ecart}` : `+${Math.abs(ecart)}`}
@@ -1682,21 +1968,21 @@ export default function POSPage() {
                       </div>
                       {/* Totaux */}
                       {(() => {
-                        let totalRep = 0, totalSold = 0, totalRemaining = 0, totalEcart = 0;
+                        let totalInitial = 0, totalSold = 0, totalRemaining = 0, totalEcart = 0;
                         inventoryItems.forEach((it) => {
                           const pid = it.product_id as string;
-                          const rep = parseInt(it.replenished_qty as string) || 0;
+                          const stock = parseInt(it.current_stock as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
                           const remaining = inventoryQtys[pid] ?? 0;
-                          totalRep += rep; totalSold += sold; totalRemaining += remaining;
-                          totalEcart += rep - sold - remaining;
+                          totalInitial += stock + sold; totalSold += sold; totalRemaining += remaining;
+                          totalEcart += stock - remaining;
                         });
                         return (
                           <>
                             <div className="grid grid-cols-5 gap-1 items-center py-2 px-1 border-t mt-2 font-semibold text-xs">
                               <span>Total</span>
-                              <span className="text-center text-blue-700">{totalRep}</span>
-                              <span className="text-center text-green-700">{totalSold}</span>
+                              <span className="text-center text-indigo-700">{totalInitial}</span>
+                              <span className="text-center text-blue-700">{totalSold}</span>
                               <span className="text-center text-gray-700">{totalRemaining}</span>
                               <span className={`text-center font-bold ${totalEcart > 0 ? 'text-red-600' : totalEcart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
                                 {totalEcart === 0 ? '✓' : totalEcart > 0 ? `-${totalEcart}` : `+${Math.abs(totalEcart)}`}
@@ -1724,6 +2010,8 @@ export default function POSPage() {
                   setActualAmount('');
                   setCloseNotes('');
                   setCloseStep('input');
+                  setCloseInputMode('direct');
+                  setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0])));
                   queryClient.invalidateQueries({ queryKey: ['cash-register-session'] });
                   toast.success('Caisse fermée avec succès !');
                 }} className="btn-primary w-full py-3">
@@ -1798,13 +2086,15 @@ export default function POSPage() {
                           }
                           setTransferReceptionItems(prev => ({ ...prev, [tId]: presets }));
                         }}
-                          className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition flex items-center gap-2">
-                          <CheckCircle size={16} /> Confirmer
+                          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors">
+                          <CheckCircle size={17} />
+                          <span className="text-[10px] font-semibold">Confirmer</span>
                         </button>
                       ) : (
                         <button onClick={() => setConfirmingTransferId(null)}
-                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs hover:bg-gray-50">
-                          Annuler
+                          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                          <XCircle size={17} />
+                          <span className="text-[10px] font-medium">Annuler</span>
                         </button>
                       )}
                     </div>
@@ -1817,7 +2107,7 @@ export default function POSPage() {
                           <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Attendu</th>
                           {isConfirming && (
                             <>
-                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Recu</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Reçu</th>
                               <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Ecart</th>
                               <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Note</th>
                             </>
@@ -1888,9 +2178,9 @@ export default function POSPage() {
                             confirmTransferMutation.mutate({ id: tId, items: itemsToSend });
                           }}
                           disabled={confirmTransferMutation.isPending}
-                          className="px-6 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition flex items-center gap-2">
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-green-50 text-green-700 text-sm font-bold hover:bg-green-100 transition-colors">
                           <CheckCircle size={16} />
-                          {confirmTransferMutation.isPending ? 'Confirmation...' : 'Valider la reception'}
+                          {confirmTransferMutation.isPending ? 'Confirmation...' : 'Valider la réception'}
                         </button>
                       </div>
                     )}
@@ -1937,13 +2227,15 @@ export default function POSPage() {
                           }
                           setTransferReceptionItems(prev => ({ ...prev, [tId]: presets }));
                         }}
-                          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
-                          <CheckCircle size={16} /> Confirmer
+                          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
+                          <CheckCircle size={17} />
+                          <span className="text-[10px] font-semibold">Confirmer</span>
                         </button>
                       ) : (
                         <button onClick={() => setConfirmingTransferId(null)}
-                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs hover:bg-gray-50">
-                          Annuler
+                          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                          <XCircle size={17} />
+                          <span className="text-[10px] font-medium">Annuler</span>
                         </button>
                       )}
                     </div>
@@ -2024,9 +2316,9 @@ export default function POSPage() {
                             confirmProductionTransferMutation.mutate({ transferId, items: itemsToSend });
                           }}
                           disabled={confirmProductionTransferMutation.isPending}
-                          className="px-6 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition flex items-center gap-2">
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-green-50 text-green-700 text-sm font-bold hover:bg-green-100 transition-colors">
                           <CheckCircle size={16} />
-                          {confirmProductionTransferMutation.isPending ? 'Confirmation...' : 'Valider la reception'}
+                          {confirmProductionTransferMutation.isPending ? 'Confirmation...' : 'Valider la réception'}
                         </button>
                       </div>
                     )}
@@ -2077,9 +2369,9 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
 
   const MARGIN = 1.10; // +10% margin
 
-  const getDayName = () => {
+  const getTargetDayName = () => {
     const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-    return days[new Date().getDay()];
+    return days[(new Date().getDay() + 1) % 7];
   };
 
   // Fetch recommendations
@@ -2256,7 +2548,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-800">Approvisionnement</h2>
-              <p className="text-xs text-gray-500">{hasHistory ? `Basé sur les ventes de ${getDayName()} dernier (+10%)` : 'Suggestions aléatoires — aucun historique'}</p>
+              <p className="text-xs text-gray-500">{hasHistory ? `Suggestions pour ${getTargetDayName()} basees sur l'historique du meme jour (+10%)` : 'Aucun historique — saisie manuelle'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/80 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
@@ -2371,14 +2663,22 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                           const pid = (item.product_id || item.id) as string;
                           const sold = parseInt((item.last_week_qty as string) || '0') || 0;
                           const stock = parseFloat((item.current_stock as string) || '0') || 0;
-                          const suggested = hasHistory ? Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock))) : (selected[pid] || 1);
+                          const refType = (item.reference_type as string) || 'j7';
+                          const refLabel = (item.reference_label as string) || '';
+                          const suggested = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
                           const qty = selected[pid] || 0;
                           const isSelected = qty > 0;
 
+                          const refBadge = refType === 'j7'
+                            ? { bg: 'bg-green-50 text-green-700 border-green-200', label: 'J-7' }
+                            : refType === 'j14'
+                              ? { bg: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'J-14' }
+                              : { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Moy.' };
+
                           return (
-                            <div key={pid} className={`flex items-center gap-4 px-6 py-2.5 transition-colors ${isSelected ? 'bg-primary-50/50' : 'hover:bg-gray-50'}`}>
+                            <div key={pid} className={`flex items-center gap-4 px-6 py-2.5 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
                               <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
-                                className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-primary-600 border-primary-600' : 'border-gray-300 hover:border-primary-400'}`}>
+                                className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}>
                                 {isSelected && <CheckCircle size={14} className="text-white" />}
                               </button>
                               <div className="flex-1 min-w-0">
@@ -2386,28 +2686,33 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                                   {(item.product_name || item.name) as string}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {hasHistory && (
-                                  <>
-                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600" title="Vendu">📊 {sold}</span>
-                                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${stock > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`} title="Stock">📦 {Math.floor(stock)}</span>
-                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium" title="Suggéré">💡 {suggested}</span>
-                                  </>
-                                )}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
+                                  {refBadge.label}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
+                                  <Layers size={10} /> {sold}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
+                                  <Package size={10} /> {Math.floor(stock)}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
+                                  <Lightbulb size={10} /> {suggested}
+                                </span>
                               </div>
                               {isSelected ? (
-                                <div className="flex items-center bg-white rounded-lg border border-primary-200 shrink-0 shadow-sm">
+                                <div className="flex items-center bg-white rounded-xl border border-indigo-200 shrink-0 shadow-sm overflow-hidden">
                                   <button onClick={() => setQty(pid, qty - 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-primary-600 font-bold hover:bg-primary-50 rounded-l-lg">−</button>
+                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">-</button>
                                   <input type="number" min={1} value={qty}
                                     onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
-                                    className="w-12 text-center text-sm font-bold h-8 border-x border-primary-200 focus:outline-none focus:bg-primary-50" />
+                                    className="w-12 text-center text-sm font-bold h-8 border-x border-indigo-200 focus:outline-none focus:bg-indigo-50" />
                                   <button onClick={() => setQty(pid, qty + 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-primary-600 font-bold hover:bg-primary-50 rounded-r-lg">+</button>
+                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">+</button>
                                 </div>
                               ) : (
                                 <button onClick={() => setQty(pid, suggested)}
-                                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-primary-100 hover:text-primary-700 transition-colors shrink-0">
+                                  className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors shrink-0">
                                   + Ajouter
                                 </button>
                               )}

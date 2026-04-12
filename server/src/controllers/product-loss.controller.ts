@@ -80,8 +80,8 @@ export const productLossController = {
         ]
       );
 
-      // For casse/non_vendu/perime/recyclage: decrement product stock (product was already produced)
-      if (['casse', 'non_vendu', 'perime', 'recyclage'].includes(lossType)) {
+      // For vitrine/perime/recyclage: decrement product stock (product was already produced)
+      if (['vitrine', 'perime', 'recyclage'].includes(lossType)) {
         const stockAfter = await adjustProductStock(client, productId, -quantity, req.user!.storeId);
 
         // Log stock transaction

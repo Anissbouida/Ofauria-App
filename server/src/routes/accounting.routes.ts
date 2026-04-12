@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { caisseController, supplierController, expenseCategoryController, invoiceController, paymentController } from '../controllers/accounting.controller.js';
+import { caisseController, supplierController, expenseCategoryController, revenueCategoryController, invoiceController, paymentController } from '../controllers/accounting.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -37,9 +37,17 @@ suppliersRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), supplierCon
 
 export const expenseCategoriesRouter = Router();
 expenseCategoriesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), expenseCategoryController.list);
+expenseCategoriesRouter.get('/:id/children', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), expenseCategoryController.children);
 expenseCategoriesRouter.post('/', authenticate, authorize(ROLES.ADMIN), expenseCategoryController.create);
 expenseCategoriesRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), expenseCategoryController.update);
 expenseCategoriesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), expenseCategoryController.remove);
+
+export const revenueCategoriesRouter = Router();
+revenueCategoriesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), revenueCategoryController.list);
+revenueCategoriesRouter.get('/:id/children', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), revenueCategoryController.children);
+revenueCategoriesRouter.post('/', authenticate, authorize(ROLES.ADMIN), revenueCategoryController.create);
+revenueCategoriesRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), revenueCategoryController.update);
+revenueCategoriesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), revenueCategoryController.remove);
 
 export const invoicesRouter = Router();
 invoicesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.list);

@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
-import { caisseRepository, supplierRepository, expenseCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
+import { caisseRepository, supplierRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
@@ -42,20 +42,59 @@ export const supplierController = {
 };
 
 export const expenseCategoryController = {
-  async list(_req: AuthRequest, res: Response) {
-    const categories = await expenseCategoryRepository.findAll();
+  async list(req: AuthRequest, res: Response) {
+    const includeInactive = req.query.all === 'true';
+    const categories = includeInactive
+      ? await expenseCategoryRepository.findAllTree()
+      : await expenseCategoryRepository.findAll();
     res.json({ success: true, data: categories });
+  },
+  async children(req: AuthRequest, res: Response) {
+    const children = await expenseCategoryRepository.findChildren(req.params.id as string);
+    res.json({ success: true, data: children });
   },
   async create(req: AuthRequest, res: Response) {
     const category = await expenseCategoryRepository.create(req.body);
     res.status(201).json({ success: true, data: category });
   },
   async update(req: AuthRequest, res: Response) {
-    const category = await expenseCategoryRepository.update(req.params.id, req.body);
+    const category = await expenseCategoryRepository.update(req.params.id as string, req.body);
     res.json({ success: true, data: category });
   },
   async remove(req: AuthRequest, res: Response) {
-    await expenseCategoryRepository.delete(req.params.id);
+    // Check if referenced in payments
+    const usage = await db.query('SELECT COUNT(*)::int as count FROM payments WHERE category_id = $1', [req.params.id]);
+    if (usage.rows[0].count > 0) {
+      res.status(409).json({ success: false, error: { message: `Impossible : utilisee dans ${usage.rows[0].count} paiement(s)` } });
+      return;
+    }
+    await expenseCategoryRepository.deactivate(req.params.id as string);
+    res.json({ success: true, data: null });
+  },
+};
+
+export const revenueCategoryController = {
+  async list(req: AuthRequest, res: Response) {
+    const includeInactive = req.query.all === 'true';
+    const categories = includeInactive
+      ? await revenueCategoryRepository.findAllTree()
+      : await revenueCategoryRepository.findAll();
+    res.json({ success: true, data: categories });
+  },
+  async children(req: AuthRequest, res: Response) {
+    const children = await revenueCategoryRepository.findChildren(req.params.id as string);
+    res.json({ success: true, data: children });
+  },
+  async create(req: AuthRequest, res: Response) {
+    const category = await revenueCategoryRepository.create(req.body);
+    res.status(201).json({ success: true, data: category });
+  },
+  async update(req: AuthRequest, res: Response) {
+    const category = await revenueCategoryRepository.update(req.params.id as string, req.body);
+    res.json({ success: true, data: category });
+  },
+  async remove(req: AuthRequest, res: Response) {
+    await revenueCategoryRepository.deactivate(req.params.id as string);
     res.json({ success: true, data: null });
   },
 };

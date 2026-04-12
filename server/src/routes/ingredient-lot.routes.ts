@@ -9,6 +9,7 @@ router.get('/expiring', authenticate, ingredientLotController.expiring);
 router.get('/expired', authenticate, ingredientLotController.expired);
 router.get('/stats', authenticate, ingredientLotController.stats);
 router.get('/quality-check/:id', authenticate, ingredientLotController.getQualityCheck);
+router.get('/production/:planId/fefo-preview', authenticate, ingredientLotController.fefoPreview);
 router.get('/production/:id', authenticate, ingredientLotController.productionLots);
 router.get('/:id', authenticate, ingredientLotController.getById);
 router.get('/:id/traceability', authenticate, ingredientLotController.traceability);

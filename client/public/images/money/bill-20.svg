@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80">
+  <defs>
+    <linearGradient id="b20" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a7fb5"/>
+      <stop offset="50%" stop-color="#3a6a9e"/>
+      <stop offset="100%" stop-color="#2d5580"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="156" height="76" rx="6" fill="url(#b20)" stroke="#1e4060" stroke-width="1.5"/>
+  <rect x="8" y="8" width="144" height="64" rx="3" fill="none" stroke="#6a9fd0" stroke-width="0.8" opacity="0.5"/>
+  <text x="80" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="bold" fill="#d0e4f5">20</text>
+  <text x="80" y="62" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#a0c8e8">DH</text>
+  <text x="15" y="20" font-family="Arial,sans-serif" font-size="8" fill="#80b0d8" opacity="0.7">BANK AL-MAGHRIB</text>
+</svg>

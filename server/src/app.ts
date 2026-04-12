@@ -13,7 +13,25 @@ const app = express();
 
 // Security
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    // Autorise le web (localhost dev), l'app mobile Capacitor, et les requêtes sans origin
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:4173',
+      'http://localhost',
+      'https://localhost',
+      'capacitor://localhost',
+      'http://10.0.2.2:3001',
+    ];
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // En dev, accepter tout. En prod, restreindre.
+    }
+  },
+  credentials: true,
+}));
 
 // Body parsing
 app.use(express.json());

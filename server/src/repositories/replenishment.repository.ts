@@ -496,12 +496,77 @@ export const replenishmentRepository = {
 
   /* ─── Cancel ─── */
 
-  async cancel(requestId: string) {
-    await db.query(
-      `UPDATE replenishment_requests SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1 AND status IN ('submitted', 'acknowledged')`,
-      [requestId]
-    );
+  async cancel(requestId: string): Promise<{ cancelledPlanIds: { id: string; targetRole: string; storeId: string }[] }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Cancel the replenishment request
+      await client.query(
+        `UPDATE replenishment_requests SET status = 'cancelled', updated_at = NOW()
+         WHERE id = $1 AND status IN ('submitted', 'acknowledged')`,
+        [requestId]
+      );
+
+      // 2. Find linked production plans (via replenishment_request_items or direct FK)
+      const plansResult = await client.query(
+        `SELECT DISTINCT pp.id, pp.status, pp.target_role, pp.store_id
+         FROM production_plans pp
+         WHERE pp.replenishment_request_id = $1
+           AND pp.status != 'completed'`,
+        [requestId]
+      );
+
+      const cancelledPlanIds: { id: string; targetRole: string; storeId: string }[] = [];
+
+      for (const plan of plansResult.rows) {
+        if (plan.status === 'draft') {
+          // Draft plans: set to cancelled directly
+          await client.query(
+            `UPDATE production_plans
+             SET status = 'cancelled', cancelled_at = NOW(),
+                 cancellation_reason = 'Annulation cascade — demande d''approvisionnement annulee',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [plan.id]
+          );
+        } else if (['confirmed', 'in_progress'].includes(plan.status)) {
+          // Cancel all pending items
+          await client.query(
+            `UPDATE production_plan_items
+             SET status = 'cancelled', waiting_status = NULL,
+                 cancelled_at = NOW(),
+                 cancellation_reason = 'Annulation cascade — demande d''approvisionnement annulee'
+             WHERE plan_id = $1 AND status = 'pending'`,
+            [plan.id]
+          );
+
+          // Set plan status to cancelled
+          await client.query(
+            `UPDATE production_plans
+             SET status = 'cancelled', cancelled_at = NOW(),
+                 cancellation_reason = 'Annulation cascade — demande d''approvisionnement annulee',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [plan.id]
+          );
+        }
+
+        cancelledPlanIds.push({
+          id: plan.id,
+          targetRole: plan.target_role,
+          storeId: plan.store_id,
+        });
+      }
+
+      await client.query('COMMIT');
+      return { cancelledPlanIds };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /* ─── RULE 1: Get product IDs already requested today for this store ─── */
@@ -775,8 +840,31 @@ export const replenishmentRepository = {
     return transfers;
   },
 
+  /**
+   * Recommandations intelligentes basees sur l'historique du meme jour de la semaine.
+   *
+   * Le jour cible est le LENDEMAIN (la demande se fait le soir pour le jour suivant).
+   * Cascade de recherche :
+   *   1. Ventes du meme jour J-7   → reference_type = 'j7'
+   *   2. Ventes du meme jour J-14  → reference_type = 'j14'
+   *   3. Moyenne des 4 dernieres occurrences du meme jour → reference_type = 'avg4'
+   *   4. Aucun historique → reference_type = 'none' (saisie manuelle)
+   */
   async getRecommendations(storeId: string) {
-    const result = await db.query(`
+    const tz = getUserTimezone();
+
+    // Jour cible = lendemain (demande faite le soir pour le jour suivant)
+    // DOW PostgreSQL : 0=dimanche, 1=lundi, ..., 6=samedi
+    const targetDowResult = await db.query(
+      `SELECT EXTRACT(DOW FROM (NOW() AT TIME ZONE '${tz}') + INTERVAL '1 day')::int as target_dow`
+    );
+    const targetDow = targetDowResult.rows[0].target_dow;
+
+    const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const targetDayName = DAY_NAMES[targetDow];
+
+    // Recuperer tous les produits disponibles avec stock
+    const productsResult = await db.query(`
       SELECT
         p.id as product_id,
         p.name as product_name,
@@ -786,26 +874,121 @@ export const replenishmentRepository = {
         c.name as category_name,
         c.slug as category_slug,
         c.display_order,
-        COALESCE(SUM(si.quantity), 0) as last_week_qty,
         COALESCE(pss.stock_quantity, 0) as current_stock,
         p.stock_min_threshold
       FROM products p
       JOIN categories c ON c.id = p.category_id
-      LEFT JOIN sale_items si ON si.product_id = p.id
-        AND si.sale_id IN (
-          SELECT s.id FROM sales s
-          WHERE s.store_id = $1
-            AND EXTRACT(DOW FROM s.created_at) = EXTRACT(DOW FROM NOW())
-            AND s.created_at >= NOW() - INTERVAL '14 days'
-            AND s.created_at < NOW() - INTERVAL '6 days'
-        )
       LEFT JOIN product_store_stock pss ON pss.product_id = p.id AND pss.store_id = $1
       WHERE p.is_available = true
-      GROUP BY p.id, p.name, p.image_url, p.price, c.id, c.name, c.slug, c.display_order, pss.stock_quantity, p.stock_min_threshold
-      HAVING COALESCE(SUM(si.quantity), 0) > 0
-      ORDER BY c.display_order, COALESCE(SUM(si.quantity), 0) DESC
+      ORDER BY c.display_order, p.name
     `, [storeId]);
 
-    return result.rows;
+    if (productsResult.rows.length === 0) return [];
+
+    const productIds = productsResult.rows.map(r => r.product_id);
+
+    // Charger les ventes par produit pour les 4 dernieres occurrences du jour cible
+    // (couvre J-7, J-14, J-21, J-28)
+    const salesResult = await db.query(`
+      SELECT
+        si.product_id,
+        DATE(s.created_at AT TIME ZONE '${tz}') as sale_date,
+        SUM(si.quantity) as day_qty
+      FROM sale_items si
+      JOIN sales s ON s.id = si.sale_id
+      WHERE s.store_id = $1
+        AND si.product_id = ANY($2)
+        AND EXTRACT(DOW FROM s.created_at AT TIME ZONE '${tz}') = $3
+        AND s.created_at AT TIME ZONE '${tz}' >= (NOW() AT TIME ZONE '${tz}') - INTERVAL '29 days'
+      GROUP BY si.product_id, DATE(s.created_at AT TIME ZONE '${tz}')
+      ORDER BY si.product_id, sale_date DESC
+    `, [storeId, productIds, targetDow]);
+
+    // Organiser : { productId => [{ date, qty }, ...] } trie par date desc
+    const salesByProduct: Record<string, { date: string; qty: number }[]> = {};
+    for (const row of salesResult.rows) {
+      const pid = row.product_id as string;
+      if (!salesByProduct[pid]) salesByProduct[pid] = [];
+      salesByProduct[pid].push({
+        date: row.sale_date,
+        qty: parseInt(String(row.day_qty)) || 0,
+      });
+    }
+
+    // Calculer les dates de reference
+    const nowLocal = await db.query(`SELECT (NOW() AT TIME ZONE '${tz}')::date as today`);
+    const today = new Date(nowLocal.rows[0].today);
+
+    const j7Date = new Date(today);
+    j7Date.setDate(j7Date.getDate() - 7 + 1); // lendemain - 7 jours
+    const j7Str = j7Date.toISOString().slice(0, 10);
+
+    const j14Date = new Date(today);
+    j14Date.setDate(j14Date.getDate() - 14 + 1);
+    const j14Str = j14Date.toISOString().slice(0, 10);
+
+    // Enrichir chaque produit avec la recommandation
+    const results = productsResult.rows.map(product => {
+      const pid = product.product_id as string;
+      const history = salesByProduct[pid] || [];
+
+      // Cascade : J-7 → J-14 → moyenne 4 derniers → aucun
+      const j7Entry = history.find(h => h.date === j7Str);
+      const j14Entry = history.find(h => h.date === j14Str);
+
+      let lastWeekQty = 0;
+      let referenceType: 'j7' | 'j14' | 'avg4' | 'none' = 'none';
+      let referenceDate: string | null = null;
+      let referenceLabel = '';
+
+      if (j7Entry && j7Entry.qty > 0) {
+        // Priorite 1 : meme jour il y a 7 jours
+        lastWeekQty = j7Entry.qty;
+        referenceType = 'j7';
+        referenceDate = j7Str;
+        referenceLabel = `${targetDayName} dernier (J-7)`;
+      } else if (j14Entry && j14Entry.qty > 0) {
+        // Priorite 2 : meme jour il y a 14 jours
+        lastWeekQty = j14Entry.qty;
+        referenceType = 'j14';
+        referenceDate = j14Str;
+        referenceLabel = `${targetDayName} J-14`;
+      } else if (history.length > 0) {
+        // Priorite 3 : moyenne des occurrences disponibles (max 4)
+        const validEntries = history.filter(h => h.qty > 0).slice(0, 4);
+        if (validEntries.length > 0) {
+          const avg = validEntries.reduce((s, h) => s + h.qty, 0) / validEntries.length;
+          lastWeekQty = Math.ceil(avg);
+          referenceType = 'avg4';
+          referenceDate = null;
+          referenceLabel = `Moyenne ${validEntries.length} ${targetDayName}(s)`;
+        }
+      }
+      // sinon : referenceType = 'none', lastWeekQty = 0
+
+      if (referenceType === 'none') {
+        referenceLabel = 'Historique insuffisant';
+      }
+
+      return {
+        ...product,
+        last_week_qty: lastWeekQty,
+        reference_type: referenceType,
+        reference_date: referenceDate,
+        reference_label: referenceLabel,
+        target_day_name: targetDayName,
+      };
+    });
+
+    // Exclure les produits sans historique — ils sont accessibles via le catalogue
+    const withHistory = results.filter(r => r.reference_type !== 'none');
+
+    // Trier par categorie puis quantite vendue desc
+    withHistory.sort((a, b) => {
+      if ((a.display_order || 0) !== (b.display_order || 0)) return (a.display_order || 0) - (b.display_order || 0);
+      return b.last_week_qty - a.last_week_qty;
+    });
+
+    return withHistory;
   },
 };

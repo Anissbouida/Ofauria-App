@@ -279,7 +279,37 @@ export const replenishmentController = {
       return;
     }
 
-    await replenishmentRepository.cancel(req.params.id);
+    const { cancelledPlanIds } = await replenishmentRepository.cancel(req.params.id);
+
+    // Notify affected production roles about cascade cancellation
+    for (const plan of cancelledPlanIds) {
+      // Notify the chef/production role
+      if (plan.targetRole) {
+        await createNotification({
+          targetRole: plan.targetRole,
+          storeId: plan.storeId,
+          type: 'production_cancelled',
+          title: 'Plan de production annule',
+          message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
+          referenceType: 'production_plan',
+          referenceId: plan.id,
+          createdBy: req.user?.id,
+        });
+      }
+
+      // Notify manager
+      await createNotification({
+        targetRole: 'manager',
+        storeId: plan.storeId,
+        type: 'production_cancelled',
+        title: 'Plan de production annule',
+        message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
+        referenceType: 'production_plan',
+        referenceId: plan.id,
+        createdBy: req.user?.id,
+      });
+    }
+
     res.json({ success: true, data: null });
   },
 

@@ -11,5 +11,6 @@ router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), saleControll
 router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.summary);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.getById);
 router.post('/checkout', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.checkout);
+router.post('/import', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.importCSV);
 
 export default router;

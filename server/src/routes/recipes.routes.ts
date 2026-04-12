@@ -10,6 +10,7 @@ const router = Router();
 
 router.get('/', authenticate, recipeController.list);
 router.get('/base', authenticate, recipeController.baseRecipes);
+router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), recipeController.create);

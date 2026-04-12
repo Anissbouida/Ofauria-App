@@ -4,14 +4,51 @@ import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import toast from 'react-hot-toast';
+import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 
 type ViewMode = 'grid' | 'table';
 
 export default function ProductsPage() {
+  const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline'>('pipeline');
+
+  return (
+    <div className="space-y-5">
+      {/* Tabs */}
+      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('pipeline')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'pipeline'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <GitBranch size={16} />
+          Pipeline
+        </button>
+        <button
+          onClick={() => setActiveTab('catalogue')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'catalogue'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <ShoppingBag size={16} />
+          Catalogue
+        </button>
+      </div>
+
+      {activeTab === 'catalogue' ? <CatalogueTab /> : <ProductPipelineTab />}
+    </div>
+  );
+}
+
+function CatalogueTab() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -384,17 +421,29 @@ export default function ProductsPage() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {p.shelf_life_days && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700" title={`DLV: ${p.shelf_life_days} jour(s)`}>DLV {p.shelf_life_days as number}j</span>
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {p.sale_type === 'jour' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700" title="Vente du jour">JOUR</span>
                         )}
-                        {p.is_recyclable && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700" title="Recyclable">REC</span>
+                        {p.sale_type === 'dlv' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700" title="Date limite de vente">DLV</span>
                         )}
-                        {p.display_life_hours && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`Exposition: ${p.display_life_hours}h`}>{p.display_life_hours as number}h</span>
+                        {p.sale_type === 'commande' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700" title="Sur commande">CMD</span>
                         )}
-                        {!p.shelf_life_days && !p.is_recyclable && !p.display_life_hours && (
+                        {Boolean(p.shelf_life_days) && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title={`DLV: ${p.shelf_life_days} jour(s)`}>{String(p.shelf_life_days)}j</span>
+                        )}
+                        {Boolean(p.display_life_hours) && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`Exposition: ${p.display_life_hours}h`}>{String(p.display_life_hours)}h</span>
+                        )}
+                        {Boolean(p.is_recyclable) && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700" title="Recyclable">♻️</span>
+                        )}
+                        {Boolean(p.is_reexposable) && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700" title="Re-exposable">RE</span>
+                        )}
+                        {!p.shelf_life_days && !p.sale_type && (
                           <span className="text-xs text-gray-300">—</span>
                         )}
                       </div>
@@ -472,6 +521,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     displayLifeHours: (product?.display_life_hours as string) || '',
     hasDLV: (product?.is_reexposable as boolean) || false,
     isRecyclable: (product?.is_recyclable as boolean) || false,
+    saleType: (product?.sale_type as string) || 'jour',
     recipeId: '',
   });
 
@@ -652,6 +702,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         displayLifeHours: parseInt(rest.displayLifeHours) || null,
         isReexposable: rest.hasDLV,
         isRecyclable: rest.isRecyclable,
+        saleType: rest.saleType || 'jour',
         ...(recipeId ? { recipeId } : {}),
       },
       imageFile
@@ -1030,29 +1081,53 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <Clock size={20} className="text-purple-600 mt-0.5 shrink-0" />
                     <div>
                       <h3 className="text-sm font-semibold text-purple-800">Cycle de vie du produit</h3>
-                      <p className="text-xs text-purple-600 mt-0.5">Gérez la durée de conservation, d'exposition et les retours en fin de journée</p>
+                      <p className="text-xs text-purple-600 mt-0.5">DLV, type de vente, exposition et recyclage</p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Type de vente */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Type de vente</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou recyclage', color: 'amber', icon: '☀️' },
+                      { value: 'dlv', label: 'DLV', desc: 'Vendable sur plusieurs jours', color: 'green', icon: '📅' },
+                      { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', color: 'blue', icon: '📋' },
+                    ].map(opt => (
+                      <button key={opt.value} type="button"
+                        onClick={() => setForm({ ...form, saleType: opt.value })}
+                        className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center ${
+                          form.saleType === opt.value
+                            ? `border-${opt.color}-400 bg-${opt.color}-50 ring-1 ring-${opt.color}-200`
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}>
+                        <span className="text-xl">{opt.icon}</span>
+                        <span className="text-xs font-semibold text-gray-800">{opt.label}</span>
+                        <span className="text-[10px] text-gray-500 leading-tight">{opt.desc}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Duree de vie (jours)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DLV - Duree de vie (jours)</label>
                     <input type="number" step="1" min="0"
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} placeholder="Ex: 7" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Depuis la production (stockable congele a -18C)</p>
+                      value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} placeholder="Ex: 3" />
+                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Date limite de vente depuis la production</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Duree d'exposition (heures)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Exposition vitrine (heures)</label>
                     <input type="number" step="1" min="0"
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Depuis le transfert en vitrine</p>
+                      value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 10" />
+                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Duree max en vitrine par jour</p>
                   </div>
                 </div>
 
-                {/* DLV toggle */}
+                {/* Re-exposable toggle */}
                 <div className="bg-white border border-gray-200 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -1060,8 +1135,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <Eye size={18} className="text-green-600" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-gray-900">DLV</span>
-                        <p className="text-xs text-gray-400">Peut etre conserve pour la vente le lendemain</p>
+                        <span className="text-sm font-semibold text-gray-900">Re-exposable</span>
+                        <p className="text-xs text-gray-400">Peut etre remis en vitrine le lendemain</p>
                       </div>
                     </div>
                     <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.hasDLV ? 'bg-green-500' : 'bg-gray-300'}`}
@@ -1081,7 +1156,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       </div>
                       <div>
                         <span className="text-sm font-semibold text-gray-900">Recyclable</span>
-                        <p className="text-xs text-gray-400">Peut etre transforme en ingredient</p>
+                        <p className="text-xs text-gray-400">Peut etre transforme en ingredient (chapelure, pudding...)</p>
                       </div>
                     </div>
                     <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}

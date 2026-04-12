@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { returnsApi } from '../../api/returns.api';
@@ -8,7 +8,8 @@ import { fr } from 'date-fns/locale';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock, ClipboardList,
+  Upload,
 } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
@@ -39,46 +40,91 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 }
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
 }
 
+function parseCSVFiles(files: FileList): Promise<{ date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }[]> {
+  return Promise.all(Array.from(files).map(file => {
+    return new Promise<{ date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }>((resolve) => {
+      // Extract date from filename: item-sales-summary-YYYY-MM-DD-YYYY-MM-DD.csv
+      const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+      const date = dateMatch ? dateMatch[1] : format(new Date(), 'yyyy-MM-dd');
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(l => l.trim());
+        const items = lines.slice(1).map(line => {
+          const cols = line.split(',');
+          const quantity = parseFloat(cols[3]) || 0;
+          const netSales = parseFloat(cols[8]) || 0;
+          const unitPrice = quantity > 0 ? netSales / quantity : 0;
+          return {
+            productName: cols[0]?.trim() || '',
+            sku: cols[1]?.trim() || '',
+            quantity,
+            unitPrice: Math.round(unitPrice * 100) / 100,
+            netSales,
+            costOfGoods: parseFloat(cols[9]) || 0,
+          };
+        }).filter(i => i.quantity > 0 && i.productName);
+        resolve({ date, items });
+      };
+      reader.readAsText(file);
+    });
+  }));
+}
+
 export default function SalesPage() {
+  const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<'sales' | 'sessions' | 'returns' | 'invoices'>('sales');
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [searchQuery, setSearchQuery] = useState('');
+  const [importResults, setImportResults] = useState<Record<string, unknown>[] | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
     saleNumber: string; date: string; cashierName: string; customerName?: string;
     items: { name: string; quantity: number; unitPrice: number; subtotal: number }[];
     subtotal: number; discountAmount: number; total: number; paymentMethod: string;
+    advanceAmount?: number; advanceDate?: string; orderTotal?: number; isAdvanceReceipt?: boolean;
   } | null>(null);
 
   const openReceipt = async (saleId: string) => {
     const sale = await salesApi.getById(saleId);
     if (!sale) return;
+
+    const isAdvance = sale.sale_type === 'advance';
+    const isDelivery = sale.sale_type === 'delivery';
+    const hasOrderData = sale.order_total != null;
+
     setReceiptData({
-      saleNumber: sale.sale_number,
+      saleNumber: isAdvance && sale.order_number ? sale.order_number : sale.sale_number,
       date: sale.created_at,
       cashierName: `${sale.cashier_first_name} ${sale.cashier_last_name}`,
       customerName: sale.customer_first_name ? `${sale.customer_first_name} ${sale.customer_last_name}` : undefined,
       items: (sale.items || []).map((item: Record<string, unknown>) => ({
         name: item.product_name as string,
-        quantity: item.quantity as number,
+        quantity: parseInt(String(item.quantity)) || 0,
         unitPrice: parseFloat(item.unit_price as string),
         subtotal: parseFloat(item.subtotal as string),
       })),
-      subtotal: parseFloat(sale.subtotal),
-      discountAmount: parseFloat(sale.discount_amount),
-      total: parseFloat(sale.total),
+      subtotal: hasOrderData ? parseFloat(sale.order_subtotal) : parseFloat(sale.subtotal),
+      discountAmount: hasOrderData ? parseFloat(sale.order_discount || '0') : parseFloat(sale.discount_amount),
+      total: isAdvance ? parseFloat(sale.total) : (hasOrderData ? parseFloat(sale.order_total) : parseFloat(sale.total)),
       paymentMethod: sale.payment_method,
-      advanceAmount: sale.advance_amount ? parseFloat(sale.advance_amount) : undefined,
-      advanceDate: sale.advance_date || undefined,
+      orderTotal: hasOrderData ? parseFloat(sale.order_total) : undefined,
+      isAdvanceReceipt: isAdvance,
+      advanceAmount: isDelivery && hasOrderData ? parseFloat(sale.order_advance || '0') : undefined,
+      advanceDate: isDelivery ? (sale.advance_date || sale.created_at) : undefined,
     });
   };
 
@@ -219,6 +265,24 @@ export default function SalesPage() {
     }
   };
 
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setImporting(true);
+    try {
+      const days = await parseCSVFiles(files);
+      const results = await salesApi.importCSV({ days });
+      setImportResults(results);
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-summary'] });
+    } catch (err) {
+      setImportResults([{ date: '-', created: false, error: 'Erreur lors de l\'import' }]);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const grossRevenue = view === 'receipt'
     ? sales.reduce((sum: number, s: Record<string, unknown>) => sum + parseFloat(s.total as string), 0)
     : summary.reduce((sum: number, s: Record<string, unknown>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
@@ -275,8 +339,55 @@ export default function SalesPage() {
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={16} /> Exporter
           </button>
+          <input ref={fileInputRef} type="file" accept=".csv" multiple onChange={handleImportCSV} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50">
+            <Upload size={16} /> {importing ? 'Import...' : 'Importer CSV'}
+          </button>
         </div>
       </div>
+
+      {/* Import results modal */}
+      {importResults && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setImportResults(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Résultats de l'import</h3>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {importResults.map((r, i) => (
+                <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${r.created ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                  {r.created ? <CheckCircle size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" /> : <XCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">{r.date as string}</p>
+                    {r.created ? (
+                      <>
+                        <p className="text-xs text-gray-600">
+                          {r.saleNumber as string} - {r.matchedCount as number} articles - {new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2 }).format(r.total as number)} DH
+                        </p>
+                        {(r.unmatchedItems as string[])?.length > 0 && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            <AlertTriangle size={11} className="inline mr-1" />
+                            Non trouvés: {(r.unmatchedItems as string[]).join(', ')}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-red-600">
+                        {(r.unmatchedItems as string[])?.length > 0
+                          ? `Aucun produit trouvé: ${(r.unmatchedItems as string[]).slice(0, 5).join(', ')}${(r.unmatchedItems as string[]).length > 5 ? '...' : ''}`
+                          : (r.error as string) || 'Aucun article importé'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setImportResults(null)}
+              className="mt-4 w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main tabs */}
       <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
@@ -415,7 +526,15 @@ export default function SalesPage() {
                     {filteredSales.map((s: Record<string, unknown>) => (
                       <tr key={s.id as string} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-3.5">
-                          <span className="font-mono text-sm font-semibold text-gray-700">{s.sale_number as string}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-semibold text-gray-700">{s.sale_number as string}</span>
+                            {(s.sale_type === 'advance') && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-50 text-orange-600 ring-1 ring-orange-200">Avance</span>
+                            )}
+                            {(s.sale_type === 'delivery') && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600 ring-1 ring-blue-200">Solde livraison</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
@@ -800,31 +919,40 @@ export default function SalesPage() {
 
                   {isClosed && (
                     <div className="px-5 py-4 space-y-3">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="bg-gray-50 rounded-xl p-3">
                           <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-1">Fond de caisse</p>
                           <p className="font-bold text-gray-700">{formatCurrency(parseFloat(s.opening_amount as string))}</p>
                         </div>
                         <div className="bg-emerald-50 rounded-xl p-3">
-                          <p className="text-[11px] text-emerald-500 font-medium uppercase tracking-wider mb-1">CA ventes</p>
+                          <p className="text-[11px] text-emerald-500 font-medium uppercase tracking-wider mb-1">CA encaisse</p>
                           <p className="font-bold text-emerald-700">{formatCurrency(parseFloat(s.total_revenue as string))}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{s.total_sales as number} vente{(s.total_sales as number) > 1 ? 's' : ''}</p>
-                        </div>
-                        <div className="bg-blue-50 rounded-xl p-3">
-                          <p className="text-[11px] text-blue-500 font-medium uppercase tracking-wider mb-1">Avances</p>
-                          <p className="font-bold text-blue-700">{formatCurrency(parseFloat(s.total_advances as string || '0'))}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">{s.total_orders as number || 0} commande{(s.total_orders as number) > 1 ? 's' : ''}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{s.total_sales as number} operation{(s.total_sales as number) > 1 ? 's' : ''}</p>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3">
                           <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-1">Attendu</p>
                           <p className="font-bold text-gray-700">{formatCurrency(parseFloat(s.expected_cash as string))}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">Fond + especes + avances</p>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3">
                           <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-1">Saisi</p>
                           <p className="font-bold text-gray-700">{formatCurrency(parseFloat(s.actual_amount as string))}</p>
                         </div>
                       </div>
+
+                      {/* Sale type breakdown */}
+                      {(parseFloat(s.total_advances as string || '0') > 0) && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-2.5">
+                            <span className="flex items-center gap-2 text-xs text-orange-600">
+                              <ClipboardList size={14} /> Avances recues
+                            </span>
+                            <span className="text-sm font-semibold text-orange-700">{formatCurrency(parseFloat(s.total_advances as string || '0'))}</span>
+                          </div>
+                          <div className="flex items-center gap-2 px-4 py-2.5 text-[11px] text-gray-400">
+                            {parseInt(String(s.pending_orders ?? s.total_orders ?? 0))} commande{parseInt(String(s.pending_orders ?? s.total_orders ?? 0)) > 1 ? 's' : ''} en attente de livraison
+                          </div>
+                        </div>
+                      )}
 
                       {/* Payment breakdown */}
                       <div className="grid grid-cols-2 gap-3">

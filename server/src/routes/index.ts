@@ -13,7 +13,7 @@ import salesRoutes from './sales.routes.js';
 import usersRoutes from './users.routes.js';
 import settingsRoutes from './settings.routes.js';
 import cashRegisterRoutes from './cash-register.routes.js';
-import { caisseRouter, suppliersRouter, expenseCategoriesRouter, invoicesRouter, paymentsRouter } from './accounting.routes.js';
+import { caisseRouter, suppliersRouter, expenseCategoriesRouter, revenueCategoriesRouter, invoicesRouter, paymentsRouter } from './accounting.routes.js';
 import returnRoutes from './return.routes.js';
 import storeRoutes from './store.routes.js';
 import uploadRoutes from './upload.routes.js';
@@ -24,6 +24,9 @@ import replenishmentRoutes from './replenishment.routes.js';
 import productLossRoutes from './product-loss.routes.js';
 import ingredientLotRoutes from './ingredient-lot.routes.js';
 import purchaseRequestRoutes from './purchase-request.routes.js';
+import referentielRoutes from './referentiel.routes.js';
+import productPipelineRoutes from './product-pipeline.routes.js';
+import unsoldDecisionRoutes from './unsold-decision.routes.js';
 
 const router = Router();
 
@@ -49,6 +52,7 @@ router.use('/cash-register', cashRegisterRoutes);
 router.use('/caisse', caisseRouter);
 router.use('/suppliers', suppliersRouter);
 router.use('/expense-categories', expenseCategoriesRouter);
+router.use('/revenue-categories', revenueCategoriesRouter);
 router.use('/invoices', invoicesRouter);
 router.use('/payments', paymentsRouter);
 router.use('/returns', returnRoutes);
@@ -61,5 +65,8 @@ router.use('/replenishment', replenishmentRoutes);
 router.use('/product-losses', productLossRoutes);
 router.use('/ingredient-lots', ingredientLotRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
+router.use('/params', referentielRoutes);
+router.use('/product-pipeline', productPipelineRoutes);
+router.use('/unsold-decisions', unsoldDecisionRoutes);
 
 export default router;
