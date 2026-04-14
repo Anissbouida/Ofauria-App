@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
@@ -10,15 +10,17 @@ import { replenishmentApi } from '../../api/replenishment.api';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { productionApi } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
-import api from '../../api/client';
+import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
+import LossDeclarationModal from './LossDeclarationModal';
 import { useAuth } from '../../context/AuthContext';
+import { getApiErrorMessage } from '../../utils/api-error';
 
 interface CartItem {
   productId: string;
@@ -72,13 +74,22 @@ export default function POSPage() {
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
 
+  // Correction 1: Auto-scroll cart to last added item
+  const cartEndRef = useRef<HTMLDivElement>(null);
+  const cartScrollTrigger = useRef(0);
+
+  // Correction 2: Numpad for quantity editing
+  const [numpadItem, setNumpadItem] = useState<{ productId: string; name: string } | null>(null);
+  const [numpadValue, setNumpadValue] = useState('');
+
   // Cash register state
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [openingAmount, setOpeningAmount] = useState('0');
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
-  const [closeStep, setCloseStep] = useState<'inventory' | 'input' | 'result'>('inventory');
+  const [closeStep, setCloseStep] = useState<'choose-type' | 'inventory' | 'input' | 'result'>('choose-type');
+  const [closeType, setCloseType] = useState<'passation' | 'fin_journee'>('fin_journee');
   const DENOMINATIONS = [
     { value: 0.5, label: '0.50', type: 'coin', img: '/images/money/coin-050.svg' },
     { value: 1, label: '1', type: 'coin', img: '/images/money/coin-1.svg' },
@@ -104,6 +115,9 @@ export default function POSPage() {
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
   const [inventoryDestinations, setInventoryDestinations] = useState<Record<string, string>>({});
   const [inventoryDone, setInventoryDone] = useState(false);
+
+  // Loss declaration state
+  const [showLossModal, setShowLossModal] = useState(false);
 
   // Order form state
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -188,12 +202,12 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['pending-transfers'] });
       setConfirmingTransferId(null);
       if (data?.status === 'closed_with_discrepancy') {
-        toast('Reception confirmee avec ecart', { icon: '⚠️' });
+        notify('Reception confirmee avec ecart', { icon: '⚠️' });
       } else {
-        toast.success('Reception confirmee');
+        notify.success('Reception confirmee');
       }
     },
-    onError: () => toast.error('Erreur lors de la confirmation'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la confirmation')),
   });
 
   const confirmProductionTransferMutation = useMutation({
@@ -203,15 +217,15 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['pending-production-transfers'] });
       setConfirmingTransferId(null);
       if (data?.data?.status === 'received_with_discrepancy') {
-        toast('Reception production confirmee avec ecart', { icon: '⚠️' });
+        notify('Reception production confirmee avec ecart', { icon: '⚠️' });
       } else {
-        toast.success('Reception production confirmee');
+        notify.success('Reception production confirmee');
       }
       if (data?.data?.planCompleted) {
-        toast.success('Plan de production termine — tous les articles recus !');
+        notify.success('Plan de production termine — tous les articles recus !');
       }
     },
-    onError: () => toast.error('Erreur lors de la confirmation'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la confirmation')),
   });
 
   const openMutation = useMutation({
@@ -220,28 +234,28 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['cash-register-session'] });
       setShowOpenModal(false);
       setOpeningAmount('0');
-      toast.success('Caisse ouverte !');
+      notify.success('Caisse ouverte !');
     },
-    onError: () => toast.error('Erreur lors de l\'ouverture'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de l\'ouverture')),
   });
 
   const closeMutation = useMutation({
-    mutationFn: async () => {
-      const data = await cashRegisterApi.close();
+    mutationFn: async (type: 'passation' | 'fin_journee') => {
+      const data = await cashRegisterApi.close(type);
       // Load unsold items with intelligent suggestions
       let invItems: Record<string, unknown>[] = [];
       try { invItems = await unsoldDecisionApi.suggestions() || []; } catch { /* no items */ }
-      return { data, invItems };
+      return { data, invItems, type };
     },
-    onSuccess: ({ data, invItems }) => {
+    onSuccess: ({ data, invItems, type }) => {
       setCloseResult(data);
+      setCloseType(type);
       if (invItems.length > 0) {
         setInventoryItems(invItems);
-        // Pre-fill remaining qty = current stock
+        // Pre-fill remaining qty = 0 (caissière doit saisir le comptage réel)
         const qtys: Record<string, number> = {};
         for (const it of invItems) {
-          const stock = parseInt(it.current_stock as string) || 0;
-          qtys[it.product_id as string] = Math.max(0, stock);
+          qtys[it.product_id as string] = 0;
         }
         setInventoryQtys(qtys);
         setCloseStep('inventory');
@@ -252,7 +266,7 @@ export default function POSPage() {
       }
       setShowCloseModal(true);
     },
-    onError: () => toast.error('Erreur lors de la fermeture'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la fermeture')),
   });
 
   const submitAmountMutation = useMutation({
@@ -266,7 +280,7 @@ export default function POSPage() {
       // Don't invalidate here — wait until user clicks "Terminer"
       // Otherwise activeSession becomes null and the result screen is hidden
     },
-    onError: () => toast.error('Erreur'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la soumission')),
   });
 
   const checkoutMutation = useMutation({
@@ -289,9 +303,9 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
-      toast.success('Vente enregistree !');
+      notify.success('Vente enregistree !');
     },
-    onError: () => toast.error('Erreur lors de la vente'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la vente')),
   });
 
 
@@ -337,10 +351,10 @@ export default function POSPage() {
       setDeliverOrder(null);
       setDeliverAmount('');
       setDeliverPayment('cash');
-      toast.success('Commande livree et vente enregistree !');
+      notify.success('Commande livree et vente enregistree !');
     },
     onError: (err: Error & { response?: { data?: { error?: { message?: string } } } }) => {
-      toast.error(err.response?.data?.error?.message || 'Erreur lors de la livraison');
+      notify.error(err.response?.data?.error?.message || 'Erreur lors de la livraison');
     },
   });
 
@@ -373,7 +387,7 @@ export default function POSPage() {
     },
   });
 
-  const products = productsData?.data || [];
+  const products = (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal;
 
@@ -420,7 +434,40 @@ export default function POSPage() {
         imageUrl: product.image_url as string | undefined,
       }]);
     }
+    cartScrollTrigger.current++;
   };
+
+  // Correction 1: Scroll to bottom on add
+  useEffect(() => {
+    if (cartScrollTrigger.current > 0) {
+      cartEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [cart]);
+
+  // Correction 2: Numpad handlers
+  const openNumpad = useCallback((productId: string, name: string, currentQty: number) => {
+    setNumpadItem({ productId, name });
+    setNumpadValue(String(currentQty));
+  }, []);
+
+  const closeNumpad = useCallback(() => {
+    setNumpadItem(null);
+    setNumpadValue('');
+  }, []);
+
+  const confirmNumpad = useCallback(() => {
+    if (!numpadItem) return;
+    const qty = parseInt(numpadValue) || 0;
+    if (qty <= 0) {
+      setCart(prev => prev.filter(i => i.productId !== numpadItem.productId));
+    } else {
+      const stock = getProductStock(numpadItem.productId);
+      const finalQty = Math.min(qty, stock);
+      if (qty > stock) showStockAlert(numpadItem.productId, stock);
+      setCart(prev => prev.map(i => i.productId === numpadItem.productId ? { ...i, quantity: finalQty } : i));
+    }
+    closeNumpad();
+  }, [numpadItem, numpadValue, closeNumpad]);
 
   const updateQuantity = (productId: string, delta: number) => {
     setCart(cart.map(i => {
@@ -504,18 +551,18 @@ export default function POSPage() {
   }
 
   return (
-    <div className={`flex flex-col ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`}>
+    <div className={`flex flex-col ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`} style={{ backgroundColor: 'var(--theme-bg-page)' }}>
       {/* ═══ Top Bar: Cashier + Tabs + Actions ═══ */}
-      <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-3 shrink-0">
+      <div className="px-3 py-2 flex items-center gap-3 shrink-0" style={{ backgroundColor: 'var(--theme-bg-card)', borderBottom: '1px solid var(--theme-bg-separator)' }}>
         {/* Cashier identity */}
         {isCashierRole && (
-          <div className="flex items-center gap-2 pr-3 border-r border-gray-200">
-            <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold">
+          <div className="flex items-center gap-2 pr-3" style={{ borderRight: '1px solid var(--theme-bg-separator)' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
               {user?.firstName?.[0]}{user?.lastName?.[0]}
             </div>
             <div className="hidden sm:block min-w-0">
-              <p className="text-sm font-semibold text-gray-800 truncate">{user?.firstName}</p>
-              <p className="text-[10px] text-gray-400">Caisse</p>
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--theme-text-strong)' }}>{user?.firstName}</p>
+              <p className="text-[10px]" style={{ color: 'var(--theme-text-muted)' }}>Caisse</p>
             </div>
           </div>
         )}
@@ -563,9 +610,13 @@ export default function POSPage() {
             <Package size={17} />
             <span className="text-[9px] font-medium">Approv.</span>
           </button>
-          <button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors">
-            <Lock size={17} />
-            <span className="text-[9px] font-medium">Fermer</span>
+          <button onClick={() => setShowLossModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-orange-400 hover:bg-orange-50 hover:text-orange-600 transition-colors">
+            <Trash2 size={17} />
+            <span className="text-[9px] font-medium">Perte</span>
+          </button>
+          <button onClick={() => { setCloseStep('choose-type'); setShowCloseModal(true); }} disabled={closeMutation.isPending} className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${closeMutation.isPending ? 'text-red-600 bg-red-50 animate-pulse' : 'text-red-400 hover:bg-red-50 hover:text-red-500'}`}>
+            {closeMutation.isPending ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" /> : <Lock size={17} />}
+            <span className="text-[9px] font-medium">{closeMutation.isPending ? 'Fermeture...' : 'Fermer'}</span>
           </button>
           {isCashierRole && (
             <button onClick={logout} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -632,10 +683,11 @@ export default function POSPage() {
             {/* Product Grid */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
               <div className="grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-                {products.map((p: Record<string, unknown>) => {
+                {products.filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0).map((p: Record<string, unknown>) => {
                   const stock = parseFloat(p.stock_quantity as string) || 0;
                   const outOfStock = stock <= 0;
                   const isAlerted = stockAlert?.productId === p.id;
+                  if (outOfStock) return null;
                   return (
                     <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
                       disabled={outOfStock}
@@ -658,7 +710,7 @@ export default function POSPage() {
                       )}
                       <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
                         {p.image_url ? (
-                          <img src={p.image_url as string} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
+                          <img src={serverUrl(p.image_url as string)} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
                         ) : (
                           <span className="text-3xl">🥖</span>
                         )}
@@ -715,7 +767,8 @@ export default function POSPage() {
                               className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600">
                               <Minus size={14} />
                             </button>
-                            <span className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'}`}>{item.quantity}</span>
+                            <button onClick={() => openNumpad(item.productId, item.name, item.quantity)}
+                              className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'} hover:bg-primary-50 rounded transition-colors`}>{item.quantity}</button>
                             <button onClick={() => updateQuantity(item.productId, 1)}
                               className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${
                                 atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'
@@ -732,6 +785,7 @@ export default function POSPage() {
                       </div>
                     );
                   })}
+                  <div ref={cartEndRef} />
                 </div>
               )}
             </div>
@@ -817,23 +871,53 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Cash change calculator — only when cash + cart has items */}
-              {paymentMethod === 'cash' && cart.length > 0 && (
-                <div className="px-4 py-2.5 border-b border-gray-100">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Billet donné</p>
-                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                    {[20, 50, 100, 200].map(amount => (
-                      <button key={amount} onClick={() => setCashGiven(cashGiven === amount ? null : amount)}
-                        className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-md text-sm font-bold transition-all ${
-                          cashGiven === amount
-                            ? 'bg-white text-primary-700 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
-                        }`}>
-                        <Banknote size={14} className={cashGiven === amount ? 'text-primary-600' : 'text-gray-400'} />
-                        <span>{amount}</span>
-                      </button>
-                    ))}
+              {/* Correction 2: Numpad overlay — replaces payment section when active */}
+              {numpadItem && (
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-gray-600 truncate">{numpadItem.name}</p>
+                    <button onClick={closeNumpad} className="text-gray-400 hover:text-gray-600 text-xs font-medium">Annuler</button>
                   </div>
+                  <div className="bg-white rounded-lg border border-gray-200 px-4 py-2 mb-2 text-center">
+                    <span className="text-2xl font-bold text-gray-800">{numpadValue || '0'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[1,2,3,4,5,6,7,8,9].map(n => (
+                      <button key={n} onClick={() => setNumpadValue(prev => prev === '0' ? String(n) : prev + n)}
+                        className="py-3 rounded-lg bg-white border border-gray-200 text-lg font-bold text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors">{n}</button>
+                    ))}
+                    <button onClick={() => setNumpadValue(prev => prev.slice(0, -1) || '0')}
+                      className="py-3 rounded-lg bg-white border border-gray-200 text-sm font-bold text-red-500 hover:bg-red-50 active:bg-red-100 transition-colors">Effacer</button>
+                    <button onClick={() => setNumpadValue(prev => prev === '0' ? '0' : prev + '0')}
+                      className="py-3 rounded-lg bg-white border border-gray-200 text-lg font-bold text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors">0</button>
+                    <button onClick={confirmNumpad}
+                      className="py-3 rounded-lg bg-primary-500 text-white text-sm font-bold hover:bg-primary-600 active:bg-primary-700 transition-colors">Valider</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Cash change calculator — only when cash + cart has items + no numpad */}
+              {!numpadItem && paymentMethod === 'cash' && cart.length > 0 && (
+                <div className="px-4 py-2.5 border-b border-gray-100">
+                  {/* Correction 3: Hide quick bills when total > 200 DH */}
+                  {total <= 200 && (
+                    <>
+                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Billet donné</p>
+                      <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                        {[20, 50, 100, 200].map(amount => (
+                          <button key={amount} onClick={() => setCashGiven(cashGiven === amount ? null : amount)}
+                            className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-md text-sm font-bold transition-all ${
+                              cashGiven === amount
+                                ? 'bg-white text-primary-700 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                            }`}>
+                            <Banknote size={14} className={cashGiven === amount ? 'text-primary-600' : 'text-gray-400'} />
+                            <span>{amount}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {cashGiven !== null && cashGiven >= total && (
                     <div className="mt-2 flex items-center justify-center gap-2 bg-green-50 rounded-xl py-2.5 px-3 ring-1 ring-green-200">
                       <Banknote size={18} className="text-green-600" />
@@ -852,8 +936,8 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Totals + Actions — only when cart has items */}
-              {cart.length > 0 ? (
+              {/* Totals + Actions — only when cart has items and numpad is closed */}
+              {!numpadItem && cart.length > 0 ? (
                 <>
                   <div className="px-4 py-3 space-y-1">
                     <div className="flex justify-between text-sm text-gray-500">
@@ -1402,16 +1486,70 @@ export default function POSPage() {
       })()}
 
       {/* Close Register Modal */}
-      {showCloseModal && closeResult && (
+      {showCloseModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : closeStep === 'input' ? (closeInputMode === 'counting' ? 'max-w-2xl h-[95vh]' : 'max-w-lg max-h-[90vh]') : 'max-w-lg max-h-[90vh]'} overflow-y-auto transition-all flex flex-col`}>
-            {/* ═══ Inventaire & decisions invendus (systeme intelligent) ═══ */}
-            {closeStep === 'inventory' ? (
+          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'choose-type' ? 'max-w-md max-h-[90vh]' : closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : closeStep === 'input' ? (closeInputMode === 'counting' ? 'max-w-2xl h-[95vh]' : 'max-w-lg max-h-[90vh]') : 'max-w-lg max-h-[90vh]'} overflow-y-auto transition-all flex flex-col`}>
+
+            {/* ═══ Choix du type de fermeture ═══ */}
+            {closeStep === 'choose-type' ? (
+              <>
+                <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">Type de fermeture</h2>
+                <p className="text-sm text-gray-500 mb-6 text-center">Choisissez le type de cloture de cette session.</p>
+
+                <div className="space-y-3 mb-6">
+                  <button
+                    onClick={() => { setCloseType('passation'); closeMutation.mutate('passation'); }}
+                    disabled={closeMutation.isPending}
+                    className="w-full text-left p-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center">
+                        <ArrowLeftRight size={20} className="text-blue-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-blue-900">Passation de shift</div>
+                        <div className="text-xs text-blue-600 mt-0.5">Inventaire uniquement — pas de decisions sur les produits</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => { setCloseType('fin_journee'); closeMutation.mutate('fin_journee'); }}
+                    disabled={closeMutation.isPending}
+                    className="w-full text-left p-4 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-200 flex items-center justify-center">
+                        <Lock size={20} className="text-amber-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-amber-900">Fin de journee</div>
+                        <div className="text-xs text-amber-600 mt-0.5">Inventaire + decisions produits (vitrine, recyclage, perte)</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {closeMutation.isPending && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
+                    <div className="w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" />
+                    Calcul en cours...
+                  </div>
+                )}
+
+                <button onClick={() => { setShowCloseModal(false); }}
+                  className="btn-secondary w-full py-3">Annuler</button>
+              </>
+            ) : closeStep === 'inventory' && closeResult ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Inventaire de fin de journee</h2>
-                    <p className="text-sm text-gray-500 mt-1">Verifiez les quantites et decidez du devenir de chaque produit invendu.</p>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      {closeType === 'passation' ? 'Inventaire de passation' : 'Inventaire de fin de journee'}
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {closeType === 'passation'
+                        ? 'Comptez les quantites restantes en vitrine pour le prochain shift.'
+                        : 'Verifiez les quantites et decidez du devenir de chaque produit invendu.'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Package size={18} />
@@ -1421,52 +1559,64 @@ export default function POSPage() {
 
                 {/* Summary bar */}
                 {(() => {
-                  let totalKeep = 0, totalRecycle = 0, totalDestroy = 0, totalSold = 0, totalRemaining = 0, totalInitial = 0;
+                  let totalReplenished = 0, totalSold = 0, totalTheoreticalRemaining = 0, totalCounted = 0, totalDiscrepancySum = 0;
+                  let totalKeep = 0, totalRecycle = 0, totalDestroy = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
-                    const stock = parseInt(it.current_stock as string) || 0;
+                    const replenished = parseInt(it.replenished_today_qty as string) || 0;
                     const sold = parseInt(it.sold_qty as string) || 0;
-                    const remaining = inventoryQtys[pid] ?? 0;
+                    const theoretical = replenished - sold;
+                    const counted = inventoryQtys[pid] ?? 0;
+                    totalReplenished += replenished;
                     totalSold += sold;
-                    totalRemaining += remaining;
-                    totalInitial += stock + sold;
-                    if (remaining > 0) {
+                    totalTheoreticalRemaining += Math.max(0, theoretical);
+                    totalCounted += counted;
+                    totalDiscrepancySum += Math.max(0, theoretical) - counted;
+                    if (counted > 0) {
                       const dest = inventoryDestinations[pid] || (it.suggested_destination as string) || 'waste';
-                      if (dest === 'reexpose') totalKeep += remaining;
-                      else if (dest === 'recycle') totalRecycle += remaining;
-                      else totalDestroy += remaining;
+                      if (dest === 'reexpose') totalKeep += counted;
+                      else if (dest === 'recycle') totalRecycle += counted;
+                      else totalDestroy += counted;
                     }
                   });
                   return (
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-5">
                       <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
-                        <div className="text-2xl font-bold text-indigo-700">{totalInitial}</div>
-                        <div className="text-xs text-indigo-600 font-medium">Initial</div>
+                        <div className="text-2xl font-bold text-indigo-700">{totalReplenished}</div>
+                        <div className="text-xs text-indigo-600 font-medium">Approvisionne</div>
                       </div>
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
                         <div className="text-2xl font-bold text-blue-700">{totalSold}</div>
                         <div className="text-xs text-blue-600 font-medium">Vendus</div>
                       </div>
-                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
-                        <div className="text-2xl font-bold text-gray-700">{totalRemaining}</div>
-                        <div className="text-xs text-gray-600 font-medium">Restants</div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-purple-700">{totalTheoreticalRemaining}</div>
+                        <div className="text-xs text-purple-600 font-medium">Theorique</div>
                       </div>
-                      {totalKeep > 0 && (
-                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-green-700">{totalKeep}</div>
-                          <div className="text-xs text-green-600 font-medium">Vitrine J+1</div>
-                        </div>
-                      )}
-                      {totalRecycle > 0 && (
-                        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-cyan-700">{totalRecycle}</div>
-                          <div className="text-xs text-cyan-600 font-medium">Recyclage</div>
-                        </div>
-                      )}
-                      {totalDestroy > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                          <div className="text-2xl font-bold text-red-700">{totalDestroy}</div>
-                          <div className="text-xs text-red-600 font-medium">Destruction</div>
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-gray-700">{totalCounted}</div>
+                        <div className="text-xs text-gray-600 font-medium">Saisi</div>
+                      </div>
+                      <div className={`rounded-xl p-3 text-center border ${
+                        closeType === 'passation'
+                          ? 'bg-blue-50 border-blue-200'
+                          : totalDiscrepancySum === 0 ? 'bg-green-50 border-green-200' : totalDiscrepancySum > 0 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'
+                      }`}>
+                        <div className={`text-2xl font-bold ${
+                          closeType === 'passation'
+                            ? 'text-blue-700'
+                            : totalDiscrepancySum === 0 ? 'text-green-700' : totalDiscrepancySum > 0 ? 'text-orange-700' : 'text-red-700'
+                        }`}>{closeType === 'passation' ? totalCounted : totalDiscrepancySum}</div>
+                        <div className={`text-xs font-medium ${
+                          closeType === 'passation'
+                            ? 'text-blue-600'
+                            : totalDiscrepancySum === 0 ? 'text-green-600' : totalDiscrepancySum > 0 ? 'text-orange-600' : 'text-red-600'
+                        }`}>{closeType === 'passation' ? 'Reste' : 'Ecart'}</div>
+                      </div>
+                      {closeType !== 'passation' && (totalKeep > 0 || totalRecycle > 0 || totalDestroy > 0) && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                          <div className="text-2xl font-bold text-amber-700">{totalKeep + totalRecycle + totalDestroy}</div>
+                          <div className="text-xs text-amber-600 font-medium">Invendus</div>
                         </div>
                       )}
                     </div>
@@ -1510,62 +1660,68 @@ export default function POSPage() {
                             </div>
 
                             {/* Column headers */}
-                            <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                              <span className="col-span-3">Produit</span>
-                              <span className="col-span-1 text-center">Stock</span>
+                            <div className={`grid ${closeType === 'passation' ? 'grid-cols-8' : 'grid-cols-12'} gap-2 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider`}>
+                              <span className="col-span-2">Produit</span>
+                              <span className="col-span-1 text-center">Approv.</span>
                               <span className="col-span-1 text-center">Vendu</span>
-                              <span className="col-span-2 text-center">Compte</span>
-                              <span className="col-span-1 text-center">Ecart</span>
-                              <span className="col-span-4 text-center">Decision</span>
+                              <span className="col-span-1 text-center">Theor.</span>
+                              <span className="col-span-2 text-center">Saisi</span>
+                              <span className="col-span-1 text-center">{closeType === 'passation' ? 'Reste' : 'Ecart'}</span>
+                              {closeType !== 'passation' && <span className="col-span-4 text-center">Decision</span>}
                             </div>
 
                             {/* Items */}
                             <div className="divide-y divide-gray-100">
                               {catItems.map((it) => {
                                 const pid = it.product_id as string;
-                                const stock = parseInt(it.current_stock as string) || 0;
+                                const replenished = parseInt(it.replenished_today_qty as string) || 0;
                                 const sold = parseInt(it.sold_qty as string) || 0;
-                                const remaining = inventoryQtys[pid] ?? 0;
-                                const discrepancy = stock - remaining;
+                                const theoreticalRemaining = Math.max(0, replenished - sold);
+                                const counted = inventoryQtys[pid] ?? 0;
+                                const discrepancy = theoreticalRemaining - counted;
 
                                 const sugDest = (it.suggested_destination as string) || 'waste';
                                 const sugReason = (it.suggested_reason as string) || '';
                                 const finalDest = inventoryDestinations[pid] || sugDest;
                                 const isOverride = finalDest !== sugDest;
 
-                                if (remaining > 0 && !inventoryDestinations[pid]) {
+                                if (counted > 0 && !inventoryDestinations[pid]) {
                                   inventoryDestinations[pid] = sugDest;
                                 }
 
                                 return (
-                                  <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
-                                    finalDest === 'waste' ? 'bg-red-50/30' : finalDest === 'recycle' ? 'bg-cyan-50/30' : discrepancy !== 0 ? 'bg-amber-50/50' : 'hover:bg-gray-50'
+                                  <div key={pid} className={`grid ${closeType === 'passation' ? 'grid-cols-8' : 'grid-cols-12'} gap-2 items-center px-4 py-3 transition-colors ${
+                                    closeType !== 'passation' && finalDest === 'waste' ? 'bg-red-50/30' : closeType !== 'passation' && finalDest === 'recycle' ? 'bg-cyan-50/30' : discrepancy !== 0 ? 'bg-amber-50/50' : 'hover:bg-gray-50'
                                   }`}>
                                     {/* Product */}
-                                    <div className="col-span-3 min-w-0">
+                                    <div className="col-span-2 min-w-0">
                                       <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
                                         {it.product_name as string}
                                       </span>
-                                      {sugReason && remaining > 0 && (
+                                      {sugReason && counted > 0 && (
                                         <span className="text-[10px] text-blue-500 block mt-0.5 truncate" title={sugReason}>{sugReason}</span>
                                       )}
                                     </div>
-                                    {/* Stock */}
+                                    {/* Approvisionné */}
                                     <div className="col-span-1 text-center">
-                                      <span className="text-sm font-bold text-indigo-700">{stock + sold}</span>
+                                      <span className="text-sm font-bold text-indigo-700">{replenished}</span>
                                     </div>
-                                    {/* Sold */}
+                                    {/* Vendu */}
                                     <div className="col-span-1 text-center">
                                       <span className="text-sm font-bold text-blue-700">{sold}</span>
                                     </div>
-                                    {/* Counted */}
+                                    {/* Restant théorique */}
+                                    <div className="col-span-1 text-center">
+                                      <span className="text-sm font-bold text-purple-700">{theoreticalRemaining}</span>
+                                    </div>
+                                    {/* Restant saisi */}
                                     <div className="col-span-2 flex justify-center">
                                       <div className="flex items-center gap-1">
                                         <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
                                           className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
                                           <Minus size={12} />
                                         </button>
-                                        <input type="number" min={0} value={remaining}
+                                        <input type="number" min={0} value={counted}
                                           onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
                                           className="w-14 h-7 text-center text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500" />
                                         <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
@@ -1574,17 +1730,20 @@ export default function POSPage() {
                                         </button>
                                       </div>
                                     </div>
-                                    {/* Discrepancy */}
+                                    {/* Passation: Reste (saisi) | Fin journée: Écart (théorique - saisi) */}
                                     <div className="col-span-1 text-center">
-                                      {discrepancy !== 0 ? (
-                                        <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                          {discrepancy > 0 ? `-${discrepancy}` : `+${Math.abs(discrepancy)}`}
+                                      {closeType === 'passation' ? (
+                                        <span className={`text-sm font-bold ${counted > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{counted}</span>
+                                      ) : discrepancy !== 0 ? (
+                                        <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-orange-600' : 'text-red-600'}`}>
+                                          {discrepancy > 0 ? `+${discrepancy}` : discrepancy}
                                         </span>
-                                      ) : <span className="text-sm text-gray-300">0</span>}
+                                      ) : <span className="text-sm text-green-500">0</span>}
                                     </div>
-                                    {/* Decision buttons */}
+                                    {/* Decision buttons — hidden in passation mode */}
+                                    {closeType !== 'passation' && (
                                     <div className="col-span-4">
-                                      {remaining > 0 ? (
+                                      {counted > 0 ? (
                                         <div className="flex items-center gap-1 justify-center">
                                           {(['reexpose', 'recycle', 'waste'] as const).map(d => {
                                             const dConf = destStyles[d];
@@ -1612,6 +1771,7 @@ export default function POSPage() {
                                         <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
                                       )}
                                     </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1623,22 +1783,40 @@ export default function POSPage() {
                   );
                 })()}
 
-                {/* Discrepancy alert */}
+                {/* Discrepancy / Remaining alert */}
                 {(() => {
                   let totalDiscrepancy = 0;
+                  let totalCounted = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
-                    const stock = parseInt(it.current_stock as string) || 0;
-                    const remaining = inventoryQtys[pid] ?? 0;
-                    totalDiscrepancy += stock - remaining;
+                    const replenished = parseInt(it.replenished_today_qty as string) || 0;
+                    const sold = parseInt(it.sold_qty as string) || 0;
+                    const theoretical = Math.max(0, replenished - sold);
+                    const counted = inventoryQtys[pid] ?? 0;
+                    totalDiscrepancy += theoretical - counted;
+                    totalCounted += counted;
                   });
+
+                  if (closeType === 'passation') {
+                    return (
+                      <div className="rounded-xl p-4 flex items-center gap-3 text-sm mb-4 bg-blue-50 border border-blue-200">
+                        <Package size={20} className="text-blue-500" />
+                        <span className="text-blue-700 font-medium">
+                          {totalCounted > 0
+                            ? `${totalCounted} article(s) restant(s) a transmettre au prochain shift.`
+                            : 'Aucun article restant — vitrine vide.'}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   return totalDiscrepancy !== 0 ? (
-                    <div className={`rounded-xl p-4 flex items-center gap-3 text-sm mb-4 ${totalDiscrepancy > 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
-                      <AlertTriangle size={20} className={totalDiscrepancy > 0 ? 'text-red-500' : 'text-blue-500'} />
-                      <span className={`font-medium ${totalDiscrepancy > 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                    <div className={`rounded-xl p-4 flex items-center gap-3 text-sm mb-4 ${totalDiscrepancy > 0 ? 'bg-orange-50 border border-orange-200' : 'bg-red-50 border border-red-200'}`}>
+                      <AlertTriangle size={20} className={totalDiscrepancy > 0 ? 'text-orange-500' : 'text-red-500'} />
+                      <span className={`font-medium ${totalDiscrepancy > 0 ? 'text-orange-700' : 'text-red-700'}`}>
                         {totalDiscrepancy > 0
-                          ? `Ecart : ${totalDiscrepancy} unite(s) non justifiee(s) (perte/casse)`
-                          : `Ecart : ${Math.abs(totalDiscrepancy)} unite(s) en surplus`}
+                          ? `Ecart : ${totalDiscrepancy} unite(s) manquante(s) (perte/casse)`
+                          : `Ecart : ${Math.abs(totalDiscrepancy)} unite(s) en surplus (anomalie)`}
                       </span>
                     </div>
                   ) : (
@@ -1654,29 +1832,30 @@ export default function POSPage() {
                     className="btn-secondary flex-1 py-3 text-base">Annuler</button>
                   <button onClick={async () => {
                     try {
-                      // Build decisions using intelligent suggestion data
+                      // Build decisions/inventory data
                       const decisions = inventoryItems
                         .filter(it => {
                           const pid = it.product_id as string;
-                          const remaining = inventoryQtys[pid] ?? 0;
-                          return remaining > 0;
+                          const counted = inventoryQtys[pid] ?? 0;
+                          return counted > 0;
                         })
                         .map((it) => {
                           const pid = it.product_id as string;
-                          const remaining = inventoryQtys[pid] ?? 0;
-                          const stock = parseInt(it.current_stock as string) || 0;
+                          const counted = inventoryQtys[pid] ?? 0;
+                          const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const soldQty = parseInt(it.sold_qty as string) || 0;
                           const sugDest = (it.suggested_destination as string) || 'waste';
-                          const finalDest = inventoryDestinations[pid] || sugDest;
+                          // En passation, pas de destination finale — on met 'reexpose' par defaut (stock inchange)
+                          const finalDest = closeType === 'passation' ? 'reexpose' : (inventoryDestinations[pid] || sugDest);
                           const isOvr = finalDest !== sugDest;
 
                           return {
                             productId: pid,
                             productName: it.product_name as string,
                             categoryName: (it.category_name as string) || undefined,
-                            initialQty: stock + soldQty,
+                            initialQty: replenished,
                             soldQty: soldQty,
-                            remainingQty: remaining,
+                            remainingQty: counted,
                             suggestedDestination: sugDest,
                             suggestedReason: (it.suggested_reason as string) || '',
                             finalDestination: finalDest,
@@ -1699,22 +1878,25 @@ export default function POSPage() {
                       if (decisions.length > 0) {
                         await unsoldDecisionApi.save({
                           sessionId: closeResult?.id as string,
+                          closeType,
                           decisions,
                         });
-                        toast.success(`${decisions.length} decisions invendus enregistrees`);
+                        notify.success(closeType === 'passation'
+                          ? `Inventaire passation enregistre (${decisions.length} articles)`
+                          : `${decisions.length} decisions invendus enregistrees`);
                       } else {
-                        toast.success('Aucun invendu a traiter');
+                        notify.success('Aucun invendu a traiter');
                       }
                     } catch (err: unknown) {
                       console.error('Erreur sauvegarde invendus:', err);
                       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Erreur lors de l\'enregistrement';
-                      toast.error(msg);
+                      notify.error(msg);
                     }
                     setInventoryDone(true);
                     setCloseStep('input');
                   }}
                     className="btn-primary flex-1 py-3 text-base font-semibold">
-                    Valider les decisions
+                    {closeType === 'passation' ? 'Valider l\'inventaire' : 'Valider les decisions'}
                   </button>
                 </div>
               </>
@@ -1847,7 +2029,9 @@ export default function POSPage() {
               </>
             ) : (
               <>
-                <h2 className="text-xl font-bold mb-6 text-center">Resultat de la caisse</h2>
+                <h2 className="text-xl font-bold mb-6 text-center">
+                  {closeType === 'passation' ? 'Resultat — Passation de shift' : 'Resultat de la caisse'}
+                </h2>
                 <div className="space-y-4 mb-6">
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3 text-sm">
                     <div className="flex justify-between">
@@ -1929,38 +2113,40 @@ export default function POSPage() {
                     </div>
                   </div>
 
-                  {/* ═══ Bilan produits : Initial / Vendu / Restant / Écart ═══ */}
+                  {/* ═══ Bilan produits : Approvisionné / Vendu / Théorique / Saisi / Écart ═══ */}
                   {inventoryItems.length > 0 && (
                     <div className="bg-gray-50 rounded-xl p-4 text-sm">
                       <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                         <Package size={16} className="text-indigo-500" />
                         Bilan des produits
                       </h3>
-                      <div className="grid grid-cols-5 gap-1 text-xs font-medium text-gray-500 border-b pb-2 mb-2">
+                      <div className="grid grid-cols-6 gap-1 text-xs font-medium text-gray-500 border-b pb-2 mb-2">
                         <span className="col-span-1">Produit</span>
-                        <span className="text-center">Initial</span>
+                        <span className="text-center">Approv.</span>
                         <span className="text-center">Vendu</span>
-                        <span className="text-center">Restant</span>
-                        <span className="text-center">Écart</span>
+                        <span className="text-center">Theor.</span>
+                        <span className="text-center">Saisi</span>
+                        <span className="text-center">Ecart</span>
                       </div>
                       <div className="max-h-48 overflow-y-auto space-y-1">
                         {inventoryItems.map((it) => {
                           const pid = it.product_id as string;
-                          const stock = parseInt(it.current_stock as string) || 0;
+                          const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
-                          const initial = stock + sold;
-                          const remaining = inventoryQtys[pid] ?? 0;
-                          const ecart = stock - remaining;
+                          const theoretical = Math.max(0, replenished - sold);
+                          const counted = inventoryQtys[pid] ?? 0;
+                          const ecart = theoretical - counted;
                           return (
-                            <div key={pid} className={`grid grid-cols-5 gap-1 items-center py-1.5 px-1 rounded ${ecart !== 0 ? (ecart > 0 ? 'bg-red-50' : 'bg-blue-50') : ''}`}>
+                            <div key={pid} className={`grid grid-cols-6 gap-1 items-center py-1.5 px-1 rounded ${ecart !== 0 ? (ecart > 0 ? 'bg-orange-50' : 'bg-red-50') : ''}`}>
                               <span className="text-xs font-medium truncate" title={it.product_name as string}>
                                 {it.product_name as string}
                               </span>
-                              <span className="text-center text-xs font-semibold text-indigo-700">{initial}</span>
+                              <span className="text-center text-xs font-semibold text-indigo-700">{replenished}</span>
                               <span className="text-center text-xs font-semibold text-blue-700">{sold}</span>
-                              <span className="text-center text-xs font-semibold text-gray-700">{remaining}</span>
-                              <span className={`text-center text-xs font-bold ${ecart > 0 ? 'text-red-600' : ecart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                                {ecart === 0 ? '✓' : ecart > 0 ? `-${ecart}` : `+${Math.abs(ecart)}`}
+                              <span className="text-center text-xs font-semibold text-purple-700">{theoretical}</span>
+                              <span className="text-center text-xs font-semibold text-gray-700">{counted}</span>
+                              <span className={`text-center text-xs font-bold ${ecart > 0 ? 'text-orange-600' : ecart < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {ecart === 0 ? '0' : ecart > 0 ? `+${ecart}` : ecart}
                               </span>
                             </div>
                           );
@@ -1968,33 +2154,35 @@ export default function POSPage() {
                       </div>
                       {/* Totaux */}
                       {(() => {
-                        let totalInitial = 0, totalSold = 0, totalRemaining = 0, totalEcart = 0;
+                        let totalReplenished = 0, totalSold = 0, totalTheoretical = 0, totalCounted = 0, totalEcart = 0;
                         inventoryItems.forEach((it) => {
                           const pid = it.product_id as string;
-                          const stock = parseInt(it.current_stock as string) || 0;
+                          const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
-                          const remaining = inventoryQtys[pid] ?? 0;
-                          totalInitial += stock + sold; totalSold += sold; totalRemaining += remaining;
-                          totalEcart += stock - remaining;
+                          const theoretical = Math.max(0, replenished - sold);
+                          const counted = inventoryQtys[pid] ?? 0;
+                          totalReplenished += replenished; totalSold += sold; totalTheoretical += theoretical; totalCounted += counted;
+                          totalEcart += theoretical - counted;
                         });
                         return (
                           <>
-                            <div className="grid grid-cols-5 gap-1 items-center py-2 px-1 border-t mt-2 font-semibold text-xs">
+                            <div className="grid grid-cols-6 gap-1 items-center py-2 px-1 border-t mt-2 font-semibold text-xs">
                               <span>Total</span>
-                              <span className="text-center text-indigo-700">{totalInitial}</span>
+                              <span className="text-center text-indigo-700">{totalReplenished}</span>
                               <span className="text-center text-blue-700">{totalSold}</span>
-                              <span className="text-center text-gray-700">{totalRemaining}</span>
-                              <span className={`text-center font-bold ${totalEcart > 0 ? 'text-red-600' : totalEcart < 0 ? 'text-blue-600' : 'text-green-600'}`}>
-                                {totalEcart === 0 ? '✓' : totalEcart > 0 ? `-${totalEcart}` : `+${Math.abs(totalEcart)}`}
+                              <span className="text-center text-purple-700">{totalTheoretical}</span>
+                              <span className="text-center text-gray-700">{totalCounted}</span>
+                              <span className={`text-center font-bold ${totalEcart > 0 ? 'text-orange-600' : totalEcart < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {totalEcart === 0 ? '0' : totalEcart > 0 ? `+${totalEcart}` : totalEcart}
                               </span>
                             </div>
                             {totalEcart !== 0 && (
-                              <div className={`mt-2 rounded-lg p-2 flex items-center gap-2 ${totalEcart > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                              <div className={`mt-2 rounded-lg p-2 flex items-center gap-2 ${totalEcart > 0 ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
                                 <AlertTriangle size={14} />
                                 <span className="text-xs font-medium">
                                   {totalEcart > 0
-                                    ? `${totalEcart} unité(s) manquante(s) — perte/casse à justifier`
-                                    : `${Math.abs(totalEcart)} unité(s) en surplus`}
+                                    ? `${totalEcart} unite(s) manquante(s) — perte/casse a justifier`
+                                    : `${Math.abs(totalEcart)} unite(s) en surplus (anomalie)`}
                                 </span>
                               </div>
                             )}
@@ -2009,11 +2197,12 @@ export default function POSPage() {
                   setCloseResult(null);
                   setActualAmount('');
                   setCloseNotes('');
-                  setCloseStep('input');
+                  setCloseStep('choose-type');
+                  setCloseType('fin_journee');
                   setCloseInputMode('direct');
                   setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0])));
                   queryClient.invalidateQueries({ queryKey: ['cash-register-session'] });
-                  toast.success('Caisse fermée avec succès !');
+                  notify.success('Caisse fermée avec succès !');
                 }} className="btn-primary w-full py-3">
                   Terminer
                 </button>
@@ -2029,8 +2218,16 @@ export default function POSPage() {
           onClose={() => setShowProductionForm(false)}
           onCreated={() => {
             setShowProductionForm(false);
-            toast.success('Demande envoyee !');
+            notify.success('Demande envoyee !');
           }}
+        />
+      )}
+
+      {/* Loss Declaration Modal */}
+      {showLossModal && (
+        <LossDeclarationModal
+          onClose={() => setShowLossModal(false)}
+          sessionId={activeSession?.id}
         />
       )}
 
@@ -2366,6 +2563,10 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     queryFn: () => replenishmentApi.checkToday(),
   });
   const alreadyRequestedIds: string[] = todayCheck?.alreadyRequestedProductIds || [];
+  const alreadyRequestedDetails: Record<string, { last_requested_at: string; store_stock: number }> = {};
+  for (const d of (todayCheck?.alreadyRequestedDetails || []) as Array<{ product_id: string; last_requested_at: string; store_stock: number }>) {
+    alreadyRequestedDetails[d.product_id] = d;
+  }
 
   const MARGIN = 1.10; // +10% margin
 
@@ -2474,21 +2675,12 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
       onCreated();
     },
-    onError: (error: unknown) => {
-      const errData = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
-      const data = errData?.data as Record<string, unknown> | undefined;
-      const err = data?.error as Record<string, unknown> | undefined;
-      if (err?.code === 'ALL_PRODUCTS_ALREADY_REQUESTED') {
-        toast.error(err.message as string);
-      } else {
-        toast.error('Erreur lors de la création de la demande');
-      }
-    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la création de la demande')),
   });
 
   const handleSubmit = async () => {
     const productIds = Object.keys(selected);
-    if (!productIds.length) { toast.error('Sélectionnez au moins un produit'); return; }
+    if (!productIds.length) { notify.error('Sélectionnez au moins un produit'); return; }
 
     // ═══ RULE 2: Show unsold items warning (informative, not blocking) ═══
     if (!validationDone) {
@@ -2503,14 +2695,14 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
         }
       } catch (err) {
         console.error('Erreur de vérification des articles:', err);
-        toast.error('Erreur lors de la vérification des articles');
+        notify.error('Erreur lors de la vérification des articles');
         setSubmitting(false);
         return;
       }
     }
 
     const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({ productId, requestedQuantity }));
-    if (!items.length) { toast.error('Aucun article éligible à envoyer'); return; }
+    if (!items.length) { notify.error('Aucun article éligible à envoyer'); return; }
     setBlockedItems([]);
     setValidationDone(false);
     setSubmitting(false);
@@ -2554,17 +2746,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
           <button onClick={onClose} className="p-2 hover:bg-white/80 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
         </div>
 
-        {/* Rule 1: Warning if request already exists today */}
-        {alreadyRequestedIds.length > 0 && (
-          <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 shrink-0">
-            <div className="flex items-center gap-2 text-blue-800">
-              <Package size={16} className="text-blue-600 shrink-0" />
-              <p className="text-xs">
-                {alreadyRequestedIds.length} produit(s) deja demande(s) aujourd'hui — ils ne seront pas inclus.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Per-item warnings are shown inline below each product */}
 
         {/* Unsold items info banner */}
         {blockedItems.length > 0 && (
@@ -2675,46 +2857,57 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                               ? { bg: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'J-14' }
                               : { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Moy.' };
 
+                          const reqDetail = alreadyRequestedDetails[pid];
+                          const showWarning = reqDetail && reqDetail.store_stock > 0;
+
                           return (
-                            <div key={pid} className={`flex items-center gap-4 px-6 py-2.5 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
-                              <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
-                                className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}>
-                                {isSelected && <CheckCircle size={14} className="text-white" />}
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                <span className={`text-sm ${isSelected ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
-                                  {(item.product_name || item.name) as string}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
-                                  {refBadge.label}
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
-                                  <Layers size={10} /> {sold}
-                                </span>
-                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
-                                  <Package size={10} /> {Math.floor(stock)}
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
-                                  <Lightbulb size={10} /> {suggested}
-                                </span>
-                              </div>
-                              {isSelected ? (
-                                <div className="flex items-center bg-white rounded-xl border border-indigo-200 shrink-0 shadow-sm overflow-hidden">
-                                  <button onClick={() => setQty(pid, qty - 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">-</button>
-                                  <input type="number" min={1} value={qty}
-                                    onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
-                                    className="w-12 text-center text-sm font-bold h-8 border-x border-indigo-200 focus:outline-none focus:bg-indigo-50" />
-                                  <button onClick={() => setQty(pid, qty + 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">+</button>
-                                </div>
-                              ) : (
-                                <button onClick={() => setQty(pid, suggested)}
-                                  className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors shrink-0">
-                                  + Ajouter
+                            <div key={pid} className={`px-6 py-2.5 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
+                              <div className="flex items-center gap-4">
+                                <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
+                                  className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}>
+                                  {isSelected && <CheckCircle size={14} className="text-white" />}
                                 </button>
+                                <div className="flex-1 min-w-0">
+                                  <span className={`text-sm ${isSelected ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
+                                    {(item.product_name || item.name) as string}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
+                                    {refBadge.label}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
+                                    <Layers size={10} /> {sold}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
+                                    <Package size={10} /> {Math.floor(stock)}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
+                                    <Lightbulb size={10} /> {suggested}
+                                  </span>
+                                </div>
+                                {isSelected ? (
+                                  <div className="flex items-center bg-white rounded-xl border border-indigo-200 shrink-0 shadow-sm overflow-hidden">
+                                    <button onClick={() => setQty(pid, qty - 1)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">-</button>
+                                    <input type="number" min={1} value={qty}
+                                      onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
+                                      className="w-12 text-center text-sm font-bold h-8 border-x border-indigo-200 focus:outline-none focus:bg-indigo-50" />
+                                    <button onClick={() => setQty(pid, qty + 1)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">+</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setQty(pid, suggested)}
+                                    className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors shrink-0">
+                                    + Ajouter
+                                  </button>
+                                )}
+                              </div>
+                              {showWarning && (
+                                <p className="ml-9 mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                                  <AlertTriangle size={11} className="shrink-0" />
+                                  Cet article a déjà été approvisionné aujourd'hui le {new Date(reqDetail.last_requested_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Il est encore disponible en vitrine ({reqDetail.store_stock} unité(s)).
+                                </p>
                               )}
                             </div>
                           );
@@ -2777,9 +2970,15 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                         <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight h-[2.5rem]" title={p.name as string}>
                           <span className="line-clamp-2">{p.name as string}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 mb-3">
+                        <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-xs text-gray-400">{p.category_name as string}</span>
                         </div>
+                        {(() => { const rd = alreadyRequestedDetails[pid]; return rd && rd.store_stock > 0 ? (
+                          <p className="text-[10px] text-amber-600 mb-1.5 leading-tight flex items-start gap-0.5">
+                            <AlertTriangle size={10} className="shrink-0 mt-0.5" />
+                            Approvisionné — encore {rd.store_stock} en vitrine
+                          </p>
+                        ) : null; })()}
                         {!isSelected ? (
                           <button type="button" onClick={() => setQty(pid, 1)}
                             className="w-full py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700 transition-colors">

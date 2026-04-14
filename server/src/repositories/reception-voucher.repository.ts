@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
+import { getLocalYear } from '../utils/timezone.js';
 
 export const receptionVoucherRepository = {
   async findAll(params: { purchaseOrderId?: string; storeId?: string }) {
@@ -55,7 +56,7 @@ export const receptionVoucherRepository = {
   },
 
   async generateVoucherNumber(): Promise<string> {
-    const year = new Date().getFullYear();
+    const year = getLocalYear();
     const result = await db.query(
       `SELECT COUNT(*) FROM reception_vouchers WHERE EXTRACT(YEAR FROM reception_date) = $1`,
       [year]
@@ -159,7 +160,7 @@ export const receptionVoucherRepository = {
         // Insert inventory transaction with traceability
         await client.query(
           `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id)
-           VALUES ($1, 'purchase_order', $2, $3, $4, $5, $6, $7)`,
+           VALUES ($1, 'restock', $2, $3, $4, $5, $6, $7)`,
           [item.ingredientId, item.quantityReceived,
            `Reception ${voucherNumber} — BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
            data.receivedBy, item.poItemId, rv.id, data.storeId || null]

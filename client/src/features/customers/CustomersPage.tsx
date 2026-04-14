@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
 import { Plus, Search, Pencil, Star, Trash2 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
@@ -19,9 +19,9 @@ export default function CustomersPage() {
     mutationFn: customersApi.remove,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Client supprimé');
+      notify.success('Client supprimé');
     },
-    onError: () => toast.error('Impossible de supprimer ce client (il a peut-être des commandes ou ventes liées)'),
+    onError: () => notify.error('Impossible de supprimer ce client (il a peut-être des commandes ou ventes liées)'),
   });
 
   const saveMutation = useMutation({
@@ -29,7 +29,7 @@ export default function CustomersPage() {
       editing ? customersApi.update(editing.id as string, data) : customersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(editing ? 'Client mis à jour' : 'Client créé');
+      notify.success(editing ? 'Client mis à jour' : 'Client créé');
       setShowForm(false); setEditing(null);
     },
   });

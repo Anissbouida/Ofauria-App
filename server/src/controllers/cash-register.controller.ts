@@ -54,8 +54,10 @@ export const cashRegisterController = {
       return;
     }
 
+    const closeType = req.body?.closeType || 'fin_journee';
+
     // Calculate totals but don't close yet - wait for actual amount
-    const updated = await cashRegisterRepository.close(session.id);
+    const updated = await cashRegisterRepository.close(session.id, closeType);
     res.json({ success: true, data: updated });
   },
 

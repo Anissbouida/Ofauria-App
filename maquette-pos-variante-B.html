@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1024">
+  <title>Ofauria — Maquette POS Variante B (Terroir)</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       VARIANTE B — "Terroir"
+       Palette chaude sombre, accents vert sauge,
+       categories horizontales, layout modernise
+       ═══════════════════════════════════════════════════════ */
+    :root {
+      /* Surfaces — base sombre chaude */
+      --bg-page:       #1E1714;
+      --bg-card:       #2A211C;
+      --bg-secondary:  #362B25;
+      --bg-elevated:   #3F332C;
+      --bg-separator:  #4A3D35;
+
+      /* Texte */
+      --text-strong:   #F5EDE7;
+      --text-body:     #D4C4B8;
+      --text-muted:    #A89585;
+      --text-hint:     #7D6E60;
+
+      /* Accents — vert sauge / olive naturel */
+      --sage:          #7FA37E;
+      --sage-hover:    #6B8E6A;
+      --sage-light:    #2D3D2C;
+      --sage-pale:     #374637;
+
+      /* Accent secondaire — ambre doux */
+      --amber:         #D4A04A;
+      --amber-light:   #3D3322;
+      --amber-pale:    #F5E6CC;
+
+      /* Fonctionnel */
+      --success-bg:    #1E2E1E;
+      --success-text:  #8FBF8E;
+      --success-border:#3D5C3C;
+
+      --warn-bg:       #2E2818;
+      --warn-text:     #D4A64A;
+      --warn-border:   #5C4A2A;
+
+      --error-bg:      #2E1C1A;
+      --error-text:    #D47272;
+      --error-border:  #5C3232;
+
+      --info-bg:       #1A2430;
+      --info-text:     #72A8D4;
+      --info-border:   #2A4A6A;
+
+      /* Tactile */
+      --touch-min:     48px;
+      --touch-large:   56px;
+
+      /* Rayons */
+      --radius-sm:     8px;
+      --radius-md:     12px;
+      --radius-lg:     16px;
+      --radius-xl:     20px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-body);
+      font-size: 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ═══════════════ LAYOUT ═══════════════ */
+    .pos-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── TOP BAR ── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--bg-separator);
+      height: 64px;
+      flex-shrink: 0;
+    }
+
+    .cashier-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-right: 16px;
+      border-right: 1px solid var(--bg-separator);
+    }
+    .cashier-avatar {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--sage);
+      color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px;
+    }
+    .cashier-info p:first-child { font-weight: 600; font-size: 14px; color: var(--text-strong); }
+    .cashier-info p:last-child  { font-size: 12px; color: var(--text-muted); }
+
+    /* Tabs */
+    .tab-group {
+      display: flex;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      gap: 4px;
+    }
+    .tab-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px;
+      border: none; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--text-muted);
+      background: transparent;
+      min-height: var(--touch-min);
+      font-family: inherit;
+    }
+    .tab-btn.active {
+      background: var(--sage);
+      color: white;
+    }
+    .tab-btn:not(.active):hover { color: var(--text-body); background: var(--bg-elevated); }
+    .tab-btn svg { width: 18px; height: 18px; }
+
+    .spacer { flex: 1; }
+
+    /* Action buttons */
+    .action-btn {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 3px;
+      padding: 8px 14px;
+      border: none; border-radius: var(--radius-sm);
+      cursor: pointer;
+      background: transparent;
+      transition: all 0.2s;
+      min-height: var(--touch-min);
+      min-width: var(--touch-min);
+      font-family: inherit;
+    }
+    .action-btn svg { width: 20px; height: 20px; }
+    .action-btn span { font-size: 11px; font-weight: 500; }
+
+    .action-btn.transfer { color: var(--amber); background: var(--amber-light); }
+    .action-btn.transfer:hover { background: #4A4028; }
+    .action-btn.supply { color: var(--text-muted); }
+    .action-btn.supply:hover { background: var(--bg-elevated); color: var(--text-body); }
+    .action-btn.close-register { color: var(--error-text); }
+    .action-btn.close-register:hover { background: var(--error-bg); }
+    .action-btn.logout { color: var(--text-muted); }
+    .action-btn.logout:hover { background: var(--bg-elevated); color: var(--text-body); }
+
+    .badge-count {
+      position: absolute; top: -2px; right: -2px;
+      background: var(--amber); color: var(--bg-page);
+      border-radius: 50%; width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700;
+    }
+
+    /* ── MAIN ── */
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Products (categories horizontales + grille) ── */
+    .products-panel {
+      flex: 1; display: flex; flex-direction: column;
+      min-width: 0;
+      background: var(--bg-page);
+    }
+
+    /* Horizontal categories */
+    .categories-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--bg-separator);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .cat-chip {
+      display: flex; align-items: center;
+      padding: 10px 20px;
+      border: 1px solid var(--bg-separator);
+      border-radius: 24px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: var(--text-muted);
+      white-space: nowrap;
+      min-height: 44px;
+      font-family: inherit;
+    }
+    .cat-chip:hover { border-color: var(--sage); color: var(--text-body); }
+    .cat-chip.active {
+      background: var(--sage);
+      border-color: var(--sage);
+      color: white;
+    }
+
+    /* Search */
+    .search-bar {
+      padding: 12px 20px;
+      flex-shrink: 0;
+    }
+    .search-wrapper { position: relative; }
+    .search-wrapper svg {
+      position: absolute; left: 16px; top: 50%;
+      transform: translateY(-50%);
+      width: 20px; height: 20px;
+      color: var(--text-hint);
+    }
+    .search-input {
+      width: 100%;
+      padding: 14px 16px 14px 48px;
+      border: 1px solid var(--bg-separator);
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-family: inherit;
+      background: var(--bg-card);
+      color: var(--text-strong);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      min-height: var(--touch-min);
+    }
+    .search-input::placeholder { color: var(--text-hint); }
+    .search-input:focus {
+      border-color: var(--sage);
+      box-shadow: 0 0 0 3px rgba(127, 163, 126, 0.2);
+    }
+
+    /* Product grid */
+    .product-grid {
+      flex: 1; overflow-y: auto;
+      padding: 4px 20px 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 14px;
+      align-content: start;
+    }
+    .product-grid::-webkit-scrollbar { width: 6px; }
+    .product-grid::-webkit-scrollbar-track { background: transparent; }
+    .product-grid::-webkit-scrollbar-thumb { background: var(--bg-separator); border-radius: 3px; }
+
+    .product-card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-separator);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; flex-direction: column;
+      min-height: 180px;
+      position: relative;
+      overflow: hidden;
+    }
+    .product-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-lg);
+      opacity: 0;
+      transition: opacity 0.2s;
+      background: linear-gradient(135deg, rgba(127,163,126,0.08), transparent);
+    }
+    .product-card:hover {
+      border-color: var(--sage);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .product-card:hover::before { opacity: 1; }
+    .product-card:active { transform: scale(0.97); }
+
+    .product-img {
+      flex: 1;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px;
+      min-height: 85px;
+      margin-bottom: 12px;
+    }
+    .product-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-strong);
+      line-height: 1.3;
+      margin-bottom: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .product-bottom {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .product-price {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--sage);
+    }
+    .product-stock {
+      font-size: 12px;
+      color: var(--text-hint);
+    }
+
+    /* ── CART ── */
+    .cart-panel {
+      width: 400px;
+      background: var(--bg-card);
+      border-left: 1px solid var(--bg-separator);
+      display: flex; flex-direction: column;
+      flex-shrink: 0;
+    }
+    .cart-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--bg-separator);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .cart-header h2 {
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--text-strong);
+    }
+    .cart-count {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--sage);
+      background: var(--sage-light);
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    .cart-items { flex: 1; overflow-y: auto; }
+    .cart-items::-webkit-scrollbar { width: 4px; }
+    .cart-items::-webkit-scrollbar-track { background: transparent; }
+    .cart-items::-webkit-scrollbar-thumb { background: var(--bg-separator); border-radius: 2px; }
+
+    .cart-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--bg-secondary);
+      transition: background 0.15s;
+    }
+    .cart-item:hover { background: var(--bg-secondary); }
+    .cart-item-top {
+      display: flex; align-items: flex-start; gap: 12px;
+    }
+    .cart-item-info { flex: 1; min-width: 0; }
+    .cart-item-name {
+      font-weight: 600; font-size: 15px;
+      color: var(--text-strong);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cart-item-unit {
+      font-size: 13px; color: var(--text-muted); margin-top: 2px;
+    }
+    .cart-item-subtotal {
+      font-weight: 700; font-size: 15px;
+      color: var(--text-strong); white-space: nowrap;
+    }
+    .cart-item-controls {
+      display: flex; align-items: center; gap: 10px; margin-top: 10px;
+    }
+    .qty-group {
+      display: flex; align-items: center;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--bg-separator);
+    }
+    .qty-btn {
+      width: 44px; height: 44px;
+      border: none; background: transparent;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-body); font-size: 18px;
+      transition: background 0.15s;
+    }
+    .qty-btn:hover { background: var(--bg-elevated); }
+    .qty-btn svg { width: 16px; height: 16px; }
+    .qty-value {
+      width: 48px; text-align: center;
+      font-weight: 700; font-size: 16px;
+      color: var(--text-strong);
+      background: var(--bg-card);
+      border: none; cursor: pointer;
+      padding: 10px 0;
+      border-left: 1px solid var(--bg-separator);
+      border-right: 1px solid var(--bg-separator);
+    }
+    .qty-value:hover { background: var(--sage-light); }
+    .delete-btn {
+      width: 44px; height: 44px;
+      border: none; border-radius: var(--radius-sm);
+      background: transparent; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-hint); transition: all 0.15s;
+      margin-left: auto;
+    }
+    .delete-btn:hover { color: var(--error-text); background: var(--error-bg); }
+    .delete-btn svg { width: 18px; height: 18px; }
+
+    /* ── CART FOOTER ── */
+    .cart-footer {
+      border-top: 1px solid var(--bg-separator);
+      flex-shrink: 0;
+    }
+
+    .quick-actions {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--bg-secondary);
+    }
+    .quick-action-btn {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 3px;
+      padding: 8px 14px;
+      border: none; border-radius: var(--radius-sm);
+      cursor: pointer; background: transparent;
+      color: var(--text-muted);
+      transition: all 0.15s; min-height: 44px;
+      font-family: inherit;
+    }
+    .quick-action-btn:hover { background: var(--bg-elevated); color: var(--text-body); }
+    .quick-action-btn svg { width: 18px; height: 18px; }
+    .quick-action-btn span { font-size: 11px; font-weight: 500; }
+
+    .client-selected {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--sage);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      background: var(--sage-light);
+      color: var(--sage);
+      font-size: 12px; font-weight: 600;
+      font-family: inherit;
+    }
+    .client-selected svg { width: 16px; height: 16px; }
+
+    .payment-toggle {
+      display: flex;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
+      padding: 3px; gap: 3px;
+    }
+    .payment-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+      background: transparent;
+      color: var(--text-muted);
+      min-height: 40px;
+      font-family: inherit;
+    }
+    .payment-btn.active {
+      background: var(--bg-card);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .payment-btn.active.cash  { color: var(--success-text); }
+    .payment-btn.active.card  { color: var(--info-text); }
+    .payment-btn svg { width: 16px; height: 16px; }
+
+    .cash-section {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--bg-secondary);
+    }
+    .cash-label {
+      font-size: 11px; font-weight: 700;
+      color: var(--text-hint);
+      text-transform: uppercase;
+      letter-spacing: 1px; margin-bottom: 10px;
+    }
+    .bills-row {
+      display: flex;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-sm);
+      padding: 3px; gap: 3px;
+    }
+    .bill-btn {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
+      padding: 10px 4px;
+      border: none; border-radius: 6px;
+      cursor: pointer;
+      font-weight: 700; font-size: 15px;
+      background: transparent;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      min-height: 44px;
+      font-family: inherit;
+    }
+    .bill-btn:hover { color: var(--text-body); }
+    .bill-btn.active {
+      background: var(--bg-card);
+      color: var(--amber);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .change-display {
+      margin-top: 10px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; padding: 14px;
+      border-radius: var(--radius-md);
+    }
+    .change-display.positive {
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+    }
+    .change-display.positive svg { color: var(--success-text); width: 20px; height: 20px; }
+    .change-display .change-label { font-size: 12px; font-weight: 500; }
+    .change-display .change-amount { font-size: 20px; font-weight: 700; }
+    .change-display.positive .change-label { color: var(--success-text); }
+    .change-display.positive .change-amount { color: var(--success-text); }
+
+    .totals-section { padding: 16px 20px; }
+    .totals-row {
+      display: flex; justify-content: space-between;
+      font-size: 14px; color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .totals-main {
+      display: flex; justify-content: space-between;
+      align-items: baseline; padding-top: 8px;
+      border-top: 1px solid var(--bg-separator);
+    }
+    .totals-label {
+      font-size: 20px; font-weight: 700;
+      color: var(--text-strong);
+    }
+    .totals-amount {
+      font-size: 26px; font-weight: 700;
+      color: var(--sage);
+    }
+
+    .checkout-actions {
+      display: flex; gap: 10px;
+      padding: 0 20px 20px;
+    }
+    .btn-clear {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 4px;
+      padding: 14px 20px;
+      border: none; border-radius: var(--radius-md);
+      cursor: pointer;
+      background: transparent;
+      color: var(--error-text);
+      transition: all 0.15s;
+      min-height: var(--touch-large);
+      font-family: inherit;
+    }
+    .btn-clear:hover { background: var(--error-bg); }
+    .btn-clear svg { width: 20px; height: 20px; }
+    .btn-clear span { font-size: 11px; font-weight: 600; }
+
+    .btn-checkout {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 16px;
+      border: none; border-radius: var(--radius-md);
+      cursor: pointer;
+      background: var(--sage);
+      color: white;
+      font-size: 17px; font-weight: 700;
+      font-family: inherit;
+      transition: all 0.2s;
+      min-height: 60px;
+      box-shadow: 0 4px 16px rgba(127, 163, 126, 0.3);
+    }
+    .btn-checkout:hover {
+      background: var(--sage-hover);
+      box-shadow: 0 6px 24px rgba(127, 163, 126, 0.4);
+    }
+    .btn-checkout:active { transform: scale(0.98); }
+    .btn-checkout svg { width: 22px; height: 22px; }
+
+    /* ═══════════════ COMPARISON ═══════════════ */
+    .comparison-banner {
+      background: linear-gradient(135deg, var(--sage), var(--sage-hover));
+      color: white;
+      padding: 24px 32px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .comparison-banner h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .comparison-banner p { opacity: 0.8; }
+    .comparison-banner .tags { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .comparison-banner .tag {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+    }
+    .comparison-banner .tag.b { background: rgba(255,255,255,0.2); color: white; }
+    .comparison-banner .tag.code { background: var(--amber); color: var(--bg-page); }
+
+    .annotations {
+      background: var(--bg-card);
+      border-top: 3px solid var(--sage);
+      padding: 32px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .annotations h2 {
+      font-size: 20px; font-weight: 700;
+      color: var(--text-strong); margin-bottom: 20px;
+    }
+    .diff-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--bg-separator);
+      margin-bottom: 32px;
+    }
+    .diff-table th {
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-size: 12px; font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 14px 16px;
+      text-align: left;
+    }
+    .diff-table td {
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--text-body);
+      border-top: 1px solid var(--bg-secondary);
+    }
+    .diff-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .diff-table .label-col { font-weight: 600; color: var(--text-strong); width: 25%; }
+    .diff-table .va { color: var(--amber); }
+    .diff-table .vb { color: var(--sage); }
+
+    .badge-row {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .status-badge {
+      padding: 6px 14px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500;
+    }
+    .badge-success { background: var(--success-bg); color: var(--success-text); }
+    .badge-warn    { background: var(--warn-bg); color: var(--warn-text); }
+    .badge-error   { background: var(--error-bg); color: var(--error-text); }
+    .badge-info    { background: var(--info-bg); color: var(--info-text); }
+
+    .swatch-row {
+      display: flex; gap: 12px; flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .swatch { width: 80px; text-align: center; }
+    .swatch-color {
+      width: 80px; height: 48px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--bg-separator);
+      margin-bottom: 6px;
+    }
+    .swatch-label { font-size: 11px; color: var(--text-muted); }
+    .swatch-hex   { font-size: 10px; color: var(--text-hint); font-family: monospace; }
+
+    .note-box {
+      margin-top: 32px; padding: 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--info-border);
+      background: var(--info-bg);
+    }
+    .note-box p { color: var(--info-text); font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<!-- BANNER -->
+<div class="comparison-banner">
+  <h1>Maquette POS — Variante B "Terroir"</h1>
+  <p>Theme sombre chaud, accents vert sauge, categories horizontales</p>
+  <div class="tags">
+    <span class="tag b">Variante B</span>
+    <span class="tag code">Aucun code modifie</span>
+  </div>
+</div>
+
+<!-- POS -->
+<div class="pos-layout">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="cashier-badge">
+      <div class="cashier-avatar">SF</div>
+      <div class="cashier-info">
+        <p>Sofia</p>
+        <p>Caisse</p>
+      </div>
+    </div>
+
+    <div class="tab-group">
+      <button class="tab-btn active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        Vente
+      </button>
+      <button class="tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
+        Commandes
+      </button>
+      <button class="tab-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        Retours
+      </button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div style="position:relative">
+      <button class="action-btn transfer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        <span>Transferts</span>
+      </button>
+      <div class="badge-count" style="position:absolute;top:0;right:2px;">2</div>
+    </div>
+    <button class="action-btn supply">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <span>Approv.</span>
+    </button>
+    <button class="action-btn close-register">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span>Fermer</span>
+    </button>
+    <button class="action-btn logout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Sortir</span>
+    </button>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-content">
+
+    <!-- Products -->
+    <div class="products-panel">
+      <!-- Horizontal categories -->
+      <div class="categories-bar">
+        <button class="cat-chip active">Tous</button>
+        <button class="cat-chip">Pains</button>
+        <button class="cat-chip">Viennoiseries</button>
+        <button class="cat-chip">Patisseries</button>
+        <button class="cat-chip">Sandwichs</button>
+        <button class="cat-chip">Boissons</button>
+        <button class="cat-chip">Beldi</button>
+        <button class="cat-chip">Traiteur</button>
+      </div>
+
+      <div class="search-bar">
+        <div class="search-wrapper">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="search-input" placeholder="Rechercher un produit..." />
+        </div>
+      </div>
+
+      <div class="product-grid">
+        <div class="product-card">
+          <div class="product-img">🥖</div>
+          <div class="product-name">Pain complet</div>
+          <div class="product-bottom">
+            <div class="product-price">8.00 DH</div>
+            <div class="product-stock">x24</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🥐</div>
+          <div class="product-name">Croissant beurre</div>
+          <div class="product-bottom">
+            <div class="product-price">3.50 DH</div>
+            <div class="product-stock">x18</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🍞</div>
+          <div class="product-name">Pain de mie</div>
+          <div class="product-bottom">
+            <div class="product-price">12.00 DH</div>
+            <div class="product-stock">x10</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🧁</div>
+          <div class="product-name">Muffin chocolat</div>
+          <div class="product-bottom">
+            <div class="product-price">7.00 DH</div>
+            <div class="product-stock">x15</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🥯</div>
+          <div class="product-name">Pain aux cereales</div>
+          <div class="product-bottom">
+            <div class="product-price">10.00 DH</div>
+            <div class="product-stock">x12</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🍩</div>
+          <div class="product-name">Donut glace</div>
+          <div class="product-bottom">
+            <div class="product-price">5.00 DH</div>
+            <div class="product-stock">x20</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🥧</div>
+          <div class="product-name">Tarte aux pommes</div>
+          <div class="product-bottom">
+            <div class="product-price">15.00 DH</div>
+            <div class="product-stock">x6</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🍪</div>
+          <div class="product-name">Cookie pepites</div>
+          <div class="product-bottom">
+            <div class="product-price">4.00 DH</div>
+            <div class="product-stock">x30</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🥖</div>
+          <div class="product-name">Baguette tradition</div>
+          <div class="product-bottom">
+            <div class="product-price">3.00 DH</div>
+            <div class="product-stock">x35</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🧇</div>
+          <div class="product-name">Gaufre nature</div>
+          <div class="product-bottom">
+            <div class="product-price">6.00 DH</div>
+            <div class="product-stock">x14</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🎂</div>
+          <div class="product-name">Gateau anniversaire</div>
+          <div class="product-bottom">
+            <div class="product-price">85.00 DH</div>
+            <div class="product-stock">x3</div>
+          </div>
+        </div>
+        <div class="product-card">
+          <div class="product-img">🥪</div>
+          <div class="product-name">Sandwich thon</div>
+          <div class="product-bottom">
+            <div class="product-price">18.00 DH</div>
+            <div class="product-stock">x8</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="cart-panel">
+      <div class="cart-header">
+        <h2>Panier</h2>
+        <span class="cart-count">5 articles</span>
+      </div>
+
+      <div class="cart-items">
+        <div class="cart-item">
+          <div class="cart-item-top">
+            <div class="cart-item-info">
+              <div class="cart-item-name">Pain complet</div>
+              <div class="cart-item-unit">8.00 DH / unite</div>
+            </div>
+            <div class="cart-item-subtotal">16.00 DH</div>
+          </div>
+          <div class="cart-item-controls">
+            <div class="qty-group">
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button class="qty-value">2</button>
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <button class="delete-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+
+        <div class="cart-item">
+          <div class="cart-item-top">
+            <div class="cart-item-info">
+              <div class="cart-item-name">Croissant beurre</div>
+              <div class="cart-item-unit">3.50 DH / unite</div>
+            </div>
+            <div class="cart-item-subtotal">10.50 DH</div>
+          </div>
+          <div class="cart-item-controls">
+            <div class="qty-group">
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button class="qty-value">3</button>
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <button class="delete-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+
+        <div class="cart-item">
+          <div class="cart-item-top">
+            <div class="cart-item-info">
+              <div class="cart-item-name">Muffin chocolat</div>
+              <div class="cart-item-unit">7.00 DH / unite</div>
+            </div>
+            <div class="cart-item-subtotal">7.00 DH</div>
+          </div>
+          <div class="cart-item-controls">
+            <div class="qty-group">
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button class="qty-value">1</button>
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <button class="delete-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+
+        <div class="cart-item">
+          <div class="cart-item-top">
+            <div class="cart-item-info">
+              <div class="cart-item-name">Tarte aux pommes</div>
+              <div class="cart-item-unit">15.00 DH / unite</div>
+            </div>
+            <div class="cart-item-subtotal">15.00 DH</div>
+          </div>
+          <div class="cart-item-controls">
+            <div class="qty-group">
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button class="qty-value">1</button>
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <button class="delete-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+
+        <div class="cart-item">
+          <div class="cart-item-top">
+            <div class="cart-item-info">
+              <div class="cart-item-name">Baguette tradition</div>
+              <div class="cart-item-unit">3.00 DH / unite</div>
+            </div>
+            <div class="cart-item-subtotal">6.00 DH</div>
+          </div>
+          <div class="cart-item-controls">
+            <div class="qty-group">
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <button class="qty-value">2</button>
+              <button class="qty-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <button class="delete-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cart-footer">
+        <div class="quick-actions">
+          <button class="quick-action-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <span>Imprimer</span>
+          </button>
+          <button class="client-selected">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Fatima Z.
+          </button>
+          <div class="spacer"></div>
+          <div class="payment-toggle">
+            <button class="payment-btn active cash">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Especes
+            </button>
+            <button class="payment-btn card">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Carte
+            </button>
+          </div>
+        </div>
+
+        <div class="cash-section">
+          <div class="cash-label">Billet donne</div>
+          <div class="bills-row">
+            <button class="bill-btn">20</button>
+            <button class="bill-btn active">50</button>
+            <button class="bill-btn">100</button>
+            <button class="bill-btn">200</button>
+          </div>
+          <div class="change-display positive">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <div>
+              <div class="change-label">Monnaie a rendre</div>
+              <div class="change-amount">4.50 DH</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="totals-section">
+          <div class="totals-row"><span>Articles</span><span>9</span></div>
+          <div class="totals-main">
+            <span class="totals-label">Total</span>
+            <span class="totals-amount">54.50 DH</span>
+          </div>
+        </div>
+
+        <div class="checkout-actions">
+          <button class="btn-clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span>Vider</span>
+          </button>
+          <button class="btn-checkout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            Encaisser
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ANNOTATIONS -->
+<div class="annotations">
+  <h2>Comparatif Variante A vs Variante B</h2>
+  <table class="diff-table">
+    <thead>
+      <tr>
+        <th>Element</th>
+        <th>Variante A — "Dore"</th>
+        <th>Variante B — "Terroir"</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-col">Ambiance</td>
+        <td class="va">Claire, aeree, lumineuse</td>
+        <td class="vb">Sombre chaude, cocooning, immersive</td>
+      </tr>
+      <tr>
+        <td class="label-col">Fond principal</td>
+        <td class="va">#FAF6F1 creme clair</td>
+        <td class="vb">#1E1714 brun profond</td>
+      </tr>
+      <tr>
+        <td class="label-col">Couleur accent</td>
+        <td class="va">#C4872B dore pain</td>
+        <td class="vb">#7FA37E vert sauge</td>
+      </tr>
+      <tr>
+        <td class="label-col">Police</td>
+        <td class="va">Inter — neutre, technique</td>
+        <td class="vb">DM Sans — ronde, chaleureuse</td>
+      </tr>
+      <tr>
+        <td class="label-col">Categories</td>
+        <td class="va">Sidebar laterale (classique)</td>
+        <td class="vb">Chips horizontaux (plus de place pour les produits)</td>
+      </tr>
+      <tr>
+        <td class="label-col">Cartes produits</td>
+        <td class="va">Fond blanc chaud, bordures sable</td>
+        <td class="vb">Fond brun, reflet vert au survol</td>
+      </tr>
+      <tr>
+        <td class="label-col">Fatigue oculaire</td>
+        <td class="va">Reduite vs blanc pur (lumiere ambiante forte)</td>
+        <td class="vb">Tres reduite (moins de lumiere emise par l'ecran)</td>
+      </tr>
+      <tr>
+        <td class="label-col">Luminosite ambiante</td>
+        <td class="va">Adapte a tout eclairage</td>
+        <td class="vb">Ideal eclairage faible, a tester en plein jour</td>
+      </tr>
+      <tr>
+        <td class="label-col">Bouton Encaisser</td>
+        <td class="va">Dore #C4872B — evoque la croute</td>
+        <td class="vb">Vert sauge #7FA37E — evoque la nature/fraicheur</td>
+      </tr>
+      <tr>
+        <td class="label-col">Zones tactiles</td>
+        <td class="va">48px minimum</td>
+        <td class="vb">48px minimum (identique)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Badges de statut — Variante B</h2>
+  <div class="badge-row">
+    <span class="status-badge badge-success">Termine</span>
+    <span class="status-badge badge-success">Livre</span>
+    <span class="status-badge badge-warn">En cours</span>
+    <span class="status-badge badge-warn">Brouillon</span>
+    <span class="status-badge badge-error">Annule</span>
+    <span class="status-badge badge-error">Perte</span>
+    <span class="status-badge badge-info">Confirme</span>
+    <span class="status-badge badge-info">Planifie</span>
+  </div>
+
+  <h2 style="margin-top:32px;">Palette Variante B</h2>
+  <div class="swatch-row">
+    <div class="swatch"><div class="swatch-color" style="background:#1E1714;"></div><div class="swatch-label">Fond page</div><div class="swatch-hex">#1E1714</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#2A211C;"></div><div class="swatch-label">Cartes</div><div class="swatch-hex">#2A211C</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#362B25;"></div><div class="swatch-label">Secondaire</div><div class="swatch-hex">#362B25</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#4A3D35;"></div><div class="swatch-label">Separateurs</div><div class="swatch-hex">#4A3D35</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#7FA37E;"></div><div class="swatch-label">Vert sauge</div><div class="swatch-hex">#7FA37E</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#D4A04A;"></div><div class="swatch-label">Ambre</div><div class="swatch-hex">#D4A04A</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#F5EDE7;"></div><div class="swatch-label">Texte fort</div><div class="swatch-hex">#F5EDE7</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#D4C4B8;"></div><div class="swatch-label">Texte corps</div><div class="swatch-hex">#D4C4B8</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#A89585;"></div><div class="swatch-label">Texte muted</div><div class="swatch-hex">#A89585</div></div>
+  </div>
+
+  <div class="note-box">
+    <p>Maquette HTML statique — aucun code de l'application n'a ete modifie. Ouvrez les deux fichiers dans un navigateur pour comparer cote a cote.</p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -7,6 +7,7 @@ import { saleRepository } from '../repositories/sale.repository.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { paymentRepository, invoiceRepository } from '../repositories/accounting.repository.js';
+import { getLocalISODate, getLocalNow } from '../utils/timezone.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -123,7 +124,7 @@ export const orderController = {
         total,
         remaining: total - advanceAmount,
         paymentMethod: paymentMethod || 'cash',
-        date: new Date().toISOString(),
+        date: getLocalNow().toISOString(),
       };
     }
 
@@ -134,7 +135,7 @@ export const orderController = {
           invoiceType: 'emitted',
           customerId,
           orderId: order.id,
-          invoiceDate: new Date().toISOString().split('T')[0],
+          invoiceDate: getLocalISODate(),
           amount: total,
           taxAmount: 0,
           totalAmount: total,

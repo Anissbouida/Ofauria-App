@@ -33,7 +33,7 @@ export const productLossController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    const { productId, quantity, lossType, reason, reasonNote, productionPlanId } = req.body;
+    const { productId, quantity, lossType, reason, reasonNote, productionPlanId, photoUrl } = req.body;
 
     if (!productId || !quantity || !lossType || !reason) {
       res.status(400).json({ success: false, error: { message: 'productId, quantity, lossType et reason sont requis' } });
@@ -69,14 +69,15 @@ export const productLossController = {
       const lossResult = await client.query(
         `INSERT INTO product_losses
           (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost,
-           production_plan_id, ingredients_consumed, declared_by, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           production_plan_id, ingredients_consumed, declared_by, store_id, photo_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           productId, quantity, lossType, reason,
           reasonNote || null, unitCost, totalCost,
           productionPlanId || null, ingredientsConsumed,
           req.user!.userId, req.user!.storeId || null,
+          photoUrl || null,
         ]
       );
 

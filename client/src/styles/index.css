@@ -5,36 +5,105 @@
 :root {
   --color-primary: #714B67;
   --color-primary-hover: #5f3d57;
+
+  /* Theme / Appearance */
+  --theme-bg-page: #FAF6F1;
+  --theme-bg-card: #FFFDF9;
+  --theme-bg-secondary: #F3ECE2;
+  --theme-bg-separator: #E8DDD0;
+  --theme-text-strong: #2D1810;
+  --theme-text-body: #5C3D2E;
+  --theme-text-muted: #8B7355;
+  --theme-accent: #C4872B;
+  --theme-accent-hover: #A8721F;
+  --theme-accent-light: #F5E6CC;
+  --theme-cta-color: #C4872B;
+  --theme-cta-text: #FFFFFF;
 }
 
 @layer base {
   body {
-    @apply text-gray-800 antialiased;
+    @apply antialiased;
+    background-color: var(--theme-bg-page);
+    color: var(--theme-text-body);
   }
+
+  /* Headings use strong text color */
+  h1, h2, h3, h4 {
+    color: var(--theme-text-strong);
+  }
+}
+
+/* Theme-aware overrides for Tailwind gray / white classes */
+@layer base {
+  /* Backgrounds */
+  .bg-white      { background-color: var(--theme-bg-card) !important; }
+  .bg-gray-50    { background-color: var(--theme-bg-secondary) !important; }
+  .bg-gray-100   { background-color: var(--theme-bg-secondary) !important; }
+
+  /* Borders */
+  .border-gray-100 { border-color: var(--theme-bg-separator) !important; }
+  .border-gray-200 { border-color: var(--theme-bg-separator) !important; }
+  .border-gray-300 { border-color: color-mix(in srgb, var(--theme-bg-separator) 70%, var(--theme-text-muted) 30%) !important; }
+
+  /* Text */
+  .text-gray-900 { color: var(--theme-text-strong) !important; }
+  .text-gray-800 { color: var(--theme-text-strong) !important; }
+  .text-gray-700 { color: var(--theme-text-body)   !important; }
+  .text-gray-600 { color: var(--theme-text-body)   !important; }
+  .text-gray-500 { color: var(--theme-text-muted)  !important; }
+  .text-gray-400 { color: var(--theme-text-muted)  !important; }
+  .text-gray-300 { color: color-mix(in srgb, var(--theme-text-muted) 50%, var(--theme-bg-separator) 50%) !important; }
+
+  /* Hover variants */
+  .hover\:bg-gray-50:hover  { background-color: var(--theme-bg-secondary) !important; }
+  .hover\:bg-gray-100:hover { background-color: var(--theme-bg-secondary) !important; }
+  .hover\:bg-gray-200:hover { background-color: var(--theme-bg-separator) !important; }
+  .hover\:text-gray-600:hover { color: var(--theme-text-body) !important; }
+  .hover\:text-gray-700:hover { color: var(--theme-text-body) !important; }
+
+  /* Ring / Focus */
+  .ring-primary-200 { --tw-ring-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important; }
+  .focus\:ring-primary-500\/30:focus { --tw-ring-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important; }
+  .focus\:border-primary-400:focus { border-color: var(--theme-accent) !important; }
 }
 
 @layer components {
   .btn-primary {
-    @apply text-white px-4 py-2 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed;
-    background-color: var(--color-primary);
+    @apply px-4 py-2 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--theme-cta-color);
+    color: var(--theme-cta-text);
   }
   .btn-primary:hover:not(:disabled) {
-    background-color: var(--color-primary-hover);
+    background-color: var(--theme-accent-hover);
   }
   .btn-secondary {
-    @apply bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium;
+    @apply px-4 py-2 rounded-lg transition-colors font-medium;
+    background-color: var(--theme-bg-secondary);
+    color: var(--theme-text-body);
+  }
+  .btn-secondary:hover {
+    background-color: var(--theme-bg-separator);
   }
   .btn-danger {
     @apply bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium;
   }
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 transition-colors;
-    --tw-ring-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    @apply w-full px-3 py-2 rounded-lg focus:outline-none focus:ring-2 transition-colors;
+    background-color: var(--theme-bg-card);
+    border: 1px solid var(--theme-bg-separator);
+    color: var(--theme-text-strong);
+    --tw-ring-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
   }
   .input:focus {
-    border-color: var(--color-primary);
+    border-color: var(--theme-accent);
+  }
+  .input::placeholder {
+    color: var(--theme-text-muted);
   }
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+    @apply rounded-xl shadow-sm p-6;
+    background-color: var(--theme-bg-card);
+    border: 1px solid var(--theme-bg-separator);
   }
 }

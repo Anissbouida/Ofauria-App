@@ -13,7 +13,7 @@ export const employeeController = {
     res.json({ success: true, data: employee });
   },
   async create(req: AuthRequest, res: Response) {
-    const employee = await employeeRepository.create(req.body);
+    const employee = await employeeRepository.create({ ...req.body, storeId: req.user!.storeId });
     res.status(201).json({ success: true, data: employee });
   },
   async update(req: AuthRequest, res: Response) {

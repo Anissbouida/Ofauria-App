@@ -4,7 +4,7 @@ import { ordersApi } from '../../api/orders.api';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import {
   ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
@@ -87,8 +87,8 @@ export default function OrdersPage() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => ordersApi.updateStatus(id, status),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); toast.success('Statut mis à jour'); },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); notify.success('Statut mis à jour'); },
+    onError: () => notify.error('Erreur lors de la mise à jour'),
   });
 
   const deliverMutation = useMutation({
@@ -100,9 +100,9 @@ export default function OrdersPage() {
       setDeliverOrder(null);
       setDeliverAmount('');
       setDeliverPayment('cash');
-      toast.success('Commande livrée avec succès !');
+      notify.success('Commande livrée avec succès !');
     },
-    onError: () => toast.error('Erreur lors de la livraison'),
+    onError: () => notify.error('Erreur lors de la livraison'),
   });
 
   const orders = data?.data || [];

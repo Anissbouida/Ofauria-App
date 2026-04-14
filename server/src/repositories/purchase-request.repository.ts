@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getLocalYear } from '../utils/timezone.js';
 
 export const purchaseRequestRepository = {
   /** List requests with filters */
@@ -155,7 +156,7 @@ export const purchaseRequestRepository = {
       }
 
       // Generate order number
-      const year = new Date().getFullYear();
+      const year = getLocalYear();
       const countResult = await client.query(
         `SELECT COUNT(*) FROM purchase_orders WHERE EXTRACT(YEAR FROM order_date) = $1`,
         [year]

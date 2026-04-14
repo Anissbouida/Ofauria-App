@@ -5,10 +5,12 @@ export const createRecipeSchema = z.object({
   productId: z.string().uuid().optional().nullable(),
   instructions: z.string().optional().nullable(),
   yieldQuantity: z.number().positive('Le rendement doit être positif').default(1),
+  yieldUnit: z.string().max(20).default('unit'),
   isBase: z.boolean().default(false),
   ingredients: z.array(z.object({
     ingredientId: z.string().uuid('ID ingrédient invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
+    unit: z.string().max(20).optional().nullable(),
   })).min(0),
   subRecipes: z.array(z.object({
     subRecipeId: z.string().uuid('ID sous-recette invalide'),

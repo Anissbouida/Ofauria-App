@@ -22,6 +22,7 @@ export const ORDER_TYPES = {
   IN_STORE: 'in_store',
   CUSTOM: 'custom',
   ONLINE: 'online',
+  STAFF: 'staff',
 } as const;
 
 export type OrderType = (typeof ORDER_TYPES)[keyof typeof ORDER_TYPES];

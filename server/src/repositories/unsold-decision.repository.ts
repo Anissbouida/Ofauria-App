@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { getUserTimezone } from '../utils/timezone.js';
+import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
 
 /**
  * Moteur de suggestion intelligent pour le devenir des invendus.
@@ -10,7 +10,7 @@ import { getUserTimezone } from '../utils/timezone.js';
  *   - Type de vente (jour / dlv / commande)
  */
 function computeSuggestion(product: Record<string, unknown>): { destination: 'reexpose' | 'recycle' | 'waste'; reason: string } {
-  const now = new Date();
+  const now = getLocalNow();
   const saleType = (product.sale_type as string) || 'jour';
   const shelfLifeDays = parseInt(String(product.shelf_life_days)) || 0;
   const displayLifeHours = parseInt(String(product.display_life_hours)) || 0;
@@ -141,6 +141,16 @@ export const unsoldDecisionRepository = {
              AND si.product_id = pss.product_id),
           0
         )::int as sold_qty,
+        COALESCE(
+          (SELECT SUM(COALESCE(ri2.qty_received, ri2.qty_to_store, ri2.requested_quantity))
+           FROM replenishment_request_items ri2
+           JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
+           WHERE rr2.store_id = $1
+             AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
+             AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged')
+             AND ri2.product_id = pss.product_id),
+          0
+        )::int as replenished_today_qty,
         COALESCE(pdt.current_reexposition_count, 0) as reexposition_count,
         pdt.display_expires_at,
         pdt.produced_at,
@@ -181,6 +191,7 @@ export const unsoldDecisionRepository = {
     sessionId?: string;
     checkId?: string;
     decidedBy: string;
+    closeType?: string;
     decisions: {
       productId: string;
       productName: string;
@@ -275,8 +286,9 @@ export const unsoldDecisionRepository = {
         `, [checkId, d.productId, d.productName, d.initialQty, d.soldQty, d.remainingQty, discrepancy,
             d.finalDestination, 'ok', d.currentReexpositionCount ?? 0]);
 
-        // 2. Appliquer les effets sur le stock
-        if (d.remainingQty > 0) {
+        // 2. Appliquer les effets sur le stock (skip en mode passation — inventaire uniquement)
+        const isPassation = data.closeType === 'passation';
+        if (d.remainingQty > 0 && !isPassation) {
           if (d.finalDestination === 'recycle') {
             // Reduire stock produit
             await client.query(
@@ -326,7 +338,7 @@ export const unsoldDecisionRepository = {
               [d.productId, -d.remainingQty, `Perte fin de journee: ${d.productName} x${d.remainingQty}`, data.decidedBy, data.storeId]
             );
             // Enregistrer en product_losses
-            const lossReason = (d.expiresAt && new Date(d.expiresAt) <= new Date()) ? 'perime' : 'invendu_fin_journee';
+            const lossReason = (d.expiresAt && new Date(d.expiresAt) <= getLocalNow()) ? 'perime' : 'invendu_fin_journee';
             const lossType = lossReason === 'perime' ? 'perime' : 'vitrine';
             await client.query(
               `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)

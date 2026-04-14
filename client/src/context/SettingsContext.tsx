@@ -26,6 +26,20 @@ const defaults: CompanySettings = {
   receiptAutoPrint: false,
   receiptOpenDrawer: false,
   receiptNumCopies: 1,
+  staffDiscountPercent: 10,
+  // Theme / Appearance
+  themeBgPage: '#FAF6F1',
+  themeBgCard: '#FFFDF9',
+  themeBgSecondary: '#F3ECE2',
+  themeBgSeparator: '#E8DDD0',
+  themeTextStrong: '#2D1810',
+  themeTextBody: '#5C3D2E',
+  themeTextMuted: '#8B7355',
+  themeAccent: '#C4872B',
+  themeAccentHover: '#A8721F',
+  themeAccentLight: '#F5E6CC',
+  themeCtaColor: '#C4872B',
+  themeCtaText: '#FFFFFF',
 };
 
 const SettingsContext = createContext<SettingsContextType>({
@@ -38,6 +52,19 @@ function applyTheme(s: CompanySettings) {
   const root = document.documentElement.style;
   root.setProperty('--color-primary', s.primaryColor);
   root.setProperty('--color-primary-hover', s.secondaryColor);
+  // Theme / Appearance variables
+  root.setProperty('--theme-bg-page', s.themeBgPage);
+  root.setProperty('--theme-bg-card', s.themeBgCard);
+  root.setProperty('--theme-bg-secondary', s.themeBgSecondary);
+  root.setProperty('--theme-bg-separator', s.themeBgSeparator);
+  root.setProperty('--theme-text-strong', s.themeTextStrong);
+  root.setProperty('--theme-text-body', s.themeTextBody);
+  root.setProperty('--theme-text-muted', s.themeTextMuted);
+  root.setProperty('--theme-accent', s.themeAccent);
+  root.setProperty('--theme-accent-hover', s.themeAccentHover);
+  root.setProperty('--theme-accent-light', s.themeAccentLight);
+  root.setProperty('--theme-cta-color', s.themeCtaColor);
+  root.setProperty('--theme-cta-text', s.themeCtaText);
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {

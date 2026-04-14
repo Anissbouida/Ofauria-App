@@ -7,7 +7,7 @@ import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
   Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { format } from 'date-fns';
 
@@ -81,7 +81,7 @@ export default function InventoryPage() {
 
   const addIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); setShowAddIngredient(false); toast.success('Ingrédient ajouté'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); setShowAddIngredient(false); notify.success('Ingrédient ajouté'); },
   });
 
   const filteredInventory = useMemo(() => {

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
 import { Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, X, Check, MapPin } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES } from '@ofauria/shared';
 import type { AppModule, UserPermission } from '@ofauria/shared';
 
@@ -21,11 +21,11 @@ export default function UsersPage() {
       editing ? usersApi.update(editing.id as string, data) : usersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success(editing ? 'Utilisateur mis a jour' : 'Utilisateur cree');
+      notify.success(editing ? 'Utilisateur mis a jour' : 'Utilisateur cree');
       setShowForm(false); setEditing(null);
     },
     onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
-      toast.error(err?.response?.data?.error?.message || 'Erreur');
+      notify.error(err?.response?.data?.error?.message || 'Erreur');
     },
   });
 
@@ -34,7 +34,7 @@ export default function UsersPage() {
       usersApi.update(id, { isActive }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success('Statut mis a jour');
+      notify.success('Statut mis a jour');
     },
   });
 
@@ -331,10 +331,10 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-permissions', userId] });
-      toast.success('Permissions enregistrees');
+      notify.success('Permissions enregistrees');
       onClose();
     },
-    onError: () => toast.error('Erreur lors de la sauvegarde'),
+    onError: () => notify.error('Erreur lors de la sauvegarde'),
   });
 
   const toggleModule = (mod: AppModule, field: keyof Omit<PermState, 'config'>) => {

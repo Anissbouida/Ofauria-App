@@ -4,10 +4,14 @@ import { ordersApi } from '../../api/orders.api';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { customersApi } from '../../api/customers.api';
+import { employeesApi } from '../../api/employees.api';
+import { settingsApi } from '../../api/settings.api';
+import { useReferentiel } from '../../hooks/useReferentiel';
+import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
-import { Plus, Trash2, Search, Phone, User, Users, Check } from 'lucide-react';
+import { notify } from '../ui/InlineNotification';
+import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle } from 'lucide-react';
 
 /* ─── Step indicators ─── */
 const STEPS = [
@@ -50,13 +54,22 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   onClose: () => void;
   onSaved: (createdOrder?: Record<string, unknown>) => void;
 }) {
+  const { user } = useAuth();
+  const { entries: paymentMethods } = useReferentiel('payment_methods');
   const isEdit = !!order;
   const [step, setStep] = useState(1);
   const [detailLoaded, setDetailLoaded] = useState(!isEdit);
 
+  // Staff discount settings
+  const { data: companySettings } = useQuery({
+    queryKey: ['company-settings'],
+    queryFn: settingsApi.get,
+  });
+  const staffDiscountPercent = companySettings?.staffDiscountPercent ?? 10;
+
   // Step 1: Client mode
   const [clientMode, setClientMode] = useState<ClientMode>(
-    isEdit ? (order.customer_id ? 'known' : 'walkin') : null
+    isEdit ? (order.customer_id ? 'known' : (order.type === 'staff' ? null : 'walkin')) : null
   );
 
   // Known client
@@ -131,6 +144,23 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
 
+  // Employees query (for staff orders)
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees-list'],
+    queryFn: employeesApi.list,
+    enabled: type === 'staff',
+  });
+  const employees = (employeesData?.data || employeesData || []) as Record<string, unknown>[];
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const filteredEmployees = employees.filter(e => {
+    if (!employeeSearch) return true;
+    const q = employeeSearch.toLowerCase();
+    const name = `${e.first_name || ''} ${e.last_name || ''}`.toLowerCase();
+    return name.includes(q);
+  });
+  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
+
   const { data: productsData } = useQuery({
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
@@ -145,14 +175,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const createMutation = useMutation({
     mutationFn: ordersApi.create,
-    onSuccess: (data: Record<string, unknown>) => { toast.success('Commande creee avec succes'); onSaved(data); },
-    onError: () => { toast.error('Erreur lors de la creation'); },
+    onSuccess: (data: Record<string, unknown>) => { notify.success('Commande creee avec succes'); onSaved(data); },
+    onError: () => { notify.error('Erreur lors de la creation'); },
   });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => ordersApi.update(order!.id as string, data),
-    onSuccess: () => { toast.success('Commande modifiee avec succes'); onSaved(); },
-    onError: () => { toast.error('Erreur lors de la modification'); },
+    onSuccess: () => { notify.success('Commande modifiee avec succes'); onSaved(); },
+    onError: () => { notify.error('Erreur lors de la modification'); },
   });
 
   const [productSearch, setProductSearch] = useState('');
@@ -188,7 +218,9 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     const prod = products.find((p) => p.id === item.productId);
     return sum + (prod ? parseFloat(prod.price as string) * item.quantity : 0);
   }, 0);
-  const total = Math.max(0, subtotal - discountAmount);
+  // Auto-calculate staff discount
+  const effectiveDiscount = type === 'staff' ? Math.round(subtotal * staffDiscountPercent) / 100 : discountAmount;
+  const total = Math.max(0, subtotal - effectiveDiscount);
 
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
 
@@ -200,19 +232,21 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     ? (selectedCustomer.phone as string || '')
     : customerPhone;
 
-  const canNextStep1 = clientMode === 'known'
-    ? !!selectedCustomerId && !!pickupDate
-    : clientMode === 'walkin'
-      ? !!customerName.trim() && !!pickupDate
-      : false;
+  const canNextStep1 = type === 'staff'
+    ? !!selectedEmployeeId && !!pickupDate
+    : clientMode === 'known'
+      ? !!selectedCustomerId && !!pickupDate
+      : clientMode === 'walkin'
+        ? !!customerName.trim() && !!pickupDate
+        : false;
   const canNextStep2 = validItems.length > 0;
 
   const handleNext = () => {
     if (step === 1 && !canNextStep1) {
-      toast.error(clientMode === 'known' ? 'Selectionnez un client et la date' : 'Saisissez le nom du client et la date');
+      notify.error(clientMode === 'known' ? 'Selectionnez un client et la date' : 'Saisissez le nom du client et la date');
       return;
     }
-    if (step === 2 && !canNextStep2) { toast.error('Ajoutez au moins un produit'); return; }
+    if (step === 2 && !canNextStep2) { notify.error('Ajoutez au moins un produit'); return; }
     setStep(step + 1);
   };
 
@@ -223,12 +257,16 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       type, pickupDate,
       paymentMethod: deferPayment ? 'deferred' : paymentMethod,
       notes: notes || undefined,
-      discountAmount,
+      discountAmount: effectiveDiscount,
       advanceAmount: deferPayment ? 0 : advanceAmount,
       deferPayment,
       items: validItems.map((it) => ({ productId: it.productId, quantity: it.quantity, notes: it.notes || undefined })),
     };
-    if (clientMode === 'known' && selectedCustomerId) {
+    if (type === 'staff' && selectedEmployee) {
+      payload.customerName = `${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim();
+      payload.customerPhone = (selectedEmployee.phone as string) || undefined;
+      payload.notes = `Commande personnel — Remise ${staffDiscountPercent}%${notes ? ` | ${notes}` : ''}`;
+    } else if (clientMode === 'known' && selectedCustomerId) {
       payload.customerId = selectedCustomerId;
       payload.customerName = displayName;
       payload.customerPhone = displayPhone || undefined;
@@ -273,32 +311,44 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
           {/* ── STEP 1: Client ── */}
           {step === 1 && (
             <div className="p-5 space-y-5">
-              {/* Client mode selector */}
-              {!clientMode && (
+              {/* Mode selector: 3 cards (Client / Passager / Personnel) */}
+              {!clientMode && type !== 'staff' && (
                 <div className="space-y-4">
-                  <h3 className="text-center text-lg font-semibold text-gray-700">Quel type de client ?</h3>
-                  <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+                  <h3 className="text-center text-lg font-semibold text-gray-700">Type de commande</h3>
+                  <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
                     {/* Known client card */}
-                    <button type="button" onClick={() => setClientMode('known')}
+                    <button type="button" onClick={() => { setClientMode('known'); setType('custom'); }}
                       className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-blue-500 hover:bg-blue-50 transition-all">
                       <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
                         <Users size={28} className="text-blue-600" />
                       </div>
                       <div className="text-center">
-                        <p className="font-bold text-gray-800 text-base">Client connu</p>
-                        <p className="text-xs text-gray-400 mt-1">Client enregistre dans la base, avec facture detaillee</p>
+                        <p className="font-bold text-gray-800 text-base">Client</p>
+                        <p className="text-xs text-gray-400 mt-1">Client enregistre dans la base</p>
                       </div>
                     </button>
 
                     {/* Walk-in client card */}
-                    <button type="button" onClick={() => setClientMode('walkin')}
+                    <button type="button" onClick={() => { setClientMode('walkin'); setType('custom'); }}
                       className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-amber-500 hover:bg-amber-50 transition-all">
                       <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
                         <User size={28} className="text-amber-600" />
                       </div>
                       <div className="text-center">
-                        <p className="font-bold text-gray-800 text-base">Client passager</p>
-                        <p className="text-xs text-gray-400 mt-1">Client de passage, ticket simple a imprimer</p>
+                        <p className="font-bold text-gray-800 text-base">Passager</p>
+                        <p className="text-xs text-gray-400 mt-1">Client de passage</p>
+                      </div>
+                    </button>
+
+                    {/* Staff card */}
+                    <button type="button" onClick={() => { setType('staff'); setClientMode(null); setSelectedCustomerId(null); }}
+                      className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-purple-500 hover:bg-purple-50 transition-all">
+                      <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                        <UserCircle size={28} className="text-purple-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-gray-800 text-base">Personnel</p>
+                        <p className="text-xs text-gray-400 mt-1">Remise {staffDiscountPercent}% automatique</p>
                       </div>
                     </button>
                   </div>
@@ -306,10 +356,10 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               )}
 
               {/* Known client: search & select */}
-              {clientMode === 'known' && (
+              {clientMode === 'known' && type !== 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); }}
+                    <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); setType('custom'); }}
                       className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -369,14 +419,19 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       );
                     })}
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                      className="input text-base py-3" required />
+                  </div>
                 </div>
               )}
 
               {/* Walk-in client: name + phone */}
-              {clientMode === 'walkin' && (
+              {clientMode === 'walkin' && type !== 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setClientMode(null); setCustomerName(''); setCustomerPhone(''); }}
+                    <button type="button" onClick={() => { setClientMode(null); setCustomerName(''); setCustomerPhone(''); setType('custom'); }}
                       className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
@@ -401,27 +456,84 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         className="input text-base py-3 w-full pl-10" />
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* Date + Type (shown after mode is selected) */}
-              {clientMode && (
-                <div className="grid grid-cols-2 gap-4 pt-2">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
                     <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
                       className="input text-base py-3" required />
                   </div>
+                </div>
+              )}
+
+              {/* Staff order: employee selection */}
+              {type === 'staff' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => { setType('custom'); setSelectedEmployeeId(null); setEmployeeSearch(''); }}
+                      className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                        <UserCircle size={16} className="text-purple-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700">Commande personnel</h3>
+                        <p className="text-[11px] text-purple-600 font-medium">Remise automatique de {staffDiscountPercent}%</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date de retrait */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Type de commande</label>
-                    <select value={type} onChange={(e) => setType(e.target.value)} className="input text-base py-3">
-                      <option value="custom">Sur mesure</option>
-                      <option value="event">Evenement</option>
-                      <option value="online">En ligne</option>
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                      className="input text-base py-3" required />
+                  </div>
+
+                  {/* Employee search */}
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input type="text" autoFocus value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)}
+                      placeholder="Rechercher un employe..."
+                      className="input text-base py-3 w-full pl-10" />
+                  </div>
+
+                  {/* Employee list */}
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                    {filteredEmployees.length === 0 ? (
+                      <p className="text-center py-6 text-gray-400 text-sm">Aucun employe trouve</p>
+                    ) : filteredEmployees.map(e => {
+                      const eId = e.id as string;
+                      const isSelected = eId === selectedEmployeeId;
+                      const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim();
+                      const role = (e.role as string) || '';
+                      return (
+                        <button key={eId} type="button"
+                          onClick={() => setSelectedEmployeeId(eId)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                            isSelected
+                              ? 'bg-purple-50 border-2 border-purple-500 shadow-sm'
+                              : 'bg-white border-2 border-gray-100 hover:border-gray-200 hover:bg-gray-50'
+                          }`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                            isSelected ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {fullName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium truncate ${isSelected ? 'text-purple-700' : 'text-gray-800'}`}>{fullName}</p>
+                            <p className="text-xs text-gray-400 capitalize">{role.replace(/_/g, ' ')}</p>
+                          </div>
+                          {isSelected && (
+                            <div className="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center">
+                              <Check size={14} className="text-white" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+
             </div>
           )}
 
@@ -617,14 +729,10 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
                     <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: 'cash', label: 'Especes' },
-                        { value: 'card', label: 'Carte' },
-                        { value: 'transfer', label: 'Virement' },
-                      ].map((pm) => (
-                        <button key={pm.value} type="button" onClick={() => setPaymentMethod(pm.value)}
+                      {paymentMethods.filter(pm => pm.code !== 'deferred').map((pm) => (
+                        <button key={pm.code} type="button" onClick={() => setPaymentMethod(pm.code)}
                           className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                            paymentMethod === pm.value
+                            paymentMethod === pm.code
                               ? 'border-primary-500 bg-primary-50 text-primary-700'
                               : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                           }`}>
@@ -638,9 +746,16 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Remise (DH)</label>
-                      <input type="number" min="0" step="0.01" value={discountAmount}
-                        onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                        className="input py-3 w-full text-base" />
+                      {type === 'staff' ? (
+                        <div className="input py-3 w-full text-base bg-purple-50 border-purple-200 text-purple-700 font-semibold flex items-center justify-between">
+                          <span>{effectiveDiscount.toFixed(2)}</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{staffDiscountPercent}%</span>
+                        </div>
+                      ) : (
+                        <input type="number" min="0" step="0.01" value={discountAmount}
+                          onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                          className="input py-3 w-full text-base" />
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH)</label>
@@ -665,10 +780,10 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <span>Sous-total</span>
                   <span className="font-medium">{subtotal.toFixed(2)} DH</span>
                 </div>
-                {discountAmount > 0 && (
+                {effectiveDiscount > 0 && (
                   <div className="flex justify-between text-sm text-red-600">
-                    <span>Remise</span>
-                    <span>-{discountAmount.toFixed(2)} DH</span>
+                    <span>Remise{type === 'staff' ? ` personnel (${staffDiscountPercent}%)` : ''}</span>
+                    <span>-{effectiveDiscount.toFixed(2)} DH</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold border-t border-primary-200 pt-2">

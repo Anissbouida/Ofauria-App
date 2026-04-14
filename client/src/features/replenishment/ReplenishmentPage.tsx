@@ -6,7 +6,7 @@ import { productsApi } from '../../api/products.api';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import {
   Plus, Package, ArrowRight, Clock, AlertTriangle, CheckCircle,
   Send, ShoppingBag, Trash2, Calendar, Search, X, Lightbulb, Truck,
@@ -82,7 +82,7 @@ export default function ReplenishmentPage() {
     mutationFn: replenishmentApi.cancel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
-      toast.success('Demande annulée');
+      notify.success('Demande annulée');
     },
   });
 
@@ -335,6 +335,10 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     queryFn: () => replenishmentApi.checkToday(),
   });
   const alreadyRequestedIds: string[] = todayCheck?.alreadyRequestedProductIds || [];
+  const alreadyRequestedDetails: Record<string, { last_requested_at: string; store_stock: number }> = {};
+  for (const d of (todayCheck?.alreadyRequestedDetails || []) as Array<{ product_id: string; last_requested_at: string; store_stock: number }>) {
+    alreadyRequestedDetails[d.product_id] = d;
+  }
 
   const MARGIN = 1.10;
 
@@ -434,23 +438,25 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   const createMutation = useMutation({
     mutationFn: replenishmentApi.create,
-    onSuccess: () => { toast.success('Demande envoyée avec succès'); onCreated(); },
+    onSuccess: () => { notify.success('Demande envoyée avec succès'); onCreated(); },
     onError: (error: unknown) => {
       const errData = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
       const data = errData?.data as Record<string, unknown> | undefined;
       const err = data?.error as Record<string, unknown> | undefined;
       if (err?.code === 'ALL_PRODUCTS_ALREADY_REQUESTED') {
-        toast.error(err.message as string);
+        notify.error(err.message as string);
       } else {
-        toast.error('Erreur lors de la création');
+        notify.error((err?.message as string) || 'Erreur lors de la création de la demande');
       }
     },
   });
 
   const [submitting, setSubmitting] = useState(false);
   const handleSubmit = async () => {
+    if (createMutation.isPending || submitting) return;
+
     const productIds = Object.keys(selected);
-    if (!productIds.length) { toast.error('Sélectionnez au moins un produit'); return; }
+    if (!productIds.length) { notify.error('Sélectionnez au moins un produit'); return; }
 
     if (!validationDone) {
       setSubmitting(true);
@@ -464,18 +470,19 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
         }
       } catch (err) {
         console.error('Erreur de vérification des articles:', err);
-        toast.error('Erreur lors de la vérification des articles');
+        notify.error('Erreur lors de la vérification des articles');
         setSubmitting(false);
         return;
       }
     }
 
     const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({ productId, requestedQuantity }));
-    if (!items.length) { toast.error('Aucun article éligible à envoyer'); return; }
+    if (!items.length) { notify.error('Aucun article éligible à envoyer'); return; }
     setBlockedItems([]);
     setValidationDone(false);
-    setSubmitting(false);
-    createMutation.mutate({ priority, notes: notes || undefined, items });
+    createMutation.mutate({ priority, notes: notes || undefined, items }, {
+      onSettled: () => setSubmitting(false),
+    });
   };
 
   const filterBySearch = (items: Record<string, unknown>[]) => {
@@ -504,17 +511,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
           </div>
         </div>
 
-        {/* Already requested info */}
-        {alreadyRequestedIds.length > 0 && (
-          <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <Package size={14} className="text-blue-600" />
-              </div>
-              <p className="text-xs text-blue-700">{alreadyRequestedIds.length} produit(s) déjà demandé(s) aujourd'hui — ils ne seront pas inclus dans cette demande.</p>
-            </div>
-          </div>
-        )}
+        {/* Per-item warnings are shown inline below each product */}
 
         {/* Blocked items warning */}
         {blockedItems.length > 0 && (
@@ -630,50 +627,61 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                               ? { bg: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'J-14' }
                               : { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Moy.' };
 
+                          const reqDetail = alreadyRequestedDetails[pid];
+                          const showWarning = reqDetail && reqDetail.store_stock > 0;
+
                           return (
-                            <div key={pid} className={`flex items-center gap-4 px-6 py-3 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
-                              <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
-                                className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}>
-                                {isSelected && <CheckCircle size={14} className="text-white" />}
-                              </button>
-
-                              <div className="flex-1 min-w-0">
-                                <span className={`text-sm ${isSelected ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
-                                  {item.product_name as string}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {/* Reference source badge */}
-                                <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
-                                  {refBadge.label}
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
-                                  <Layers size={10} /> {sold}
-                                </span>
-                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
-                                  <Package size={10} /> {Math.floor(stock)}
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
-                                  <Lightbulb size={10} /> {suggested}
-                                </span>
-                              </div>
-
-                              {isSelected ? (
-                                <div className="flex items-center bg-white rounded-xl border border-indigo-200 shrink-0 shadow-sm overflow-hidden">
-                                  <button onClick={() => setQty(pid, qty - 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">-</button>
-                                  <input type="number" min={1} value={qty}
-                                    onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
-                                    className="w-12 text-center text-sm font-bold h-8 border-x border-indigo-200 focus:outline-none focus:bg-indigo-50" />
-                                  <button onClick={() => setQty(pid, qty + 1)}
-                                    className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">+</button>
-                                </div>
-                              ) : (
-                                <button onClick={() => setQty(pid, suggested)}
-                                  className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors shrink-0">
-                                  + Ajouter
+                            <div key={pid} className={`px-6 py-3 transition-colors ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
+                              <div className="flex items-center gap-4">
+                                <button onClick={() => isSelected ? setQty(pid, 0) : setQty(pid, suggested)}
+                                  className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}>
+                                  {isSelected && <CheckCircle size={14} className="text-white" />}
                                 </button>
+
+                                <div className="flex-1 min-w-0">
+                                  <span className={`text-sm ${isSelected ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>
+                                    {item.product_name as string}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {/* Reference source badge */}
+                                  <span className={`inline-flex items-center text-[10px] px-1.5 py-0.5 rounded border font-semibold ${refBadge.bg}`} title={refLabel}>
+                                    {refBadge.label}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600" title={`Vendu: ${refLabel}`}>
+                                    <Layers size={10} /> {sold}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
+                                    <Package size={10} /> {Math.floor(stock)}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
+                                    <Lightbulb size={10} /> {suggested}
+                                  </span>
+                                </div>
+
+                                {isSelected ? (
+                                  <div className="flex items-center bg-white rounded-xl border border-indigo-200 shrink-0 shadow-sm overflow-hidden">
+                                    <button onClick={() => setQty(pid, qty - 1)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">-</button>
+                                    <input type="number" min={1} value={qty}
+                                      onChange={e => setQty(pid, parseInt(e.target.value) || 0)}
+                                      className="w-12 text-center text-sm font-bold h-8 border-x border-indigo-200 focus:outline-none focus:bg-indigo-50" />
+                                    <button onClick={() => setQty(pid, qty + 1)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50">+</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setQty(pid, suggested)}
+                                    className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors shrink-0">
+                                    + Ajouter
+                                  </button>
+                                )}
+                              </div>
+                              {showWarning && (
+                                <p className="ml-9 mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                                  <AlertTriangle size={11} className="shrink-0" />
+                                  Cet article a déjà été approvisionné aujourd'hui le {new Date(reqDetail.last_requested_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Il est encore disponible en vitrine ({reqDetail.store_stock} unité(s)).
+                                </p>
                               )}
                             </div>
                           );
@@ -723,6 +731,12 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
                       <div className="text-xs font-semibold text-gray-800 mb-2 leading-tight h-8" title={p.name as string}>
                         <span className="line-clamp-2">{p.name as string}</span>
                       </div>
+                      {(() => { const rd = alreadyRequestedDetails[pid]; return rd && rd.store_stock > 0 ? (
+                        <p className="text-[10px] text-amber-600 mb-1.5 leading-tight flex items-start gap-0.5">
+                          <AlertTriangle size={10} className="shrink-0 mt-0.5" />
+                          Approvisionné aujourd'hui — encore {rd.store_stock} en vitrine
+                        </p>
+                      ) : null; })()}
                       {!isSelected ? (
                         <button onClick={() => setQty(pid, 1)}
                           className="w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center gap-1">

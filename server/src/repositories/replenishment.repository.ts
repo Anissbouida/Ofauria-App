@@ -5,9 +5,12 @@ import { getUserTimezone } from '../utils/timezone.js';
 export const replenishmentRepository = {
 
   async generateRequestNumber(): Promise<string> {
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const tz = getUserTimezone();
+    // Use the SAME timezone for both the date string and the COUNT query
+    const dateResult = await db.query(`SELECT to_char(NOW() AT TIME ZONE '${tz}', 'YYYYMMDD') as today`);
+    const today = dateResult.rows[0].today;
     const result = await db.query(
-      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE '${getUserTimezone()}') = DATE(NOW() AT TIME ZONE '${getUserTimezone()}') AND batch_id IS NOT NULL`
+      `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}') AND batch_id IS NOT NULL`
     );
     const num = parseInt(result.rows[0].count, 10) + 1;
     return `DRA-${today}-${String(num).padStart(3, '0')}`;
@@ -183,18 +186,6 @@ export const replenishmentRepository = {
         roleGroups[role].push(item);
       }
 
-      // ── Stock availability check ──
-      const stockResult = await client.query(
-        `SELECT product_id, COALESCE(stock_quantity, 0) as stock_quantity
-         FROM product_store_stock
-         WHERE product_id = ANY($1) AND store_id = $2`,
-        [productIds, data.storeId]
-      );
-      const stockMap: Record<string, number> = {};
-      for (const row of stockResult.rows) {
-        stockMap[row.product_id] = Math.floor(parseFloat(row.stock_quantity));
-      }
-
       const ROLE_SUFFIXES: Record<string, string> = {
         baker: 'BOUL',
         pastry_chef: 'PAT',
@@ -205,7 +196,6 @@ export const replenishmentRepository = {
 
       // Create one independent request per role, all sharing the same batch_id
       const requestIds: Record<string, string> = {};
-      const productionPlanIds: Record<string, string> = {};
       let firstRequest: Record<string, unknown> | null = null;
 
       // Generate a single batch_id for all requests in this submission
@@ -228,68 +218,19 @@ export const replenishmentRepository = {
         requestIds[role] = req.id;
         if (!firstRequest) firstRequest = req;
 
-        // Insert items with stock availability info
-        const productionNeeded: { productId: string; qty: number; itemId: string }[] = [];
-
+        // Insert items with requested quantity only — stock check & production deferred to acknowledge
         for (const item of items) {
-          const available = Math.max(stockMap[item.productId] || 0, 0);
-          const requested = item.requestedQuantity;
-          const fromStock = Math.min(available, requested);
-          const toProduce = requested - fromStock;
-          const sourceType = toProduce === 0 ? 'stock' : fromStock === 0 ? 'production' : 'mixed';
-
-          const itemResult = await client.query(
-            `INSERT INTO replenishment_request_items (request_id, product_id, requested_quantity, status, source_type, qty_from_stock, qty_to_produce)
-             VALUES ($1, $2, $3, 'pending', $4, $5, $6) RETURNING id`,
-            [req.id, item.productId, requested, sourceType, fromStock, toProduce]
+          await client.query(
+            `INSERT INTO replenishment_request_items (request_id, product_id, requested_quantity, status)
+             VALUES ($1, $2, $3, 'pending')`,
+            [req.id, item.productId, item.requestedQuantity]
           );
-
-          if (toProduce > 0) {
-            productionNeeded.push({ productId: item.productId, qty: toProduce, itemId: itemResult.rows[0].id });
-          }
-        }
-
-        // Auto-create production plan if any items need production
-        if (productionNeeded.length > 0) {
-          const planResult = await client.query(
-            `INSERT INTO production_plans (plan_date, type, notes, created_by, target_role, store_id, replenishment_request_id)
-             VALUES (CURRENT_DATE, 'daily', $1, $2, $3, $4, $5) RETURNING id`,
-            [`Auto — approvisionnement ${fullNumber}`, data.requestedBy, role, data.storeId, req.id]
-          );
-          const planId = planResult.rows[0].id;
-          productionPlanIds[role] = planId;
-
-          // Point 4: Fetch min_production_quantity for all products needing production
-          const prodIdsForMin = productionNeeded.map(pi => pi.productId);
-          const minQtyResult = await client.query(
-            `SELECT id, COALESCE(min_production_quantity, 0) as min_production_quantity FROM products WHERE id = ANY($1)`,
-            [prodIdsForMin]
-          );
-          const minQtyMap: Record<string, number> = {};
-          for (const row of minQtyResult.rows) {
-            minQtyMap[row.id] = parseInt(row.min_production_quantity) || 0;
-          }
-
-          for (const pi of productionNeeded) {
-            // Apply lot minimum: production = max(needed, minimum)
-            const minQty = minQtyMap[pi.productId] || 0;
-            const effectiveQty = Math.max(pi.qty, minQty);
-            await client.query(
-              `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity)
-               VALUES ($1, $2, $3)`,
-              [planId, pi.productId, effectiveQty]
-            );
-            await client.query(
-              `UPDATE replenishment_request_items SET production_plan_id = $1 WHERE id = $2`,
-              [planId, pi.itemId]
-            );
-          }
         }
       }
 
       await client.query('COMMIT');
 
-      return { ...firstRequest, _requestIds: requestIds, _productionPlanIds: productionPlanIds, request_number: firstRequest?.request_number };
+      return { ...firstRequest, _requestIds: requestIds, request_number: firstRequest?.request_number };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -299,17 +240,110 @@ export const replenishmentRepository = {
   },
 
   /* ─── STEP 2: Acknowledge (sub-request: submitted → acknowledged) ─── */
+  /* Stock availability check & production plan creation happen here, not at submission */
 
   async acknowledge(requestId: string, acknowledgedBy: string) {
-    const result = await db.query(
-      `UPDATE replenishment_requests
-       SET status = 'acknowledged', acknowledged_by = $1, acknowledged_at = NOW(), updated_at = NOW()
-       WHERE id = $2 AND status = 'submitted'
-       RETURNING id`,
-      [acknowledgedBy, requestId]
-    );
-    if (!result.rows[0]) throw new Error('Invalid state transition');
-    return this.findById(requestId);
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Transition status
+      const reqResult = await client.query(
+        `UPDATE replenishment_requests
+         SET status = 'acknowledged', acknowledged_by = $1, acknowledged_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND status = 'submitted'
+         RETURNING *`,
+        [acknowledgedBy, requestId]
+      );
+      if (!reqResult.rows[0]) throw new Error('Invalid state transition');
+      const req = reqResult.rows[0];
+
+      // 2. Fetch items for this request
+      const itemsResult = await client.query(
+        `SELECT id, product_id, requested_quantity FROM replenishment_request_items WHERE request_id = $1`,
+        [requestId]
+      );
+
+      // 3. Stock availability check
+      const productIds = itemsResult.rows.map((r: Record<string, unknown>) => r.product_id);
+      const stockResult = await client.query(
+        `SELECT product_id, COALESCE(stock_quantity, 0) as stock_quantity
+         FROM product_store_stock
+         WHERE product_id = ANY($1) AND store_id = $2`,
+        [productIds, req.store_id]
+      );
+      const stockMap: Record<string, number> = {};
+      for (const row of stockResult.rows) {
+        stockMap[row.product_id] = Math.floor(parseFloat(row.stock_quantity));
+      }
+
+      // 4. Update each item with stock split info
+      const productionNeeded: { productId: string; qty: number; itemId: string }[] = [];
+      for (const item of itemsResult.rows) {
+        const available = Math.max(stockMap[item.product_id] || 0, 0);
+        const requested = parseInt(item.requested_quantity);
+        const fromStock = Math.min(available, requested);
+        const toProduce = requested - fromStock;
+        const sourceType = toProduce === 0 ? 'stock' : fromStock === 0 ? 'production' : 'mixed';
+
+        await client.query(
+          `UPDATE replenishment_request_items
+           SET source_type = $1, qty_from_stock = $2, qty_to_produce = $3
+           WHERE id = $4`,
+          [sourceType, fromStock, toProduce, item.id]
+        );
+
+        if (toProduce > 0) {
+          productionNeeded.push({ productId: item.product_id, qty: toProduce, itemId: item.id });
+        }
+      }
+
+      // 5. Create production plan if any items need production
+      let productionPlanId: string | null = null;
+      if (productionNeeded.length > 0) {
+        const planResult = await client.query(
+          `INSERT INTO production_plans (plan_date, type, notes, created_by, target_role, store_id, replenishment_request_id)
+           VALUES (CURRENT_DATE, 'daily', $1, $2, $3, $4, $5) RETURNING id`,
+          [`Auto — approvisionnement ${req.request_number}`, acknowledgedBy, req.assigned_role, req.store_id, requestId]
+        );
+        productionPlanId = planResult.rows[0].id;
+
+        // Fetch min_production_quantity for products needing production
+        const prodIds = productionNeeded.map(pi => pi.productId);
+        const minQtyResult = await client.query(
+          `SELECT id, COALESCE(min_production_quantity, 0) as min_production_quantity FROM products WHERE id = ANY($1)`,
+          [prodIds]
+        );
+        const minQtyMap: Record<string, number> = {};
+        for (const row of minQtyResult.rows) {
+          minQtyMap[row.id] = parseInt(row.min_production_quantity) || 0;
+        }
+
+        for (const pi of productionNeeded) {
+          const minQty = minQtyMap[pi.productId] || 0;
+          const effectiveQty = Math.max(pi.qty, minQty);
+          await client.query(
+            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity)
+             VALUES ($1, $2, $3)`,
+            [productionPlanId, pi.productId, effectiveQty]
+          );
+          await client.query(
+            `UPDATE replenishment_request_items SET production_plan_id = $1 WHERE id = $2`,
+            [productionPlanId, pi.itemId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      const fullRequest = await this.findById(requestId);
+      return { ...fullRequest, _productionPlanId: productionPlanId };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /* ─── STEP 3: Start preparing (acknowledged → preparing) ─── */
@@ -582,6 +616,25 @@ export const replenishmentRepository = {
       [storeId]
     );
     return result.rows.map((r: { product_id: string }) => r.product_id);
+  },
+
+  /** Returns detailed info per product already requested today: last request date + current store stock */
+  async findTodayRequestedDetails(storeId: string): Promise<Array<{ product_id: string; last_requested_at: string; store_stock: number }>> {
+    const tz = getUserTimezone();
+    const result = await db.query(
+      `SELECT ri.product_id,
+              MAX(rr.created_at AT TIME ZONE '${tz}') as last_requested_at,
+              COALESCE(pss.stock_quantity, 0)::int as store_stock
+       FROM replenishment_request_items ri
+       JOIN replenishment_requests rr ON rr.id = ri.request_id
+       LEFT JOIN product_store_stock pss ON pss.product_id = ri.product_id AND pss.store_id = $1
+       WHERE rr.store_id = $1
+         AND DATE(rr.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
+         AND rr.status NOT IN ('cancelled', 'closed', 'closed_with_discrepancy')
+       GROUP BY ri.product_id, pss.stock_quantity`,
+      [storeId]
+    );
+    return result.rows;
   },
 
   /* ─── RULE 2: Check unsold items ─── */

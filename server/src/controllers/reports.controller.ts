@@ -58,6 +58,37 @@ export const reportsController = {
       SELECT COUNT(*) as count FROM inventory WHERE current_quantity <= minimum_threshold${storeFilter}
     `, storeValues);
 
+    // Today's losses
+    const todayLosses = await db.query(`
+      SELECT COUNT(*) as loss_count,
+             COALESCE(SUM(quantity), 0) as loss_quantity,
+             COALESCE(SUM(total_cost), 0) as loss_cost
+      FROM product_losses
+      WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
+    `, storeValues);
+
+    // Monthly losses (current month)
+    const monthlyLosses = await db.query(`
+      SELECT COALESCE(SUM(total_cost), 0) as monthly_loss_cost,
+             COALESCE(SUM(quantity), 0) as monthly_loss_quantity
+      FROM product_losses
+      WHERE EXTRACT(MONTH FROM created_at AT TIME ZONE '${tz}') = EXTRACT(MONTH FROM NOW() AT TIME ZONE '${tz}')
+        AND EXTRACT(YEAR FROM created_at AT TIME ZONE '${tz}') = EXTRACT(YEAR FROM NOW() AT TIME ZONE '${tz}')
+        ${storeFilter}
+    `, storeValues);
+
+    // Top loss products (last 7 days)
+    const topLossProducts = await db.query(`
+      SELECT p.id, p.name, SUM(pl.quantity) as total_lost, SUM(pl.total_cost) as total_cost,
+             pl.loss_type, COUNT(*) as loss_count
+      FROM product_losses pl
+      JOIN products p ON p.id = pl.product_id
+      WHERE pl.created_at >= (NOW() AT TIME ZONE '${tz}')::date - INTERVAL '7 days'
+        ${storeFilter.replace('store_id', 'pl.store_id')}
+      GROUP BY p.id, p.name, pl.loss_type
+      ORDER BY total_cost DESC LIMIT 5
+    `, storeValues);
+
     const grossRevenue = parseFloat(todaySales.rows[0].total_revenue);
     const totalRefunds = parseFloat(todayRefunds.rows[0].total_refunds);
 
@@ -72,6 +103,12 @@ export const reportsController = {
         topProducts: topProducts.rows,
         pendingOrders: parseInt(pendingOrders.rows[0].count),
         lowStockCount: parseInt(lowStock.rows[0].count),
+        todayLossCount: parseInt(todayLosses.rows[0].loss_count),
+        todayLossCost: parseFloat(todayLosses.rows[0].loss_cost),
+        todayLossQuantity: parseFloat(todayLosses.rows[0].loss_quantity),
+        monthlyLossCost: parseFloat(monthlyLosses.rows[0].monthly_loss_cost),
+        monthlyLossQuantity: parseFloat(monthlyLosses.rows[0].monthly_loss_quantity),
+        topLossProducts: topLossProducts.rows,
       },
     });
   },

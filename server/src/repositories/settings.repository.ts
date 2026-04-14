@@ -15,6 +15,12 @@ export const settingsRepository = {
     receiptShowCashier?: boolean; receiptShowDate?: boolean;
     receiptShowPaymentDetail?: boolean; receiptExtraLines?: string;
     receiptAutoPrint?: boolean; receiptOpenDrawer?: boolean; receiptNumCopies?: number;
+    staffDiscountPercent?: number;
+    // Theme / Appearance
+    themeBgPage?: string; themeBgCard?: string; themeBgSecondary?: string; themeBgSeparator?: string;
+    themeTextStrong?: string; themeTextBody?: string; themeTextMuted?: string;
+    themeAccent?: string; themeAccentHover?: string; themeAccentLight?: string;
+    themeCtaColor?: string; themeCtaText?: string;
   }) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -35,6 +41,20 @@ export const settingsRepository = {
       receiptAutoPrint: 'receipt_auto_print',
       receiptOpenDrawer: 'receipt_open_drawer',
       receiptNumCopies: 'receipt_num_copies',
+      staffDiscountPercent: 'staff_discount_percent',
+      // Theme / Appearance
+      themeBgPage: 'theme_bg_page',
+      themeBgCard: 'theme_bg_card',
+      themeBgSecondary: 'theme_bg_secondary',
+      themeBgSeparator: 'theme_bg_separator',
+      themeTextStrong: 'theme_text_strong',
+      themeTextBody: 'theme_text_body',
+      themeTextMuted: 'theme_text_muted',
+      themeAccent: 'theme_accent',
+      themeAccentHover: 'theme_accent_hover',
+      themeAccentLight: 'theme_accent_light',
+      themeCtaColor: 'theme_cta_color',
+      themeCtaText: 'theme_cta_text',
     };
 
     const fields: string[] = [];

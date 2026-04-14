@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -73,22 +74,24 @@ export default function PurchaseOrdersTab() {
   });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
+  const { entries: ingredientCats } = useReferentiel('ingredient_categories');
+  const { entries: unitEntries } = useReferentiel('units');
 
   const sendMutation = useMutation({
     mutationFn: purchaseOrdersApi.send,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC envoyé au fournisseur'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC envoyé au fournisseur'); },
   });
   const cancelMutation = useMutation({
     mutationFn: purchaseOrdersApi.cancel,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC annulé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC annulé'); },
   });
   const deleteMutation = useMutation({
     mutationFn: purchaseOrdersApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('BC supprimé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC supprimé'); },
   });
   const notDeliveredMutation = useMutation({
     mutationFn: purchaseOrdersApi.markNotDelivered,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('Marqué non livré'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('Marqué non livré'); },
   });
 
   // Stats
@@ -101,7 +104,7 @@ export default function PurchaseOrdersTab() {
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
-      toast.error('Erreur lors du téléchargement du PDF');
+      notify.error('Erreur lors du téléchargement du PDF');
     }
   };
 
@@ -553,10 +556,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     mutationFn: purchaseOrdersApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      toast.success('Bon de commande créé');
+      notify.success('Bon de commande créé');
       onClose();
     },
-    onError: () => toast.error('Erreur lors de la création'),
+    onError: () => notify.error('Erreur lors de la création'),
   });
 
   const createIngredientMutation = useMutation({
@@ -575,13 +578,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       setShowNewIngredient(false);
       setNewIng({ name: '', unit: 'kg', category: 'autre', unitCost: '' });
       setSearchIngredient('');
-      toast.success(`Ingrédient "${created.name}" créé et ajouté`);
+      notify.success(`Ingrédient "${created.name}" créé et ajouté`);
     },
-    onError: () => toast.error('Erreur lors de la création de l\'ingrédient'),
+    onError: () => notify.error('Erreur lors de la création de l\'ingrédient'),
   });
 
   const handleCreateIngredient = () => {
-    if (!newIng.name.trim()) { toast.error('Saisissez le nom de l\'ingrédient'); return; }
+    if (!newIng.name.trim()) { notify.error('Saisissez le nom de l\'ingrédient'); return; }
     createIngredientMutation.mutate({
       name: newIng.name.trim(),
       unit: newIng.unit,
@@ -619,10 +622,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const hasMissingPrices = items.some(it => it.unitPrice == null || it.unitPrice === 0);
 
   const handleSubmit = () => {
-    if (!supplierId) { toast.error('Sélectionnez un fournisseur'); return; }
-    if (items.length === 0) { toast.error('Ajoutez au moins un article'); return; }
+    if (!supplierId) { notify.error('Sélectionnez un fournisseur'); return; }
+    if (items.length === 0) { notify.error('Ajoutez au moins un article'); return; }
     const invalidItems = items.filter(it => it.quantityOrdered <= 0);
-    if (invalidItems.length > 0) { toast.error('Les quantités doivent être supérieures à 0'); return; }
+    if (invalidItems.length > 0) { notify.error('Les quantités doivent être supérieures à 0'); return; }
     createMutation.mutate({
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
@@ -725,26 +728,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     <label className="block text-xs font-medium text-emerald-700 mb-1">Unité *</label>
                     <select value={newIng.unit} onChange={e => setNewIng({ ...newIng, unit: e.target.value })}
                       className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                      <option value="kg">kg</option><option value="g">g</option><option value="L">L</option>
-                      <option value="mL">mL</option><option value="unit">unité</option><option value="piece">pièce</option>
+                      {unitEntries.map(u => (
+                        <option key={u.code} value={u.code}>{u.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-emerald-700 mb-1">Catégorie</label>
                     <select value={newIng.category} onChange={e => setNewIng({ ...newIng, category: e.target.value })}
                       className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                      <option value="farines">Farines & Céréales</option>
-                      <option value="sucres">Sucres & Édulcorants</option>
-                      <option value="produits_laitiers">Produits laitiers</option>
-                      <option value="oeufs">Oeufs & Ovoproduits</option>
-                      <option value="matieres_grasses">Matières grasses</option>
-                      <option value="fruits">Fruits & Purées</option>
-                      <option value="chocolat">Chocolat & Cacao</option>
-                      <option value="fruits_secs">Fruits secs & Oléagineux</option>
-                      <option value="epices">Épices & Arômes</option>
-                      <option value="levures">Levures & Agents levants</option>
-                      <option value="emballages">Emballages</option>
-                      <option value="autre">Autre</option>
+                      {ingredientCats.map(c => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -1018,10 +1013,10 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['eligible-pos'] });
-      toast.success('Réception confirmée — stock et facture mis à jour');
+      notify.success('Réception confirmée — stock et facture mis à jour');
       onClose();
     },
-    onError: () => toast.error('Erreur lors de la confirmation'),
+    onError: () => notify.error('Erreur lors de la confirmation'),
   });
 
   if (isLoading) return (
@@ -1044,7 +1039,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         ...(prices[itemId] != null && prices[itemId] > 0 ? { unitPrice: prices[itemId] } : {}),
         ...lotInfo[itemId],
       }));
-    if (deliveredItems.length === 0) { toast.error('Saisissez au moins une quantité livrée'); return; }
+    if (deliveredItems.length === 0) { notify.error('Saisissez au moins une quantité livrée'); return; }
     confirmMutation.mutate({ items: deliveredItems });
   };
 

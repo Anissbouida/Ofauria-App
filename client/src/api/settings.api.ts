@@ -20,6 +20,20 @@ export interface CompanySettings {
   receiptAutoPrint: boolean;
   receiptOpenDrawer: boolean;
   receiptNumCopies: number;
+  staffDiscountPercent: number;
+  // Theme / Appearance
+  themeBgPage: string;
+  themeBgCard: string;
+  themeBgSecondary: string;
+  themeBgSeparator: string;
+  themeTextStrong: string;
+  themeTextBody: string;
+  themeTextMuted: string;
+  themeAccent: string;
+  themeAccentHover: string;
+  themeAccentLight: string;
+  themeCtaColor: string;
+  themeCtaText: string;
 }
 
 export const settingsApi = {

@@ -19,7 +19,7 @@ export async function adjustProductStock(
       `INSERT INTO product_store_stock (product_id, store_id, stock_quantity)
        VALUES ($1, $2, GREATEST(0 + $3, 0))
        ON CONFLICT (product_id, store_id)
-       DO UPDATE SET stock_quantity = product_store_stock.stock_quantity + $3, updated_at = NOW()
+       DO UPDATE SET stock_quantity = GREATEST(product_store_stock.stock_quantity + $3, 0), updated_at = NOW()
        RETURNING stock_quantity`,
       [productId, storeId, change],
     );
@@ -28,7 +28,7 @@ export async function adjustProductStock(
 
   // Fallback: global stock on products table
   const result = await client.query(
-    `UPDATE products SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+    `UPDATE products SET stock_quantity = GREATEST(stock_quantity + $1, 0), updated_at = NOW()
      WHERE id = $2 RETURNING stock_quantity`,
     [change, productId],
   );

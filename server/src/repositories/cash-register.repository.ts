@@ -95,7 +95,7 @@ export const cashRegisterRepository = {
     return result.rows[0];
   },
 
-  async close(sessionId: string) {
+  async close(sessionId: string, closeType: string = 'fin_journee') {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -158,11 +158,12 @@ export const cashRegisterRepository = {
         `UPDATE cash_register_sessions SET
           total_sales = $1, total_revenue = $2,
           cash_revenue = $3, card_revenue = $4, mobile_revenue = $5,
-          expected_cash = $6, total_advances = $7, total_orders = $8
+          expected_cash = $6, total_advances = $7, total_orders = $8,
+          close_type = $10
         WHERE id = $9`,
         [parseInt(stats.total_sales), netTotalRevenue,
          netCashRevenue, parseFloat(stats.card_revenue), parseFloat(stats.mobile_revenue),
-         expectedCash, totalAdvances, totalOrders, sessionId]
+         expectedCash, totalAdvances, totalOrders, sessionId, closeType]
       );
 
       await client.query('COMMIT');

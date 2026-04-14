@@ -50,3 +50,34 @@ export function getLocalDateString(): string {
     String(localDate.getMonth() + 1).padStart(2, '0') +
     String(localDate.getDate()).padStart(2, '0');
 }
+
+/**
+ * JS helper: get current date as ISO string (YYYY-MM-DD) in user's timezone
+ */
+export function getLocalISODate(): string {
+  const tz = getUserTimezone();
+  const now = new Date();
+  const localDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  return localDate.getFullYear().toString() +
+    '-' + String(localDate.getMonth() + 1).padStart(2, '0') +
+    '-' + String(localDate.getDate()).padStart(2, '0');
+}
+
+/**
+ * JS helper: get current year in user's timezone
+ */
+export function getLocalYear(): number {
+  const tz = getUserTimezone();
+  const now = new Date();
+  const localDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  return localDate.getFullYear();
+}
+
+/**
+ * JS helper: get current Date object adjusted to user's timezone
+ */
+export function getLocalNow(): Date {
+  const tz = getUserTimezone();
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: tz }));
+}

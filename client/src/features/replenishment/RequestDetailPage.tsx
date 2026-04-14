@@ -6,7 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
+import { getApiErrorMessage } from '../../utils/api-error';
 import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   ClipboardCheck, AlertTriangle, XCircle, PackageCheck,
@@ -103,9 +104,9 @@ export default function RequestDetailPage() {
     mutationFn: () => replenishmentApi.acknowledge(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
-      toast.success('Demande prise en charge');
+      notify.success('Demande prise en charge');
     },
-    onError: () => toast.error('Erreur'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la prise en charge')),
   });
 
   const prepareMutation = useMutation({
@@ -113,21 +114,18 @@ export default function RequestDetailPage() {
       replenishmentApi.startPreparing(id!, items),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
-      toast.success('Préparation lancée');
+      notify.success('Préparation lancée');
     },
-    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
-      const msg = err?.response?.data?.error?.message || 'Erreur';
-      toast.error(msg);
-    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la préparation')),
   });
 
   const transferMutation = useMutation({
     mutationFn: () => replenishmentApi.transfer(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
-      toast.success('Transfert validé');
+      notify.success('Transfert validé');
     },
-    onError: () => toast.error('Erreur'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors du transfert')),
   });
 
   const receptionMutation = useMutation({
@@ -137,12 +135,12 @@ export default function RequestDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
       if (data?.status === 'closed_with_discrepancy') {
-        toast('Réception confirmée avec écart', { icon: '\u26a0\ufe0f' });
+        notify('Réception confirmée avec écart', { icon: '\u26a0\ufe0f' });
       } else {
-        toast.success('Réception confirmée');
+        notify.success('Réception confirmée');
       }
     },
-    onError: () => toast.error('Erreur'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la réception')),
   });
 
   const cancelMutation = useMutation({
@@ -150,9 +148,9 @@ export default function RequestDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['replenishment', id] });
       queryClient.invalidateQueries({ queryKey: ['replenishment'] });
-      toast.success('Demande annulée');
+      notify.success('Demande annulée');
     },
-    onError: () => toast.error('Erreur'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de l\'annulation')),
   });
 
   /* ─── Loading / not found ─── */

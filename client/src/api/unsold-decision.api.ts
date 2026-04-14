@@ -8,6 +8,7 @@ export const unsoldDecisionApi = {
   /** Enregistrer les decisions */
   save: (data: {
     sessionId?: string;
+    closeType?: string;
     decisions: {
       productId: string;
       productName: string;

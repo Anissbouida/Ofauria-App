@@ -1,5 +1,27 @@
 import { db } from '../config/database.js';
 
+// Unit conversion factors to a common base (kg for weight, l for volume)
+const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
+  kg:   { base: 'kg', factor: 1 },
+  g:    { base: 'kg', factor: 0.001 },
+  l:    { base: 'l',  factor: 1 },
+  ml:   { base: 'l',  factor: 0.001 },
+  unit: { base: 'unit', factor: 1 },
+};
+
+/**
+ * Convert quantity from one unit to another.
+ * Returns the conversion factor: qty_in_fromUnit * factor = qty_in_toUnit
+ * Returns 1 if units are incompatible (no conversion possible).
+ */
+function unitConversionFactor(fromUnit: string, toUnit: string): number {
+  if (fromUnit === toUnit) return 1;
+  const from = UNIT_TO_BASE[fromUnit];
+  const to = UNIT_TO_BASE[toUnit];
+  if (!from || !to || from.base !== to.base) return 1; // incompatible units
+  return from.factor / to.factor;
+}
+
 export const recipeRepository = {
   async findAll() {
     const result = await db.query(
@@ -18,7 +40,7 @@ export const recipeRepository = {
     if (!recipeResult.rows[0]) return null;
 
     const ingredientsResult = await db.query(
-      `SELECT ri.*, ing.name as ingredient_name, ing.unit, ing.unit_cost
+      `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
        FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
        WHERE ri.recipe_id = $1`,
       [id]
@@ -28,7 +50,7 @@ export const recipeRepository = {
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.total_cost as sub_total_cost
+              sr.yield_unit as sub_yield_unit, sr.total_cost as sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
        WHERE rsr.recipe_id = $1`,
@@ -53,7 +75,7 @@ export const recipeRepository = {
 
     const recipeId = recipeResult.rows[0].id;
     const ingredientsResult = await db.query(
-      `SELECT ri.*, ing.name as ingredient_name, ing.unit, ing.unit_cost
+      `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
        FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
        WHERE ri.recipe_id = $1`,
       [recipeId]
@@ -61,7 +83,7 @@ export const recipeRepository = {
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.total_cost as sub_total_cost
+              sr.yield_unit as sub_yield_unit, sr.total_cost as sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
        WHERE rsr.recipe_id = $1`,
@@ -78,26 +100,30 @@ export const recipeRepository = {
   /** List only base recipes (for sub-recipe picker) */
   async findBaseRecipes() {
     const result = await db.query(
-      `SELECT id, name, yield_quantity, total_cost FROM recipes WHERE is_base = true ORDER BY name`
+      `SELECT id, name, yield_quantity, yield_unit, total_cost FROM recipes WHERE is_base = true ORDER BY name`
     );
     return result.rows;
   },
 
   async create(data: {
-    productId?: string; name: string; instructions?: string; yieldQuantity?: number; isBase?: boolean;
-    ingredients: { ingredientId: string; quantity: number }[];
+    productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
   }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
-      // Calculate ingredient cost
+      // Calculate ingredient cost (with unit conversion)
       let totalCost = 0;
       for (const ing of data.ingredients) {
-        const ingResult = await client.query('SELECT unit_cost FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
-          totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity;
+          const ingBaseUnit = ingResult.rows[0].unit;
+          const recipeUnit = ing.unit || ingBaseUnit;
+          // Convert recipe quantity to ingredient base unit for cost calculation
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
 
@@ -115,17 +141,17 @@ export const recipeRepository = {
       }
 
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, total_cost, is_base)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, totalCost, data.isBase || false]
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false]
       );
 
       const recipeId = recipeResult.rows[0].id;
 
       for (const ing of data.ingredients) {
         await client.query(
-          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES ($1, $2, $3)`,
-          [recipeId, ing.ingredientId, ing.quantity]
+          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
+          [recipeId, ing.ingredientId, ing.quantity, ing.unit || null]
         );
       }
 
@@ -159,8 +185,8 @@ export const recipeRepository = {
   },
 
   async update(id: string, data: {
-    name: string; instructions?: string; yieldQuantity?: number; isBase?: boolean;
-    ingredients: { ingredientId: string; quantity: number }[];
+    name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     changedBy?: string; changeNote?: string;
   }) {
@@ -178,14 +204,15 @@ export const recipeRepository = {
         const nextVersion = versionNumResult.rows[0].next_version;
 
         await client.query(
-          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, yield_unit, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             id,
             nextVersion,
             currentRecipe.name,
             currentRecipe.instructions,
             currentRecipe.yield_quantity,
+            currentRecipe.yield_unit || 'unit',
             currentRecipe.total_cost,
             currentRecipe.is_base,
             JSON.stringify(currentRecipe.ingredients),
@@ -198,9 +225,12 @@ export const recipeRepository = {
 
       let totalCost = 0;
       for (const ing of data.ingredients) {
-        const ingResult = await client.query('SELECT unit_cost FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
-          totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity;
+          const ingBaseUnit = ingResult.rows[0].unit;
+          const recipeUnit = ing.unit || ingBaseUnit;
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
 
@@ -217,17 +247,17 @@ export const recipeRepository = {
       }
 
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, total_cost = $4, is_base = $5, updated_at = NOW()
-         WHERE id = $6`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, totalCost, data.isBase || false, id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, updated_at = NOW()
+         WHERE id = $7`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, id]
       );
 
       // Re-insert ingredients
       await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [id]);
       for (const ing of data.ingredients) {
         await client.query(
-          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity) VALUES ($1, $2, $3)`,
-          [id, ing.ingredientId, ing.quantity]
+          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
+          [id, ing.ingredientId, ing.quantity, ing.unit || null]
         );
       }
 

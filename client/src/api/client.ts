@@ -36,4 +36,16 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Préfixe une URL relative (ex: /uploads/...) avec l'URL du serveur.
+ * En mode web (proxy Vite), retourne l'URL telle quelle.
+ * En mode mobile (Capacitor), préfixe avec VITE_API_URL.
+ */
+export function serverUrl(path: string): string {
+  if (!path) return path;
+  if (path.startsWith('http')) return path;
+  const base = import.meta.env.VITE_API_URL || '';
+  return `${base}${path}`;
+}
+
 export default api;

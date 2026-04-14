@@ -7,7 +7,7 @@ import {
   X, Plus, Trash2, FileText, Clock, AlertTriangle, Check,
   Calendar, User, Edit3, Filter, ArrowLeft, ShieldCheck,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import { format } from 'date-fns';
 
 const REASON_LABELS: Record<string, { label: string; color: string }> = {
@@ -67,7 +67,7 @@ export default function PurchaseRequestsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
-      toast.success('Demande annulee');
+      notify.success('Demande annulee');
     },
   });
 
@@ -80,9 +80,9 @@ export default function PurchaseRequestsPage() {
       setShowGeneratePO(null);
       setSelectedRequests({});
       setQuantityOverrides({});
-      toast.success(`Bon de commande ${po.order_number} cree`);
+      notify.success(`Bon de commande ${po.order_number} cree`);
     },
-    onError: () => toast.error('Erreur lors de la creation du BC'),
+    onError: () => notify.error('Erreur lors de la creation du BC'),
   });
 
   const filteredGroups = useMemo(() => {

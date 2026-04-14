@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import { Delete, Lock, Mail } from 'lucide-react';
 
 export default function LoginPage() {
@@ -26,9 +26,12 @@ export default function LoginPage() {
     setError('');
     try {
       await loginWithPinRef.current(pinCode);
-      toast.success('Bienvenue !');
-    } catch {
-      setError('Code PIN incorrect');
+      notify.success('Bienvenue !');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
+      const serverMsg = axiosErr?.response?.data?.error?.message;
+      console.error('PIN login error:', err, 'Server message:', serverMsg);
+      setError(serverMsg || axiosErr?.message || 'Code PIN incorrect');
       setPin('');
     } finally {
       setLoading(false);
@@ -70,9 +73,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login({ email, password });
-      toast.success('Bienvenue !');
+      notify.success('Bienvenue !');
     } catch {
-      toast.error('Email ou mot de passe incorrect');
+      notify.error('Email ou mot de passe incorrect');
     } finally {
       setLoading(false);
     }

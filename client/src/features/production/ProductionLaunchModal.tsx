@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { productLossesApi } from '../../api/product-losses.api';
 import { recipesApi } from '../../api/recipes.api';
+import { useReferentiel } from '../../hooks/useReferentiel';
 import {
   X, ChevronLeft, ChevronRight, Check, CheckCircle, AlertTriangle,
   Clock, Flame, Package, Factory, ClipboardList, Printer, Layers, Play, Hash,
@@ -10,7 +11,7 @@ import {
 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,14 +37,7 @@ interface SubRecipeAnalysis {
   ingredients: Record<string, unknown>[];
 }
 
-const LOSS_REASONS = [
-  { value: 'brule', label: 'Brule' },
-  { value: 'rate', label: 'Rate' },
-  { value: 'machine', label: 'Probleme machine' },
-  { value: 'matiere_defectueuse', label: 'Matiere defectueuse' },
-  { value: 'erreur_humaine', label: 'Erreur humaine' },
-  { value: 'autre', label: 'Autre' },
-];
+// LOSS_REASONS is now loaded dynamically via useReferentiel('production_loss_reasons') inside the component
 
 const STEPS = [
   { num: 1, label: 'Bases & Sous-recettes', color: 'indigo', icon: <Layers size={16} /> },
@@ -88,6 +82,10 @@ export default function ProductionLaunchModal({
   onClose,
   onCompleted,
 }: ProductionLaunchModalProps) {
+  // Dynamic loss reasons from referentiel
+  const { entries: prodLossReasonEntries } = useReferentiel('production_loss_reasons');
+  const LOSS_REASONS = prodLossReasonEntries.map(e => ({ value: e.code, label: e.label }));
+
   // If a specific item is targeted, only show that item; otherwise show all pending items
   const items = targetItemId
     ? allItems.filter((i) => (i.id as string) === targetItemId)
@@ -215,7 +213,7 @@ export default function ProductionLaunchModal({
   function goNext() {
     const err = validateStep(step);
     if (err) {
-      toast.error(err);
+      notify.error(err);
       return;
     }
     if (step === 2) {
@@ -277,11 +275,11 @@ export default function ProductionLaunchModal({
         queryClient.invalidateQueries({ queryKey: ['production-lots'] }),
       ]);
 
-      toast.success('Production enregistree avec succes');
+      notify.success('Production enregistree avec succes');
       onCompleted();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de la production');
+      notify.error(err instanceof Error ? err.message : 'Erreur lors de la production');
     } finally {
       setSubmitting(false);
     }
@@ -894,7 +892,7 @@ export default function ProductionLaunchModal({
               <h2 className="font-bold text-gray-900 text-lg">Recette : {productName}</h2>
               {recipeData && (
                 <p className="text-sm text-gray-500">
-                  Rendement : {recipeData.yield_quantity} unite(s)
+                  Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}
                   {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && ` | Cout : ${parseFloat(recipeData.total_cost).toFixed(2)} DH`}
                 </p>
               )}
@@ -949,7 +947,7 @@ export default function ProductionLaunchModal({
                       <div key={idx} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
                         <span className="text-base font-medium text-gray-900">{sr.sub_recipe_name as string}</span>
                         <span className="text-base text-gray-700 font-mono">
-                          {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number})
+                          {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, unknown>).sub_yield_unit as string || 'u.'})
                         </span>
                       </div>
                     ))}
@@ -1016,7 +1014,7 @@ export default function ProductionLaunchModal({
             <div>
               <h3 className="font-bold text-blue-900 text-sm">Recette : {productName}</h3>
               <div className="flex items-center gap-3 text-xs text-blue-600">
-                {recipeData.yield_quantity && <span>Rendement : {recipeData.yield_quantity} unite(s)</span>}
+                {recipeData.yield_quantity && <span>Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}</span>}
                 {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && (
                   <span>Cout : {parseFloat(recipeData.total_cost).toFixed(2)} DH</span>
                 )}
@@ -1066,7 +1064,7 @@ export default function ProductionLaunchModal({
                   <div key={idx} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50/50">
                     <span className="text-sm font-medium text-gray-800">{sr.sub_recipe_name as string}</span>
                     <span className="text-sm text-gray-600 font-mono">
-                      {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number})
+                      {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, unknown>).sub_yield_unit as string || 'u.'})
                     </span>
                   </div>
                 ))}
@@ -1112,7 +1110,7 @@ export default function ProductionLaunchModal({
       await productionApi.startItems(planId, [item.id as string], producedAt);
       await queryClient.invalidateQueries({ queryKey: ['production'] });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erreur lors du lancement');
+      notify.error(err instanceof Error ? err.message : 'Erreur lors du lancement');
     } finally {
       setStarting(false);
     }
@@ -1126,7 +1124,7 @@ export default function ProductionLaunchModal({
     if ((item.status as string) === 'pending') {
       await handleAutoStart();
     }
-    toast.success('Production sauvegardee — vous pouvez y revenir');
+    notify.success('Production sauvegardee — vous pouvez y revenir');
     onClose();
   };
 

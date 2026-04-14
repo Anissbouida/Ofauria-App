@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { receptionVoucherRepository } from './reception-voucher.repository.js';
+import { getLocalYear } from '../utils/timezone.js';
 
 export const purchaseOrderRepository = {
   async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
@@ -73,7 +74,7 @@ export const purchaseOrderRepository = {
   },
 
   async generateOrderNumber(): Promise<string> {
-    const year = new Date().getFullYear();
+    const year = getLocalYear();
     const result = await db.query(
       `SELECT COUNT(*) FROM purchase_orders WHERE EXTRACT(YEAR FROM order_date) = $1`,
       [year]

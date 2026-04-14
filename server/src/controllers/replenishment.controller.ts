@@ -46,10 +46,11 @@ export const replenishmentController = {
     res.json({ success: true, data: request });
   },
 
-  // ═══ RULE 1: Check which products were already requested today ═══
+  // ═══ RULE 1: Check which products were already requested today (detailed per-item info) ═══
   async checkToday(req: AuthRequest, res: Response) {
     const productIds = await replenishmentRepository.findTodayRequestedProductIds(req.user!.storeId!);
-    res.json({ success: true, data: { alreadyRequestedProductIds: productIds } });
+    const details = await replenishmentRepository.findTodayRequestedDetails(req.user!.storeId!);
+    res.json({ success: true, data: { alreadyRequestedProductIds: productIds, alreadyRequestedDetails: details } });
   },
 
   // ═══ RULE 2: Check unsold items before re-ordering ═══
@@ -92,21 +93,17 @@ export const replenishmentController = {
       return;
     }
 
-    // RULE 1: Filter out products already requested today (allow new products)
-    const alreadyRequestedIds = await replenishmentRepository.findTodayRequestedProductIds(req.user!.storeId!);
-    const newItems = items.filter((i: { productId: string }) => !alreadyRequestedIds.includes(i.productId));
-    if (newItems.length === 0) {
-      res.status(409).json({
-        success: false,
-        error: {
-          code: 'ALL_PRODUCTS_ALREADY_REQUESTED',
-          message: 'Tous ces produits ont deja ete demandes aujourd\'hui.',
-        },
-      });
+    // Block if there's already an in-progress request for this store
+    const pending = await db.query(
+      `SELECT id FROM replenishment_requests
+       WHERE store_id = $1 AND status NOT IN ('closed', 'closed_with_discrepancy', 'cancelled')
+       LIMIT 1`,
+      [req.user!.storeId!]
+    );
+    if (pending.rows.length > 0) {
+      res.status(409).json({ success: false, error: { message: 'Une demande d\'approvisionnement est déjà en cours. Veuillez attendre sa clôture avant d\'en créer une nouvelle.' } });
       return;
     }
-
-    const skippedCount = items.length - newItems.length;
 
     const result = await replenishmentRepository.create({
       storeId: req.user!.storeId!,
@@ -114,7 +111,7 @@ export const replenishmentController = {
       priority,
       neededBy,
       notes,
-      items: newItems,
+      items,
     });
 
     // Notify each chef about their request
@@ -144,31 +141,11 @@ export const replenishmentController = {
       title: 'Nouvelle demande d\'approvisionnement',
       message: `${Object.keys(requestIds || {}).length} demande(s) d'approvisionnement creee(s) — ${items.length} produit(s) — Priorite: ${priority || 'normal'}`,
       referenceType: 'replenishment_request',
-      referenceId: Object.values(requestIds || {})[0] || result!.id,
+      referenceId: Object.values(requestIds || {})[0] || (result as Record<string, unknown>)?.id as string,
       createdBy: req.user!.userId,
     });
 
-    // Notify each chef about auto-created production plans
-    const productionPlanIds = (result as Record<string, unknown>)?._productionPlanIds as Record<string, string> | undefined;
-    if (productionPlanIds) {
-      for (const [role, planId] of Object.entries(productionPlanIds)) {
-        if (CHEF_ROLES.includes(role)) {
-          const roleLabel = ASSIGNED_ROLE_LABELS[role] || role;
-          await createNotification({
-            targetRole: role,
-            storeId: req.user!.storeId,
-            type: 'production_plan_created',
-            title: 'Production requise',
-            message: `Des articles ${roleLabel} demandes en approvisionnement necessitent une production.`,
-            referenceType: 'production_plan',
-            referenceId: planId,
-            createdBy: req.user!.userId,
-          });
-        }
-      }
-    }
-
-    res.status(201).json({ success: true, data: result, skippedCount });
+    res.status(201).json({ success: true, data: result });
   },
 
   // ═══ STEP 2: Acknowledge request (responsable) ═══
@@ -187,6 +164,26 @@ export const replenishmentController = {
       }
 
       const result = await replenishmentRepository.acknowledge(req.params.id, req.user!.userId);
+
+      // Notify chef about production plan if one was created
+      const productionPlanId = (result as Record<string, unknown>)?._productionPlanId as string | undefined;
+      if (productionPlanId && result) {
+        const role = (result as Record<string, unknown>).assigned_role as string;
+        if (CHEF_ROLES.includes(role)) {
+          const roleLabel = ASSIGNED_ROLE_LABELS[role] || role;
+          await createNotification({
+            targetRole: role,
+            storeId: req.user!.storeId,
+            type: 'production_plan_created',
+            title: 'Production requise',
+            message: `Des articles ${roleLabel} demandes en approvisionnement necessitent une production.`,
+            referenceType: 'production_plan',
+            referenceId: productionPlanId,
+            createdBy: req.user!.userId,
+          });
+        }
+      }
+
       res.json({ success: true, data: result });
     } catch {
       res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas etre prise en charge' } });

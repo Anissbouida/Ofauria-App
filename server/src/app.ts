@@ -12,7 +12,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // Security
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,  // Désactivé pour compatibilité mobile Capacitor
+  crossOriginResourcePolicy: { policy: 'cross-origin' },  // Permet le chargement des images/uploads
+}));
 app.use(cors({
   origin: (origin, callback) => {
     // Autorise le web (localhost dev), l'app mobile Capacitor, et les requêtes sans origin

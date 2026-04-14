@@ -11,11 +11,8 @@ import {
   ShoppingCart, Receipt, Loader2, Search, Coins,
   BarChart3, Users, Banknote,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'Espèces', bank: 'Virement', check: 'Chèque',
-};
+import { notify } from '../../components/ui/InlineNotification';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(val: number): string {
   return val.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -88,6 +85,7 @@ function ProductSearchInput({ products, value, onSelect, onChange }: {
 /* ═══ Factures émises (clients) ═══ */
 export default function EmittedInvoicesTab() {
   const queryClient = useQueryClient();
+  const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -121,27 +119,27 @@ export default function EmittedInvoicesTab() {
     mutationFn: (orderId: string) => invoicesApi.createFromOrder(orderId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Facture émise créée');
+      notify.success('Facture émise créée');
       setShowCreateModal(false);
       setSelectedOrderId('');
     },
-    onError: () => toast.error('Erreur lors de la création'),
+    onError: () => notify.error('Erreur lors de la création'),
   });
 
   const createManualMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => invoicesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Facture émise créée');
+      notify.success('Facture émise créée');
       setShowCreateModal(false);
       resetManualForm();
     },
-    onError: () => toast.error('Erreur lors de la création'),
+    onError: () => notify.error('Erreur lors de la création'),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.cancel(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture annulée'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
   });
 
   const payMutation = useMutation({
@@ -149,10 +147,10 @@ export default function EmittedInvoicesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Encaissement enregistré');
+      notify.success('Encaissement enregistré');
       setShowPayModal(null);
     },
-    onError: () => toast.error('Erreur'),
+    onError: () => notify.error('Erreur'),
   });
 
   const { data: productsData } = useQuery({
@@ -179,8 +177,8 @@ export default function EmittedInvoicesTab() {
   const manualTotal = manualItems.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
 
   const handleCreateManual = () => {
-    if (!manualCustomerId) { toast.error('Veuillez sélectionner un client'); return; }
-    if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { toast.error('Veuillez remplir tous les articles'); return; }
+    if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
+    if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { notify.error('Veuillez remplir tous les articles'); return; }
     createManualMutation.mutate({
       invoiceType: 'emitted',
       customerId: manualCustomerId,
@@ -231,7 +229,7 @@ export default function EmittedInvoicesTab() {
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch { toast.error('Erreur lors du téléchargement'); }
+    } catch { notify.error('Erreur lors du téléchargement'); }
   };
 
   return (
@@ -595,8 +593,8 @@ export default function EmittedInvoicesTab() {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
                 const amount = parseFloat(fd.get('amount') as string);
-                if (!amount || amount <= 0) { toast.error('Montant invalide'); return; }
-                if (amount > remaining) { toast.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
+                if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
+                if (amount > remaining) { notify.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
                 payMutation.mutate({
                   invoiceId: inv.id as string, type: 'income', amount, paymentMethod: payMethod,
                   description: `Encaissement facture ${inv.invoice_number}`,
@@ -617,7 +615,7 @@ export default function EmittedInvoicesTab() {
                     {(['cash', 'bank', 'check'] as const).map(m => (
                       <button key={m} type="button" onClick={() => setPayMethod(m)}
                         className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${payMethod === m ? 'bg-green-500 text-white border-green-500 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                        {PAYMENT_METHOD_LABELS[m]}
+                        {getPaymentLabel(m)}
                       </button>
                     ))}
                   </div>

@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
+import { getProductStock } from '../repositories/product-stock.helper.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -33,6 +34,17 @@ export const saleController = {
         res.status(400).json({ success: false, error: { message: `Produit ${item.productId} non trouve` } });
         return;
       }
+
+      // Verify sufficient stock before selling
+      const currentStock = await getProductStock(item.productId, req.user!.storeId);
+      if (currentStock < item.quantity) {
+        res.status(400).json({
+          success: false,
+          error: { message: `Stock insuffisant pour "${product.name}" — disponible: ${currentStock}, demande: ${item.quantity}` },
+        });
+        return;
+      }
+
       const itemSubtotal = parseFloat(product.price) * item.quantity;
       subtotal += itemSubtotal;
       saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice: parseFloat(product.price), subtotal: itemSubtotal });

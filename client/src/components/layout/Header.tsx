@@ -43,7 +43,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const currentModule = moduleNames[currentPath] || '';
 
   return (
-    <header className="h-12 text-white flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: settings.primaryColor }}>
+    <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
       {/* Left: App grid + branding */}
       <div className="flex items-center gap-2">
         <button onClick={onToggleApps}

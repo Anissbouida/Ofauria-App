@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 
 const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 const ROLE_LABELS: Record<string, string> = {
@@ -65,7 +65,7 @@ export default function ProductionPage() {
 
   const deleteMutation = useMutation({
     mutationFn: productionApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); toast.success('Plan supprimé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); notify.success('Plan supprimé'); },
   });
 
   const plans = data?.data || [];
@@ -424,15 +424,15 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     mutationFn: productionApi.create,
     onSuccess: (plan: Record<string, unknown>) => {
       queryClient.invalidateQueries({ queryKey: ['production'] });
-      toast.success('Plan de production créé');
+      notify.success('Plan de production créé');
       onCreated(plan.id as string);
     },
   });
 
   const handleSubmit = () => {
-    if (isAdminUser && !selectedRole) { toast.error('Sélectionnez un chef'); return; }
+    if (isAdminUser && !selectedRole) { notify.error('Sélectionnez un chef'); return; }
     const items = Object.entries(selected).map(([productId, plannedQuantity]) => ({ productId, plannedQuantity }));
-    if (items.length === 0) { toast.error('Sélectionnez au moins un produit'); return; }
+    if (items.length === 0) { notify.error('Sélectionnez au moins un produit'); return; }
     createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items });
   };
 

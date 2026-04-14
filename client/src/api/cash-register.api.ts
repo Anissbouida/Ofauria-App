@@ -6,7 +6,7 @@ export const cashRegisterApi = {
   currentSession: () => api.get('/cash-register/current').then(r => r.data.data),
   lastClosedAmount: () => api.get('/cash-register/last-amount').then(r => r.data.data),
   open: (openingAmount: number) => api.post('/cash-register/open', { openingAmount }).then(r => r.data.data),
-  close: () => api.post('/cash-register/close').then(r => r.data.data),
+  close: (closeType?: string) => api.post('/cash-register/close', { closeType }).then(r => r.data.data),
   submitAmount: (id: string, data: { actualAmount: number; notes?: string }) => api.post(`/cash-register/${id}/submit`, data).then(r => r.data.data),
   getInventoryItems: (id: string) => api.get(`/cash-register/${id}/inventory`).then(r => r.data.data),
 };

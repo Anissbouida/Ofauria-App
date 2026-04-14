@@ -2,39 +2,28 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productLossesApi } from '../../api/product-losses.api';
 import { productsApi } from '../../api/products.api';
+import { serverUrl } from '../../api/client';
+import { useReferentiel } from '../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, X, Search, Loader2, AlertTriangle, Flame, Package, Clock,
-  Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download,
+  Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download, Camera,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 const MONTH_NAMES = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'];
 
-const LOSS_TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; gradient: string; icon: typeof Flame }> = {
-  production: { label: 'Production', color: 'text-orange-700', bg: 'bg-orange-100', gradient: 'from-orange-500 to-amber-500', icon: Factory },
-  vitrine: { label: 'Invendu / Destruction', color: 'text-red-700', bg: 'bg-red-100', gradient: 'from-red-500 to-rose-500', icon: Package },
-  perime: { label: 'Perime', color: 'text-purple-700', bg: 'bg-purple-100', gradient: 'from-purple-500 to-violet-500', icon: Clock },
-  recyclage: { label: 'Recyclage', color: 'text-emerald-700', bg: 'bg-emerald-100', gradient: 'from-emerald-500 to-green-500', icon: Recycle },
+// Fallback styling per loss type (icon/gradient can't come from DB)
+const LOSS_TYPE_STYLE: Record<string, { color: string; bg: string; gradient: string; icon: typeof Flame }> = {
+  production: { color: 'text-orange-700', bg: 'bg-orange-100', gradient: 'from-orange-500 to-amber-500', icon: Factory },
+  vitrine: { color: 'text-red-700', bg: 'bg-red-100', gradient: 'from-red-500 to-rose-500', icon: Package },
+  perime: { color: 'text-purple-700', bg: 'bg-purple-100', gradient: 'from-purple-500 to-violet-500', icon: Clock },
+  recyclage: { color: 'text-emerald-700', bg: 'bg-emerald-100', gradient: 'from-emerald-500 to-green-500', icon: Recycle },
 };
-
-const REASON_LABELS: Record<string, string> = {
-  brule: 'Brule', rate: 'Rate', machine: 'Probleme machine',
-  matiere_defectueuse: 'Matiere defectueuse', erreur_humaine: 'Erreur humaine',
-  chute: 'Chute', casse: 'Casse', qualite_non_conforme: 'Qualite non conforme',
-  retour_client: 'Retour client', perime: 'Perime', invendu_fin_journee: 'Invendu fin de journee',
-  invendu_vitrine: 'Invendu vitrine', recycle: 'Recycle', autre: 'Autre',
-};
-
-const REASONS_BY_TYPE: Record<string, string[]> = {
-  production: ['brule', 'rate', 'machine', 'matiere_defectueuse', 'erreur_humaine', 'autre'],
-  vitrine: ['invendu_fin_journee', 'invendu_vitrine', 'chute', 'casse', 'qualite_non_conforme', 'retour_client', 'autre'],
-  perime: ['perime', 'invendu_fin_journee', 'autre'],
-  recyclage: ['recycle', 'autre'],
-};
+const DEFAULT_LOSS_STYLE = { color: 'text-gray-700', bg: 'bg-gray-100', gradient: 'from-gray-500 to-gray-400', icon: Package };
 
 export default function LossesTab() {
   const queryClient = useQueryClient();
@@ -43,6 +32,31 @@ export default function LossesTab() {
   const [year, setYear] = useState(now.getFullYear());
   const [typeFilter, setTypeFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState<{ url: string; productName: string; date: string } | null>(null);
+
+  // Dynamic referentiel data
+  const { entries: lossTypeEntries, getLabel: getLossTypeLabel } = useReferentiel('loss_types');
+  const { entries: lossReasonEntries, getLabel: getLossReasonLabel } = useReferentiel('loss_reasons');
+  const { entries: prodLossReasons, getLabel: getProdLossReasonLabel } = useReferentiel('production_loss_reasons');
+
+  // Build LOSS_TYPE_CONFIG dynamically from referentiel + fallback styling
+  const LOSS_TYPE_CONFIG = Object.fromEntries(
+    lossTypeEntries.map(e => [e.code, { label: e.label, ...(LOSS_TYPE_STYLE[e.code] || DEFAULT_LOSS_STYLE) }])
+  );
+  // Build combined reason labels from both referentiel tables
+  const REASON_LABELS: Record<string, string> = Object.fromEntries([
+    ...lossReasonEntries.map(e => [e.code, e.label]),
+    ...prodLossReasons.map(e => [e.code, e.label]),
+  ]);
+  // Reasons by type: production uses production_loss_reasons, others use loss_reasons
+  const REASONS_BY_TYPE: Record<string, string[]> = Object.fromEntries(
+    lossTypeEntries.map(e => [
+      e.code,
+      e.code === 'production'
+        ? prodLossReasons.map(r => r.code)
+        : lossReasonEntries.map(r => r.code),
+    ])
+  );
 
   const { data: losses = [], isLoading } = useQuery({
     queryKey: ['product-losses', month, year, typeFilter],
@@ -63,7 +77,7 @@ export default function LossesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-losses'] });
       queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
-      toast.success('Perte supprimee');
+      notify.success('Perte supprimee');
     },
   });
 
@@ -304,10 +318,24 @@ export default function LossesTab() {
                       {l.declared_by_first_name ? `${l.declared_by_first_name} ${l.declared_by_last_name}` : '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button onClick={() => deleteMutation.mutate(l.id as string)}
-                        className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 transition-colors">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {l.photo_url && (
+                          <button onClick={() => setViewPhoto({
+                            url: serverUrl(l.photo_url as string),
+                            productName: l.product_name as string,
+                            date: format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm'),
+                          })}
+                            className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-400 hover:text-blue-600 transition-colors"
+                            title="Voir la photo">
+                            <Camera size={14} />
+                          </button>
+                        )}
+                        <button onClick={() => deleteMutation.mutate(l.id as string)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                          title="Supprimer">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -328,6 +356,27 @@ export default function LossesTab() {
               </tfoot>
             )}
           </table>
+        </div>
+      )}
+
+      {/* Photo viewer overlay */}
+      {viewPhoto && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewPhoto(null)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
+              <div>
+                <h3 className="font-bold text-gray-900">{viewPhoto.productName}</h3>
+                <p className="text-xs text-gray-500">Photo prise le {viewPhoto.date}</p>
+              </div>
+              <button onClick={() => setViewPhoto(null)} className="p-2 hover:bg-gray-200 rounded-lg text-gray-400">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 flex items-center justify-center p-4 bg-gray-100">
+              <img src={viewPhoto.url} alt={`Photo de ${viewPhoto.productName}`}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg" />
+            </div>
+          </div>
         </div>
       )}
 
@@ -388,18 +437,18 @@ function AddLossModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const createMutation = useMutation({
     mutationFn: productLossesApi.create,
     onSuccess: () => {
-      toast.success('Perte declaree avec succes');
+      notify.success('Perte declaree avec succes');
       onSuccess();
     },
-    onError: () => toast.error('Erreur lors de la declaration'),
+    onError: () => notify.error('Erreur lors de la declaration'),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productId) { toast.error('Selectionnez un produit'); return; }
-    if (!lossType) { toast.error('Selectionnez un type de perte'); return; }
-    if (!reason) { toast.error('Selectionnez un motif'); return; }
-    if (!quantity || parseFloat(quantity) <= 0) { toast.error('La quantite doit etre superieure a 0'); return; }
+    if (!productId) { notify.error('Selectionnez un produit'); return; }
+    if (!lossType) { notify.error('Selectionnez un type de perte'); return; }
+    if (!reason) { notify.error('Selectionnez un motif'); return; }
+    if (!quantity || parseFloat(quantity) <= 0) { notify.error('La quantite doit etre superieure a 0'); return; }
     createMutation.mutate({
       productId, quantity: parseFloat(quantity), lossType, reason,
       reasonNote: reasonNote || undefined,
@@ -481,7 +530,7 @@ function AddLossModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                       className="w-full text-left px-3 py-2.5 hover:bg-red-50 flex items-center gap-3 transition-colors"
                       onClick={() => { setProductId(p.id as string); setProductSearch(''); setDropdownOpen(false); }}>
                       {p.image_url ? (
-                        <img src={p.image_url as string} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                        <img src={serverUrl(p.image_url as string)} alt="" className="w-8 h-8 rounded-lg object-cover" />
                       ) : (
                         <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                           <ShoppingBag size={12} className="text-gray-400" />

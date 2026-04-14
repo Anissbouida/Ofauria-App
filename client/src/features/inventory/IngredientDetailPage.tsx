@@ -11,7 +11,7 @@ import {
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 
 const INGREDIENT_CATEGORIES = [
   { value: 'farines', label: 'Farines & Céréales' },
@@ -153,7 +153,7 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['ingredient', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       setShowEdit(false);
-      toast.success('Ingrédient mis à jour');
+      notify.success('Ingrédient mis à jour');
     },
   });
 
@@ -161,7 +161,7 @@ export default function IngredientDetailPage() {
     mutationFn: (threshold: number) => inventoryApi.updateThreshold({ ingredientId: id!, threshold }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success('Seuil mis à jour');
+      notify.success('Seuil mis à jour');
     },
   });
 
@@ -172,7 +172,7 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-transactions', id] });
       setShowAdjust(false);
-      toast.success('Stock ajusté');
+      notify.success('Stock ajusté');
     },
   });
 
@@ -180,7 +180,7 @@ export default function IngredientDetailPage() {
     mutationFn: () => ingredientsApi.remove(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success('Ingrédient supprimé');
+      notify.success('Ingrédient supprimé');
       navigate('/inventory');
     },
   });
@@ -190,7 +190,7 @@ export default function IngredientDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ingredient-lots', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success('Lot mis en quarantaine');
+      notify.success('Lot mis en quarantaine');
     },
   });
 
@@ -199,7 +199,7 @@ export default function IngredientDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ingredient-lots', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      toast.success('Lot marqué comme déchet');
+      notify.success('Lot marqué comme déchet');
     },
   });
 
@@ -217,7 +217,7 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
       setShowOrderRequest(false);
-      toast.success('Ajouté à la liste d\'attente d\'achat');
+      notify.success('Ajouté à la liste d\'attente d\'achat');
     },
   });
 

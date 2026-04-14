@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { getUserTimezone } from '../utils/timezone.js';
+import { getUserTimezone, getLocalYear } from '../utils/timezone.js';
 
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
@@ -388,7 +388,7 @@ export const invoiceRepository = {
 
   async generateInvoiceNumber(type: 'received' | 'emitted'): Promise<string> {
     const prefix = type === 'received' ? 'FR' : 'FE';
-    const year = new Date().getFullYear();
+    const year = getLocalYear();
     const result = await db.query(
       `SELECT COUNT(*) FROM invoices WHERE invoice_type = $1 AND EXTRACT(YEAR FROM invoice_date) = $2`,
       [type, year]

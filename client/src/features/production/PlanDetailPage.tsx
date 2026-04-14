@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import ProductionLaunchModal from './ProductionLaunchModal';
+import PrintOverlay from '../../components/PrintOverlay';
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
@@ -40,6 +41,7 @@ export default function PlanDetailPage() {
   const [showProductionLaunch, setShowProductionLaunch] = useState(false);
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
   const [expandedFefoIngredients, setExpandedFefoIngredients] = useState<Set<string>>(new Set());
+  const [printHtml, setPrintHtml] = useState<string | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
 
@@ -74,9 +76,9 @@ export default function PlanDetailPage() {
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      toast.success('Plan confirme avec succes');
+      notify.success('Plan confirme avec succes');
       if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
+        result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       }
     },
   });
@@ -108,14 +110,11 @@ export default function PlanDetailPage() {
     const cycleVie = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
     const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
-    const w = window.open('', '_blank', 'width=400,height=600');
-    if (!w) return;
-
-    w.document.write(`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
+    setPrintHtml(`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12px; width: 80mm; }
-  .ticket { border: 2px solid #333; padding: 12px; border-radius: 6px; }
+  body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12px; }
+  .ticket { border: 2px solid #333; padding: 12px; border-radius: 6px; max-width: 80mm; margin: 0 auto; }
   .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
   .header h1 { font-size: 14px; margin-bottom: 2px; }
   .header h2 { font-size: 11px; font-weight: normal; color: #666; }
@@ -130,11 +129,7 @@ export default function PlanDetailPage() {
   .cycle.vdj { background: #fff7ed; color: #c2410c; border-color: #c2410c; }
   .barcode { text-align: center; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px; letter-spacing: 2px; font-weight: bold; }
   .footer { text-align: center; margin-top: 10px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-  .print-btn { position: fixed; top: 10px; right: 10px; background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  @media print { .print-btn { display: none; } body { padding: 0; } }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">Imprimer</button>
-
 <div class="ticket">
   <div class="header">
     <h1>${settings.companyName}</h1>
@@ -181,7 +176,6 @@ export default function PlanDetailPage() {
   </div>
 </div>
 </body></html>`);
-    w.document.close();
   };
 
   const printBonDeCommande = (planData?: Record<string, unknown>) => {
@@ -192,10 +186,7 @@ export default function PlanDetailPage() {
     const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
     const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
-    const w = window.open('', '_blank', 'width=800,height=600');
-    if (!w) return;
-
-    w.document.write(`<!DOCTYPE html><html><head><title>Bon de commande - ${dateStr}</title>
+    setPrintHtml(`<!DOCTYPE html><html><head><title>Bon de commande - ${dateStr}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 13px; }
@@ -223,8 +214,8 @@ export default function PlanDetailPage() {
   .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px; }
   @media print { body { padding: 10px; } button { display: none; } }
   .print-btn { position: fixed; top: 10px; right: 10px; background: #c97a2a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">Imprimer</button>
 
 <div class="header">
   <h1>${settings.companyName}</h1>
@@ -314,7 +305,6 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 </div>
 
 </body></html>`);
-    w.document.close();
   };
 
   const printBonSortieIngredients = () => {
@@ -393,10 +383,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 
     const roleLabel = plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : (plan.created_by_name || '—');
 
-    const w = window.open('', '_blank', 'width=800,height=700');
-    if (!w) return;
-
-    w.document.write(`<!DOCTYPE html><html><head><title>BSI - ${dateStr}</title>
+    setPrintHtml(`<!DOCTYPE html><html><head><title>BSI - ${dateStr}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; padding: 25px; color: #333; font-size: 12px; }
@@ -438,9 +425,9 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
   .footer { text-align: center; margin-top: 25px; font-size: 9px; color: #999; border-top: 1px dashed #ccc; padding-top: 8px; }
   .print-btn { position: fixed; top: 10px; right: 10px; background: #2d8a4e; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; z-index: 10; }
   .print-btn:hover { background: #276e3e; }
-  @media print { .print-btn { display: none; } body { padding: 15px; } }
+  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; z-index: 10; }
+  @media print { .print-btn, .back-btn { display: none; } body { padding: 15px; } }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">Imprimer</button>
 
 <div class="header">
   <h1>${settings.companyName}</h1>
@@ -523,7 +510,6 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
 </div>
 
 </body></html>`);
-    w.document.close();
   };
 
   const printFicheProduction = (planData?: Record<string, unknown>) => {
@@ -558,10 +544,7 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
     });
     const globalRate = totalPlanned > 0 ? Math.round((totalProduced / totalPlanned) * 100) : 0;
 
-    const w = window.open('', '_blank', 'width=800,height=600');
-    if (!w) return;
-
-    w.document.write(`<!DOCTYPE html><html><head><title>Fiche de production - ${dateStr}</title>
+    setPrintHtml(`<!DOCTYPE html><html><head><title>Fiche de production - ${dateStr}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 13px; }
@@ -597,10 +580,10 @@ ${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.
   .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px; }
   .rate-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 4px; }
   .rate-bar .fill { height: 100%; border-radius: 4px; }
-  @media print { body { padding: 10px; } .print-btn { display: none; } }
+  @media print { body { padding: 10px; } .print-btn, .back-btn { display: none; } }
   .print-btn { position: fixed; top: 10px; right: 10px; background: #2f855a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
 </style></head><body>
-<button class="print-btn" onclick="window.print()">Imprimer</button>
 
 <div class="header">
   <h1>${settings.companyName}</h1>
@@ -709,14 +692,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 </div>
 
 </body></html>`);
-    w.document.close();
   };
 
   const startMutation = useMutation({
     mutationFn: () => productionApi.start(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      toast.success('Production demarree');
+      notify.success('Production demarree');
     },
   });
 
@@ -725,13 +707,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       if (result.warnings?.length > 0) {
-        result.warnings.forEach((w: string) => toast(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
+        result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       } else {
-        toast.success('Article(s) restaure(s) avec succes');
+        notify.success('Article(s) restaure(s) avec succes');
       }
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || 'Erreur lors de la restauration');
+      notify.error(error?.response?.data?.error?.message || 'Erreur lors de la restauration');
     },
   });
 
@@ -739,10 +721,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     mutationFn: ({ itemIds, reason }: { itemIds: string[]; reason?: string }) => productionApi.cancelItems(id!, itemIds, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      toast.success('Article(s) annule(s)');
+      notify.success('Article(s) annule(s)');
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.error?.message || 'Erreur lors de l\'annulation');
+      notify.error(error?.response?.data?.error?.message || 'Erreur lors de l\'annulation');
     },
   });
 
@@ -751,9 +733,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     try {
       await productionApi.startItems(id!, [itemId]);
       await queryClient.invalidateQueries({ queryKey: ['production', id] });
-      toast.success('Production lancee');
+      notify.success('Production lancee');
     } catch (error: any) {
-      toast.error(error?.response?.data?.error?.message || 'Erreur lors du lancement');
+      notify.error(error?.response?.data?.error?.message || 'Erreur lors du lancement');
     }
   };
 
@@ -959,8 +941,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   try {
                     await productionApi.startItems(id!, ids);
                     await queryClient.invalidateQueries({ queryKey: ['production', id] });
-                    toast.success(`${ids.length} production(s) lancee(s)`);
-                  } catch (e: any) { toast.error(e?.response?.data?.error?.message || 'Erreur'); }
+                    notify.success(`${ids.length} production(s) lancee(s)`);
+                  } catch (e: any) { notify.error(e?.response?.data?.error?.message || 'Erreur'); }
                 }} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
                   <Play size={16} /> Lancer tout ({pendingItems.length})
                 </button>
@@ -976,9 +958,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     if (confirm(`Cloture partielle : ${waitingCount} article(s) en attente seront annules. Continuer ?`)) {
                       productionApi.complete(id!, [], 'partial').then(() => {
                         queryClient.invalidateQueries({ queryKey: ['production', id] });
-                        toast.success('Plan cloture partiellement');
+                        notify.success('Plan cloture partiellement');
                       }).catch((err: any) => {
-                        toast.error(err?.response?.data?.error?.message || 'Erreur');
+                        notify.error(err?.response?.data?.error?.message || 'Erreur');
                       });
                     }
                   }}
@@ -1767,6 +1749,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); }}
           onCompleted={() => {}}
         />
+      )}
+
+      {/* Print overlay — compatible mobile */}
+      {printHtml && (
+        <PrintOverlay html={printHtml} onClose={() => setPrintHtml(null)} />
       )}
     </div>
   );

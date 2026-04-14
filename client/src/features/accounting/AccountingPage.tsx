@@ -12,12 +12,12 @@ import {
   Loader2, Calculator, CreditCard, Coins, Scale,
   ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 type AccTab = 'caisse' | 'charges' | 'resume' | 'losses';
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Espèces', bank: 'Virement', check: 'Chèque', transfer: 'Virement' };
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
 const INVOICE_STATUS_COLORS: Record<string, string> = {
@@ -558,6 +558,7 @@ function CaisseTab() {
 /* ═══════════════════════ CHARGES & DEPENSES TAB ═══════════════════════ */
 /* Tout ce qui sort : achats fournisseurs, salaires, depenses diverses */
 function ChargesTab() {
+  const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
   const queryClient = useQueryClient();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -610,12 +611,12 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Dépense enregistrée');
+      notify.success('Dépense enregistrée');
       setShowForm(false);
       setFormCategoryId('');
       setFormPOId('');
     },
-    onError: () => toast.error('Erreur'),
+    onError: () => notify.error('Erreur'),
   });
 
   const updateMutation = useMutation({
@@ -623,10 +624,10 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Modifié avec succès');
+      notify.success('Modifié avec succès');
       setEditingPayment(null);
     },
-    onError: () => toast.error('Erreur lors de la modification'),
+    onError: () => notify.error('Erreur lors de la modification'),
   });
 
   const deleteMutation = useMutation({
@@ -634,7 +635,7 @@ function ChargesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Supprimé');
+      notify.success('Supprimé');
     },
   });
 
@@ -675,7 +676,7 @@ function ChargesTab() {
       PAYMENT_TYPE_LABELS[p.type as string] || '',
       (p.category_name as string) || '',
       (p.supplier_name as string) || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : ''),
-      PAYMENT_METHOD_LABELS[p.payment_method as string] || '',
+      getPaymentLabel(p.payment_method as string) || '',
       (p.description as string) || '',
       n(parseFloat(p.amount as string) || 0),
     ]);
@@ -832,7 +833,7 @@ function ChargesTab() {
                         <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-mono">{p.purchase_order_number as string}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{PAYMENT_METHOD_LABELS[p.payment_method as string]}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{getPaymentLabel(p.payment_method as string)}</td>
                     <td className="px-4 py-3 text-right font-bold text-red-600">{n(parseFloat(p.amount as string))} <span className="text-xs font-normal text-gray-400">DH</span></td>
                     <td className="px-4 py-3 text-center">
                       {p.type !== 'salary' ? (
@@ -889,8 +890,8 @@ function ChargesTab() {
                 if (selectedPO) fd.supplierId = selectedPO.supplier_id as string;
               }
               if (!fd.supplierId) delete fd.supplierId;
-              if (!fd.categoryId) { toast.error('Veuillez sélectionner une catégorie'); return; }
-              if (requiresPO && !formPOId) { toast.error('Cette catégorie nécessite un bon de commande'); return; }
+              if (!fd.categoryId) { notify.error('Veuillez sélectionner une catégorie'); return; }
+              if (requiresPO && !formPOId) { notify.error('Cette catégorie nécessite un bon de commande'); return; }
               createMutation.mutate(fd);
             }} className="p-5 space-y-4">
               <div>
@@ -940,7 +941,7 @@ function ChargesTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
                   <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-                    <option value="cash">Especes</option><option value="bank">Virement</option><option value="check">Cheque</option>
+                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select></div>
                 {!requiresPO && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
@@ -1004,7 +1005,7 @@ function ChargesTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
                   <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.payment_method as string || 'cash'}>
-                    <option value="cash">Especes</option><option value="bank">Virement</option><option value="check">Cheque</option>
+                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
                   <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.category_id as string || ''}>

@@ -5,17 +5,17 @@ export default {
     extend: {
       colors: {
         primary: {
-          50: '#fdf8f0',
-          100: '#f9edda',
-          200: '#f3d9b4',
-          300: '#ebbf84',
-          400: '#e2a052',
-          500: '#d98a35',
-          600: '#c47228',
-          700: '#a35923',
-          800: '#854823',
-          900: '#6d3c1f',
-          950: '#3b1e0e',
+          50: 'var(--theme-accent-light)',
+          100: 'color-mix(in srgb, var(--theme-accent-light) 80%, var(--theme-accent) 20%)',
+          200: 'color-mix(in srgb, var(--theme-accent-light) 60%, var(--theme-accent) 40%)',
+          300: 'color-mix(in srgb, var(--theme-accent) 60%, var(--theme-accent-light) 40%)',
+          400: 'color-mix(in srgb, var(--theme-accent) 80%, var(--theme-accent-light) 20%)',
+          500: 'var(--theme-accent)',
+          600: 'var(--theme-accent)',
+          700: 'var(--theme-accent-hover)',
+          800: 'color-mix(in srgb, var(--theme-accent-hover) 80%, black 20%)',
+          900: 'color-mix(in srgb, var(--theme-accent-hover) 60%, black 40%)',
+          950: 'color-mix(in srgb, var(--theme-accent-hover) 40%, black 60%)',
         },
         bakery: {
           cream: '#fdf8f0',

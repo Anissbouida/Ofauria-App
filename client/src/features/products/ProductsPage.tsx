@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
+import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
 import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 
 type ViewMode = 'grid' | 'table';
@@ -66,10 +67,10 @@ function CatalogueTab() {
 
   const deleteMutation = useMutation({
     mutationFn: productsApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['products'] }); toast.success('Produit supprimé définitivement'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['products'] }); notify.success('Produit supprimé définitivement'); },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      toast.error(msg || 'Erreur lors de la suppression');
+      notify.error(msg || 'Erreur lors de la suppression');
     },
   });
 
@@ -77,7 +78,7 @@ function CatalogueTab() {
     mutationFn: productsApi.toggleAvailability,
     onSuccess: (product: Record<string, unknown>) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(product.is_available ? 'Produit activé' : 'Produit désactivé');
+      notify.success(product.is_available ? 'Produit activé' : 'Produit désactivé');
     },
   });
 
@@ -94,7 +95,7 @@ function CatalogueTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(editingProduct ? 'Produit mis à jour' : 'Produit créé');
+      notify.success(editingProduct ? 'Produit mis à jour' : 'Produit créé');
       setShowForm(false); setEditingProduct(null);
     },
   });
@@ -264,7 +265,7 @@ function CatalogueTab() {
                 {/* Image */}
                 <div className="relative aspect-square bg-gray-50 overflow-hidden">
                   {p.image_url ? (
-                    <img src={p.image_url as string} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={serverUrl(p.image_url as string)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-4xl">🥖</div>
                   )}
@@ -365,7 +366,7 @@ function CatalogueTab() {
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         {p.image_url ? (
-                          <img src={p.image_url as string} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100" />
+                          <img src={serverUrl(p.image_url as string)} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100" />
                         ) : (
                           <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-xl border border-amber-100">🥖</div>
                         )}
@@ -543,6 +544,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   // Find the recipe currently linked to this product (for display info only)
   const currentRecipe = product ? allRecipesList.find(r => r.product_id === product.id) : null;
 
+  // Prevent backdrop click from closing the modal on mount (mobile touch event propagation)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { const t = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(t); }, []);
+
   // Smart recipe search state
   const [recipeSearch, setRecipeSearch] = useState('');
   const [recipeDropdownOpen, setRecipeDropdownOpen] = useState(false);
@@ -615,7 +620,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image trop volumineuse (max 5 Mo)');
+        notify.error('Image trop volumineuse (max 5 Mo)');
         return;
       }
       setImageFile(file);
@@ -633,8 +638,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     setShowCamera(false);
   }, []);
 
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
   const startCamera = useCallback(async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('not supported');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } }
       });
@@ -646,7 +654,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         }
       }, 100);
     } catch {
-      toast.error('Impossible d\'acceder a la camera');
+      // getUserMedia requires HTTPS — fall back to native camera via file input
+      cameraInputRef.current?.click();
     }
   }, []);
 
@@ -686,7 +695,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     e.preventDefault();
     // Recipe is mandatory for new products
     if (!product && !form.recipeId) {
-      toast.error('Veuillez sélectionner une recette. Créez d\'abord la recette dans le module Recettes.');
+      notify.error('Veuillez sélectionner une recette. Créez d\'abord la recette dans le module Recettes.');
       return;
     }
     const { recipeId, ...rest } = form;
@@ -716,7 +725,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (mounted && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Modal header */}
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
@@ -796,6 +805,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     )}
                   </div>
                   <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} className="hidden" />
+                  <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleImageChange} className="hidden" />
                   {showCamera && (
                     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
                       <video ref={videoRef} autoPlay playsInline muted className="flex-1 object-cover w-full" />

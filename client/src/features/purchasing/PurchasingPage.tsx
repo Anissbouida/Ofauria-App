@@ -9,13 +9,13 @@ import {
   ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, ArrowDownRight,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'waiting_list';
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = { cash: 'Espèces', bank: 'Virement', check: 'Chèque', transfer: 'Virement' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
 const INVOICE_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700', partial: 'bg-blue-100 text-blue-700',
@@ -93,10 +93,10 @@ function SuppliersTab() {
       editing ? suppliersApi.update(editing.id as string, data) : suppliersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      toast.success(editing ? 'Fournisseur modifié' : 'Fournisseur ajouté');
+      notify.success(editing ? 'Fournisseur modifié' : 'Fournisseur ajouté');
       setShowForm(false); setEditing(null);
     },
-    onError: () => toast.error('Erreur'),
+    onError: () => notify.error('Erreur'),
   });
 
   return (
@@ -227,6 +227,7 @@ function ReceivedInvoicesSection() {
   const [showPayForm, setShowPayForm] = useState<Record<string, unknown> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
+  const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ['invoices', 'received', statusFilter],
@@ -237,13 +238,13 @@ function ReceivedInvoicesSection() {
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => invoicesApi.create({ ...data, invoiceType: 'received' }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture ajoutée'); setShowForm(false); },
-    onError: () => toast.error('Erreur'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture ajoutée'); setShowForm(false); },
+    onError: () => notify.error('Erreur'),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.cancel(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture annulée'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
   });
 
   const payMutation = useMutation({
@@ -252,21 +253,21 @@ function ReceivedInvoicesSection() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      toast.success('Paiement enregistré');
+      notify.success('Paiement enregistré');
       setShowPayForm(null);
     },
-    onError: () => toast.error('Erreur'),
+    onError: () => notify.error('Erreur'),
   });
 
   const attachMutation = useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) => invoicesApi.uploadAttachment(id, file),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Facture jointe avec succès'); },
-    onError: () => toast.error('Erreur lors de l\'envoi du fichier'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture jointe avec succès'); },
+    onError: () => notify.error('Erreur lors de l\'envoi du fichier'),
   });
 
   const removeAttachMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.removeAttachment(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Pièce jointe supprimée'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Pièce jointe supprimée'); },
   });
 
   const handleAttachFile = (invoiceId: string) => {
@@ -502,10 +503,9 @@ function ReceivedInvoicesSection() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Méthode *</label>
                   <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <option value="cash">Espèces</option>
-                    <option value="check">Chèque</option>
-                    <option value="bank">Virement</option>
-                    <option value="transfer">Virement bancaire</option>
+                    {paymentMethods.map(pm => (
+                      <option key={pm.code} value={pm.code}>{pm.label}</option>
+                    ))}
                   </select></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
                   <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>

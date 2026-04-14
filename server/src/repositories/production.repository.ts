@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { adjustProductStock } from './product-stock.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
+import { getLocalNow } from '../utils/timezone.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
@@ -546,7 +547,7 @@ export const productionRepository = {
         throw new Error('Le plan doit etre en cours pour lancer des productions');
       }
 
-      const startTime = startedAt || new Date().toISOString();
+      const startTime = startedAt || getLocalNow().toISOString();
       const started: string[] = [];
 
       for (const itemId of itemIds) {
@@ -1071,7 +1072,7 @@ export const productionRepository = {
     const itemsResult = await db.query(
       `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity,
               p.name as product_name,
-              r.id as recipe_id, r.yield_quantity
+              r.id as recipe_id, r.yield_quantity, r.yield_unit
        FROM production_plan_items ppi
        JOIN products p ON p.id = ppi.product_id
        LEFT JOIN recipes r ON r.product_id = ppi.product_id
@@ -1085,6 +1086,7 @@ export const productionRepository = {
       subRecipeId: string;
       subRecipeName: string;
       yieldQuantity: number;
+      yieldUnit: string;
       totalNeeded: number;
       usedBy: { planItemId: string; productName: string; quantityNeeded: number }[];
       ingredients: { ingredientId: string; ingredientName: string; unit: string; quantity: number }[];
@@ -1095,7 +1097,8 @@ export const productionRepository = {
 
       const subsResult = await db.query(
         `SELECT rsr.sub_recipe_id, rsr.quantity,
-                sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity
+                sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
+                sr.yield_unit as sub_yield_unit
          FROM recipe_sub_recipes rsr
          JOIN recipes sr ON sr.id = rsr.sub_recipe_id
          WHERE rsr.recipe_id = $1`,
@@ -1127,6 +1130,7 @@ export const productionRepository = {
             subRecipeId: sub.sub_recipe_id,
             subRecipeName: sub.sub_recipe_name,
             yieldQuantity: parseFloat(sub.sub_yield_quantity),
+            yieldUnit: sub.sub_yield_unit || 'unit',
             totalNeeded: qtyNeeded,
             usedBy: [{
               planItemId: item.plan_item_id,

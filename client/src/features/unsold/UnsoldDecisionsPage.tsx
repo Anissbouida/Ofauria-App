@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { useAuth } from '../../context/AuthContext';
+import { useReferentiel } from '../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -68,6 +69,7 @@ function InlineMsg({ msg }: { msg: { type: 'success' | 'error'; text: string } |
 export default function UnsoldDecisionsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { entries: unsoldDests, getLabel: getDestLabel } = useReferentiel('unsold_destinations');
   const [tab, setTab] = useState<Tab>('decide');
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -111,6 +113,7 @@ export default function UnsoldDecisionsPage() {
 /* ═══════════════════════════════════════════════════════════════ */
 function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; text: string } | null) => void }) {
   const queryClient = useQueryClient();
+  const { getLabel: getDestLabel } = useReferentiel('unsold_destinations');
   const [search, setSearch] = useState('');
   const [filterDest, setFilterDest] = useState<string>('');
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
@@ -270,15 +273,15 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
         </div>
         <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.reexpose.bg}`}>
           <div className={`text-2xl font-bold ${DEST_CONFIG.reexpose.text}`}>{summary.reexpose}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.reexpose.text}`}>{DEST_CONFIG.reexpose.label}</div>
+          <div className={`text-xs font-medium ${DEST_CONFIG.reexpose.text}`}>{getDestLabel('reexpose')}</div>
         </div>
         <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.recycle.bg}`}>
           <div className={`text-2xl font-bold ${DEST_CONFIG.recycle.text}`}>{summary.recycle}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.recycle.text}`}>{DEST_CONFIG.recycle.label}</div>
+          <div className={`text-xs font-medium ${DEST_CONFIG.recycle.text}`}>{getDestLabel('recycle')}</div>
         </div>
         <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.waste.bg}`}>
           <div className={`text-2xl font-bold ${DEST_CONFIG.waste.text}`}>{summary.waste}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.waste.text}`}>{DEST_CONFIG.waste.label}</div>
+          <div className={`text-xs font-medium ${DEST_CONFIG.waste.text}`}>{getDestLabel('waste')}</div>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
           <div className="text-2xl font-bold text-amber-700">{summary.totalCost.toFixed(2)}</div>
@@ -374,7 +377,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                   <div className="col-span-3 flex justify-center">
                     <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${sugConf.bg} ${sugConf.text}`}>
                       {sugConf.icon}
-                      <span>{sugConf.label}</span>
+                      <span>{getDestLabel(sugDest)}</span>
                     </div>
                   </div>
 
@@ -394,7 +397,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                             <button key={d}
                               onClick={() => !disabled && handleDestinationChange(pid, d, p)}
                               disabled={disabled as boolean}
-                              title={disabled ? (d === 'reexpose' ? 'Non re-exposable' : 'Non recyclable') : dc.label}
+                              title={disabled ? (d === 'reexpose' ? 'Non re-exposable' : 'Non recyclable') : getDestLabel(d)}
                               className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                                 isActive
                                   ? `${dc.bg} ${dc.text} ring-2 ring-offset-1 ${d === 'reexpose' ? 'ring-green-400' : d === 'recycle' ? 'ring-cyan-400' : 'ring-red-400'}`
@@ -553,6 +556,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
 /*  ONGLET 2 : HISTORIQUE                                        */
 /* ═══════════════════════════════════════════════════════════════ */
 function HistoryPanel() {
+  const { getLabel: getDestLabel } = useReferentiel('unsold_destinations');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [destFilter, setDestFilter] = useState('');
@@ -624,10 +628,10 @@ function HistoryPanel() {
                   </div>
                   <div className="col-span-1 text-center text-sm font-bold text-gray-700">{r.remaining_qty as number}</div>
                   <div className="col-span-2 flex justify-center">
-                    <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${sugConf?.badge || ''}`}>{sugConf?.label || r.suggested_destination as string}</span>
+                    <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${sugConf?.badge || ''}`}>{getDestLabel(r.suggested_destination as string)}</span>
                   </div>
                   <div className="col-span-2 flex justify-center items-center gap-1">
-                    <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${finalConf?.badge || ''}`}>{finalConf?.label || r.final_destination as string}</span>
+                    <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${finalConf?.badge || ''}`}>{getDestLabel(r.final_destination as string)}</span>
                     {r.is_override && <Edit3 size={10} className="text-amber-500" title={r.override_reason as string} />}
                   </div>
                   <div className="col-span-1 text-center text-xs font-semibold text-red-600">
@@ -661,6 +665,7 @@ function HistoryPanel() {
 /*  ONGLET 3 : TABLEAU DE BORD                                   */
 /* ═══════════════════════════════════════════════════════════════ */
 function DashboardPanel() {
+  const { getLabel: getDestLabel } = useReferentiel('unsold_destinations');
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -876,7 +881,7 @@ function DashboardPanel() {
                   <span className="text-gray-600">{format(new Date(d.date as string), 'dd/MM')}</span>
                   <div className="flex justify-center">
                     <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${dc?.badge || 'bg-gray-100 text-gray-600'}`}>
-                      {dc?.label || d.final_destination as string}
+                      {getDestLabel(d.final_destination as string)}
                     </span>
                   </div>
                   <span className="text-center font-semibold">{parseInt(String(d.total_qty))}</span>

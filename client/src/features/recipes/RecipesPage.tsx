@@ -4,12 +4,14 @@ import { recipesApi } from '../../api/recipes.api';
 import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { notify } from '../../components/ui/InlineNotification';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 interface RecipeIngredient {
   ingredient_id?: string;
   ingredient_name: string;
   unit: string;
+  ingredient_base_unit: string;
   quantity: number;
   unit_cost: string;
 }
@@ -19,6 +21,7 @@ interface SubRecipeRef {
   sub_recipe_id: string;
   sub_recipe_name: string;
   sub_yield_quantity: number;
+  sub_yield_unit: string;
   sub_total_cost: string;
   quantity: number;
 }
@@ -31,11 +34,32 @@ interface RecipeDetail {
   product_price: string;
   instructions: string;
   yield_quantity: number;
+  yield_unit: string;
   total_cost: string;
   is_base: boolean;
   ingredients: RecipeIngredient[];
   sub_recipes: SubRecipeRef[];
 }
+
+// Unit conversion factors for cost calculation
+const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
+  kg: { base: 'kg', factor: 1 }, g: { base: 'kg', factor: 0.001 },
+  l: { base: 'l', factor: 1 }, ml: { base: 'l', factor: 0.001 },
+  unit: { base: 'unit', factor: 1 },
+};
+function unitConversionFactor(fromUnit: string, toUnit: string): number {
+  if (fromUnit === toUnit) return 1;
+  const from = UNIT_TO_BASE[fromUnit], to = UNIT_TO_BASE[toUnit];
+  if (!from || !to || from.base !== to.base) return 1;
+  return from.factor / to.factor;
+}
+
+// Compatible units grouped by type
+const COMPATIBLE_UNITS: Record<string, string[]> = {
+  kg: ['kg', 'g'], g: ['kg', 'g'],
+  l: ['l', 'ml'], ml: ['l', 'ml'],
+  unit: ['unit'],
+};
 
 type RecipeFilter = 'all' | 'base' | 'product';
 type ViewMode = 'grid' | 'list';
@@ -52,7 +76,7 @@ export default function RecipesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: recipesApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); toast.success('Recette supprimee'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Recette supprimee'); },
   });
 
   const filtered = recipes.filter((r: Record<string, unknown>) => {
@@ -224,7 +248,7 @@ export default function RecipesPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
                       <div className="text-xs text-gray-400">Rendement</div>
-                      <div className="text-sm font-bold text-gray-700">{yieldQty} u.</div>
+                      <div className="text-sm font-bold text-gray-700">{yieldQty} {r.yield_unit as string || 'u.'}</div>
                     </div>
                     <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
                       <div className="text-xs text-gray-400">Cout total</div>
@@ -305,7 +329,7 @@ export default function RecipesPage() {
                     <td className="px-5 py-3 text-sm text-gray-600">
                       {r.is_base ? <span className="text-gray-300">—</span> : (r.product_name as string || '—')}
                     </td>
-                    <td className="px-5 py-3 text-center text-sm font-semibold text-gray-700">{yieldQty} u.</td>
+                    <td className="px-5 py-3 text-center text-sm font-semibold text-gray-700">{yieldQty} {r.yield_unit as string || 'u.'}</td>
                     <td className="px-5 py-3 text-right">
                       <span className="text-sm font-bold text-gray-900">{totalCost.toFixed(2)}</span>
                       <span className="text-xs text-gray-400 ml-0.5">DH</span>
@@ -458,7 +482,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
                 <Scale size={16} className="mx-auto text-amber-600 mb-1" />
                 <p className="text-[11px] text-gray-400 uppercase tracking-wider">Rendement</p>
-                <p className="font-bold text-lg text-gray-900">{yieldQty} <span className="text-xs font-normal">u.</span></p>
+                <p className="font-bold text-lg text-gray-900">{yieldQty} <span className="text-xs font-normal">{recipe.yield_unit || 'u.'}</span></p>
               </div>
               <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
                 <DollarSign size={16} className="mx-auto text-green-600 mb-1" />
@@ -496,9 +520,9 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 </h3>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-blue-700">Quantite souhaitee :</span>
-                  <input type="number" min={1} value={targetPortions} onChange={(e) => setPortions(parseInt(e.target.value) || 1)}
+                  <input type="number" min={0.1} step="0.1" value={targetPortions} onChange={(e) => setPortions(parseFloat(e.target.value) || 1)}
                     className="w-24 text-center font-bold px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-                  <span className="text-sm text-blue-700">unites</span>
+                  <span className="text-sm text-blue-700">{recipe.yield_unit || 'unites'}</span>
                   {portions !== null && portions !== yieldQty && (
                     <button onClick={() => setPortions(null)} className="text-xs text-blue-500 hover:text-blue-700 underline">Reinitialiser ({yieldQty})</button>
                   )}
@@ -535,7 +559,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                                 <Layers size={14} className="text-amber-500" /> {sr.sub_recipe_name}
                               </td>
                               <td className="px-4 py-2.5 text-sm text-right font-semibold text-amber-700">{qty.toFixed(2)}</td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{sr.sub_yield_quantity} u.</td>
+                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{sr.sub_yield_quantity} {sr.sub_yield_unit || 'u.'}</td>
                               <td className="px-4 py-2.5 text-sm text-right text-gray-500">{costPerU.toFixed(2)} DH</td>
                               <td className="px-4 py-2.5 text-sm text-right font-bold">{cost.toFixed(2)} DH</td>
                             </tr>
@@ -701,6 +725,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 interface FormIngredient {
   ingredientId: string;
   quantity: string;
+  unit: string;
 }
 
 interface FormSubRecipe {
@@ -739,25 +764,29 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
     queryFn: recipesApi.listBase,
   });
 
+  const { entries: yieldUnits } = useReferentiel('yield_units');
+
   const [initialized, setInitialized] = useState(false);
   const [name, setName] = useState('');
   const [productId, setProductId] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('1');
+  const [yieldUnit, setYieldUnit] = useState('unit');
   const [instructions, setInstructions] = useState('');
   const [isBase, setIsBase] = useState(false);
-  const [formIngredients, setFormIngredients] = useState<FormIngredient[]>([{ ingredientId: '', quantity: '' }]);
+  const [formIngredients, setFormIngredients] = useState<FormIngredient[]>([{ ingredientId: '', quantity: '', unit: '' }]);
   const [formSubRecipes, setFormSubRecipes] = useState<FormSubRecipe[]>([]);
 
   if (isEdit && existingRecipe && !initialized) {
     setName(existingRecipe.name);
     setProductId(existingRecipe.product_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
+    setYieldUnit(existingRecipe.yield_unit || 'unit');
     setInstructions(existingRecipe.instructions || '');
     setIsBase(existingRecipe.is_base || false);
     setFormIngredients(
       existingRecipe.ingredients.length > 0
-        ? existingRecipe.ingredients.map(ing => ({ ingredientId: ing.ingredient_id || '', quantity: String(ing.quantity) }))
-        : [{ ingredientId: '', quantity: '' }]
+        ? existingRecipe.ingredients.map(ing => ({ ingredientId: ing.ingredient_id || '', quantity: String(ing.quantity), unit: ing.unit || '' }))
+        : [{ ingredientId: '', quantity: '', unit: '' }]
     );
     setFormSubRecipes(
       existingRecipe.sub_recipes && existingRecipe.sub_recipes.length > 0
@@ -769,17 +798,17 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => recipesApi.create(data),
-    onSuccess: () => { toast.success('Recette creee'); onSaved(); },
-    onError: () => toast.error('Erreur lors de la creation'),
+    onSuccess: () => { notify.success('Recette creee'); onSaved(); },
+    onError: () => notify.error('Erreur lors de la creation'),
   });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => recipesApi.update(recipeId!, data),
-    onSuccess: () => { toast.success('Recette mise a jour'); onSaved(); },
-    onError: () => toast.error('Erreur lors de la mise a jour'),
+    onSuccess: () => { notify.success('Recette mise a jour'); onSaved(); },
+    onError: () => notify.error('Erreur lors de la mise a jour'),
   });
 
-  const addIngredientRow = () => setFormIngredients([...formIngredients, { ingredientId: '', quantity: '' }]);
+  const addIngredientRow = () => setFormIngredients([...formIngredients, { ingredientId: '', quantity: '', unit: '' }]);
   const removeIngredientRow = (idx: number) => { if (formIngredients.length <= 1) return; setFormIngredients(formIngredients.filter((_, i) => i !== idx)); };
   const updateIngredientRow = (idx: number, field: keyof FormIngredient, value: string) => setFormIngredients(formIngredients.map((row, i) => i === idx ? { ...row, [field]: value } : row));
 
@@ -793,14 +822,17 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
     if (!row.ingredientId || !row.quantity) return sum;
     const ing = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId);
     if (!ing) return sum;
-    return sum + parseFloat(row.quantity) * parseFloat(ing.unit_cost || '0');
+    const ingBaseUnit = ing.unit as string || 'unit';
+    const recipeUnit = row.unit || ingBaseUnit;
+    const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+    return sum + parseFloat(row.quantity) * parseFloat(ing.unit_cost as string || '0') * factor;
   }, 0);
 
   const subRecipeCost = formSubRecipes.reduce((sum, row) => {
     if (!row.subRecipeId || !row.quantity) return sum;
     const sr = baseRecipes.find((r: Record<string, unknown>) => r.id === row.subRecipeId);
     if (!sr) return sum;
-    const costPerUnit = parseFloat(sr.total_cost || '0') / (parseInt(sr.yield_quantity as string) || 1);
+    const costPerUnit = parseFloat(sr.total_cost || '0') / (parseFloat(sr.yield_quantity as string) || 1);
     return sum + costPerUnit * parseFloat(row.quantity);
   }, 0);
 
@@ -810,21 +842,22 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
     e.preventDefault();
     const validIngredients = formIngredients
       .filter(row => row.ingredientId && row.quantity && parseFloat(row.quantity) > 0)
-      .map(row => ({ ingredientId: row.ingredientId, quantity: parseFloat(row.quantity) }));
+      .map(row => ({ ingredientId: row.ingredientId, quantity: parseFloat(row.quantity), unit: row.unit || null }));
 
     const validSubRecipes = formSubRecipes
       .filter(row => row.subRecipeId && row.quantity && parseFloat(row.quantity) > 0)
       .map(row => ({ subRecipeId: row.subRecipeId, quantity: parseFloat(row.quantity) }));
 
     if (validIngredients.length === 0 && validSubRecipes.length === 0) {
-      toast.error('Ajoutez au moins un ingredient ou une preparation de base');
+      notify.error('Ajoutez au moins un ingredient ou une preparation de base');
       return;
     }
 
     const data: Record<string, unknown> = {
       name,
       productId: isBase ? null : productId,
-      yieldQuantity: parseInt(yieldQuantity) || 1,
+      yieldQuantity: parseFloat(yieldQuantity) || 1,
+      yieldUnit,
       instructions,
       isBase,
       ingredients: validIngredients,
@@ -924,11 +957,21 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                   </div>
                 )}
 
-                <div className="w-56">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement (unites produites)</label>
-                  <input type="number" min={1}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
-                    value={yieldQuantity} onChange={(e) => setYieldQuantity(e.target.value)} required />
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement</label>
+                  <div className="flex gap-2">
+                    <input type="number" min={0.1} step="0.1"
+                      className="w-28 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                      value={yieldQuantity} onChange={(e) => setYieldQuantity(e.target.value)} required />
+                    <select
+                      className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-medium"
+                      value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}>
+                      {yieldUnits.map(u => (
+                        <option key={u.code} value={u.code}>{u.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Ex: 5 kg pour une pate, 3 moules pour une genoise</p>
                 </div>
               </>
             )}
@@ -962,7 +1005,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                           {formSubRecipes.map((row, idx) => {
                             const selectedSr = availableBaseRecipes.find((r: Record<string, unknown>) => r.id === row.subRecipeId) as Record<string, unknown> | undefined;
                             const srCost = selectedSr && row.quantity
-                              ? (parseFloat(selectedSr.total_cost as string || '0') / (parseInt(selectedSr.yield_quantity as string) || 1)) * parseFloat(row.quantity)
+                              ? (parseFloat(selectedSr.total_cost as string || '0') / (parseFloat(selectedSr.yield_quantity as string) || 1)) * parseFloat(row.quantity)
                               : 0;
                             return (
                               <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
@@ -976,7 +1019,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                                 <input type="number" step="0.01" min="0"
                                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                                   value={row.quantity} onChange={(e) => updateSubRecipeRow(idx, 'quantity', e.target.value)} placeholder="0" />
-                                <span className="text-xs text-gray-500 text-center">{selectedSr ? `${selectedSr.yield_quantity} u.` : '—'}</span>
+                                <span className="text-xs text-gray-500 text-center">{selectedSr ? `${selectedSr.yield_quantity} ${selectedSr.yield_unit || 'u.'}` : '—'}</span>
                                 <span className="text-xs font-bold text-amber-700 text-center">{srCost > 0 ? `${srCost.toFixed(2)}` : '—'}</span>
                                 <button type="button" onClick={() => removeSubRecipeRow(idx)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
                                   <Trash2 size={14} className="text-red-400" />
@@ -1005,7 +1048,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                   </div>
 
                   <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="grid grid-cols-[1fr_100px_70px_80px_40px] gap-2 text-xs font-semibold text-gray-500 px-4 py-2.5 bg-gray-50 uppercase tracking-wider">
+                    <div className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 text-xs font-semibold text-gray-500 px-4 py-2.5 bg-gray-50 uppercase tracking-wider">
                       <span>Ingredient</span>
                       <span>Quantite</span>
                       <span>Unite</span>
@@ -1015,20 +1058,34 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                     <div className="divide-y divide-gray-50">
                       {formIngredients.map((row, idx) => {
                         const selectedIng = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId) as Record<string, unknown> | undefined;
-                        const rowCost = selectedIng && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedIng.unit_cost as string || '0') : 0;
+                        const ingBaseUnit = selectedIng ? selectedIng.unit as string : 'unit';
+                        const currentUnit = row.unit || ingBaseUnit;
+                        const compatibleUnits = COMPATIBLE_UNITS[ingBaseUnit] || [ingBaseUnit];
+                        const factor = unitConversionFactor(currentUnit, ingBaseUnit);
+                        const rowCost = selectedIng && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedIng.unit_cost as string || '0') * factor : 0;
                         return (
-                          <div key={idx} className="grid grid-cols-[1fr_100px_70px_80px_40px] gap-2 items-center px-4 py-2">
+                          <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
                             <select className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                              value={row.ingredientId} onChange={(e) => updateIngredientRow(idx, 'ingredientId', e.target.value)}>
+                              value={row.ingredientId} onChange={(e) => {
+                                const newIng = allIngredients.find((i: Record<string, unknown>) => i.id === e.target.value) as Record<string, unknown> | undefined;
+                                const updated = [...formIngredients];
+                                updated[idx] = { ...updated[idx], ingredientId: e.target.value, unit: newIng ? newIng.unit as string : '' };
+                                setFormIngredients(updated);
+                              }}>
                               <option value="">-- Ingredient --</option>
                               {allIngredients.map((i: Record<string, unknown>) => (
                                 <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
                               ))}
                             </select>
-                            <input type="number" step="0.0001" min="0"
+                            <input type="number" step="0.01" min="0"
                               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                               value={row.quantity} onChange={(e) => updateIngredientRow(idx, 'quantity', e.target.value)} placeholder="0" />
-                            <span className="text-xs text-gray-500 text-center">{selectedIng ? selectedIng.unit as string : '—'}</span>
+                            <select className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 font-medium"
+                              value={currentUnit} onChange={(e) => updateIngredientRow(idx, 'unit', e.target.value)}>
+                              {compatibleUnits.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
                             <span className="text-xs font-bold text-gray-700 text-center">{rowCost > 0 ? `${rowCost.toFixed(2)}` : '—'}</span>
                             <button type="button" onClick={() => removeIngredientRow(idx)}
                               className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" disabled={formIngredients.length <= 1}>

@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { unsoldDecisionRepository } from '../repositories/unsold-decision.repository.js';
+import { getLocalNow } from '../utils/timezone.js';
 
 export const unsoldDecisionController = {
 
@@ -17,7 +18,7 @@ export const unsoldDecisionController = {
 
   /** POST /unsold-decisions — enregistrer les decisions invendus */
   async save(req: AuthRequest, res: Response) {
-    const { sessionId, decisions, notes } = req.body;
+    const { sessionId, decisions, notes, closeType } = req.body;
     if (!decisions || !Array.isArray(decisions) || decisions.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Aucune decision a enregistrer' } });
       return;
@@ -31,6 +32,7 @@ export const unsoldDecisionController = {
       storeId,
       sessionId,
       decidedBy: req.user!.userId,
+      closeType,
       decisions,
       notes,
     });
@@ -59,7 +61,7 @@ export const unsoldDecisionController = {
   /** GET /unsold-decisions/stats — tableau de bord */
   async stats(req: AuthRequest, res: Response) {
     const { month, year } = req.query as Record<string, string>;
-    const now = new Date();
+    const now = getLocalNow();
     const m = month ? parseInt(month) : (now.getMonth() + 1);
     const y = year ? parseInt(year) : now.getFullYear();
     const storeId = req.user!.storeId;
