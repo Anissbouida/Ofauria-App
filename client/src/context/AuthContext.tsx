@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { authApi } from '../api/auth.api';
 import { queryClient } from '../App';
+import { useSettings } from './SettingsContext';
 import type { User, LoginRequest } from '@ofauria/shared';
 
 // Inactivity timeout configuration (in minutes)
@@ -20,6 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { refreshSettings } = useSettings();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeoutWarning, setTimeoutWarning] = useState(false);
@@ -36,8 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const performLogout = useCallback(() => {
     clearTimers();
     setTimeoutWarning(false);
+    // OWASP A02-5 : plus de token en localStorage. Cookie HttpOnly efface
+    // cote serveur via /auth/logout. On garde seulement les donnees user
+    // hydratees en memoire — clear silencieux des residus legacy.
     localStorage.removeItem('ofauria_token');
     localStorage.removeItem('ofauria_user');
+    // Fire-and-forget : on appelle /auth/logout pour revoquer + clear cookie.
+    // Si echec reseau, le cookie expirera naturellement.
+    authApi.logout?.().catch(() => undefined);
     setUser(null);
     queryClient.clear();
   }, [clearTimers]);
@@ -94,34 +102,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const token = localStorage.getItem('ofauria_token');
-    if (token) {
-      authApi.me()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem('ofauria_token');
-          localStorage.removeItem('ofauria_user');
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    // OWASP A02-5 : on ne peut plus lire le token JS (HttpOnly), on tente
+    // directement /auth/me. Le cookie est envoye automatiquement via
+    // withCredentials. Si 401, l'utilisateur n'est pas connecte.
+    authApi.me()
+      .then(setUser)
+      .catch(() => {
+        // Nettoie les residus legacy potentiels.
+        localStorage.removeItem('ofauria_token');
+        localStorage.removeItem('ofauria_user');
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = async (data: LoginRequest) => {
+    // Le backend pose le cookie HttpOnly. On garde le user en memoire,
+    // pas de token stocke cote client.
     const result = await authApi.login(data);
-    localStorage.setItem('ofauria_token', result.token);
-    localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
+    refreshSettings();
   };
 
   const loginWithPin = async (pinCode: string) => {
     const result = await authApi.pinLogin(pinCode);
-    localStorage.setItem('ofauria_token', result.token);
-    localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
+    refreshSettings();
   };
 
   const logout = () => {

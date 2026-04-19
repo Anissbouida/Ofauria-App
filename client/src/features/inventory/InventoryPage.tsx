@@ -5,13 +5,14 @@ import { inventoryApi, ingredientsApi } from '../../api/inventory.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
-  Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight,
+  Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight, ChevronDown,
+  ArrowUp, ArrowDown, ArrowUpDown, Timer,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { format } from 'date-fns';
 
-type SortKey = 'name' | 'quantity' | 'dlc' | 'lots';
+type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock';
 type SortDir = 'asc' | 'desc';
 type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
 
@@ -61,6 +62,7 @@ interface InventoryItem {
   expired_lots_count: string;
   expiring_soon_count: string;
   active_lot_numbers: string | null;
+  avg_daily_consumption: string;
 }
 
 export default function InventoryPage() {
@@ -73,6 +75,8 @@ export default function InventoryPage() {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showAddIngredient, setShowAddIngredient] = useState(false);
+  const [showAllExpired, setShowAllExpired] = useState(false);
+  const [showAllExpiring, setShowAllExpiring] = useState(false);
 
   const { data: expiringLots = [] } = useQuery({ queryKey: ['ingredient-lots-expiring'], queryFn: () => ingredientLotsApi.expiring(7) });
   const { data: expiredLots = [] } = useQuery({ queryKey: ['ingredient-lots-expired'], queryFn: ingredientLotsApi.expired });
@@ -99,6 +103,8 @@ export default function InventoryPage() {
       let cmp = 0;
       switch (sortKey) {
         case 'name': cmp = a.ingredient_name.localeCompare(b.ingredient_name); break;
+        case 'category': cmp = (a.category || '').localeCompare(b.category || ''); break;
+        case 'supplier': cmp = (a.supplier || '').localeCompare(b.supplier || ''); break;
         case 'quantity': cmp = parseFloat(a.current_quantity) - parseFloat(b.current_quantity); break;
         case 'dlc': {
           const aDlc = a.nearest_dlc ? new Date(a.nearest_dlc).getTime() : Infinity;
@@ -106,6 +112,11 @@ export default function InventoryPage() {
           cmp = aDlc - bDlc; break;
         }
         case 'lots': cmp = (parseInt(a.active_lots_count) || 0) - (parseInt(b.active_lots_count) || 0); break;
+        case 'days_stock': {
+          const aDays = parseFloat(a.avg_daily_consumption) > 0 ? parseFloat(a.current_quantity) / parseFloat(a.avg_daily_consumption) : Infinity;
+          const bDays = parseFloat(b.avg_daily_consumption) > 0 ? parseFloat(b.current_quantity) / parseFloat(b.avg_daily_consumption) : Infinity;
+          cmp = aDays - bDays; break;
+        }
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -121,85 +132,111 @@ export default function InventoryPage() {
   const totalItems = (inventory as InventoryItem[]).length;
   const expiringCount = (inventory as InventoryItem[]).filter(i => (parseInt(i.expired_lots_count) || 0) > 0 || (parseInt(i.expiring_soon_count) || 0) > 0).length;
 
-  const SortHeader = ({ col, children, className = '' }: { col: SortKey; children: React.ReactNode; className?: string }) => (
-    <th onClick={() => toggleSort(col)}
-      className={`text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors ${className}`}>
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortKey === col && <span className="text-violet-500">{sortDir === 'asc' ? '↑' : '↓'}</span>}
-      </span>
-    </th>
-  );
+  const SortHeader = ({ col, children, className = '', align = 'left' }: { col: SortKey; children: React.ReactNode; className?: string; align?: 'left' | 'right' | 'center' }) => {
+    const active = sortKey === col;
+    return (
+      <th onClick={() => toggleSort(col)}
+        className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors ${className}`}>
+        <span className="inline-flex items-center gap-1">
+          {align === 'right' && (active
+            ? (sortDir === 'asc' ? <ArrowUp size={12} className="text-violet-500" /> : <ArrowDown size={12} className="text-violet-500" />)
+            : <ArrowUpDown size={11} className="opacity-30" />)}
+          {children}
+          {align !== 'right' && (active
+            ? (sortDir === 'asc' ? <ArrowUp size={12} className="text-violet-500" /> : <ArrowDown size={12} className="text-violet-500" />)
+            : <ArrowUpDown size={11} className="opacity-30" />)}
+        </span>
+      </th>
+    );
+  };
 
   return (
     <div className="space-y-4">
-      {/* ══════ HERO ══════ */}
-      <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-2xl p-6 text-white relative overflow-hidden shadow-lg">
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
-        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full" />
-        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2"><ShieldCheck size={24} /> Inventaire & Traçabilité</h1>
-            <p className="text-sm text-white/70 mt-1">Traçabilité complète des ingrédients</p>
-          </div>
-          <button onClick={() => setShowAddIngredient(true)}
-            className="px-5 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white rounded-xl font-medium transition-all flex items-center gap-2 text-sm shadow-md">
-            <Package size={16} /> Ajouter un ingrédient
-          </button>
+      {/* ══════ HEADER ══════ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Inventaire & Traçabilité</h1>
+          <p className="text-sm text-gray-500 mt-1">Traçabilité complète des ingrédients</p>
         </div>
-        <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          <button onClick={() => setViewFilter('all')} className={`bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center transition-all hover:bg-white/20 ${viewFilter === 'all' ? 'ring-2 ring-white/40' : ''}`}>
-            <p className="text-2xl font-bold">{totalItems}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><Package size={12} /> Total</p>
-          </button>
-          <button onClick={() => setViewFilter(viewFilter === 'low' ? 'all' : 'low')} className={`bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center transition-all hover:bg-white/20 ${viewFilter === 'low' ? 'ring-2 ring-red-300' : ''}`}>
-            <p className="text-2xl font-bold text-red-200">{lowCount}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><AlertTriangle size={12} /> Stock bas</p>
-          </button>
-          <button onClick={() => setViewFilter(viewFilter === 'ok' ? 'all' : 'ok')} className={`bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center transition-all hover:bg-white/20 ${viewFilter === 'ok' ? 'ring-2 ring-emerald-300' : ''}`}>
-            <p className="text-2xl font-bold text-emerald-200">{totalItems - lowCount}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><TrendingUp size={12} /> Stock OK</p>
-          </button>
-          <button onClick={() => setViewFilter(viewFilter === 'expiring' ? 'all' : 'expiring')} className={`bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center transition-all hover:bg-white/20 ${viewFilter === 'expiring' ? 'ring-2 ring-amber-300' : ''}`}>
-            <p className="text-2xl font-bold text-amber-200">{expiringCount}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><CalendarClock size={12} /> DLC critique</p>
-          </button>
-        </div>
+        <button onClick={() => setShowAddIngredient(true)} className="btn-primary flex items-center gap-2">
+          <Package size={16} /> Ajouter un ingrédient
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button onClick={() => setViewFilter('all')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'all' ? 'ring-2 ring-gray-300' : ''}`}>
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center mx-auto mb-2"><Package size={16} className="text-white" /></div>
+          <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
+          <p className="text-xs text-gray-500">Total</p>
+        </button>
+        <button onClick={() => setViewFilter(viewFilter === 'low' ? 'all' : 'low')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'low' ? 'ring-2 ring-red-300' : ''}`}>
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center mx-auto mb-2"><AlertTriangle size={16} className="text-white" /></div>
+          <p className="text-2xl font-bold text-gray-900">{lowCount}</p>
+          <p className="text-xs text-gray-500">Stock bas</p>
+        </button>
+        <button onClick={() => setViewFilter(viewFilter === 'ok' ? 'all' : 'ok')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'ok' ? 'ring-2 ring-emerald-300' : ''}`}>
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center mx-auto mb-2"><TrendingUp size={16} className="text-white" /></div>
+          <p className="text-2xl font-bold text-gray-900">{totalItems - lowCount}</p>
+          <p className="text-xs text-gray-500">Stock OK</p>
+        </button>
+        <button onClick={() => setViewFilter(viewFilter === 'expiring' ? 'all' : 'expiring')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'expiring' ? 'ring-2 ring-amber-300' : ''}`}>
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mx-auto mb-2"><CalendarClock size={16} className="text-white" /></div>
+          <p className="text-2xl font-bold text-gray-900">{expiringCount}</p>
+          <p className="text-xs text-gray-500">DLC critique</p>
+        </button>
       </div>
 
       {/* ══════ DLC ALERTS ══════ */}
-      {(expiredLots as Record<string, unknown>[]).length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
-          <div className="px-5 py-2.5 border-b border-red-100 bg-gradient-to-r from-red-50 to-rose-50 flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center"><AlertTriangle size={12} className="text-white" /></div>
-            <span className="text-xs font-bold text-red-700">{(expiredLots as Record<string, unknown>[]).length} lot(s) expiré(s) avec stock restant</span>
+      {(expiredLots as Record<string, unknown>[]).length > 0 && (() => {
+        const allExpired = expiredLots as Record<string, unknown>[];
+        const visibleExpired = showAllExpired ? allExpired : allExpired.slice(0, 3);
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
+            <div className="px-5 py-2.5 border-b border-red-100 bg-gradient-to-r from-red-50 to-rose-50 flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center"><AlertTriangle size={12} className="text-white" /></div>
+              <span className="text-xs font-bold text-red-700">{allExpired.length} lot(s) expiré(s) avec stock restant</span>
+              {allExpired.length > 3 && (
+                <button onClick={() => setShowAllExpired(!showAllExpired)} className="ml-auto text-[10px] font-medium text-red-600 hover:text-red-800 flex items-center gap-0.5">
+                  {showAllExpired ? <><ChevronDown size={10} /> Réduire</> : <><ChevronRight size={10} /> Voir tous ({allExpired.length})</>}
+                </button>
+              )}
+            </div>
+            <div className="divide-y divide-red-50">
+              {visibleExpired.map((lot) => (
+                <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-red-50/30">
+                  <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-red-600">{lot.supplier_lot_number as string || '?'}</span> — expiré depuis {lot.days_expired as number}j</span>
+                  <span className="font-bold text-red-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="divide-y divide-red-50">
-            {(expiredLots as Record<string, unknown>[]).slice(0, 3).map((lot) => (
-              <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-red-50/30">
-                <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-red-600">{lot.supplier_lot_number as string || '?'}</span> — expiré depuis {lot.days_expired as number}j</span>
-                <span className="font-bold text-red-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
-              </div>
-            ))}
+        );
+      })()}
+      {(expiringLots as Record<string, unknown>[]).length > 0 && (() => {
+        const allExpiring = expiringLots as Record<string, unknown>[];
+        const visibleExpiring = showAllExpiring ? allExpiring : allExpiring.slice(0, 3);
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
+            <div className="px-5 py-2.5 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center"><Clock size={12} className="text-white" /></div>
+              <span className="text-xs font-bold text-amber-700">{allExpiring.length} lot(s) expirent dans les 7 prochains jours</span>
+              {allExpiring.length > 3 && (
+                <button onClick={() => setShowAllExpiring(!showAllExpiring)} className="ml-auto text-[10px] font-medium text-amber-600 hover:text-amber-800 flex items-center gap-0.5">
+                  {showAllExpiring ? <><ChevronDown size={10} /> Réduire</> : <><ChevronRight size={10} /> Voir tous ({allExpiring.length})</>}
+                </button>
+              )}
+            </div>
+            <div className="divide-y divide-amber-50">
+              {visibleExpiring.map((lot) => (
+                <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-amber-50/30">
+                  <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-amber-600">{lot.supplier_lot_number as string || '?'}</span> — DLC dans {lot.days_until_expiry as number}j</span>
+                  <span className="font-bold text-amber-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-      {(expiringLots as Record<string, unknown>[]).length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-          <div className="px-5 py-2.5 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center"><Clock size={12} className="text-white" /></div>
-            <span className="text-xs font-bold text-amber-700">{(expiringLots as Record<string, unknown>[]).length} lot(s) expirent dans les 7 prochains jours</span>
-          </div>
-          <div className="divide-y divide-amber-50">
-            {(expiringLots as Record<string, unknown>[]).slice(0, 3).map((lot) => (
-              <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-amber-50/30">
-                <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-amber-600">{lot.supplier_lot_number as string || '?'}</span> — DLC dans {lot.days_until_expiry as number}j</span>
-                <span className="font-bold text-amber-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ══════ SEARCH + FILTERS ══════ */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -221,19 +258,20 @@ export default function InventoryPage() {
             <thead className="border-b border-gray-100">
               <tr>
                 <SortHeader col="name">Ingrédient</SortHeader>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden sm:table-cell">Catégorie</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">Fournisseur</th>
+                <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
+                <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
                 <SortHeader col="quantity">Stock</SortHeader>
                 <SortHeader col="lots" className="hidden lg:table-cell">Lots</SortHeader>
+                <SortHeader col="days_stock" className="hidden lg:table-cell">Jours stock</SortHeader>
                 <SortHeader col="dlc" className="hidden lg:table-cell">DLC</SortHeader>
                 <th className="px-4 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
               ) : filteredInventory.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Aucun ingrédient trouvé</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Aucun ingrédient trouvé</td></tr>
               ) : filteredInventory.map((item, idx) => {
                 const qty = parseFloat(item.current_quantity);
                 const threshold = parseFloat(item.minimum_threshold);
@@ -291,6 +329,22 @@ export default function InventoryPage() {
                       ) : (
                         <span className="text-[10px] text-gray-300">—</span>
                       )}
+                    </td>
+                    {/* Jours de stock */}
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      {(() => {
+                        const avgConso = parseFloat(item.avg_daily_consumption || '0');
+                        if (avgConso <= 0) return <span className="text-[10px] text-gray-300">—</span>;
+                        const daysOfStock = Math.round(qty / avgConso);
+                        return (
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold ${
+                            daysOfStock <= 3 ? 'text-red-600' : daysOfStock <= 7 ? 'text-amber-600' : daysOfStock <= 14 ? 'text-blue-600' : 'text-emerald-600'
+                          }`}>
+                            <Timer size={10} />
+                            {daysOfStock}j
+                          </span>
+                        );
+                      })()}
                     </td>
                     {/* DLC */}
                     <td className="px-4 py-3 hidden lg:table-cell">

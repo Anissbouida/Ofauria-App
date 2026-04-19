@@ -1,14 +1,46 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { logger } from './logger.js';
 
 const timezoneStorage = new AsyncLocalStorage<string>();
 
 const DEFAULT_TIMEZONE = 'Africa/Casablanca';
 
+// Strict whitelist of IANA timezones expected for this application.
+// Extend as needed. Unknown timezones fall back to DEFAULT_TIMEZONE
+// and are logged as a possible attack vector.
+const ALLOWED_TIMEZONES = new Set<string>([
+  'UTC',
+  'Africa/Casablanca',
+  'Africa/Tunis',
+  'Africa/Algiers',
+  'Africa/Cairo',
+  'Europe/Paris',
+  'Europe/London',
+  'Europe/Madrid',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Dubai',
+]);
+
+function isValidTimezone(tz: string): boolean {
+  return typeof tz === 'string' && ALLOWED_TIMEZONES.has(tz);
+}
+
 /**
- * Run a callback with a specific timezone stored in async context
+ * Run a callback with a specific timezone stored in async context.
+ * Invalid/malicious timezone values are rejected and fall back to default.
  */
 export function runWithTimezone(timezone: string, fn: () => void) {
-  timezoneStorage.run(timezone || DEFAULT_TIMEZONE, fn);
+  if (!isValidTimezone(timezone)) {
+    if (timezone && timezone !== DEFAULT_TIMEZONE) {
+      // Log structure : utile pour detecter des tentatives d'injection
+      // (OWASP A09 monitoring). La valeur est tronquee pour eviter tout abus.
+      logger.warn({ rejectedTimezone: String(timezone).slice(0, 80) }, 'Rejet timezone non autorisee');
+    }
+    timezoneStorage.run(DEFAULT_TIMEZONE, fn);
+    return;
+  }
+  timezoneStorage.run(timezone, fn);
 }
 
 /**

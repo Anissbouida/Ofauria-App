@@ -69,8 +69,8 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">{u.email as string}</td>
                   <td className="px-6 py-4">
-                    {u.pinCode ? (
-                      <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{u.pinCode as string}</span>
+                    {u.hasPin ? (
+                      <span className="font-mono text-sm bg-green-100 text-green-700 px-2 py-1 rounded">Defini</span>
                     ) : (
                       <span className="text-xs text-gray-300">Non defini</span>
                     )}
@@ -164,7 +164,7 @@ export default function UsersPage() {
                     Code PIN (4 chiffres)
                   </label>
                   <input name="pinCode" type="text" inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6}
-                    defaultValue={editing?.pinCode as string || ''} className="input font-mono text-center tracking-widest"
+                    defaultValue="" className="input font-mono text-center tracking-widest"
                     placeholder="ex: 1234" />
                 </div>
               </div>

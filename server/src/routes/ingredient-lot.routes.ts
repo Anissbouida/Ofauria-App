@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ingredientLotController } from '../controllers/ingredient-lot.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { authorize } from '../middleware/role.middleware.js';
+import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
 
@@ -13,8 +15,8 @@ router.get('/production/:planId/fefo-preview', authenticate, ingredientLotContro
 router.get('/production/:id', authenticate, ingredientLotController.productionLots);
 router.get('/:id', authenticate, ingredientLotController.getById);
 router.get('/:id/traceability', authenticate, ingredientLotController.traceability);
-router.post('/:id/quarantine', authenticate, ingredientLotController.quarantine);
-router.post('/:id/waste', authenticate, ingredientLotController.markAsWaste);
-router.post('/quality-check/:id', authenticate, ingredientLotController.saveQualityCheck);
+router.post('/:id/quarantine', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.quarantine);
+router.post('/:id/waste', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.markAsWaste);
+router.post('/quality-check/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.saveQualityCheck);
 
 export default router;

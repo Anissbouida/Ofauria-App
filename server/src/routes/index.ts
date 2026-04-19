@@ -27,6 +27,11 @@ import purchaseRequestRoutes from './purchase-request.routes.js';
 import referentielRoutes from './referentiel.routes.js';
 import productPipelineRoutes from './product-pipeline.routes.js';
 import unsoldDecisionRoutes from './unsold-decision.routes.js';
+import productionContenantRoutes from './production-contenant.routes.js';
+import stockFrigoRoutes from './stock-frigo.routes.js';
+import bonSortieRoutes from './bon-sortie.routes.js';
+import productionEtapesRoutes from './production-etapes.routes.js';
+import productionCoutRoutes from './production-cout.routes.js';
 
 const router = Router();
 
@@ -68,5 +73,10 @@ router.use('/purchase-requests', purchaseRequestRoutes);
 router.use('/params', referentielRoutes);
 router.use('/product-pipeline', productPipelineRoutes);
 router.use('/unsold-decisions', unsoldDecisionRoutes);
+router.use('/contenants', productionContenantRoutes);
+router.use('/stock-frigo', stockFrigoRoutes);
+router.use('/bons-sortie', bonSortieRoutes);
+router.use('/production-etapes', productionEtapesRoutes);
+router.use('/production-cout', productionCoutRoutes);
 
 export default router;

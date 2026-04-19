@@ -434,11 +434,11 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                       </div>
                       <div>
                         <span className="text-xs text-gray-400 block">DLV</span>
-                        <span className="font-semibold text-gray-700">{p.shelf_life_days || '-'} jour(s)</span>
+                        <span className="font-semibold text-gray-700">{String(p.shelf_life_days || '-')} jour(s)</span>
                       </div>
                       <div>
                         <span className="text-xs text-gray-400 block">Exposition max</span>
-                        <span className="font-semibold text-gray-700">{p.display_life_hours || '-'}h</span>
+                        <span className="font-semibold text-gray-700">{String(p.display_life_hours || '-')}h</span>
                       </div>
                       <div>
                         <span className="text-xs text-gray-400 block">Reexpositions</span>
@@ -460,7 +460,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                         <span className="text-xs text-gray-400 block">Cout perte potentielle</span>
                         <span className="font-semibold text-red-600">{(unitCost * remaining).toFixed(2)} DH</span>
                       </div>
-                      {p.expires_at && (
+                      {p.expires_at as unknown as boolean && (
                         <div>
                           <span className="text-xs text-gray-400 block">Expiration DLV</span>
                           <span className={`font-semibold ${new Date(p.expires_at as string) <= new Date() ? 'text-red-600' : 'text-green-600'}`}>
@@ -632,7 +632,7 @@ function HistoryPanel() {
                   </div>
                   <div className="col-span-2 flex justify-center items-center gap-1">
                     <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${finalConf?.badge || ''}`}>{getDestLabel(r.final_destination as string)}</span>
-                    {r.is_override && <Edit3 size={10} className="text-amber-500" title={r.override_reason as string} />}
+                    {r.is_override as unknown as boolean && <Edit3 size={10} className="text-amber-500" />}
                   </div>
                   <div className="col-span-1 text-center text-xs font-semibold text-red-600">
                     {parseFloat(String(r.total_cost)).toFixed(0)} DH

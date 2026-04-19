@@ -29,8 +29,9 @@ export const caisseRouter = Router();
 caisseRouter.get('/register', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), caisseController.register);
 
 export const suppliersRouter = Router();
-suppliersRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), supplierController.list);
-suppliersRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), supplierController.getById);
+// Read access is granted to PRODUCTION roles too (chefs need to pick a supplier when creating purchase requests).
+suppliersRouter.get('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), supplierController.list);
+suppliersRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), supplierController.getById);
 suppliersRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), supplierController.create);
 suppliersRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), supplierController.update);
 suppliersRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), supplierController.remove);

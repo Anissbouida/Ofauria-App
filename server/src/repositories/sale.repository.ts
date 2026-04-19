@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { adjustProductStock } from './product-stock.helper.js';
+import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const saleRepository = {
@@ -154,14 +154,21 @@ export const saleRepository = {
           [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Decrement product stock — skip for advance sales (stock deducted at delivery)
-        if (!data.skipStockDeduction) {
-          const stockAfter = await adjustProductStock(client, item.productId, -item.quantity, data.storeId);
+        // Decrement vitrine (display) stock — skip for advance sales (stock deducted at delivery).
+        // POS sells strictly from the vitrine: stock_quantity is backroom reserve
+        // and is only moved via replenishment reception (transferBackroomToVitrine).
+        // Derive skip logic from saleType rather than trusting the caller's flag.
+        const shouldSkipStock = data.saleType === 'advance' || (data.skipStockDeduction && data.saleType !== 'standard');
+        if (!shouldSkipStock) {
+          if (!data.storeId) {
+            throw new Error('storeId requis pour une vente POS (vitrine strictement par magasin)');
+          }
+          const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, -item.quantity);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7)`,
             [item.productId, -item.quantity, stockAfter,
-             `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId || null]
+             `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId]
           );
         }
       }
@@ -359,12 +366,29 @@ export const saleRepository = {
     storeId?: string;
     items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[];
   }) {
+    // Validate CSV items before any DB work
+    const invalidItems: string[] = [];
+    for (const item of data.items) {
+      if (!item.quantity || item.quantity <= 0) {
+        invalidItems.push(`${item.productName}: quantité invalide (${item.quantity})`);
+      }
+      if (item.unitPrice < 0) {
+        invalidItems.push(`${item.productName}: prix unitaire négatif (${item.unitPrice})`);
+      }
+      if (item.netSales < 0) {
+        invalidItems.push(`${item.productName}: ventes nettes négatives (${item.netSales})`);
+      }
+    }
+    if (invalidItems.length > 0) {
+      return { created: false, unmatchedItems: [], invalidItems, saleNumber: null };
+    }
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
       // Match products by SKU or name
-      const matchedItems: { productId: string; quantity: number; unitPrice: number; subtotal: number }[] = [];
+      const matchedItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; costOfGoods: number }[] = [];
       const unmatchedItems: string[] = [];
 
       for (const item of data.items) {
@@ -385,6 +409,7 @@ export const saleRepository = {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             subtotal: item.netSales,
+            costOfGoods: item.costOfGoods || 0,
           });
           // Update SKU if not set
           if (item.sku) {
@@ -400,13 +425,14 @@ export const saleRepository = {
 
       if (matchedItems.length === 0) {
         await client.query('ROLLBACK');
-        return { created: false, unmatchedItems, saleNumber: null };
+        return { created: false, unmatchedItems, invalidItems: [], saleNumber: null };
       }
 
       const subtotal = matchedItems.reduce((sum, i) => sum + i.subtotal, 0);
       const total = subtotal;
 
-      // Generate sale number for the import date
+      // Generate sale number for the import date (advisory lock prevents race)
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
       const prefix = `IMP-${data.date}-`;
       const seqResult = await client.query(
         `SELECT sale_number FROM sales WHERE sale_number LIKE $1 ORDER BY sale_number DESC LIMIT 1`,
@@ -452,6 +478,8 @@ export const saleRepository = {
 };
 
 async function generateSaleNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
+  // Advisory lock prevents concurrent transactions from reading the same max sequence
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
   const today = getLocalDateString();
   const prefix = `VNT-${today}-`;
   const result = await client.query(

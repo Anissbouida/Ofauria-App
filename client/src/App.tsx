@@ -4,6 +4,8 @@ import InlineNotification from './components/ui/InlineNotification';
 import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider } from './context/AuthContext';
 import { PermissionsProvider } from './context/PermissionsContext';
+import { ProductionTimerProvider } from './context/ProductionTimerContext';
+import ProductionTimerWidget from './components/ui/ProductionTimerWidget';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './features/auth/LoginPage';
 import HomePage from './features/dashboard/HomePage';
@@ -19,6 +21,8 @@ import ReportsPage from './features/reports/ReportsPage';
 import SalesPage from './features/sales/SalesPage';
 import ProductionPage from './features/production/ProductionPage';
 import PlanDetailPage from './features/production/PlanDetailPage';
+import BonSortiePrelevementPage from './features/production/BonSortiePrelevementPage';
+import ProductionDashboardPage from './features/production/ProductionDashboardPage';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
 import AccountingPage from './features/accounting/AccountingPage';
@@ -39,6 +43,7 @@ export default function App() {
       <SettingsProvider>
       <AuthProvider>
       <PermissionsProvider>
+      <ProductionTimerProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -53,7 +58,9 @@ export default function App() {
               <Route path="/inventory/:id" element={<IngredientDetailPage />} />
               <Route path="/recipes" element={<RecipesPage />} />
               <Route path="/production" element={<ProductionPage />} />
+              <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
+              <Route path="/production/:id/bon-sortie" element={<BonSortiePrelevementPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />
@@ -67,6 +74,8 @@ export default function App() {
           </Routes>
         </BrowserRouter>
         <InlineNotification />
+        <ProductionTimerWidget />
+      </ProductionTimerProvider>
       </PermissionsProvider>
       </AuthProvider>
       </SettingsProvider>

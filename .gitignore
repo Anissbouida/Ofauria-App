@@ -8,3 +8,4 @@ build/
 uploads/
 coverage/
 .claude/
+.env.backup.*

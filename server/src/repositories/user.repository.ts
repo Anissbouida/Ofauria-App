@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { comparePin } from '../utils/hash.js';
 
 export interface UserRow {
   id: string;
@@ -10,6 +11,7 @@ export interface UserRow {
   role: string;
   is_active: boolean;
   store_id: string | null;
+  token_version: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -42,8 +44,15 @@ export const userRepository = {
   },
 
   async findByPinCode(pinCode: string): Promise<UserRow | null> {
-    const result = await db.query('SELECT * FROM users WHERE pin_code = $1', [pinCode]);
-    return result.rows[0] || null;
+    // PINs are hashed — load all active users with a PIN and compare via bcrypt
+    const result = await db.query(
+      'SELECT * FROM users WHERE pin_code IS NOT NULL AND is_active = true'
+    );
+    for (const user of result.rows) {
+      const match = await comparePin(pinCode, user.pin_code);
+      if (match) return user;
+    }
+    return null;
   },
 
   async findAllActive(): Promise<Pick<UserRow, 'id' | 'first_name' | 'last_name' | 'role'>[]> {
@@ -83,5 +92,58 @@ export const userRepository = {
 
   async delete(id: string): Promise<void> {
     await db.query('UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
+  },
+
+  // ─── Account lockout (OWASP A04-2) ────────────────────────
+  // Increments failed counter. Si seuil atteint, verrouille pour `lockDurationMs`.
+  async recordFailedLogin(id: string, threshold: number, lockDurationMs: number): Promise<{ count: number; lockedUntil: Date | null }> {
+    const result = await db.query(
+      `UPDATE users
+       SET failed_login_count = failed_login_count + 1,
+           last_failed_login_at = NOW(),
+           locked_until = CASE
+             WHEN failed_login_count + 1 >= $2 THEN NOW() + ($3 || ' milliseconds')::interval
+             ELSE locked_until
+           END,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING failed_login_count, locked_until`,
+      [id, threshold, lockDurationMs]
+    );
+    const row = result.rows[0];
+    return { count: row?.failed_login_count ?? 0, lockedUntil: row?.locked_until ?? null };
+  },
+
+  async resetFailedLogins(id: string): Promise<void> {
+    await db.query(
+      `UPDATE users
+       SET failed_login_count = 0, locked_until = NULL, last_failed_login_at = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  },
+
+  async isLocked(id: string): Promise<Date | null> {
+    const result = await db.query(
+      'SELECT locked_until FROM users WHERE id = $1 AND locked_until > NOW()',
+      [id]
+    );
+    return result.rows[0]?.locked_until ?? null;
+  },
+
+  // OWASP A07-5 : invalidation de tous les tokens existants d'un user.
+  // Incrementer la version force les tokens JWT existants a etre rejetes
+  // par le middleware (comparaison version token vs version DB).
+  async bumpTokenVersion(id: string): Promise<number> {
+    const result = await db.query(
+      'UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1 RETURNING token_version',
+      [id]
+    );
+    return result.rows[0]?.token_version ?? 0;
+  },
+
+  async getTokenVersion(id: string): Promise<number | null> {
+    const result = await db.query('SELECT token_version FROM users WHERE id = $1', [id]);
+    return result.rows[0]?.token_version ?? null;
   },
 };

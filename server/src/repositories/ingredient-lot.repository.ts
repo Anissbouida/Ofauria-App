@@ -166,15 +166,16 @@ export const ingredientLotRepository = {
     productionPlanId: string,
     storeId?: string
   ): Promise<{ lotId: string; quantityUsed: number }[]> {
-    const conditions = [`ingredient_id = $1`, `status = 'active'`, `quantity_remaining > 0`];
+    const conditions = [`ingredient_id = $1`, `status IN ('active', 'expired')`, `quantity_remaining > 0`];
     const values: unknown[] = [ingredientId];
     if (storeId) { conditions.push(`store_id = $2`); values.push(storeId); }
 
-    // Lock rows for concurrent safety
+    // Lock rows for concurrent safety — active lots first, then expired as fallback
     const lotsResult = await client.query(
-      `SELECT id, quantity_remaining, expiration_date FROM ingredient_lots
+      `SELECT id, quantity_remaining, expiration_date, status FROM ingredient_lots
        WHERE ${conditions.join(' AND ')}
-       ORDER BY expiration_date ASC NULLS LAST, received_at ASC
+       ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+                expiration_date ASC NULLS LAST, received_at ASC
        FOR UPDATE`,
       values
     );
@@ -231,14 +232,14 @@ export const ingredientLotRepository = {
     for (const need of needsResult.rows) {
       const neededQty = parseFloat(need.needed_quantity);
 
-      // 2. Get active lots with remaining quantity, FEFO order
-      const conditions = [`il.ingredient_id = $1`, `il.status = 'active'`, `il.quantity_remaining > 0`];
+      // 2. Get lots with remaining quantity, FEFO order — active first, expired as fallback
+      const conditions = [`il.ingredient_id = $1`, `il.status IN ('active', 'expired')`, `il.quantity_remaining > 0`];
       const values: unknown[] = [need.ingredient_id];
       if (storeId) { conditions.push(`il.store_id = $2`); values.push(storeId); }
 
       const lotsResult = await db.query(
         `SELECT il.id AS lot_id, il.lot_number, il.supplier_lot_number, il.quantity_remaining,
-                il.expiration_date, il.received_at,
+                il.expiration_date, il.received_at, il.status AS lot_status,
                 s.name AS supplier_name,
                 CASE WHEN il.expiration_date IS NOT NULL
                      THEN il.expiration_date - CURRENT_DATE
@@ -246,7 +247,8 @@ export const ingredientLotRepository = {
          FROM ingredient_lots il
          LEFT JOIN suppliers s ON s.id = il.supplier_id
          WHERE ${conditions.join(' AND ')}
-         ORDER BY il.expiration_date ASC NULLS LAST, il.received_at ASC`,
+         ORDER BY CASE WHEN il.status = 'active' THEN 0 ELSE 1 END,
+                  il.expiration_date ASC NULLS LAST, il.received_at ASC`,
         values
       );
 

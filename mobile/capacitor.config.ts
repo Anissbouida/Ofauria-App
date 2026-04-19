@@ -8,8 +8,11 @@ const config: CapacitorConfig = {
   server: {
     // L'app charge les fichiers web embarqués (pas de URL ici)
     // L'API est configurée via VITE_API_URL dans le build du client
-    androidScheme: 'http',
-    cleartext: true,
+    // OWASP MOB-1 : https obligatoire, cleartext desactive (MITM).
+    // Pour le dev local avec un backend sur http://10.0.2.2 (emulateur) ou
+    // un laptop en clair, definir CAP_ALLOW_CLEARTEXT=1 avant `npx cap sync`.
+    androidScheme: 'https',
+    cleartext: process.env.CAP_ALLOW_CLEARTEXT === '1',
   },
   plugins: {
     SplashScreen: {

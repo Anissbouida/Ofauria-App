@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { recipeRepository } from './recipe.repository.js';
 
 export const inventoryRepository = {
   async findAll(storeId?: string) {
@@ -12,7 +13,17 @@ export const inventoryRepository = {
               (SELECT MIN(il.expiration_date) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date IS NOT NULL ${lotStoreFilter}) as nearest_dlc,
               (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date < CURRENT_DATE ${lotStoreFilter}) as expired_lots_count,
               (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 ${lotStoreFilter}) as expiring_soon_count,
-              (SELECT string_agg(DISTINCT il.supplier_lot_number, ', ' ORDER BY il.supplier_lot_number) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.supplier_lot_number IS NOT NULL ${lotStoreFilter}) as active_lot_numbers
+              (SELECT string_agg(DISTINCT il.supplier_lot_number, ', ' ORDER BY il.supplier_lot_number) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.supplier_lot_number IS NOT NULL ${lotStoreFilter}) as active_lot_numbers,
+              -- Average daily consumption over last 30 days (negative transactions = consumption)
+              (SELECT COALESCE(ABS(SUM(it.quantity_change)) / NULLIF(GREATEST(
+                EXTRACT(DAY FROM (NOW() - MIN(it.created_at)))::int, 1
+              ), 0), 0)
+               FROM inventory_transactions it
+               WHERE it.ingredient_id = inv.ingredient_id
+                 AND it.quantity_change < 0
+                 AND it.created_at >= NOW() - INTERVAL '30 days'
+                 ${storeId ? 'AND it.store_id = $1' : ''}
+              ) as avg_daily_consumption
        FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
        ${where}
        ORDER BY ing.category, ing.name`,
@@ -69,7 +80,9 @@ export const inventoryRepository = {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit);
     const result = await db.query(
-      `SELECT it.*, ing.name as ingredient_name, u.first_name as performed_by_name
+      `SELECT it.*, ing.name as ingredient_name, ing.unit as ingredient_unit,
+              u.first_name as performed_by_first, u.last_name as performed_by_last, u.role as performed_by_role,
+              COALESCE(u.first_name || ' ' || u.last_name, 'Système') as performed_by_name
        FROM inventory_transactions it
        JOIN ingredients ing ON ing.id = it.ingredient_id
        LEFT JOIN users u ON u.id = it.performed_by
@@ -129,6 +142,30 @@ export const ingredientRepository = {
     if (fields.length === 0) return this.findById(id);
     values.push(id);
     const result = await db.query(`UPDATE ingredients SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
+
+    // When unit cost changes, cascade to all recipes using this ingredient
+    if (data.unitCost !== undefined) {
+      const recipes = await db.query(
+        `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,
+        [id]
+      );
+      for (const row of recipes.rows) {
+        const recipe = await recipeRepository.findById(row.recipe_id);
+        if (!recipe) continue;
+        let totalCost = 0;
+        for (const ing of recipe.ingredients) {
+          totalCost += parseFloat(ing.quantity) * parseFloat(ing.unit_cost || '0');
+        }
+        for (const sr of recipe.sub_recipes) {
+          const costPerUnit = parseFloat(sr.sub_total_cost) / (sr.sub_yield_quantity || 1);
+          totalCost += costPerUnit * parseFloat(sr.quantity);
+        }
+        await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+        // Cascade up to parent recipes
+        await recipeRepository.recalcParents(row.recipe_id);
+      }
+    }
+
     return result.rows[0];
   },
 

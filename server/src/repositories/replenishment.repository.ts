@@ -1,18 +1,23 @@
 import { db } from '../config/database.js';
 import { getCategoryRole } from '@ofauria/shared';
 import { getUserTimezone } from '../utils/timezone.js';
+import { productionRepository } from './production.repository.js';
+import { transferBackroomToVitrine } from './product-stock.helper.js';
 
 export const replenishmentRepository = {
 
-  async generateRequestNumber(): Promise<string> {
+  async generateRequestNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
+    const runner = client ?? db;
+    // Advisory lock prevents concurrent requests from generating the same number
+    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('request_number'))`);
     const tz = getUserTimezone();
     // Use the SAME timezone for both the date string and the COUNT query
-    const dateResult = await db.query(`SELECT to_char(NOW() AT TIME ZONE '${tz}', 'YYYYMMDD') as today`);
-    const today = dateResult.rows[0].today;
-    const result = await db.query(
+    const dateResult = await runner.query(`SELECT to_char(NOW() AT TIME ZONE '${tz}', 'YYYYMMDD') as today`);
+    const today = (dateResult.rows[0] as Record<string, string>).today;
+    const result = await runner.query(
       `SELECT COUNT(DISTINCT batch_id) FROM replenishment_requests WHERE DATE(created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}') AND batch_id IS NOT NULL`
     );
-    const num = parseInt(result.rows[0].count, 10) + 1;
+    const num = parseInt((result.rows[0] as Record<string, string>).count, 10) + 1;
     return `DRA-${today}-${String(num).padStart(3, '0')}`;
   },
 
@@ -63,7 +68,7 @@ export const replenishmentRepository = {
         (SELECT COUNT(*) FROM replenishment_request_items WHERE request_id = r.id) as item_count,
         (SELECT COUNT(*) FROM replenishment_request_items WHERE request_id = r.id AND status IN ('received', 'received_with_discrepancy')) as completed_count,
         CASE
-          WHEN r.status = 'acknowledged'
+          WHEN r.status IN ('acknowledged', 'partially_received')
             AND (SELECT COUNT(*) FROM replenishment_request_items WHERE request_id = r.id AND status IN ('received', 'received_with_discrepancy')) > 0
           THEN 'partially_delivered'
           ELSE r.status
@@ -141,7 +146,7 @@ export const replenishmentRepository = {
     const receivedCount = items.rows.filter((i: Record<string, unknown>) =>
       i.status === 'received' || i.status === 'received_with_discrepancy'
     ).length;
-    const displayStatus = request.status === 'acknowledged' && receivedCount > 0
+    const displayStatus = (request.status === 'acknowledged' || request.status === 'partially_received') && receivedCount > 0
       ? 'partially_delivered'
       : request.status;
 
@@ -264,7 +269,7 @@ export const replenishmentRepository = {
         [requestId]
       );
 
-      // 3. Stock availability check
+      // 3. Stock availability check (magasin + frigo)
       const productIds = itemsResult.rows.map((r: Record<string, unknown>) => r.product_id);
       const stockResult = await client.query(
         `SELECT product_id, COALESCE(stock_quantity, 0) as stock_quantity
@@ -277,24 +282,89 @@ export const replenishmentRepository = {
         stockMap[row.product_id] = Math.floor(parseFloat(row.stock_quantity));
       }
 
-      // 4. Update each item with stock split info
-      const productionNeeded: { productId: string; qty: number; itemId: string }[] = [];
+      // 3b. Stock frigo availability (FEFO)
+      const frigoResult = await client.query(
+        `SELECT product_id, COALESCE(SUM(quantity), 0) as frigo_quantity
+         FROM stock_semifini_frigo
+         WHERE product_id = ANY($1) AND store_id = $2
+           AND is_active = true AND quantity > 0
+           AND (expires_at IS NULL OR expires_at > NOW())
+         GROUP BY product_id`,
+        [productIds, req.store_id]
+      );
+      const frigoMap: Record<string, number> = {};
+      for (const row of frigoResult.rows) {
+        frigoMap[row.product_id] = Math.floor(parseFloat(row.frigo_quantity));
+      }
+
+      // 3c. Production profiles (contenant info for calcul inverse)
+      const profileResult = await client.query(
+        `SELECT pp.produit_id, pp.contenant_id,
+                COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) as quantite_theorique,
+                COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) as pertes_fixes,
+                (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) as quantite_nette_cible
+         FROM produit_profil_production pp
+         JOIN production_contenants pc ON pc.id = pp.contenant_id
+         WHERE pp.produit_id = ANY($1)`,
+        [productIds]
+      );
+      const profileMap: Record<string, { contenantId: string; quantiteNetteCible: number; quantiteTheorique: number }> = {};
+      for (const row of profileResult.rows) {
+        profileMap[row.produit_id] = {
+          contenantId: row.contenant_id,
+          quantiteNetteCible: parseFloat(row.quantite_nette_cible),
+          quantiteTheorique: parseFloat(row.quantite_theorique),
+        };
+      }
+
+      // 4. Update each item with stock split info (magasin + frigo + calcul inverse)
+      const productionNeeded: { productId: string; qty: number; itemId: string;
+        contenantId?: string; nbContenants?: number; quantiteNetteCible?: number; quantiteBrute?: number; qtyFromFrigo: number; surplusFrigo: number }[] = [];
       for (const item of itemsResult.rows) {
         const available = Math.max(stockMap[item.product_id] || 0, 0);
         const requested = parseInt(item.requested_quantity);
         const fromStock = Math.min(available, requested);
-        const toProduce = requested - fromStock;
-        const sourceType = toProduce === 0 ? 'stock' : fromStock === 0 ? 'production' : 'mixed';
+        let remaining = requested - fromStock;
+
+        // Check frigo stock
+        const frigoAvailable = Math.max(frigoMap[item.product_id] || 0, 0);
+        const fromFrigo = Math.min(frigoAvailable, remaining);
+        remaining -= fromFrigo;
+
+        const toProduce = remaining;
+        const sourceType = toProduce === 0
+          ? (fromFrigo > 0 ? 'mixed' : 'stock')
+          : fromStock === 0 && fromFrigo === 0 ? 'production' : 'mixed';
 
         await client.query(
           `UPDATE replenishment_request_items
            SET source_type = $1, qty_from_stock = $2, qty_to_produce = $3
            WHERE id = $4`,
-          [sourceType, fromStock, toProduce, item.id]
+          [sourceType, fromStock + fromFrigo, toProduce, item.id]
         );
 
         if (toProduce > 0) {
-          productionNeeded.push({ productId: item.product_id, qty: toProduce, itemId: item.id });
+          const profile = profileMap[item.product_id];
+          let effectiveQty = toProduce;
+          let nbContenants: number | undefined;
+          let quantiteNetteCible: number | undefined;
+          let quantiteBrute: number | undefined;
+          let surplusFrigo = 0;
+
+          if (profile && profile.quantiteNetteCible > 0) {
+            // Calcul inverse: parts → contenants
+            nbContenants = Math.ceil(toProduce / profile.quantiteNetteCible);
+            quantiteNetteCible = profile.quantiteNetteCible;
+            effectiveQty = nbContenants * profile.quantiteNetteCible;
+            quantiteBrute = nbContenants * profile.quantiteTheorique;
+            surplusFrigo = effectiveQty - toProduce;
+          }
+
+          productionNeeded.push({
+            productId: item.product_id, qty: effectiveQty, itemId: item.id,
+            contenantId: profile?.contenantId, nbContenants, quantiteNetteCible, quantiteBrute,
+            qtyFromFrigo: fromFrigo, surplusFrigo,
+          });
         }
       }
 
@@ -323,9 +393,11 @@ export const replenishmentRepository = {
           const minQty = minQtyMap[pi.productId] || 0;
           const effectiveQty = Math.max(pi.qty, minQty);
           await client.query(
-            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity)
-             VALUES ($1, $2, $3)`,
-            [productionPlanId, pi.productId, effectiveQty]
+            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, contenant_id, nb_contenants, quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [productionPlanId, pi.productId, effectiveQty,
+             pi.contenantId || null, pi.nbContenants || null, pi.quantiteNetteCible || null, pi.quantiteBrute || null,
+             pi.qtyFromFrigo || 0, pi.surplusFrigo || 0]
           );
           await client.query(
             `UPDATE replenishment_request_items SET production_plan_id = $1 WHERE id = $2`,
@@ -336,8 +408,16 @@ export const replenishmentRepository = {
 
       await client.query('COMMIT');
 
+      // After commit: detect semi-finished needs for the created production plan
+      let semiFinishedInfo = null;
+      if (productionPlanId) {
+        try {
+          semiFinishedInfo = await productionRepository.detectAndCreateSemiFinishedPlans(productionPlanId, acknowledgedBy);
+        } catch { /* non-blocking — plan created successfully, semi-finished detection is best-effort */ }
+      }
+
       const fullRequest = await this.findById(requestId);
-      return { ...fullRequest, _productionPlanId: productionPlanId };
+      return { ...fullRequest, _productionPlanId: productionPlanId, _semiFinishedInfo: semiFinishedInfo };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -361,7 +441,7 @@ export const replenishmentRepository = {
       const reqResult = await client.query(
         `UPDATE replenishment_requests
          SET status = 'preparing', preparing_at = NOW(), updated_at = NOW()
-         WHERE id = $1 AND status = 'acknowledged'
+         WHERE id = $1 AND status IN ('acknowledged', 'partially_received')
          RETURNING id`,
         [requestId]
       );
@@ -404,11 +484,17 @@ export const replenishmentRepository = {
         if (result.rows[0]) preparedCount++;
       }
 
-      // If no items were actually prepared, revert request status back to acknowledged
+      // If no items were actually prepared, revert request status
       if (preparedCount === 0) {
-        await client.query(
-          `UPDATE replenishment_requests SET status = 'acknowledged', updated_at = NOW() WHERE id = $1`,
+        // Check if some items were already received (partial reception) to pick correct revert status
+        const rcvd = await client.query(
+          `SELECT COUNT(*) as cnt FROM replenishment_request_items WHERE request_id = $1 AND status IN ('received', 'received_with_discrepancy')`,
           [requestId]
+        );
+        const revertStatus = parseInt(rcvd.rows[0].cnt) > 0 ? 'partially_received' : 'acknowledged';
+        await client.query(
+          `UPDATE replenishment_requests SET status = $1, updated_at = NOW() WHERE id = $2`,
+          [revertStatus, requestId]
         );
       }
 
@@ -471,13 +557,21 @@ export const replenishmentRepository = {
 
       let hasDiscrepancy = false;
 
+      // Need the store to know where to transfer backroom→vitrine.
+      const requestInfo = await client.query(
+        `SELECT store_id FROM replenishment_requests WHERE id = $1`,
+        [requestId]
+      );
+      const requestStoreId: string | null = requestInfo.rows[0]?.store_id ?? null;
+
       for (const item of items) {
         const itemResult = await client.query(
-          `SELECT qty_to_store FROM replenishment_request_items WHERE id = $1 AND request_id = $2`,
+          `SELECT product_id, qty_to_store FROM replenishment_request_items WHERE id = $1 AND request_id = $2`,
           [item.itemId, requestId]
         );
         if (!itemResult.rows[0]) continue;
 
+        const productId = itemResult.rows[0].product_id as string;
         const expected = parseInt(itemResult.rows[0].qty_to_store, 10) || 0;
         const received = item.qtyReceived;
         const itemHasDiscrepancy = received !== expected;
@@ -489,6 +583,18 @@ export const replenishmentRepository = {
            WHERE id = $4 AND request_id = $5`,
           [received, item.notes || null, itemHasDiscrepancy ? 'received_with_discrepancy' : 'received', item.itemId, requestId]
         );
+
+        // Move the received qty from backroom (stock_quantity) to vitrine
+        // (vitrine_quantity). This is the only path that puts product on the
+        // display for POS sale — production alone does not make stock sellable.
+        if (requestStoreId && received > 0) {
+          const moved = await transferBackroomToVitrine(client, productId, requestStoreId, received);
+          await client.query(
+            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+             VALUES ($1, 'replenishment_in', $2, (SELECT vitrine_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $3), $4, $5, $6, $3)`,
+            [productId, moved, requestStoreId, `Reception approvisionnement (vitrine)`, requestId, closedBy]
+          );
+        }
       }
 
       // Check if there are still pending items (not yet prepared/received)
@@ -500,10 +606,13 @@ export const replenishmentRepository = {
       const hasPendingItems = parseInt(pendingResult.rows[0].cnt) > 0;
 
       if (hasPendingItems) {
-        // Partial reception: go back to acknowledged so chef can prepare remaining items
+        // Partial reception: use distinct status so it doesn't get lost.
+        // Set a 24h deadline for the remaining items to be prepared/transferred.
         await client.query(
           `UPDATE replenishment_requests
-           SET status = 'acknowledged', updated_at = NOW()
+           SET status = 'partially_received',
+               partial_deadline = NOW() + INTERVAL '24 hours',
+               updated_at = NOW()
            WHERE id = $1 AND status = 'transferred'`,
           [requestId]
         );
@@ -538,7 +647,7 @@ export const replenishmentRepository = {
       // 1. Cancel the replenishment request
       await client.query(
         `UPDATE replenishment_requests SET status = 'cancelled', updated_at = NOW()
-         WHERE id = $1 AND status IN ('submitted', 'acknowledged')`,
+         WHERE id = $1 AND status IN ('submitted', 'acknowledged', 'partially_received')`,
         [requestId]
       );
 
@@ -692,7 +801,7 @@ export const replenishmentRepository = {
         p.is_recyclable,
         p.recycle_ingredient_id,
         p.max_reexpositions,
-        COALESCE(pss.stock_quantity, 0)::int as replenished_qty,
+        COALESCE(pss.vitrine_quantity, 0)::int as replenished_qty,
         COALESCE(
           (SELECT SUM(si.quantity)
            FROM sale_items si
@@ -716,7 +825,7 @@ export const replenishmentRepository = {
         ORDER BY pdt2.produced_at DESC LIMIT 1
       ) pdt ON true
       WHERE pss.store_id = $1
-        AND COALESCE(pss.stock_quantity, 0) > 0
+        AND COALESCE(pss.vitrine_quantity, 0) > 0
       ORDER BY c.name, p.name
     `, [storeId]);
     return result.rows;
@@ -768,12 +877,12 @@ export const replenishmentRepository = {
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `, [checkId, it.productId, it.productName, it.replenishedQty, it.soldQty, it.remainingQty, discrepancy, destination, it.displayStatus || 'ok', reexCount]);
 
-        // Apply destination effects on stock
+        // Apply destination effects on stock (end-of-day inventory on what was left on the vitrine)
         if (it.remainingQty > 0) {
           if (destination === 'recycle') {
-            // Reduce product store stock
+            // Reduce vitrine stock — the remaining sat on the display
             await client.query(
-              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [it.remainingQty, it.productId, data.storeId]
             );
@@ -783,6 +892,11 @@ export const replenishmentRepository = {
             );
             if (recycleResult.rows[0]?.recycle_ingredient_id) {
               const ingId = recycleResult.rows[0].recycle_ingredient_id;
+              // Lock inventory row before increment
+              await client.query(
+                `SELECT id FROM inventory WHERE ingredient_id = $1 AND store_id = $2 FOR UPDATE`,
+                [ingId, data.storeId]
+              );
               await client.query(
                 `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
                  WHERE ingredient_id = $2 AND store_id = $3`,
@@ -801,9 +915,9 @@ export const replenishmentRepository = {
               [it.productId, data.storeId]
             );
           } else if (destination === 'waste') {
-            // Reduce product store stock — perte
+            // Reduce vitrine stock — perte sur la vitrine
             await client.query(
-              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [it.remainingQty, it.productId, data.storeId]
             );

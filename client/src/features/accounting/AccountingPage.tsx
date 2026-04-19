@@ -173,35 +173,26 @@ export default function AccountingPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
-        </div>
-        <div className="relative flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-            <Calculator size={24} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Comptabilité</h1>
-            <p className="text-slate-300 text-sm mt-0.5">Gestion financière et trésorerie</p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Comptabilité</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Gestion financière et trésorerie</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2">
-        <div className="flex gap-1 overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
+        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5 overflow-x-auto">
           {allTabs.map(t => {
             const Icon = t.icon;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
                   tab === t.key
-                    ? 'bg-slate-700 text-white shadow-md'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}>
-                <Icon size={16} /> {t.label}
+                <Icon size={15} /> {t.label}
               </button>
             );
           })}
@@ -375,6 +366,24 @@ function CaisseTab() {
             <AlertTriangle size={16} />
           </div>
           <span>Écart caisse du mois : <span className="font-bold">{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</span> (Cash caissière vs Cash système)</span>
+        </div>
+      )}
+
+      {/* Reconciliation alerts — significant daily discrepancies */}
+      {(data as Record<string, unknown>)?.reconciliationAlerts && ((data as Record<string, unknown>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center gap-2 text-red-800 font-semibold text-sm">
+            <AlertTriangle size={16} />
+            {((data as Record<string, unknown>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 DH)
+          </div>
+          <div className="space-y-1">
+            {((data as Record<string, unknown>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
+              <div key={a.date} className="flex items-center justify-between text-xs text-red-700 bg-red-100/50 rounded-lg px-3 py-1.5">
+                <span>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</span>
+                <span>Caissière: {n(a.cashCaissiere)} — Système: {n(a.cashSysteme)} — <span className="font-bold">Écart: {a.ecart > 0 ? '+' : ''}{n(a.ecart)} DH</span></span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

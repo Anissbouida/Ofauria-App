@@ -19,6 +19,7 @@ import {
 const STATUS_LABELS: Record<string, string> = {
   submitted: 'Envoyée',
   acknowledged: 'Prise en charge',
+  partially_received: 'Réception partielle',
   preparing: 'En préparation',
   transferred: 'Transféré',
   partially_delivered: 'Partiellement livré',
@@ -30,6 +31,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_GRADIENT: Record<string, string> = {
   submitted: 'from-yellow-500 to-amber-500',
   acknowledged: 'from-blue-500 to-blue-600',
+  partially_received: 'from-teal-500 to-teal-600',
   preparing: 'from-indigo-500 to-indigo-600',
   transferred: 'from-purple-500 to-violet-500',
   partially_delivered: 'from-teal-500 to-teal-600',
@@ -357,7 +359,7 @@ function SubRequestDetailView({
             </div>
 
             {/* Cancel button */}
-            {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged'].includes(status) && (
+            {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
               <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}
                 className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-medium flex items-center gap-2 transition-colors">
                 <XCircle size={16} /> Annuler
@@ -557,7 +559,7 @@ function SubRequestDetailView({
       )}
 
       {/* ACKNOWLEDGED: Responsable fills preparation form */}
-      {status === 'acknowledged' && isResponsable && isMyRequest && (
+      {(status === 'acknowledged' || status === 'partially_received') && isResponsable && isMyRequest && (
         <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -659,7 +661,7 @@ function SubRequestDetailView({
         </div>
       )}
 
-      {status === 'acknowledged' && (!isResponsable || !isMyRequest) && (
+      {(status === 'acknowledged' || status === 'partially_received') && (!isResponsable || !isMyRequest) && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
             <ClipboardCheck size={22} className="text-blue-600" />

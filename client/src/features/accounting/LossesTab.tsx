@@ -206,68 +206,6 @@ export default function LossesTab() {
         </div>
       </div>
 
-      {/* Top products + Top reasons (side by side) */}
-      {stats && (stats.topProducts as Record<string, unknown>[])?.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Top products */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-                <BarChart3 size={12} className="text-white" />
-              </div>
-              <p className="text-sm font-semibold text-gray-700">Top produits les plus perdus</p>
-            </div>
-            <div className="space-y-2">
-              {(stats.topProducts as Record<string, unknown>[]).slice(0, 5).map((p, i) => {
-                const cost = parseFloat(p.total_cost as string) || 0;
-                const maxCost = parseFloat((stats.topProducts as Record<string, unknown>[])[0]?.total_cost as string) || 1;
-                return (
-                  <div key={p.id as string} className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-700 truncate">{p.name as string}</p>
-                      <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-red-400 to-rose-500 rounded-full" style={{ width: `${(cost / maxCost) * 100}%` }} />
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-red-600 whitespace-nowrap">{n(cost)} DH</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Top reasons */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <AlertTriangle size={12} className="text-white" />
-              </div>
-              <p className="text-sm font-semibold text-gray-700">Motifs les plus frequents</p>
-            </div>
-            <div className="space-y-2">
-              {(stats.topReasons as Record<string, unknown>[]).slice(0, 6).map((r, i) => {
-                const cfg = LOSS_TYPE_CONFIG[r.loss_type as string];
-                return (
-                  <div key={i} className="flex items-center justify-between py-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg?.bg} ${cfg?.color}`}>
-                        {cfg?.label}
-                      </span>
-                      <span className="text-sm text-gray-700">{REASON_LABELS[r.reason as string] || String(r.reason)}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400">{r.count as number}x</span>
-                      <span className="text-sm font-bold text-gray-700">{n(parseFloat(r.total_cost as string) || 0)} DH</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Losses table */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-16">
