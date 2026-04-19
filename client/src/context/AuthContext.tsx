@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { authApi } from '../api/auth.api';
 import { queryClient } from '../App';
+import { useSettings } from './SettingsContext';
 import type { User, LoginRequest } from '@ofauria/shared';
 
 // Inactivity timeout configuration (in minutes)
@@ -20,6 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { refreshSettings } = useSettings();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeoutWarning, setTimeoutWarning] = useState(false);
@@ -114,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
+    refreshSettings();
   };
 
   const loginWithPin = async (pinCode: string) => {
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
+    refreshSettings();
   };
 
   const logout = () => {

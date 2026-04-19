@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { comparePin } from '../utils/hash.js';
 
 export interface UserRow {
   id: string;
@@ -42,8 +43,15 @@ export const userRepository = {
   },
 
   async findByPinCode(pinCode: string): Promise<UserRow | null> {
-    const result = await db.query('SELECT * FROM users WHERE pin_code = $1', [pinCode]);
-    return result.rows[0] || null;
+    // PINs are hashed — load all active users with a PIN and compare via bcrypt
+    const result = await db.query(
+      'SELECT * FROM users WHERE pin_code IS NOT NULL AND is_active = true'
+    );
+    for (const user of result.rows) {
+      const match = await comparePin(pinCode, user.pin_code);
+      if (match) return user;
+    }
+    return null;
   },
 
   async findAllActive(): Promise<Pick<UserRow, 'id' | 'first_name' | 'last_name' | 'role'>[]> {

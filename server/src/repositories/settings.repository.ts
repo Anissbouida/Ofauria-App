@@ -21,6 +21,10 @@ export const settingsRepository = {
     themeTextStrong?: string; themeTextBody?: string; themeTextMuted?: string;
     themeAccent?: string; themeAccentHover?: string; themeAccentLight?: string;
     themeCtaColor?: string; themeCtaText?: string;
+    // Production feature flags
+    productionFrigoEnabled?: boolean; productionCalculInverseEnabled?: boolean;
+    productionStepsEnabled?: boolean; productionStepsBlocking?: boolean;
+    productionYieldEnabled?: boolean; productionCostEnabled?: boolean;
   }) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -55,6 +59,13 @@ export const settingsRepository = {
       themeAccentLight: 'theme_accent_light',
       themeCtaColor: 'theme_cta_color',
       themeCtaText: 'theme_cta_text',
+      // Production feature flags
+      productionFrigoEnabled: 'production_frigo_enabled',
+      productionCalculInverseEnabled: 'production_calcul_inverse_enabled',
+      productionStepsEnabled: 'production_steps_enabled',
+      productionStepsBlocking: 'production_steps_blocking',
+      productionYieldEnabled: 'production_yield_enabled',
+      productionCostEnabled: 'production_cost_enabled',
     };
 
     const fields: string[] = [];

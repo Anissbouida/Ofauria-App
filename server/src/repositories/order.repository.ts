@@ -150,13 +150,16 @@ export const orderRepository = {
     return result.rows[0];
   },
 
-  async generateOrderNumber() {
+  async generateOrderNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
+    const runner = client ?? db;
+    // Advisory lock prevents concurrent orders from generating the same number
+    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('order_number'))`);
     const tz = getUserTimezone();
     const today = getLocalDateString();
-    const result = await db.query(
+    const result = await runner.query(
       `SELECT COUNT(*) FROM orders WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
     );
-    const seq = parseInt(result.rows[0].count, 10) + 1;
+    const seq = parseInt((result.rows[0] as Record<string, string>).count, 10) + 1;
     return `CMD-${today}-${String(seq).padStart(4, '0')}`;
   },
 

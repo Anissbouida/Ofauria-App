@@ -1,20 +1,24 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
+import { contenantsApi } from '../../api/contenants.api';
 import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
+import ProductionProfileTab from './ProductionProfileTab';
+import SemiFinisTab from './SemiFinisTab';
+import type { ProfileFormData } from './ProductionProfileTab';
 
 type ViewMode = 'grid' | 'table';
 
 export default function ProductsPage() {
-  const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline'>('pipeline');
+  const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline' | 'semi-finis'>('pipeline');
 
   return (
     <div className="space-y-5">
@@ -42,10 +46,44 @@ export default function ProductsPage() {
           <ShoppingBag size={16} />
           Catalogue
         </button>
+        <button
+          onClick={() => setActiveTab('semi-finis')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'semi-finis'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Layers size={16} />
+          Semi-finis
+        </button>
       </div>
 
-      {activeTab === 'catalogue' ? <CatalogueTab /> : <ProductPipelineTab />}
+      {activeTab === 'catalogue' ? <CatalogueTab />
+        : activeTab === 'semi-finis' ? <SemiFinisTab />
+        : <ProductPipelineTab />}
     </div>
+  );
+}
+
+function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
+  label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
+  onSort: (key: string) => void; align?: 'left' | 'right' | 'center';
+}) {
+  const active = currentKey === sk;
+  return (
+    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition-colors`}
+      onClick={() => onSort(sk)}>
+      <span className="inline-flex items-center gap-1">
+        {align === 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+        {label}
+        {align !== 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+      </span>
+    </th>
   );
 }
 
@@ -57,6 +95,13 @@ function CatalogueTab() {
   const [editingProduct, setEditingProduct] = useState<Record<string, unknown> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'low' | 'out'>('all');
+  const [sortKey, setSortKey] = useState<string>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'price' || key === 'stock_quantity' ? 'desc' : 'asc'); }
+  };
 
   const { data: productsData, isLoading } = useQuery({
     queryKey: ['products', { search, categoryId: categoryFilter }],
@@ -83,13 +128,17 @@ function CatalogueTab() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async ({ data, imageFile }: { data: Record<string, unknown>; imageFile?: File | null }) => {
+    mutationFn: async ({ data, imageFile, pendingProfile }: { data: Record<string, unknown>; imageFile?: File | null; pendingProfile?: ProfileFormData | null }) => {
       const result = editingProduct
         ? await productsApi.update(editingProduct.id as string, data)
         : await productsApi.create(data);
       const productId = editingProduct ? (editingProduct.id as string) : (result as Record<string, unknown>).id as string;
       if (imageFile && productId) {
         await productsApi.uploadImage(productId, imageFile);
+      }
+      // Save pending production profile after product creation/update
+      if (pendingProfile && productId) {
+        await contenantsApi.upsertProfile(productId, pendingProfile as unknown as Record<string, unknown>);
       }
       return result;
     },
@@ -122,6 +171,27 @@ function CatalogueTab() {
     if (stockFilter === 'available') return p.is_available as boolean;
     return true;
   });
+
+  // Sort products
+  const sortedProducts = useMemo(() => {
+    const arr = [...filteredProducts];
+    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      let va: string | number, vb: string | number;
+      switch (sortKey) {
+        case 'name': va = ((a.name as string) || '').toLowerCase(); vb = ((b.name as string) || '').toLowerCase(); break;
+        case 'category_name': va = ((a.category_name as string) || '').toLowerCase(); vb = ((b.category_name as string) || '').toLowerCase(); break;
+        case 'responsible': va = `${a.responsible_first_name || ''} ${a.responsible_last_name || ''}`.trim().toLowerCase(); vb = `${b.responsible_first_name || ''} ${b.responsible_last_name || ''}`.trim().toLowerCase(); break;
+        case 'price': va = parseFloat(a.price as string) || 0; vb = parseFloat(b.price as string) || 0; break;
+        case 'stock_quantity': va = parseFloat(a.stock_quantity as string) || 0; vb = parseFloat(b.stock_quantity as string) || 0; break;
+        case 'is_available': va = a.is_available ? 1 : 0; vb = b.is_available ? 1 : 0; break;
+        default: va = ((a.name as string) || '').toLowerCase(); vb = ((b.name as string) || '').toLowerCase(); break;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filteredProducts, sortKey, sortDir]);
 
   return (
     <div className="space-y-5">
@@ -344,18 +414,18 @@ function CatalogueTab() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Produit</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Catégorie</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Responsable</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Prix</th>
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Stock</th>
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
+                <SortHeader label="Produit" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Responsable" sortKey="responsible" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Prix" sortKey="price" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Stock" sortKey="stock_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                <SortHeader label="Statut" sortKey="is_available" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
                 <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cycle de vie</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredProducts.map((p: Record<string, unknown>) => {
+              {sortedProducts.map((p: Record<string, unknown>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
@@ -485,7 +555,7 @@ function CatalogueTab() {
           product={editingProduct}
           categories={categories}
           onClose={() => { setShowForm(false); setEditingProduct(null); }}
-          onSave={(data, imageFile) => saveMutation.mutate({ data, imageFile })}
+          onSave={(data, imageFile, pendingProfile) => saveMutation.mutate({ data, imageFile, pendingProfile })}
           isLoading={saveMutation.isPending}
         />
       )}
@@ -497,16 +567,17 @@ function CatalogueTab() {
    Product Form Modal — Redesigned with tabs
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type FormTab = 'general' | 'production' | 'lifecycle';
+type FormTab = 'general' | 'production' | 'lifecycle' | 'profil_production';
 
 function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   product: Record<string, unknown> | null;
   categories: { id: number; name: string }[];
   onClose: () => void;
-  onSave: (data: Record<string, unknown>, imageFile?: File | null) => void;
+  onSave: (data: Record<string, unknown>, imageFile?: File | null, pendingProfile?: ProfileFormData | null) => void;
   isLoading: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<FormTab>('general');
+  const [pendingProfile, setPendingProfile] = useState<ProfileFormData | null>(null);
   const [form, setForm] = useState({
     name: (product?.name as string) || '',
     categoryId: (product?.category_id as number) || categories[0]?.id || 1,
@@ -714,7 +785,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         saleType: rest.saleType || 'jour',
         ...(recipeId ? { recipeId } : {}),
       },
-      imageFile
+      imageFile,
+      pendingProfile || undefined
     );
   };
 
@@ -722,6 +794,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
     { key: 'production', label: 'Production', icon: <Factory size={16} /> },
     { key: 'lifecycle', label: 'Cycle de vie', icon: <Clock size={16} /> },
+    { key: 'profil_production', label: 'Profil contenant', icon: <Layers size={16} /> },
   ];
 
   return (
@@ -1084,6 +1157,13 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             )}
 
             {/* ═══ Tab: Cycle de vie ═══ */}
+            {/* ═══ Tab: Profil contenant ═══ */}
+            {activeTab === 'profil_production' && (
+              product
+                ? <ProductionProfileTab productId={product.id as string} onChange={setPendingProfile} />
+                : <ProductionProfileTab onChange={setPendingProfile} />
+            )}
+
             {activeTab === 'lifecycle' && (
               <>
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">

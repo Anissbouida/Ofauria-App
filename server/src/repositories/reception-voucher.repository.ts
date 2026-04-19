@@ -55,9 +55,11 @@ export const receptionVoucherRepository = {
     return { ...rvResult.rows[0], items: itemsResult.rows };
   },
 
-  async generateVoucherNumber(): Promise<string> {
+  async generateVoucherNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
+    const runner = client ?? db;
+    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('voucher_number'))`);
     const year = getLocalYear();
-    const result = await db.query(
+    const result = await runner.query(
       `SELECT COUNT(*) FROM reception_vouchers WHERE EXTRACT(YEAR FROM reception_date) = $1`,
       [year]
     );
@@ -85,8 +87,8 @@ export const receptionVoucherRepository = {
       const po = poResult.rows[0];
       if (!po) throw new Error('Bon de commande non trouve');
 
-      // Generate voucher number
-      const voucherNumber = await this.generateVoucherNumber();
+      // Generate voucher number (with advisory lock via client)
+      const voucherNumber = await this.generateVoucherNumber(client);
 
       // Create reception voucher
       const rvResult = await client.query(
@@ -109,7 +111,11 @@ export const receptionVoucherRepository = {
         );
         const rviId = rviResult.rows[0].id;
 
-        // Update purchase_order_items.quantity_delivered
+        // Lock PO item row before updating delivered quantity
+        await client.query(
+          `SELECT id FROM purchase_order_items WHERE id = $1 FOR UPDATE`,
+          [item.poItemId]
+        );
         const itemResult = await client.query(
           `UPDATE purchase_order_items SET quantity_delivered = quantity_delivered + $1 WHERE id = $2 RETURNING *`,
           [item.quantityReceived, item.poItemId]
@@ -136,8 +142,16 @@ export const receptionVoucherRepository = {
           );
         }
 
-        // Update inventory
+        // Lock inventory row then update
         const storeFilter = data.storeId ? ' AND store_id = $3' : '';
+        const lockFilter = data.storeId ? ' AND store_id = $2' : '';
+        const lockParams: unknown[] = [item.ingredientId];
+        if (data.storeId) lockParams.push(data.storeId);
+        await client.query(
+          `SELECT id FROM inventory WHERE ingredient_id = $1${lockFilter} FOR UPDATE`,
+          lockParams
+        );
+
         const invParams: unknown[] = [item.quantityReceived, item.ingredientId];
         if (data.storeId) invParams.push(data.storeId);
 

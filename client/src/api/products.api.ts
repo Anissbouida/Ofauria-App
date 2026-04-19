@@ -2,6 +2,7 @@ import api from './client';
 
 export const productsApi = {
   list: (params?: Record<string, string>) => api.get('/products', { params }).then(r => r.data),
+  topSelling: (params?: Record<string, string>) => api.get('/products/top-selling', { params }).then(r => r.data.data),
   getById: (id: string) => api.get(`/products/${id}`).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/products', data).then(r => r.data.data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/products/${id}`, data).then(r => r.data.data),

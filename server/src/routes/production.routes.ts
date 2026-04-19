@@ -10,7 +10,7 @@ const router = Router();
 router.get('/', authenticate, asyncHandler(productionController.list));
 // Static routes BEFORE /:id to avoid capture
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
-router.post('/transfers/:transferId/receive', authenticate, asyncHandler(productionController.confirmProductionTransfer));
+router.post('/transfers/:transferId/receive', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, asyncHandler(productionController.analyzeSubRecipes));
 router.get('/:id', authenticate, asyncHandler(productionController.getById));
@@ -24,6 +24,10 @@ router.post('/:id/transfer-items', authenticate, authorize(...ROLE_GROUPS.PRODUC
 router.post('/:id/restore-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.restoreItems));
 router.post('/:id/cancel-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.cancelItems));
 router.post('/:id/complete', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.complete));
+router.post('/:id/detect-semi-finished', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.detectSemiFinished));
+router.get('/:id/dependencies', authenticate, asyncHandler(productionController.getPlanDependencies));
+router.get('/:id/activities', authenticate, asyncHandler(productionController.getActivities));
+router.post('/:id/activities', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.addActivity));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.remove));
 
 export default router;

@@ -30,14 +30,14 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true); // En dev, accepter tout. En prod, restreindre.
+      callback(new Error(`Origin ${origin} non autorisée par CORS`));
     }
   },
   credentials: true,
 }));
 
 // Body parsing
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // Capture user timezone from request header and store in async context
 app.use((req, res, next) => {

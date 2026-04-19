@@ -20,6 +20,9 @@ export const ingredientLotController = {
   async getById(req: AuthRequest, res: Response) {
     const lot = await ingredientLotRepository.findById(req.params.id);
     if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
+    if (req.user!.storeId && lot.store_id && lot.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: lot });
   },
 

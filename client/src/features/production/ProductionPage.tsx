@@ -10,8 +10,11 @@ import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs 
 import {
   Plus, Trash2, Factory, Calendar, ShoppingBag, Package, Search,
   Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
-  FileText, User,
+  FileText, User, Snowflake, BarChart3,
+  ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
 } from 'lucide-react';
+import StockFrigoPage from './StockFrigoPage';
+import ProductionDashboardPage from './ProductionDashboardPage';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -42,7 +45,59 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
 }
 
+function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
+  label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
+  onSort: (key: string) => void; align?: 'left' | 'right' | 'center';
+}) {
+  const active = currentKey === sk;
+  return (
+    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors`}
+      onClick={() => onSort(sk)}>
+      <span className="inline-flex items-center gap-1">
+        {align === 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+        {label}
+        {align !== 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+      </span>
+    </th>
+  );
+}
+
 export default function ProductionPage() {
+  const [activeView, setActiveView] = useState<'plans' | 'frigo' | 'dashboard'>('plans');
+
+  return (
+    <div className="space-y-5">
+      {/* Top-level tab switcher */}
+      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {([
+          { key: 'plans', label: 'Plans', icon: Factory },
+          { key: 'frigo', label: 'Stock Frigo', icon: Snowflake },
+          { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+        ] as const).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveView(tab.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeView === tab.key
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <tab.icon size={16} /> {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeView === 'plans' ? <ProductionPlansView /> : activeView === 'frigo' ? <StockFrigoPage /> : <ProductionDashboardPage />}
+    </div>
+  );
+}
+
+function ProductionPlansView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -50,6 +105,15 @@ export default function ProductionPage() {
   const [roleFilter, setRoleFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [resumePrefill, setResumePrefill] = useState<{ items: Record<string, number>; role?: string } | null>(null);
+  const [showResumePicker, setShowResumePicker] = useState(false);
+  const [sortKey, setSortKey] = useState<string>('plan_date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'plan_date' ? 'desc' : 'asc'); }
+  };
 
   const isChef = CHEF_ROLES.includes(user?.role || '');
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
@@ -61,6 +125,14 @@ export default function ProductionPage() {
       status: statusFilter,
       ...(effectiveRole ? { targetRole: effectiveRole } : {}),
     }),
+  });
+
+  // Yesterday's plans for "resume" feature
+  const yesterday = format(new Date(Date.now() - 86400000), 'yyyy-MM-dd');
+  const { data: yesterdayData } = useQuery({
+    queryKey: ['production-yesterday', yesterday],
+    queryFn: () => productionApi.list({ dateFrom: yesterday, dateTo: yesterday }),
+    enabled: showResumePicker,
   });
 
   const deleteMutation = useMutation({
@@ -82,6 +154,26 @@ export default function ProductionPage() {
       format(new Date(p.plan_date as string), 'dd MMM yyyy', { locale: fr }).toLowerCase().includes(q)
     );
   }, [plans, searchQuery]);
+
+  const sortedPlans = useMemo(() => {
+    const arr = [...filteredPlans];
+    const STATUS_ORDER: Record<string, number> = { draft: 0, confirmed: 1, in_progress: 2, completed: 3 };
+    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'plan_date': cmp = new Date(a.plan_date as string).getTime() - new Date(b.plan_date as string).getTime(); break;
+        case 'status': cmp = (STATUS_ORDER[a.status as string] ?? 0) - (STATUS_ORDER[b.status as string] ?? 0); break;
+        case 'type': cmp = ((a.type as string) || '').localeCompare((b.type as string) || ''); break;
+        case 'target_role': cmp = ((a.target_role as string) || '').localeCompare((b.target_role as string) || ''); break;
+        case 'item_count': cmp = ((a.item_count as number) || 0) - ((b.item_count as number) || 0); break;
+        case 'created_by_name': cmp = ((a.created_by_name as string) || '').localeCompare((b.created_by_name as string) || ''); break;
+        case 'order_number': cmp = ((a.order_number as string) || '').localeCompare((b.order_number as string) || ''); break;
+        default: cmp = 0;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredPlans, sortKey, sortDir]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -108,10 +200,16 @@ export default function ProductionPage() {
           <h1 className="text-2xl font-bold text-gray-800">Production</h1>
           <p className="text-sm text-gray-500 mt-0.5">Planification et suivi de la production</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
-          <Plus size={18} /> Nouveau plan
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowResumePicker(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+            <RotateCcw size={16} /> Reprendre
+          </button>
+          <button onClick={() => { setResumePrefill(null); setShowForm(true); }}
+            className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
+            <Plus size={18} /> Nouveau plan
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -212,18 +310,18 @@ export default function ProductionPage() {
               <thead>
                 <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50/60">
                   <th className="text-left px-5 py-3">N° Plan</th>
-                  <th className="text-left px-4 py-3">Date</th>
-                  <th className="text-center px-4 py-3">Statut</th>
-                  <th className="text-center px-4 py-3">Type</th>
-                  {isAdmin && <th className="text-left px-4 py-3">Chef</th>}
-                  <th className="text-center px-4 py-3">Produits</th>
-                  <th className="text-left px-4 py-3">Créé par</th>
-                  <th className="text-left px-4 py-3">Commande liée</th>
+                  <SortHeader label="Date" sortKey="plan_date" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                  <SortHeader label="Statut" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                  <SortHeader label="Type" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                  {isAdmin && <SortHeader label="Chef" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
+                  <SortHeader label="Produits" sortKey="item_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                  <SortHeader label="Créé par" sortKey="created_by_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                  <SortHeader label="Commande liée" sortKey="order_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                   <th className="text-center px-4 py-3 w-20"></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPlans.map((p: Record<string, unknown>, idx: number) => {
+                {sortedPlans.map((p: Record<string, unknown>, idx: number) => {
                   const status = p.status as string;
                   const sCfg = statusConfig[status] || statusConfig.draft;
                   const rCfg = roleConfig[p.target_role as string] || roleConfig.baker;
@@ -237,7 +335,14 @@ export default function ProductionPage() {
                       onClick={() => navigate(`/production/${p.id}`)}
                       className={`border-b border-gray-50 transition-colors hover:bg-amber-50/40 cursor-pointer ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                       <td className="px-5 py-3.5">
-                        <span className="font-mono font-semibold text-gray-700">{planNumber}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-semibold text-gray-700">{planNumber}</span>
+                          {p.is_semi_finished_plan && (
+                            <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                              Semi-fini
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <div className="flex items-center gap-2">
@@ -246,10 +351,25 @@ export default function ProductionPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
-                          <StatusIcon size={12} />
-                          {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
+                            <StatusIcon size={12} />
+                            {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
+                          </span>
+                          {Number(p.dep_total) > 0 && (() => {
+                            const depTotal = Number(p.dep_total);
+                            const depFulfilled = Number(p.dep_fulfilled);
+                            const allDone = depFulfilled === depTotal;
+                            return (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                allDone ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                              }`}>
+                                <Layers size={9} />
+                                SF {depFulfilled}/{depTotal}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-center">
                         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
@@ -316,16 +436,102 @@ export default function ProductionPage() {
 
       {showForm && (
         <PlanFormModal
-          onClose={() => setShowForm(false)}
-          onCreated={(id) => { setShowForm(false); navigate(`/production/${id}`); }}
+          onClose={() => { setShowForm(false); setResumePrefill(null); }}
+          onCreated={(id) => { setShowForm(false); setResumePrefill(null); navigate(`/production/${id}`); }}
+          prefillItems={resumePrefill?.items}
+          prefillRole={resumePrefill?.role}
         />
+      )}
+
+      {/* Resume picker modal */}
+      {showResumePicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold">Reprendre un plan</h3>
+                  <p className="text-sm text-white/70">Plans d'hier — {format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowResumePicker(false)}
+                className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center text-xl leading-none">&times;</button>
+            </div>
+            <div className="p-4 max-h-80 overflow-y-auto">
+              {(() => {
+                const yesterdayPlans = (yesterdayData?.data || []) as Record<string, unknown>[];
+                if (yesterdayPlans.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-400">
+                      <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                      <p className="font-medium">Aucun plan hier</p>
+                      <p className="text-xs mt-1">Aucun plan de production trouvé pour hier</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="space-y-2">
+                    {yesterdayPlans.map((plan) => {
+                      const role = plan.target_role as string;
+                      const rc = roleConfig[role] || { color: 'text-gray-700', bg: 'bg-gray-50', gradient: 'from-gray-400 to-gray-500' };
+                      const sc = statusConfig[plan.status as string] || statusConfig.draft;
+                      const StatusIcon = sc.icon;
+                      return (
+                        <button key={plan.id as string}
+                          onClick={async () => {
+                            // Fetch plan details to get items
+                            const detail = await productionApi.getById(plan.id as string);
+                            const items: Record<string, number> = {};
+                            for (const item of (detail.items || []) as Record<string, unknown>[]) {
+                              if (item.product_id) {
+                                items[item.product_id as string] = item.planned_quantity as number;
+                              }
+                            }
+                            setResumePrefill({ items, role: role || undefined });
+                            setShowResumePicker(false);
+                            setShowForm(true);
+                          }}
+                          className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-violet-200 hover:bg-violet-50/30 transition-all group">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${rc.gradient} flex items-center justify-center flex-shrink-0`}>
+                                <Factory size={16} className="text-white" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-800 text-sm">{ROLE_LABELS[role] || role}</p>
+                                <p className="text-xs text-gray-400">{plan.item_count as number} produit{(plan.item_count as number) > 1 ? 's' : ''}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${sc.bg} ${sc.color}`}>
+                                <StatusIcon size={10} />
+                                {PRODUCTION_STATUS_LABELS[plan.status as string] || plan.status as string}
+                              </span>
+                              <RotateCcw size={14} className="text-gray-300 group-hover:text-violet-500 transition-colors" />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
 // ═══ Plan Form Modal ═══
-function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
+  onClose: () => void; onCreated: (id: string) => void;
+  prefillItems?: Record<string, number>; prefillRole?: string;
+}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { getModuleConfig } = usePermissions();
@@ -334,10 +540,10 @@ function PlanFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [notes, setNotes] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Record<string, number>>({});
+  const [selected, setSelected] = useState<Record<string, number>>(prefillItems || {});
   const [orderQtys, setOrderQtys] = useState<Record<string, number>>({});
   const [selectedRole, setSelectedRole] = useState<string>(
-    CHEF_ROLES.includes(user?.role || '') ? user!.role : ''
+    prefillRole || (CHEF_ROLES.includes(user?.role || '') ? user!.role : '')
   );
 
   const isAdminUser = ['admin', 'manager'].includes(user?.role || '');

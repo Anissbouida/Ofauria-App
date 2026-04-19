@@ -5,7 +5,7 @@ import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import {
   ShoppingCart, Package, Search, ChevronDown, ChevronRight, Truck,
   X, Plus, Trash2, FileText, Clock, AlertTriangle, Check,
-  Calendar, User, Edit3, Filter, ArrowLeft, ShieldCheck,
+  Calendar, User, Edit3, Filter, ArrowLeft, ShieldCheck, Coins,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { format } from 'date-fns';
@@ -122,33 +122,36 @@ export default function PurchaseRequestsPage() {
 
   return (
     <div className="space-y-4">
-      {/* ══════ HERO ══════ */}
-      <div className="bg-gradient-to-br from-teal-600 to-emerald-700 rounded-2xl p-6 text-white relative overflow-hidden shadow-lg">
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
-        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full" />
-        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <ShoppingCart size={24} /> Liste d'attente d'achat
-            </h1>
-            <p className="text-sm text-white/70 mt-1">
-              Centralisez les besoins et generez les bons de commande par fournisseur
-            </p>
-          </div>
+      {/* ══════ HEADER ══════ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Liste d'attente d'achat</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Centralisez les besoins et generez les bons de commande par fournisseur</p>
         </div>
-        <div className="relative grid grid-cols-3 gap-3 mt-5">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold">{totalPending}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><Clock size={12} /> En attente</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-yellow-500 to-amber-500 flex items-center justify-center text-white"><Clock size={18} /></div>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold">{totalSuppliers}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1"><Truck size={12} /> Fournisseurs</p>
+          <p className="text-2xl font-bold text-gray-800">{totalPending}</p>
+          <p className="text-xs text-gray-400 mt-0.5">En attente</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white"><Truck size={18} /></div>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold">{totalEstimated.toFixed(0)}</p>
-            <p className="text-xs text-white/70 flex items-center justify-center gap-1">DH estime</p>
+          <p className="text-2xl font-bold text-gray-800">{totalSuppliers}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Fournisseurs</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center text-white"><Coins size={18} /></div>
           </div>
+          <p className="text-2xl font-bold text-gray-800">{totalEstimated.toFixed(0)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">DH estime</p>
         </div>
       </div>
 
@@ -161,11 +164,11 @@ export default function PurchaseRequestsPage() {
         </div>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           <button onClick={() => setViewMode('grouped')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'grouped' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'}`}>
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'grouped' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
             Par fournisseur
           </button>
           <button onClick={() => setViewMode('all')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'all' ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500'}`}>
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${viewMode === 'all' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
             Toutes les demandes
           </button>
         </div>

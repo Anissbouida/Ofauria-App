@@ -9,7 +9,7 @@ import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock, ClipboardList,
-  Upload,
+  Upload, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
@@ -81,6 +81,27 @@ function parseCSVFiles(files: FileList): Promise<{ date: string; items: { sku: s
   }));
 }
 
+function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
+  label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
+  onSort: (key: string) => void; align?: 'left' | 'right';
+}) {
+  const active = currentKey === sk;
+  return (
+    <th className={`${align === 'right' ? 'text-right' : 'text-left'} px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors`}
+      onClick={() => onSort(sk)}>
+      <span className="inline-flex items-center gap-1">
+        {align === 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-emerald-500" /> : <ArrowDown size={12} className="text-emerald-500" />)
+          : <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-100" />)}
+        {label}
+        {align === 'left' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-emerald-500" /> : <ArrowDown size={12} className="text-emerald-500" />)
+          : <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-100" />)}
+      </span>
+    </th>
+  );
+}
+
 export default function SalesPage() {
   const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<'sales' | 'sessions' | 'returns' | 'invoices'>('sales');
@@ -88,6 +109,8 @@ export default function SalesPage() {
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortKey, setSortKey] = useState<string>('created_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [importResults, setImportResults] = useState<Record<string, unknown>[] | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,6 +195,12 @@ export default function SalesPage() {
     .filter((r: Record<string, unknown>) => r.type === 'return')
     .reduce((sum: number, r: Record<string, unknown>) => sum + parseFloat(r.refund_amount as string), 0);
 
+  // Sort toggle
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'total' || key === 'total_revenue' || key === 'total_quantity' || key === 'sale_count' ? 'desc' : 'asc'); }
+  };
+
   // Search filter for receipts
   const filteredSales = useMemo(() => {
     if (!searchQuery.trim()) return sales;
@@ -182,6 +211,45 @@ export default function SalesPage() {
       `${s.cashier_first_name || ''} ${s.cashier_last_name || ''}`.toLowerCase().includes(q)
     );
   }, [sales, searchQuery]);
+
+  // Sorted sales
+  const sortedSales = useMemo(() => {
+    const arr = [...filteredSales];
+    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      let va: string | number, vb: string | number;
+      switch (sortKey) {
+        case 'sale_number': va = (a.sale_number as string) || ''; vb = (b.sale_number as string) || ''; break;
+        case 'customer': va = `${a.customer_first_name || ''} ${a.customer_last_name || ''}`.trim().toLowerCase(); vb = `${b.customer_first_name || ''} ${b.customer_last_name || ''}`.trim().toLowerCase(); break;
+        case 'cashier': va = `${a.cashier_first_name || ''} ${a.cashier_last_name || ''}`.trim().toLowerCase(); vb = `${b.cashier_first_name || ''} ${b.cashier_last_name || ''}`.trim().toLowerCase(); break;
+        case 'payment_method': va = (a.payment_method as string) || ''; vb = (b.payment_method as string) || ''; break;
+        case 'total': va = parseFloat(a.total as string) || 0; vb = parseFloat(b.total as string) || 0; break;
+        case 'created_at': default: va = (a.created_at as string) || ''; vb = (b.created_at as string) || ''; break;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filteredSales, sortKey, sortDir]);
+
+  // Sorted summary
+  const sortedSummary = useMemo(() => {
+    const arr = [...summary];
+    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      let va: string | number, vb: string | number;
+      switch (sortKey) {
+        case 'label': va = ((a.label as string) || '').toLowerCase(); vb = ((b.label as string) || '').toLowerCase(); break;
+        case 'category_name': va = ((a.category_name as string) || '').toLowerCase(); vb = ((b.category_name as string) || '').toLowerCase(); break;
+        case 'total_quantity': va = parseFloat(a.total_quantity as string) || 0; vb = parseFloat(b.total_quantity as string) || 0; break;
+        case 'sale_count': va = parseFloat(a.sale_count as string) || 0; vb = parseFloat(b.sale_count as string) || 0; break;
+        case 'total_revenue': default: va = parseFloat(a.total_revenue as string) || 0; vb = parseFloat(b.total_revenue as string) || 0; break;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [summary, sortKey, sortDir]);
 
   const handleExport = () => {
     const date = `${dateFrom}_${dateTo}`;
@@ -396,7 +464,7 @@ export default function SalesPage() {
             <button key={tab.key} onClick={() => setMainTab(tab.key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 mainTab === tab.key
-                  ? 'bg-white text-emerald-600 shadow-sm'
+                  ? 'bg-white text-gray-800 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}>
               <tab.icon size={15} />
@@ -413,10 +481,10 @@ export default function SalesPage() {
               {viewTabs.map(t => {
                 const Icon = t.icon;
                 return (
-                  <button key={t.key} onClick={() => setView(t.key)}
+                  <button key={t.key} onClick={() => { setView(t.key); setSortKey(t.key === 'receipt' ? 'created_at' : 'total_revenue'); setSortDir('desc'); }}
                     className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
                       view === t.key
-                        ? 'bg-emerald-50 text-emerald-700'
+                        ? 'bg-gray-200 text-gray-800'
                         : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
                     }`}>
                     <Icon size={13} />
@@ -512,18 +580,18 @@ export default function SalesPage() {
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">N° Vente</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Client</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Caissier</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Paiement</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Heure</th>
+                    <tr className="border-b border-gray-100 group">
+                      <SortHeader label="N° Vente" sortKey="sale_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Client" sortKey="customer" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Caissier" sortKey="cashier" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Paiement" sortKey="payment_method" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Total" sortKey="total" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label="Heure" sortKey="created_at" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <th className="text-center px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredSales.map((s: Record<string, unknown>) => (
+                    {sortedSales.map((s: Record<string, unknown>) => (
                       <tr key={s.id as string} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
@@ -552,7 +620,7 @@ export default function SalesPage() {
                             s.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
                           }`}>
                             {s.payment_method === 'cash' ? <Banknote size={11} /> : <CreditCard size={11} />}
-                            {PAYMENT_LABELS[s.payment_method as string] || s.payment_method}
+                            {PAYMENT_LABELS[s.payment_method as string] || String(s.payment_method)}
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-right">
@@ -585,16 +653,16 @@ export default function SalesPage() {
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catégorie</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Articles vendus</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Nb ventes</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">CA</th>
+                    <tr className="border-b border-gray-100 group">
+                      <SortHeader label="Catégorie" sortKey="label" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Articles vendus" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Part</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {summary.map((row: Record<string, unknown>, idx: number) => {
+                    {sortedSummary.map((row: Record<string, unknown>, idx: number) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                       return (
@@ -623,7 +691,7 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-                {summary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
+                {sortedSummary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
               </div>
             )
           )}
@@ -634,17 +702,17 @@ export default function SalesPage() {
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Article</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Catégorie</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qté vendue</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Nb ventes</th>
-                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">CA</th>
+                    <tr className="border-b border-gray-100 group">
+                      <SortHeader label="Article" sortKey="label" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                      <SortHeader label="Qté vendue" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="text-right px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Part</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {summary.map((row: Record<string, unknown>, idx: number) => {
+                    {sortedSummary.map((row: Record<string, unknown>, idx: number) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                       return (
@@ -678,7 +746,7 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-                {summary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
+                {sortedSummary.length === 0 && <EmptyState text="Aucune donnée pour cette période" />}
               </div>
             )
           )}
@@ -698,7 +766,7 @@ export default function SalesPage() {
                         </div>
                         <div>
                           <p className="font-semibold text-gray-800">{row.label as string}</p>
-                          <p className="text-xs text-gray-400">{ROLE_LABELS[row.role as string] || row.role}</p>
+                          <p className="text-xs text-gray-400">{ROLE_LABELS[row.role as string] || String(row.role)}</p>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3 mb-3">
@@ -892,7 +960,7 @@ export default function SalesPage() {
                         <p className="font-semibold text-gray-800">{s.first_name as string} {s.last_name as string}</p>
                         <p className="text-xs text-gray-400">
                           {format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm', { locale: fr })}
-                          {s.closed_at && <> — {format(new Date(s.closed_at as string), 'HH:mm', { locale: fr })}</>}
+                          {s.closed_at as unknown as boolean && <> — {format(new Date(s.closed_at as string), 'HH:mm', { locale: fr })}</>}
                         </p>
                       </div>
                     </div>
@@ -973,7 +1041,7 @@ export default function SalesPage() {
                   )}
 
                   {/* Inventory Bilan */}
-                  {isClosed && s.inv_total_replenished !== null && parseInt(s.inv_total_replenished as string) > 0 && (
+                  {isClosed && s.inv_total_replenished !== null && parseInt(String(s.inv_total_replenished)) > 0 && (
                     <InventoryBilan session={s} />
                   )}
 

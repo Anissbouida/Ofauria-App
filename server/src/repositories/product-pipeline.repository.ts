@@ -215,19 +215,22 @@ export const productPipelineRepository = {
     // Validate current stage is complete before advancing
     this.validateStageCompletion(pipeline, currentStage);
 
-    // Stage-specific validation actions
-    const validationFields: Record<string, string[]> = {
-      cost_calculation: ['cost_validated = true', `cost_validated_at = NOW()`, `cost_validated_by = '${userId}'`],
-      production_test: ['test_validated = true', `test_validated_at = NOW()`, `test_validated_by = '${userId}'`],
-      tasting_evaluation: ['tasting_validated = true', `tasting_validated_at = NOW()`, `tasting_validated_by = '${userId}'`],
+    // Stage-specific validation actions (parameterized to prevent SQL injection)
+    const validationConfig: Record<string, { fields: string[]; paramCount: number }> = {
+      cost_calculation: { fields: ['cost_validated = true', 'cost_validated_at = NOW()', 'cost_validated_by = $3'], paramCount: 1 },
+      production_test: { fields: ['test_validated = true', 'test_validated_at = NOW()', 'test_validated_by = $3'], paramCount: 1 },
+      tasting_evaluation: { fields: ['tasting_validated = true', 'tasting_validated_at = NOW()', 'tasting_validated_by = $3'], paramCount: 1 },
     };
 
-    const extraFields = validationFields[currentStage] || [];
+    const config = validationConfig[currentStage];
+    const extraFields = config ? config.fields : [];
     const setClauses = [`current_stage = $1`, `updated_at = NOW()`, ...extraFields];
+    const values: unknown[] = [next, id];
+    if (config) values.push(userId);
 
     await db.query(
       `UPDATE product_pipeline SET ${setClauses.join(', ')} WHERE id = $2`,
-      [next, id]
+      values
     );
 
     await this.logHistory(id, currentStage, next, 'stage_advanced', {

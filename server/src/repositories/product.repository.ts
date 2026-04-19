@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 
 export const productRepository = {
-  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string }) {
+  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -20,8 +20,13 @@ export const productRepository = {
       : '';
     if (params.storeId) values.push(params.storeId);
 
+    // useVitrine: POS mode — return vitrine_quantity in the stock_quantity
+    // column so all client filters (e.g. stock > 0) operate on what is
+    // actually sellable, not on the backroom reserve.
     const stockColumns = params.storeId
-      ? `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+      ? (params.useVitrine
+          ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+          : `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.vitrine_quantity, 0) as vitrine_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`)
       : `p.stock_quantity, p.stock_min_threshold,`;
 
     values.push(params.limit, params.offset);
@@ -46,6 +51,57 @@ export const productRepository = {
     );
 
     return { rows: result.rows, total };
+  },
+
+  async findTopSelling(params: { storeId?: string; limit: number; days: number }) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+
+    // Only count sales from the last N days
+    conditions.push(`s.created_at >= NOW() - INTERVAL '1 day' * $${i++}`);
+    values.push(params.days);
+
+    if (params.storeId) {
+      conditions.push(`s.store_id = $${i++}`);
+      values.push(params.storeId);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const storeStockJoin = params.storeId
+      ? `LEFT JOIN product_store_stock pss ON pss.product_id = p.id AND pss.store_id = $${i++}`
+      : '';
+    if (params.storeId) values.push(params.storeId);
+
+    const stockColumns = params.storeId
+      ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+      : `p.stock_quantity, p.stock_min_threshold,`;
+
+    values.push(params.limit);
+    const result = await db.query(
+      `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
+              p.image_url, p.is_available, p.sale_type,
+              ${stockColumns}
+              c.name as category_name,
+              SUM(si.quantity) as total_sold
+       FROM sale_items si
+       JOIN sales s ON s.id = si.sale_id
+       JOIN products p ON p.id = si.product_id
+       ${storeStockJoin}
+       LEFT JOIN categories c ON c.id = p.category_id
+       ${where}
+       AND p.is_available = true
+       GROUP BY p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
+                p.image_url, p.is_available, p.sale_type, p.stock_quantity, p.stock_min_threshold,
+                ${params.storeId ? 'pss.vitrine_quantity, pss.stock_quantity, pss.stock_min_threshold,' : ''}
+                c.name
+       ORDER BY total_sold DESC
+       LIMIT $${i}`,
+      values
+    );
+
+    return result.rows;
   },
 
   async findById(id: string) {

@@ -9,14 +9,36 @@ function slugify(text: string): string {
 }
 
 export const productController = {
+  async topSelling(req: AuthRequest, res: Response) {
+    const { limit = '20', days = '30' } = req.query as Record<string, string>;
+    const data = await productRepository.findTopSelling({
+      storeId: req.user!.storeId,
+      limit: Math.min(parseInt(limit) || 20, 100),
+      days: Math.min(parseInt(days) || 30, 365),
+    });
+    res.json({ success: true, data });
+  },
+
   async list(req: AuthRequest, res: Response) {
-    const { categoryId, search, isAvailable, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { categoryId, search, isAvailable, page = '1', limit = '20', strictStore } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
+
+    // strictStore mode (used by POS): refuse to fall back to global stock when
+    // the user has no storeId. Guarantees the list's stock_quantity column is
+    // always the vitrine qty (product_store_stock), never products.stock_quantity.
+    if (strictStore === 'true' && !req.user!.storeId) {
+      res.status(400).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin — stock vitrine indisponible' } });
+      return;
+    }
+
     const result = await productRepository.findAll({
       categoryId: categoryId ? parseInt(categoryId) : undefined,
       search, isAvailable: isAvailable !== undefined ? isAvailable === 'true' : undefined,
       limit: l, offset: (p - 1) * l,
       storeId: req.user!.storeId,
+      // In strictStore (POS) mode, expose vitrine_quantity as stock_quantity so
+      // the cashier only sees what's actually on display and sellable.
+      useVitrine: strictStore === 'true',
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },

@@ -14,7 +14,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -64,7 +64,7 @@ export default function POSPage() {
   const { user, logout } = useAuth();
   const [posTab, setPosTab] = useState<PosTab>('sell');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('__top__');
   const [search, setSearch] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -73,6 +73,45 @@ export default function POSPage() {
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+
+  // Cart draft: restore from localStorage on mount
+  const cartInitialized = useRef(false);
+  useEffect(() => {
+    if (cartInitialized.current) return;
+    cartInitialized.current = true;
+    try {
+      const saved = localStorage.getItem('pos-cart-draft');
+      if (saved) {
+        const parsed = JSON.parse(saved) as CartItem[];
+        if (Array.isArray(parsed) && parsed.length > 0) setCart(parsed);
+      }
+    } catch { /* ignore corrupt data */ }
+  }, []);
+
+  // Cart draft: save to localStorage on change
+  useEffect(() => {
+    if (!cartInitialized.current) return;
+    if (cart.length > 0) {
+      localStorage.setItem('pos-cart-draft', JSON.stringify(cart));
+    } else {
+      localStorage.removeItem('pos-cart-draft');
+    }
+  }, [cart]);
+
+  // Recent products: track last 20 product IDs added to cart
+  const [recentProductIds, setRecentProductIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('pos-recent-products');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const addToRecent = (productId: string) => {
+    setRecentProductIds(prev => {
+      const next = [productId, ...prev.filter(id => id !== productId)].slice(0, 20);
+      localStorage.setItem('pos-recent-products', JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Correction 1: Auto-scroll cart to last added item
   const cartEndRef = useRef<HTMLDivElement>(null);
@@ -160,10 +199,23 @@ export default function POSPage() {
     enabled: !activeSession && !sessionLoading,
   });
 
+  const isTopCategory = selectedCategory === '__top__';
+  const isRecentCategory = selectedCategory === '__recent__';
   const { data: productsData } = useQuery({
     queryKey: ['pos-products', { categoryId: selectedCategory, search, isAvailable: 'true' }],
-    queryFn: () => productsApi.list({ categoryId: selectedCategory, search, isAvailable: 'true', limit: '500' }),
-    enabled: !!activeSession,
+    queryFn: () => productsApi.list({ categoryId: (isTopCategory || isRecentCategory) ? '' : selectedCategory, search, isAvailable: 'true', limit: '500', strictStore: 'true' }),
+    enabled: !!activeSession && !!user?.storeId && ((!isTopCategory && !isRecentCategory) || !!search),
+  });
+  // Fetch all products for recent tab (filter client-side by recent IDs)
+  const { data: allProductsForRecent } = useQuery({
+    queryKey: ['pos-products-recent'],
+    queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500', strictStore: 'true' }),
+    enabled: !!activeSession && !!user?.storeId && isRecentCategory && !search,
+  });
+  const { data: topSellingData } = useQuery({
+    queryKey: ['pos-top-selling'],
+    queryFn: () => productsApi.topSelling({ limit: '50', days: '30' }),
+    enabled: !!activeSession && !!user?.storeId && isTopCategory && !search,
   });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
   const { data: customersData } = useQuery({
@@ -387,7 +439,18 @@ export default function POSPage() {
     },
   });
 
-  const products = (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+  const products = (() => {
+    if (search) return (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+    if (isTopCategory) return (topSellingData || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+    if (isRecentCategory) {
+      const all = (allProductsForRecent?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+      // Sort by recent order (preserve localStorage order)
+      return recentProductIds
+        .map(id => all.find((p: Record<string, unknown>) => p.id === id))
+        .filter(Boolean) as Record<string, unknown>[];
+    }
+    return (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+  })();
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal;
 
@@ -434,6 +497,7 @@ export default function POSPage() {
         imageUrl: product.image_url as string | undefined,
       }]);
     }
+    addToRecent(product.id as string);
     cartScrollTrigger.current++;
   };
 
@@ -497,6 +561,25 @@ export default function POSPage() {
 
   if (sessionLoading) {
     return <div className={`flex items-center justify-center ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`}><p className="text-gray-400">Chargement...</p></div>;
+  }
+
+  // POS is strictly vitrine-bound: without a store, we cannot read/decrement the
+  // correct product_store_stock row. Block the page and explain clearly.
+  if (!user?.storeId) {
+    return (
+      <div className={`flex items-center justify-center ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`}>
+        <div className="text-center space-y-4 max-w-md px-6">
+          <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto">
+            <Lock size={36} className="text-amber-500" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-800">Compte non rattache a un magasin</h2>
+          <p className="text-sm text-gray-500">
+            Le POS vend depuis la vitrine d&apos;un magasin. Demandez a un administrateur
+            de vous rattacher a un magasin avant d&apos;ouvrir la caisse.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // No active session - show open register screen
@@ -636,6 +719,18 @@ export default function POSPage() {
               <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Catégories</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <button onClick={() => setSelectedCategory('__top__')}
+                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  selectedCategory === '__top__' ? 'bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-200' : 'text-gray-600 hover:bg-gray-50'
+                }`}>
+                ⭐ Top ventes
+              </button>
+              <button onClick={() => setSelectedCategory('__recent__')}
+                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                  selectedCategory === '__recent__' ? 'bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200' : 'text-gray-600 hover:bg-gray-50'
+                }`}>
+                <Clock size={14} /> Récents
+              </button>
               <button onClick={() => setSelectedCategory('')}
                 className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
                   !selectedCategory ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200' : 'text-gray-600 hover:bg-gray-50'
@@ -658,6 +753,14 @@ export default function POSPage() {
             {/* Mobile: horizontal categories */}
             <div className="md:hidden bg-white border-b border-gray-200 px-3 py-2 shrink-0">
               <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+                <button onClick={() => setSelectedCategory('__top__')}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    selectedCategory === '__top__' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}>⭐ Top</button>
+                <button onClick={() => setSelectedCategory('__recent__')}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                    selectedCategory === '__recent__' ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}><Clock size={11} /> Récents</button>
                 <button onClick={() => setSelectedCategory('')}
                   className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     !selectedCategory ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
@@ -687,6 +790,8 @@ export default function POSPage() {
                   const stock = parseFloat(p.stock_quantity as string) || 0;
                   const outOfStock = stock <= 0;
                   const isAlerted = stockAlert?.productId === p.id;
+                  const threshold = parseFloat(p.stock_min_threshold as string) || 0;
+                  const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
                   if (outOfStock) return null;
                   return (
                     <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
@@ -696,8 +801,15 @@ export default function POSPage() {
                           ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
                           : isAlerted
                             ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
-                            : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
+                            : isLowStock
+                              ? 'bg-white border-red-200 hover:shadow-lg hover:border-red-300 hover:scale-[1.02] active:scale-[0.98]'
+                              : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
                       }`}>
+                      {isLowStock && (
+                        <span className="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full z-10 flex items-center gap-0.5">
+                          <AlertTriangle size={9} /> {stock}
+                        </span>
+                      )}
                       {outOfStock && (
                         <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
                       )}
@@ -1295,9 +1407,16 @@ export default function POSPage() {
 
                     {/* Reason */}
                     <div className="mt-3">
-                      <input type="text" value={returnReason} onChange={(e) => setReturnReason(e.target.value)}
-                        placeholder="Motif (optionnel)..."
-                        className="input text-sm w-full" />
+                      <select value={returnReason} onChange={(e) => setReturnReason(e.target.value)}
+                        className="input text-sm w-full">
+                        <option value="">-- Motif du retour --</option>
+                        <option value="Probleme de qualite">Problème de qualité</option>
+                        <option value="Changement d'avis">Changement d&apos;avis</option>
+                        <option value="Erreur de commande">Erreur de commande</option>
+                        <option value="Produit perime">Produit périmé</option>
+                        <option value="Produit abime">Produit abîmé</option>
+                        <option value="Autre">Autre</option>
+                      </select>
                     </div>
 
                     {/* Footer */}

@@ -5,7 +5,10 @@ interface SettingsContextType {
   settings: CompanySettings;
   isLoading: boolean;
   updateSettings: (data: Partial<CompanySettings>) => Promise<void>;
+  refreshSettings: () => Promise<void>;
 }
+
+const CACHE_KEY = 'ofauria_theme';
 
 const defaults: CompanySettings = {
   companyName: 'OFAURIA',
@@ -42,10 +45,23 @@ const defaults: CompanySettings = {
   themeCtaText: '#FFFFFF',
 };
 
+function loadCachedSettings(): CompanySettings {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) return { ...defaults, ...JSON.parse(raw) };
+  } catch { /* ignore corrupt cache */ }
+  return defaults;
+}
+
+function cacheSettings(s: CompanySettings) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(s)); } catch { /* quota */ }
+}
+
 const SettingsContext = createContext<SettingsContextType>({
   settings: defaults,
   isLoading: true,
   updateSettings: async () => {},
+  refreshSettings: async () => {},
 });
 
 function applyTheme(s: CompanySettings) {
@@ -67,25 +83,48 @@ function applyTheme(s: CompanySettings) {
   root.setProperty('--theme-cta-text', s.themeCtaText);
 }
 
+// Apply cached theme immediately on module load (before React renders)
+const cachedSettings = loadCachedSettings();
+applyTheme(cachedSettings);
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<CompanySettings>(defaults);
+  const [settings, setSettings] = useState<CompanySettings>(cachedSettings);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     settingsApi.get()
-      .then((s) => { setSettings({ ...defaults, ...s }); applyTheme(s); })
-      .catch(() => { applyTheme(defaults); })
+      .then((s) => {
+        const merged = { ...defaults, ...s };
+        setSettings(merged);
+        applyTheme(merged);
+        cacheSettings(merged);
+      })
+      .catch(() => { applyTheme(cachedSettings); })
       .finally(() => setIsLoading(false));
   }, []);
 
   const updateSettings = useCallback(async (data: Partial<CompanySettings>) => {
     const updated = await settingsApi.update(data);
-    setSettings({ ...defaults, ...updated });
-    applyTheme(updated);
+    const merged = { ...defaults, ...updated };
+    setSettings(merged);
+    applyTheme(merged);
+    cacheSettings(merged);
+  }, []);
+
+  const refreshSettings = useCallback(async () => {
+    try {
+      const s = await settingsApi.get();
+      const merged = { ...defaults, ...s };
+      setSettings(merged);
+      applyTheme(merged);
+      cacheSettings(merged);
+    } catch {
+      // Keep current settings if refresh fails
+    }
   }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, isLoading, updateSettings }}>
+    <SettingsContext.Provider value={{ settings, isLoading, updateSettings, refreshSettings }}>
       {children}
     </SettingsContext.Provider>
   );

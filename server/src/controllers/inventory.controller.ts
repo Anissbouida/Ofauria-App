@@ -134,7 +134,7 @@ export const ingredientController = {
       res.status(201).json({ success: true, data: ingredient });
     } catch (err) {
       console.error('Error creating ingredient:', err);
-      res.status(400).json({ success: false, error: { message: (err as Error).message || 'Erreur lors de la création' } });
+      res.status(400).json({ success: false, error: { message: 'Erreur lors de la création' } });
     }
   },
   async update(req: AuthRequest, res: Response) {
@@ -143,7 +143,7 @@ export const ingredientController = {
       res.json({ success: true, data: ingredient });
     } catch (err) {
       console.error('Error updating ingredient:', err);
-      res.status(400).json({ success: false, error: { message: (err as Error).message || 'Erreur lors de la mise à jour' } });
+      res.status(400).json({ success: false, error: { message: 'Erreur lors de la mise à jour' } });
     }
   },
   async remove(req: AuthRequest, res: Response) {
@@ -152,7 +152,7 @@ export const ingredientController = {
       res.json({ success: true, data: null });
     } catch (err) {
       console.error('Error deleting ingredient:', err);
-      res.status(400).json({ success: false, error: { message: (err as Error).message || 'Erreur lors de la suppression' } });
+      res.status(400).json({ success: false, error: { message: 'Erreur lors de la suppression' } });
     }
   },
 };

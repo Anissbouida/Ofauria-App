@@ -25,16 +25,24 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 export const recipeRepository = {
   async findAll() {
     const result = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.image_url as product_image, p.price as product_price
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id ORDER BY r.is_base DESC, r.name`
+      `SELECT r.*, r.is_base, p.name as product_name, p.image_url as product_image, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
+       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
   },
 
   async findById(id: string) {
     const recipeResult = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id WHERE r.id = $1`,
+      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
+       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       WHERE r.id = $1`,
       [id]
     );
     if (!recipeResult.rows[0]) return null;
@@ -107,6 +115,7 @@ export const recipeRepository = {
 
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    contenantId?: string; etapes?: unknown[];
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
   }) {
@@ -141,9 +150,9 @@ export const recipeRepository = {
       }
 
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false]
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || [])]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -158,7 +167,7 @@ export const recipeRepository = {
       // Cycle detection for sub-recipes
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
-          const hasCycle = await this.detectCycle(sr.subRecipeId, recipeId);
+          const hasCycle = await this.detectCycle(sr.subRecipeId, recipeId, client);
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
@@ -186,6 +195,7 @@ export const recipeRepository = {
 
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    contenantId?: string; etapes?: unknown[];
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     changedBy?: string; changeNote?: string;
@@ -247,9 +257,9 @@ export const recipeRepository = {
       }
 
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, updated_at = NOW()
-         WHERE id = $7`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, contenant_id = $7, etapes = $8, updated_at = NOW()
+         WHERE id = $9`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), id]
       );
 
       // Re-insert ingredients
@@ -264,10 +274,11 @@ export const recipeRepository = {
       // Re-insert sub-recipes
       await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
 
-      // Cycle detection for sub-recipes
+      // Cycle detection for sub-recipes — pass the transaction client so the check
+      // sees the DELETE above (old sub-recipe edges must not count against the new ones).
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
-          const hasCycle = await this.detectCycle(sr.subRecipeId, id);
+          const hasCycle = await this.detectCycle(sr.subRecipeId, id, client);
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
@@ -338,10 +349,14 @@ export const recipeRepository = {
     return result.rows;
   },
 
-  async detectCycle(recipeId: string, subRecipeId: string): Promise<boolean> {
-    // Check if adding subRecipeId as a sub-recipe of recipeId would create a cycle
-    // Uses recursive CTE to walk the sub-recipe tree from subRecipeId
-    const result = await db.query(
+  async detectCycle(recipeId: string, subRecipeId: string, client?: { query: typeof db.query }): Promise<boolean> {
+    // Check if adding subRecipeId as a sub-recipe of recipeId would create a cycle.
+    // Walks the sub-recipe tree starting from subRecipeId; if recipeId appears in that
+    // descendant chain, adding the edge recipeId -> subRecipeId would close a loop.
+    // Accepts an optional transaction client so the check sees uncommitted DELETEs
+    // performed earlier in the same update transaction.
+    const runner = client ?? db;
+    const result = await runner.query(
       `WITH RECURSIVE chain AS (
          SELECT sub_recipe_id FROM recipe_sub_recipes WHERE recipe_id = $1
          UNION ALL

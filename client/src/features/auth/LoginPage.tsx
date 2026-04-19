@@ -26,7 +26,7 @@ export default function LoginPage() {
     setError('');
     try {
       await loginWithPinRef.current(pinCode);
-      notify.success('Bienvenue !');
+      // login success — no notification needed
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
       const serverMsg = axiosErr?.response?.data?.error?.message;
@@ -73,7 +73,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login({ email, password });
-      notify.success('Bienvenue !');
+      // login success — no notification needed
     } catch {
       notify.error('Email ou mot de passe incorrect');
     } finally {
@@ -86,11 +86,11 @@ export default function LoginPage() {
   // ═══════ EMAIL MODE ═══════
   if (mode === 'email') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold" style={{ color: settings.primaryColor }}>{settings.companyName}</h1>
-            <p className="text-gray-500 mt-1">{settings.subtitle}</p>
+            <h1 className="text-3xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
+            <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
           </div>
 
           <form onSubmit={handleEmailSubmit} className="space-y-4">
@@ -111,7 +111,8 @@ export default function LoginPage() {
 
           <div className="text-center mt-6">
             <button type="button" onClick={() => setSearchParams({})}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-2 mx-auto">
+              className="text-sm font-medium flex items-center gap-2 mx-auto"
+              style={{ color: 'var(--theme-accent)' }}>
               <Lock size={14} /> Connexion par code PIN
             </button>
           </div>
@@ -122,10 +123,10 @@ export default function LoginPage() {
 
   // ═══════ PIN MODE ═══════
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
       <div className="text-center mb-10">
-        <h1 className="text-5xl font-bold" style={{ color: settings.primaryColor }}>{settings.companyName}</h1>
-        <p className="text-gray-500 mt-1">{settings.subtitle}</p>
+        <h1 className="text-5xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
+        <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
       </div>
 
       <div className="flex flex-col items-center">
@@ -139,20 +140,21 @@ export default function LoginPage() {
             <div key={i}
               className={`w-5 h-5 rounded-full transition-all duration-150 ${
                 i < pin.length
-                  ? error ? 'bg-red-500 scale-125' : 'bg-primary-600 scale-125'
+                  ? error ? 'bg-red-500 scale-125' : 'scale-125'
                   : 'border-2 border-gray-300'
-              }`} />
+              }`}
+              style={i < pin.length && !error ? { backgroundColor: 'var(--theme-accent)' } : undefined} />
           ))}
         </div>
 
         {error && <div className="text-red-500 text-sm font-medium mb-4">{error}</div>}
-        {loading && <div className="text-primary-600 text-sm font-medium mb-4">Verification...</div>}
+        {loading && <div className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>Verification...</div>}
 
-        <div className="bg-white rounded-2xl shadow-lg p-5 w-full max-w-xs">
+        <div className="rounded-2xl shadow-lg p-5 w-full max-w-xs" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="grid grid-cols-3 gap-3">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
               <button key={digit} type="button" onClick={() => handleDigit(digit)} disabled={loading}
-                className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-primary-100 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
+                className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
                 {digit}
               </button>
             ))}
@@ -161,11 +163,11 @@ export default function LoginPage() {
               Effacer
             </button>
             <button type="button" onClick={() => handleDigit('0')} disabled={loading}
-              className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-primary-100 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
+              className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
               0
             </button>
             <button type="button" onClick={handleBackspace} disabled={loading}
-              className="h-16 rounded-xl bg-gray-50 hover:bg-amber-50 flex items-center justify-center text-gray-500 transition-all active:scale-95">
+              className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all active:scale-95">
               <Delete size={22} />
             </button>
           </div>

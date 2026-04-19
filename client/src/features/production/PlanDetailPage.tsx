@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
+import { bonSortieApi } from '../../api/bon-sortie.api';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
@@ -11,13 +12,18 @@ import { usePermissions } from '../../context/PermissionsContext';
 import {
   ArrowLeft, CheckCircle, Play, AlertTriangle, Factory, Printer, Filter, Package,
   User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
-  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame
+  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
+  ShoppingCart, Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
+  MessageSquare, Send, Droplets
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ProductionLaunchModal from './ProductionLaunchModal';
 import PrintOverlay from '../../components/PrintOverlay';
+import EtapesPanel from './EtapesPanel';
+import RendementPanel from './RendementPanel';
+import CoutReelPanel from './CoutReelPanel';
 
 const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
@@ -38,9 +44,10 @@ export default function PlanDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showProductionLaunch, setShowProductionLaunch] = useState(false);
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
-  const [expandedFefoIngredients, setExpandedFefoIngredients] = useState<Set<string>>(new Set());
+  const [timerStepName, setTimerStepName] = useState<string | null>(null);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
@@ -49,6 +56,14 @@ export default function PlanDetailPage() {
     queryKey: ['production', id],
     queryFn: () => productionApi.getById(id!),
     enabled: !!id,
+    // Auto-refresh every 30s when plan has pending semi-finished dependencies
+    refetchInterval: (query) => {
+      const p = query.state.data as Record<string, unknown> | undefined;
+      if (!p?.dependencies) return false;
+      const deps = p.dependencies as Record<string, unknown>[];
+      const hasPending = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
+      return hasPending ? 30000 : false;
+    },
   });
 
   const replenishmentId = plan?.replenishment_request_id as string | undefined;
@@ -72,6 +87,52 @@ export default function PlanDetailPage() {
     enabled: !!id && ['confirmed', 'in_progress'].includes(plan?.status),
   });
 
+  // Activity feed
+  const { data: activities = [], refetch: refetchActivities } = useQuery({
+    queryKey: ['production-activities', id],
+    queryFn: () => productionApi.getActivities(id!),
+    enabled: !!id,
+  });
+  const [newNote, setNewNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
+  const handleAddNote = async () => {
+    if (!newNote.trim() || addingNote) return;
+    setAddingNote(true);
+    try {
+      await productionApi.addActivity(id!, newNote.trim());
+      setNewNote('');
+      refetchActivities();
+    } catch { /* ignore */ }
+    setAddingNote(false);
+  };
+
+  // Bon de sortie for this plan
+  const { data: bonsSortie = [] } = useQuery({
+    queryKey: ['bons-sortie', id],
+    queryFn: () => bonSortieApi.getByPlan(id!),
+    enabled: !!id && ['confirmed', 'in_progress', 'completed'].includes(plan?.status),
+  });
+  const activeBon = (bonsSortie as Record<string, unknown>[]).find((b: Record<string, unknown>) => b.status !== 'annule') as Record<string, unknown> | undefined;
+
+  // Semi-fini plans don't need their own bon de sortie — ingredients are in the parent plan's BSI
+  const isSemiFini = plan?.dependency_of && (plan.dependency_of as Record<string, unknown>[]).length > 0;
+
+  // Auto-generate bon de sortie if plan is confirmed/in_progress but no bon exists
+  const [bonAutoGenerated, setBonAutoGenerated] = useState(false);
+  useEffect(() => {
+    if (
+      plan && !isSemiFini && !activeBon && !bonAutoGenerated &&
+      ['confirmed', 'in_progress'].includes(plan.status) &&
+      (bonsSortie as Record<string, unknown>[]).length === 0
+    ) {
+      setBonAutoGenerated(true);
+      bonSortieApi.generate(id!, plan.store_id as string).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
+      }).catch(() => { /* bon already exists or no ingredients */ });
+    }
+  }, [plan?.status, activeBon, bonsSortie, bonAutoGenerated]);
+
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
@@ -80,6 +141,14 @@ export default function PlanDetailPage() {
       if (result.warnings?.length > 0) {
         result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       }
+      // Auto-detect semi-finished needs after confirmation
+      try {
+        const sfResult = await productionApi.detectSemiFinished(id!);
+        queryClient.invalidateQueries({ queryKey: ['production', id] });
+        if (sfResult.semiFinishedPlanIds?.length > 0) {
+          notify(`${sfResult.semiFinishedPlanIds.length} plan(s) semi-fini(s) cree(s) automatiquement`, { icon: '🧪', duration: 6000 });
+        }
+      } catch { /* non-blocking */ }
     },
   });
 
@@ -157,7 +226,9 @@ export default function PlanDetailPage() {
   </div>
   <div class="row">
     <span class="label">N° Plan</span>
-    <span class="value">${(plan.id as string).slice(0, 8).toUpperCase()}</span>
+    <span class="value">${plan.is_semi_finished_plan && (plan.dependency_of as Record<string, unknown>[])?.length > 0
+      ? ((plan.dependency_of as Record<string, unknown>[])[0].parent_short_id as string || '').toUpperCase()
+      : (plan.id as string).slice(0, 8).toUpperCase()}</span>
   </div>
   <div class="row">
     <span class="label">Role</span>
@@ -178,134 +249,6 @@ export default function PlanDetailPage() {
 </body></html>`);
   };
 
-  const printBonDeCommande = (planData?: Record<string, unknown>) => {
-    const p = planData || plan;
-    if (!p) return;
-    const planItems = items;
-    const ingredientNeeds = needs;
-    const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
-    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
-
-    setPrintHtml(`<!DOCTYPE html><html><head><title>Bon de commande - ${dateStr}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 13px; }
-  .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px; }
-  .header h1 { font-size: 22px; margin-bottom: 4px; }
-  .header h2 { font-size: 16px; font-weight: normal; color: #666; }
-  .header .subtitle { font-size: 11px; color: #999; margin-top: 4px; }
-  .info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; }
-  .info div { line-height: 1.6; }
-  .section { margin-bottom: 20px; }
-  .section h3 { font-size: 14px; background: #f5f5f5; padding: 6px 10px; margin-bottom: 8px; border-left: 4px solid #c97a2a; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f5f5f5; text-align: left; padding: 6px 10px; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #ddd; }
-  td { padding: 6px 10px; border-bottom: 1px solid #eee; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .bold { font-weight: bold; }
-  .warning { color: #c53030; font-weight: bold; }
-  .ok { color: #2f855a; }
-  .checkbox { width: 14px; height: 14px; border: 1.5px solid #999; display: inline-block; margin-right: 4px; vertical-align: middle; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; }
-  .sig-block { text-align: center; width: 200px; }
-  .sig-block .line { border-bottom: 1px solid #333; height: 50px; margin-bottom: 5px; }
-  .sig-block p { font-size: 11px; color: #666; }
-  .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px; }
-  @media print { body { padding: 10px; } button { display: none; } }
-  .print-btn { position: fixed; top: 10px; right: 10px; background: #c97a2a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-</style></head><body>
-
-<div class="header">
-  <h1>${settings.companyName}</h1>
-  <h2>${settings.subtitle}</h2>
-  <div class="subtitle">Bon de commande matieres premieres</div>
-</div>
-
-<div class="info">
-  <div>
-    <strong>N\u00b0 Lot :</strong> ${getPlanLotPrefix(p)}<br/>
-    <strong>Date de production :</strong> ${dateStr}<br/>
-    <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-  </div>
-  <div style="text-align:right">
-    <strong>Chef :</strong> ${p.target_role === 'baker' ? 'Boulanger' : p.target_role === 'pastry_chef' ? 'Patissier' : p.target_role === 'viennoiserie' ? 'Viennoiserie' : p.target_role === 'beldi_sale' ? 'Beldi & Sale' : p.created_by_name || '-'}<br/>
-    <strong>Date d'emission :</strong> ${now}<br/>
-    <strong>Statut :</strong> Confirme
-  </div>
-</div>
-
-<div class="section">
-  <h3>Produits a fabriquer</h3>
-  <table>
-    <thead><tr>
-      <th>Produit</th>
-      <th class="text-right">Quantite</th>
-    </tr></thead>
-    <tbody>
-      ${planItems.map((it: Record<string, unknown>) => `
-        <tr>
-          <td>${it.product_name}</td>
-          <td class="text-right bold">${it.planned_quantity}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-</div>
-
-<div class="section">
-  <h3>Ingredients a preparer</h3>
-  <table>
-    <thead><tr>
-      <th style="width:30px"></th>
-      <th>Ingredient</th>
-      <th class="text-right">Quantite requise</th>
-      <th class="text-center">Unite</th>
-      <th class="text-right">Stock disponible</th>
-      <th class="text-center">Statut</th>
-    </tr></thead>
-    <tbody>
-      ${ingredientNeeds.map((n: Record<string, unknown>) => {
-        const needed = parseFloat(n.needed_quantity as string);
-        const available = parseFloat(n.available_quantity as string);
-        const sufficient = n.is_sufficient as boolean;
-        return `
-        <tr>
-          <td><span class="checkbox"></span></td>
-          <td>${n.ingredient_name}</td>
-          <td class="text-right bold">${needed.toFixed(2)}</td>
-          <td class="text-center">${n.unit}</td>
-          <td class="text-right">${available.toFixed(2)}</td>
-          <td class="text-center">${sufficient
-            ? '<span class="ok">OK</span>'
-            : '<span class="warning">MANQUE ' + (needed - available).toFixed(2) + '</span>'
-          }</td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>
-</div>
-
-${p.notes ? `<div class="section"><h3>Notes</h3><p style="padding:5px 10px">${p.notes}</p></div>` : ''}
-
-<div class="signatures">
-  <div class="sig-block">
-    <div class="line"></div>
-    <p><strong>Chef de production</strong><br/>Signature</p>
-  </div>
-  <div class="sig-block">
-    <div class="line"></div>
-    <p><strong>Magasinier</strong><br/>Signature & date de remise</p>
-  </div>
-</div>
-
-<div class="footer">
-  ${settings.companyName} - Bon de commande interne - Imprime le ${now}
-</div>
-
-</body></html>`);
-  };
 
   const printBonSortieIngredients = () => {
     if (!plan) return;
@@ -700,6 +643,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       notify.success('Production demarree');
     },
+    onError: (e: unknown) => {
+      const resp = (e as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
+      const data = resp?.data as Record<string, unknown> | undefined;
+      const err = data?.error as Record<string, unknown> | undefined;
+      notify.error((err?.message as string) || 'Impossible de demarrer la production');
+    },
   });
 
   const restoreMutation = useMutation({
@@ -728,6 +677,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
   });
 
+  // ═══ Bon de sortie mutations ═══
   // Start item: pending → in_progress
   const handleStartItem = async (itemId: string) => {
     try {
@@ -743,13 +693,29 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const prodConfig = getModuleConfig('production');
   const userRole = user?.role || '';
   const isChefRole = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(userRole);
-  const allowedSlugs = plan?.order_id
+  const allowedSlugs = plan?.is_semi_finished_plan
     ? null
-    : isChefRole
-      ? getRoleCategorySlugs(userRole)
-      : plan?.target_role
-        ? getRoleCategorySlugs(plan.target_role as string)
-        : (prodConfig.category_slugs as string[] | undefined) || null;
+    : plan?.order_id
+      ? null
+      : isChefRole
+        ? getRoleCategorySlugs(userRole)
+        : plan?.target_role
+          ? getRoleCategorySlugs(plan.target_role as string)
+          : (prodConfig.category_slugs as string[] | undefined) || null;
+
+  // Auto-open modal from timer notification URL params (?launchItem=xxx&step=yyy)
+  const planItems = (plan?.items || []) as Record<string, unknown>[];
+  useEffect(() => {
+    const itemParam = searchParams.get('launchItem');
+    const stepParam = searchParams.get('step');
+    if (itemParam && planItems.length > 0) {
+      setLaunchTargetItemId(itemParam);
+      setTimerStepName(stepParam || null);
+      setShowProductionLaunch(true);
+      // Clean URL params
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, planItems.length]);
 
   // Loading state
   if (isLoading) return (
@@ -810,6 +776,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const totalActive = items.length - cancelledCount;
   const progressPct = totalActive > 0 ? Math.round((producedCount / totalActive) * 100) : 0;
 
+  // Calcul inverse / frigo stats
+  const frigoItems = items.filter((it: Record<string, unknown>) => it.nb_contenants);
+  const totalFrigoIn = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.qty_from_frigo as number) || 0), 0);
+  const totalSurplus = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.surplus_frigo as number) || 0), 0);
+  const totalContenants = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.nb_contenants as number) || 0), 0);
+
   return (
     <div className="space-y-6">
       {/* ══════════════ HEADER CARD ══════════════ */}
@@ -840,7 +812,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </div>
               <div className="flex items-center gap-3 mt-2 text-white/80 text-sm flex-wrap">
                 <span className="flex items-center gap-1.5">
-                  <User size={14} /> {plan.created_by_name}
+                  <User size={14} /> {isSemiFini
+                    ? (plan.dependency_of as Record<string, unknown>[])[0]?.parent_created_by_name as string || plan.created_by_name
+                    : plan.created_by_name}
                 </span>
                 {rc && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 flex items-center gap-1">
@@ -848,7 +822,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   </span>
                 )}
                 <span className="flex items-center gap-1.5">
-                  <Hash size={14} /> {(plan.id as string).slice(0, 8).toUpperCase()}
+                  <Hash size={14} /> {isSemiFini
+                    ? ((plan.dependency_of as Record<string, unknown>[])[0]?.parent_short_id as string || '').toUpperCase()
+                    : (plan.id as string).slice(0, 8).toUpperCase()}
                 </span>
                 {plan.type && (
                   <span className="flex items-center gap-1.5">
@@ -901,6 +877,222 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       </div>
 
+      {/* ══════════════ SEMI-FINISHED DEPENDENCIES ══════════════ */}
+      {plan.dependencies && (plan.dependencies as Record<string, unknown>[]).length > 0 && (() => {
+        const deps = plan.dependencies as Record<string, unknown>[];
+        const fulfilledCount = deps.filter((d) => d.status === 'fulfilled').length;
+        const totalDeps = deps.length;
+        const allFulfilled = fulfilledCount === totalDeps;
+        const progressPct = totalDeps > 0 ? Math.round((fulfilledCount / totalDeps) * 100) : 0;
+        return (
+          <div className={`bg-white rounded-xl border ${allFulfilled ? 'border-green-200' : 'border-amber-200'} p-4`}>
+            <div className="flex items-center gap-2 mb-3">
+              <Beaker size={18} className={allFulfilled ? 'text-green-600' : 'text-amber-600'} />
+              <h3 className="font-bold text-gray-800 text-sm">Semi-finis requis</h3>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                allFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {fulfilledCount}/{totalDeps}
+              </span>
+              {!allFulfilled && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ml-auto">
+                  <Lock size={10} /> BLOQUE
+                </span>
+              )}
+            </div>
+            {/* Progress bar */}
+            <div className="w-full h-2 bg-gray-100 rounded-full mb-3 overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-500 ${allFulfilled ? 'bg-green-500' : 'bg-amber-500'}`}
+                style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="space-y-2">
+              {deps.map((dep: Record<string, unknown>) => {
+                const status = dep.status as string;
+                const isFulfilled = status === 'fulfilled';
+                const depPlanId = dep.dependency_plan_id as string | null;
+                const depPlanStatus = dep.dep_plan_status as string | null;
+                const needed = parseFloat(dep.quantity_needed as string);
+                const fromStock = parseFloat(dep.quantity_from_stock as string);
+                const toProduce = parseFloat(dep.quantity_to_produce as string);
+                const itemPct = needed > 0 ? Math.round(((isFulfilled ? needed : fromStock) / needed) * 100) : 0;
+                return (
+                  <div key={dep.id as string}
+                    className={`px-4 py-3 rounded-lg border ${
+                      isFulfilled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+                    }`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        {isFulfilled
+                          ? <CheckCircle size={16} className="text-green-500" />
+                          : <Clock size={16} className="text-amber-500 animate-pulse" />}
+                        <span className="font-semibold text-gray-800 text-sm">{dep.sub_recipe_name as string}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!isFulfilled && depPlanStatus && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            depPlanStatus === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                            depPlanStatus === 'confirmed' ? 'bg-indigo-100 text-indigo-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {depPlanStatus === 'in_progress' ? 'En production' : depPlanStatus === 'confirmed' ? 'Confirme' : depPlanStatus}
+                          </span>
+                        )}
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                          isFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {isFulfilled ? 'Disponible' : 'En attente'}
+                        </span>
+                        {depPlanId && (
+                          <button onClick={() => navigate(`/production/${depPlanId}`)}
+                            className="text-xs text-blue-600 hover:text-blue-800 underline font-medium">
+                            Voir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Per-dependency progress */}
+                    <div className="w-full h-1.5 bg-gray-100 rounded-full mb-1 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${isFulfilled ? 'bg-green-400' : 'bg-amber-400'}`}
+                        style={{ width: `${itemPct}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-500 flex gap-3">
+                      <span>Besoin: <strong>{needed.toFixed(1)}</strong></span>
+                      {fromStock > 0 && <span className="text-green-600">{fromStock.toFixed(1)} en stock</span>}
+                      {toProduce > 0 && <span className="text-amber-600">{toProduce.toFixed(1)} a produire</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {!allFulfilled && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
+                <AlertTriangle size={14} />
+                <span>La production ne peut pas demarrer tant que les semi-finis sont en attente.</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ══════════════ SEMI-FINI DEDICATED INTERFACE ══════════════ */}
+      {isSemiFini && (() => {
+        const deps = plan.dependency_of as Record<string, unknown>[];
+        const dep = deps[0]; // Primary dependency
+        const recipeName = dep.sub_recipe_name as string;
+        const qtyNeeded = parseFloat(dep.quantity_needed as string || dep.quantity_to_produce as string || '0');
+        const yieldQty = parseFloat(dep.yield_quantity as string || '1');
+        const yieldUnit = dep.yield_unit as string || 'kg';
+        const instructions = dep.instructions as string || '';
+        const parentPlanId = dep.parent_plan_id as string;
+        const parentShortId = dep.parent_short_id as string || parentPlanId.slice(0, 8);
+        const parentNotes = dep.parent_notes as string || '';
+        const recipeIngredients = (plan.recipe_ingredients || []) as Record<string, unknown>[];
+        const multiplier = yieldQty > 0 ? qtyNeeded / yieldQty : 1;
+
+        // Find the corresponding item for this semi-fini
+        const sfItem = (plan.items as Record<string, unknown>[] || []).find(
+          (it: Record<string, unknown>) => it.status === 'pending' || it.status === 'in_progress' || it.status === 'completed'
+        );
+        const actualQty = sfItem ? parseFloat(sfItem.actual_quantity as string || '0') : 0;
+        const itemStatus = sfItem?.status as string || 'pending';
+
+        return (
+          <>
+            {/* ── Parent plan info card ── */}
+            <div className="bg-white rounded-2xl border border-purple-200 shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-5 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                    <Layers size={16} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold text-sm">Plan parent</h3>
+                    <p className="text-white/70 text-xs">#{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMMM yyyy', { locale: fr })}</p>
+                  </div>
+                </div>
+                <button onClick={() => navigate(`/production/${parentPlanId}`)}
+                  className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-medium hover:bg-white/30 transition flex items-center gap-1.5">
+                  <Eye size={14} /> Voir le plan
+                </button>
+              </div>
+              <div className="px-5 py-3 flex items-center gap-4 text-xs text-gray-600">
+                <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${
+                  dep.parent_status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                  dep.parent_status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
+                  dep.parent_status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {dep.parent_status === 'confirmed' ? 'Confirme' : dep.parent_status === 'in_progress' ? 'En cours' : dep.parent_status === 'completed' ? 'Termine' : dep.parent_status as string}
+                </span>
+                {parentNotes && <span className="text-gray-400 truncate">{parentNotes}</span>}
+              </div>
+            </div>
+
+            {/* ── Semi-fini production card ── */}
+            <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Beaker size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-lg">{recipeName}</h3>
+                    <p className="text-white/80 text-xs">Preparation de base</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white/15 rounded-xl p-3 text-center">
+                    <div className="text-white font-bold text-lg">{qtyNeeded.toFixed(2)}</div>
+                    <div className="text-white/70 text-[10px] uppercase">A produire ({yieldUnit})</div>
+                  </div>
+                  <div className="bg-white/15 rounded-xl p-3 text-center">
+                    <div className="text-white font-bold text-lg">{actualQty.toFixed(2)}</div>
+                    <div className="text-white/70 text-[10px] uppercase">Produit ({yieldUnit})</div>
+                  </div>
+                  <div className="bg-white/15 rounded-xl p-3 text-center">
+                    <div className={`font-bold text-lg ${itemStatus === 'completed' ? 'text-green-200' : actualQty > 0 ? 'text-yellow-200' : 'text-white'}`}>
+                      {itemStatus === 'completed' ? '100%' : qtyNeeded > 0 ? `${Math.round(actualQty / qtyNeeded * 100)}%` : '0%'}
+                    </div>
+                    <div className="text-white/70 text-[10px] uppercase">Progression</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recipe instructions */}
+              {instructions && (
+                <div className="px-5 py-4 border-b border-amber-100">
+                  <h4 className="text-xs font-semibold text-amber-700 uppercase mb-2 flex items-center gap-1.5">
+                    <BookOpen size={14} /> Instructions
+                  </h4>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{instructions}</p>
+                </div>
+              )}
+
+              {/* Recipe ingredients */}
+              {recipeIngredients.length > 0 && (
+                <div className="px-5 py-4">
+                  <h4 className="text-xs font-semibold text-amber-700 uppercase mb-3 flex items-center gap-1.5">
+                    <Scale size={14} /> Ingredients (x{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit})
+                  </h4>
+                  <div className="space-y-2">
+                    {recipeIngredients.map((ri, idx) => {
+                      const baseQty = parseFloat(ri.quantity as string || '0');
+                      const scaledQty = baseQty * multiplier;
+                      const unit = ri.unit as string || ri.base_unit as string || '';
+                      return (
+                        <div key={idx} className="flex items-center justify-between py-1.5 px-3 bg-amber-50/50 rounded-lg">
+                          <span className="text-sm text-gray-800 font-medium">{ri.ingredient_name as string}</span>
+                          <span className="text-sm font-bold text-amber-700">{scaledQty.toFixed(3)} {unit}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
       {/* ══════════════ ACTION BUTTONS ══════════════ */}
       <div className="flex flex-wrap gap-3">
         {plan.status === 'draft' && isChef && (
@@ -910,25 +1102,32 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
           </button>
         )}
-        {['confirmed', 'in_progress'].includes(plan.status) && (
+        {['confirmed', 'in_progress'].includes(plan.status) && !isSemiFini && (
           <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
             <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients
           </button>
         )}
-        {plan.status === 'confirmed' && (
-          <>
-            <button onClick={() => printBonDeCommande()} className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-              <Printer size={16} className="text-amber-600" /> Bon de commande
-            </button>
-            {isChef && (
-              <button onClick={() => startMutation.mutate()} disabled={startMutation.isPending}
-                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-                {startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                {startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
-              </button>
-            )}
-          </>
-        )}
+        {plan.status === 'confirmed' && (() => {
+          const deps = (plan.dependencies || []) as Record<string, unknown>[];
+          const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
+          return (
+            <>
+              {isChef && (
+                <button onClick={() => startMutation.mutate()}
+                  disabled={startMutation.isPending || hasPendingDeps}
+                  title={hasPendingDeps ? 'Semi-finis en attente — production impossible' : undefined}
+                  className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2 text-sm ${
+                    hasPendingDeps
+                      ? 'bg-gray-300 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:shadow-lg'
+                  }`}>
+                  {hasPendingDeps ? <Lock size={16} /> : startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  {hasPendingDeps ? 'Semi-finis en attente' : startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
+                </button>
+              )}
+            </>
+          );
+        })()}
         {plan.status === 'in_progress' && isChef && (() => {
           const pendingItems = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
           const inProgressItems = items.filter((it: Record<string, unknown>) => it.status === 'in_progress');
@@ -978,6 +1177,69 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </button>
         )}
       </div>
+
+      {/* ══════════════ BON DE SORTIE CARD (hidden for semi-fini plans) ══════════════ */}
+      {!isSemiFini && !activeBon && ['confirmed', 'in_progress'].includes(plan.status) && (
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gray-200 flex items-center justify-center shrink-0">
+            <Loader2 size={16} className="text-gray-400 animate-spin" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-700 text-sm">Bon de sortie ingredients</h3>
+            <p className="text-xs text-gray-500">Generation en cours...</p>
+          </div>
+        </div>
+      )}
+      {!isSemiFini && activeBon && (() => {
+        const bon = activeBon;
+        const bonLines = (bon.lines || []) as Record<string, unknown>[];
+        const totalLines = bonLines.length;
+        const prelevees = bonLines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
+        const enAttente = bonLines.filter((l) => l.status === 'en_attente').length;
+        const isCloture = bon.status === 'cloture';
+
+        const bonStatusConfig: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
+          genere: { label: 'Genere', bg: 'bg-blue-100', text: 'text-blue-700', icon: <ClipboardList size={14} /> },
+          prelevement: { label: 'En prelevement', bg: 'bg-amber-100', text: 'text-amber-700', icon: <ShoppingCart size={14} /> },
+          verifie: { label: 'Verifie', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <Eye size={14} /> },
+          cloture: { label: 'Livre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
+        };
+        const bsc = bonStatusConfig[bon.status as string] || bonStatusConfig.genere;
+
+        return (
+          <div className={`border rounded-2xl p-4 shadow-sm flex items-center gap-4 ${
+            isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
+          }`}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              isCloture ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-amber-500 to-orange-500'
+            }`}>
+              <Truck size={18} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-800 text-sm">Bon de sortie</h3>
+                <span className="text-xs text-gray-500 font-mono">{bon.numero as string}</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${bsc.bg} ${bsc.text}`}>
+                  {bsc.icon} {bsc.label}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isCloture
+                  ? 'Ingredients livres — production prete'
+                  : `${prelevees}/${totalLines} prelevees${enAttente > 0 ? ` — ${enAttente} en attente` : ''}`}
+              </p>
+            </div>
+            <button onClick={() => navigate(`/production/${id}/bon-sortie`)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                isCloture
+                  ? 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                  : 'bg-amber-500 text-white hover:bg-amber-600'
+              }`}>
+              <Eye size={14} /> {isCloture ? 'Consulter' : 'Gerer le prelevement'}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ══════════════ LINKED ORDER CARD ══════════════ */}
       {plan.order_number && (
@@ -1075,6 +1337,158 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* ══════════════ FEFO LOT PREVIEW ══════════════ */}
+      {fefoPreview.length > 0 && ['confirmed', 'in_progress'].includes(plan.status) && (
+        <div className="bg-white rounded-xl border border-cyan-200 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Droplets size={18} className="text-cyan-600" />
+            <h3 className="font-bold text-gray-800 text-sm">Apercu lots ingredients (FEFO)</h3>
+            <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full font-semibold">
+              {fefoPreview.length} ingredient(s)
+            </span>
+          </div>
+          <div className="space-y-3">
+            {(fefoPreview as Record<string, unknown>[]).map((item: Record<string, unknown>) => {
+              const lots = (item.lots || []) as Record<string, unknown>[];
+              const shortfall = parseFloat(item.shortfall as string) || 0;
+              return (
+                <div key={item.ingredientId as string} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <div className={`px-3 py-2 flex items-center justify-between ${shortfall > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                    <span className="font-semibold text-sm text-gray-800">{item.ingredientName as string}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">
+                        Besoin: <strong>{parseFloat(item.neededQuantity as string).toFixed(2)}</strong> {item.ingredientUnit as string}
+                      </span>
+                      {shortfall > 0 && (
+                        <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <AlertTriangle size={10} /> Manque {shortfall.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {lots.length > 0 && (
+                    <div className="divide-y divide-gray-50">
+                      {lots.map((lot: Record<string, unknown>, idx: number) => {
+                        const daysLeft = lot.daysUntilExpiry as number | null;
+                        const isExpiringSoon = lot.isExpiringSoon as boolean;
+                        const isExpired = daysLeft !== null && daysLeft < 0;
+                        return (
+                          <div key={idx} className="px-3 py-1.5 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-gray-600">{lot.lotNumber as string}</span>
+                              {lot.supplierLotNumber && (
+                                <span className="text-gray-400">({lot.supplierLotNumber as string})</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-600">
+                                {parseFloat(lot.quantityToUse as string).toFixed(2)} / {parseFloat(lot.quantityAvailable as string).toFixed(2)}
+                              </span>
+                              {lot.expirationDate && (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                  isExpired ? 'bg-red-100 text-red-700' :
+                                  isExpiringSoon ? 'bg-orange-100 text-orange-700' :
+                                  daysLeft !== null && daysLeft < 7 ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {isExpired ? 'EXPIRE' :
+                                   daysLeft !== null ? `J-${daysLeft}` :
+                                   format(new Date(lot.expirationDate as string), 'dd/MM')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ ACTIVITY FEED ══════════════ */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MessageSquare size={18} className="text-indigo-600" />
+          <h3 className="font-bold text-gray-800 text-sm">Notes de production</h3>
+          {(activities as Record<string, unknown>[]).length > 0 && (
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+              {(activities as Record<string, unknown>[]).length}
+            </span>
+          )}
+        </div>
+        {/* New note input */}
+        <div className="flex gap-2 mb-3">
+          <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+            placeholder="Ajouter une note..."
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+            disabled={addingNote} />
+          <button onClick={handleAddNote} disabled={!newNote.trim() || addingNote}
+            className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+            <Send size={16} />
+          </button>
+        </div>
+        {/* Activity list */}
+        {(activities as Record<string, unknown>[]).length > 0 ? (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {(activities as Record<string, unknown>[]).map((act: Record<string, unknown>) => (
+              <div key={act.id as string} className="flex gap-3 py-2 border-b border-gray-50 last:border-0">
+                <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                  {act.activity_type === 'note_added'
+                    ? <MessageSquare size={12} className="text-indigo-600" />
+                    : <Play size={12} className="text-indigo-600" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-800">{act.message as string}</p>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+                    {act.first_name && <span className="font-medium text-gray-500">{act.first_name as string} {act.last_name as string}</span>}
+                    <span>{format(new Date(act.created_at as string), 'dd/MM HH:mm', { locale: fr })}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center py-2">Aucune note pour le moment</p>
+        )}
+      </div>
+
+      {/* ══════════════ CALCUL INVERSE BANNER ══════════════ */}
+      {frigoItems.length > 0 && (
+        <div className="bg-gradient-to-r from-indigo-50 to-cyan-50 border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Layers size={16} className="text-indigo-600" />
+            <span className="text-sm font-semibold text-indigo-800">Calcul inverse — Contenants</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white/70 rounded-lg p-2.5 text-center">
+              <div className="text-lg font-bold text-indigo-700">{totalContenants}</div>
+              <div className="text-[10px] text-gray-500 uppercase">Contenants</div>
+            </div>
+            <div className="bg-white/70 rounded-lg p-2.5 text-center">
+              <div className="text-lg font-bold text-indigo-700">{frigoItems.length}</div>
+              <div className="text-[10px] text-gray-500 uppercase">Produits concernes</div>
+            </div>
+            {totalFrigoIn > 0 && (
+              <div className="bg-white/70 rounded-lg p-2.5 text-center">
+                <div className="text-lg font-bold text-cyan-700">-{totalFrigoIn}</div>
+                <div className="text-[10px] text-gray-500 uppercase">Depuis frigo</div>
+              </div>
+            )}
+            {totalSurplus > 0 && (
+              <div className="bg-white/70 rounded-lg p-2.5 text-center">
+                <div className="text-lg font-bold text-amber-700">+{totalSurplus}</div>
+                <div className="text-[10px] text-gray-500 uppercase">Surplus → frigo</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1196,8 +1610,32 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                         <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                           <td className="px-5 py-3">
                             <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
+                            {item.nb_contenants && (
+                              <div className="flex flex-wrap gap-1.5 mt-1">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
+                                  <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'contenant'}
+                                </span>
+                                {(item.qty_from_frigo as number) > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
+                                    <Flame size={10} /> Frigo: -{item.qty_from_frigo as number}
+                                  </span>
+                                )}
+                                {(item.surplus_frigo as number) > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
+                                    <Package size={10} /> Surplus: +{item.surplus_frigo as number}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
-                          <td className="px-3 py-3 text-center font-bold text-gray-600">{item.planned_quantity as number}</td>
+                          <td className="px-3 py-3 text-center">
+                            <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
+                            {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
+                              <div className="text-[10px] text-indigo-500" title="Quantite brute totale (contenants)">
+                                brut: {item.quantite_brute_totale as number}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-3 text-center">
                             {item.actual_quantity != null ? (
                               <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -1326,8 +1764,32 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                     <td className="px-5 py-3">
                       <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
+                      {item.nb_contenants && (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
+                            <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'contenant'}
+                          </span>
+                          {(item.qty_from_frigo as number) > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
+                              <Flame size={10} /> Frigo: -{item.qty_from_frigo as number}
+                            </span>
+                          )}
+                          {(item.surplus_frigo as number) > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
+                              <Package size={10} /> Surplus: +{item.surplus_frigo as number}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-3 text-center font-bold text-gray-600">{item.planned_quantity as number}</td>
+                    <td className="px-3 py-3 text-center">
+                      <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
+                      {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
+                        <div className="text-[10px] text-indigo-500" title="Quantite brute totale (contenants)">
+                          brut: {item.quantite_brute_totale as number}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-center">
                       {item.actual_quantity != null ? (
                         <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -1573,119 +2035,6 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ FEFO LOT SELECTION PREVIEW ══════════════ */}
-      {['confirmed', 'in_progress'].includes(plan.status) && (fefoPreview as Record<string, unknown>[]).length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
-              <Layers size={18} className="text-white" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900">Selection FEFO des lots</h2>
-              <span className="text-xs text-gray-500">{(fefoPreview as Record<string, unknown>[]).length} ingredient(s)</span>
-            </div>
-          </div>
-
-          <div className="divide-y divide-gray-50">
-            {(fefoPreview as Record<string, unknown>[]).map((item: Record<string, unknown>) => {
-              const ingredientId = item.ingredientId as string;
-              const lots = (item.lots || []) as Record<string, unknown>[];
-              const shortfall = item.shortfall as number;
-              const hasExpiringSoon = lots.some((l) => l.isExpiringSoon);
-              const isExpanded = expandedFefoIngredients.has(ingredientId);
-              const barColor = shortfall > 0 ? 'bg-red-400' : hasExpiringSoon ? 'bg-orange-400' : 'bg-emerald-500';
-
-              return (
-                <div key={ingredientId}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpandedFefoIngredients((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(ingredientId)) next.delete(ingredientId);
-                        else next.add(ingredientId);
-                        return next;
-                      });
-                    }}
-                    className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors text-left"
-                  >
-                    <div className={`w-1 h-10 rounded-full flex-shrink-0 ${barColor}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm text-gray-900">{item.ingredientName as string}</div>
-                      <div className="text-xs text-gray-400">{item.ingredientUnit as string}</div>
-                    </div>
-                    <div className="text-center flex-shrink-0">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
-                      <div className="text-sm font-bold text-gray-700">{(item.neededQuantity as number).toFixed(2)}</div>
-                    </div>
-                    <div className="text-center flex-shrink-0">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Lots</div>
-                      <div className="text-sm font-bold text-gray-700">{lots.length}</div>
-                    </div>
-                    {shortfall > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
-                        <AlertTriangle size={10} /> -{shortfall.toFixed(2)}
-                      </span>
-                    )}
-                    {hasExpiringSoon && !shortfall && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 flex items-center gap-1 flex-shrink-0">
-                        <Flame size={10} /> DLC proche
-                      </span>
-                    )}
-                    {!shortfall && !hasExpiringSoon && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
-                        <CheckCircle size={10} /> OK
-                      </span>
-                    )}
-                    <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {isExpanded && lots.length > 0 && (
-                    <div className="bg-gray-50/50 px-5 pb-3">
-                      <div className="ml-5 space-y-1.5">
-                        {lots.map((lot: Record<string, unknown>) => {
-                          const isExpiringSoon = lot.isExpiringSoon as boolean;
-                          const daysUntilExpiry = lot.daysUntilExpiry as number | null;
-                          return (
-                            <div key={lot.lotId as string} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs ${isExpiringSoon ? 'bg-orange-50 border border-orange-200' : 'bg-white border border-gray-100'}`}>
-                              <span className="font-mono px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 font-medium">
-                                {(lot.lotNumber as string) || '—'}
-                              </span>
-                              <span className="text-gray-500">
-                                {(lot.supplierLotNumber as string) || 'Sans ref.'}
-                              </span>
-                              <span className="font-bold text-gray-700">
-                                {(lot.quantityToUse as number).toFixed(2)} / {(lot.quantityAvailable as number).toFixed(2)}
-                              </span>
-                              {lot.expirationDate && (
-                                <span className={`px-1.5 py-0.5 rounded flex items-center gap-1 ${isExpiringSoon ? 'bg-orange-100 text-orange-700 font-medium' : 'bg-gray-100 text-gray-600'}`}>
-                                  {isExpiringSoon && <Flame size={10} className="text-orange-500" />}
-                                  DLC: {format(new Date(lot.expirationDate as string), 'dd/MM/yyyy')}
-                                </span>
-                              )}
-                              {daysUntilExpiry !== null && (
-                                <span className={`px-1.5 py-0.5 rounded ${daysUntilExpiry < 3 ? 'bg-orange-100 text-orange-700 font-medium' : daysUntilExpiry < 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
-                                  {daysUntilExpiry < 0 ? 'Expire' : `J-${daysUntilExpiry}`}
-                                </span>
-                              )}
-                              {lot.supplierName && (
-                                <span className="text-gray-400 ml-auto">{String(lot.supplierName)}</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ══════════════ LOT TRACEABILITY ══════════════ */}
       {(plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1737,6 +2086,15 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
+      {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
+      {plan && ['in_progress', 'completed'].includes(plan.status) && (
+        <>
+          <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
+          <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
+          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef} />
+        </>
+      )}
+
       {/* ══════════════ PRODUCTION LAUNCH MODAL (4-step) ══════════════ */}
       {showProductionLaunch && (
         <ProductionLaunchModal
@@ -1744,9 +2102,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           plan={plan}
           items={items.filter((it: Record<string, unknown>) => it.status === 'in_progress' || it.status === 'pending')}
           targetItemId={launchTargetItemId}
+          initialStepName={timerStepName}
           needs={needs}
           fefoPreview={fefoPreview}
-          onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); }}
+          onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); setTimerStepName(null); }}
           onCompleted={() => {}}
         />
       )}

@@ -83,10 +83,14 @@ interface Lot {
 interface Transaction {
   id: string;
   ingredient_name: string;
+  ingredient_unit: string;
   type: string;
   quantity_change: string;
   note: string | null;
   performed_by_name: string;
+  performed_by_first: string | null;
+  performed_by_last: string | null;
+  performed_by_role: string | null;
   created_at: string;
 }
 
@@ -483,6 +487,13 @@ export default function IngredientDetailPage() {
             <div className="divide-y divide-gray-50">
               {(transactions as Transaction[]).map((tx) => {
                 const isPositive = parseFloat(tx.quantity_change) > 0;
+                const initials = tx.performed_by_first
+                  ? `${tx.performed_by_first[0]}${(tx.performed_by_last || '')[0] || ''}`.toUpperCase()
+                  : 'SY';
+                const roleLabel = tx.performed_by_role === 'admin' ? 'Admin' :
+                  tx.performed_by_role === 'manager' ? 'Manager' :
+                  tx.performed_by_role === 'baker' ? 'Boulanger' :
+                  tx.performed_by_role === 'cashier' ? 'Caissier' : '';
                 return (
                   <div key={tx.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50/50 transition-colors">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -497,7 +508,7 @@ export default function IngredientDetailPage() {
                        <Beaker size={14} className="text-gray-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 capitalize">
+                      <p className="text-sm font-medium text-gray-800">
                         {tx.type === 'restock' ? 'Réapprovisionnement' :
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
@@ -505,10 +516,15 @@ export default function IngredientDetailPage() {
                          tx.type === 'waste' ? 'Perte / Déchet' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
                       </p>
-                      <p className="text-xs text-gray-400">
-                        {tx.performed_by_name || 'Système'} — {format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}
-                        {tx.note ? ` — ${tx.note}` : ''}
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">
+                          <span className="w-3.5 h-3.5 rounded-full bg-violet-200 text-violet-800 flex items-center justify-center text-[7px] font-bold">{initials}</span>
+                          {tx.performed_by_name || 'Système'}
+                        </span>
+                        {roleLabel && <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">{roleLabel}</span>}
+                        <span className="text-[10px] text-gray-400">{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                      </div>
+                      {tx.note && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{tx.note}</p>}
                     </div>
                     <span className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}

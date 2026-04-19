@@ -147,7 +147,7 @@ export const unsoldDecisionRepository = {
            JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
            WHERE rr2.store_id = $1
              AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
-             AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged')
+             AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged', 'partially_received')
              AND ri2.product_id = pss.product_id),
           0
         )::int as replenished_today_qty,
@@ -298,6 +298,11 @@ export const unsoldDecisionRepository = {
             );
             // Incrementer stock ingredient de recyclage
             if (d.recycleIngredientId) {
+              // Lock inventory row before increment
+              await client.query(
+                `SELECT id FROM inventory WHERE ingredient_id = $1 AND store_id = $2 FOR UPDATE`,
+                [d.recycleIngredientId, data.storeId]
+              );
               await client.query(
                 `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
                  WHERE ingredient_id = $2 AND store_id = $3`,

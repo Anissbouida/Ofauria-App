@@ -3,6 +3,7 @@ export * from './constants/roles.js';
 export * from './constants/order-status.js';
 export * from './constants/units.js';
 export * from './constants/production-status.js';
+export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 
 // Types
