@@ -1,8 +1,15 @@
+import crypto from 'crypto';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
+import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
 import { generateToken } from '../utils/jwt.js';
+
+// OWASP A07-4 : hash factice pour uniformiser le temps de reponse
+// entre un email inexistant et un password incorrect. Pre-calcule une fois
+// au demarrage (match le format bcrypt v2b / cost 12).
+const DUMMY_HASH = '$2b$12$' + crypto.randomBytes(22).toString('base64').slice(0, 53);
 
 // OWASP A04-2 : politique de lockout.
 // Apres LOGIN_FAIL_THRESHOLD echecs consecutifs, le compte est
@@ -22,6 +29,9 @@ export const authController = {
 
     const user = await userRepository.findByEmail(email);
     if (!user || !user.is_active) {
+      // OWASP A07-4 : execute un compare factice pour uniformiser le timing
+      // et empecher l'enumeration d'emails existants via analyse de latence.
+      await comparePassword(password, DUMMY_HASH);
       res.status(401).json({ success: false, error: { message: 'Email ou mot de passe incorrect' } });
       return;
     }
@@ -149,6 +159,17 @@ export const authController = {
         role: u.role,
       })),
     });
+  },
+
+  async logout(req: AuthRequest, res: Response) {
+    // OWASP A07-3 : invalide le token cote serveur via blacklist jti.
+    const jti = req.user?.jti;
+    const userId = req.user?.userId;
+    const exp = req.user?.exp;
+    if (jti && userId && exp) {
+      await revokedTokenRepository.revoke(jti, userId, exp);
+    }
+    res.json({ success: true });
   },
 
   async me(req: AuthRequest, res: Response) {
