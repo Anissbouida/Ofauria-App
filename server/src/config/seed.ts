@@ -1,22 +1,54 @@
+import crypto from 'crypto';
 import { db } from './database.js';
 import { hashPassword } from '../utils/hash.js';
+
+/**
+ * Generate a strong random password (32 chars: letters + digits + symbols).
+ */
+function generateStrongPassword(): string {
+  const charset = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%&*+-=';
+  const bytes = crypto.randomBytes(32);
+  let out = '';
+  for (let i = 0; i < 32; i++) {
+    out += charset[bytes[i] % charset.length];
+  }
+  return out;
+}
 
 async function seed() {
   console.log('Seeding database...');
 
-  // Create admin user
-  const passwordHash = await hashPassword('admin123');
+  // ─── Create admin user (OWASP A02-3) ────────────────────────
+  // Admin password is either taken from env (SEED_ADMIN_PASSWORD) for
+  // reproducible seeding, or generated randomly and printed ONCE.
+  // Jamais de valeur hardcodee.
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@ofauria.com';
+  const envPassword = process.env.SEED_ADMIN_PASSWORD;
+  const adminPassword = envPassword || generateStrongPassword();
+  const passwordSource = envPassword ? 'SEED_ADMIN_PASSWORD env var' : 'random (shown only once)';
 
-  const existing = await db.query('SELECT id FROM users WHERE email = $1', ['admin@ofauria.com']);
+  const existing = await db.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
   if (existing.rows.length === 0) {
+    const passwordHash = await hashPassword(adminPassword);
     await db.query(
       `INSERT INTO users (email, password_hash, first_name, last_name, role)
        VALUES ($1, $2, $3, $4, $5)`,
-      ['admin@ofauria.com', passwordHash, 'Aniss', 'Bouida', 'admin']
+      [adminEmail, passwordHash, 'Aniss', 'Bouida', 'admin']
     );
-    console.log('✅ Admin user created: admin@ofauria.com / admin123');
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════════════╗');
+    console.log('║  ADMIN USER CREATED — SAVE THESE CREDENTIALS NOW          ║');
+    console.log('╠══════════════════════════════════════════════════════════╣');
+    console.log(`║  Email    : ${adminEmail.padEnd(44)} ║`);
+    console.log(`║  Password : ${adminPassword.padEnd(44)} ║`);
+    console.log(`║  Source   : ${passwordSource.padEnd(44)} ║`);
+    console.log('╚══════════════════════════════════════════════════════════╝');
+    console.log('');
+    console.log('⚠️  Ce mot de passe ne sera PLUS jamais affiche.');
+    console.log('⚠️  Copiez-le dans un gestionnaire de mots de passe maintenant.');
+    console.log('');
   } else {
-    console.log('⏭ Admin user already exists');
+    console.log('⏭ Admin user already exists (pas de reset, aucun mot de passe n\'est modifie)');
   }
 
   // Seed some sample products
@@ -110,8 +142,8 @@ async function seed() {
   }
 
   console.log('\nSeed complete!');
-  console.log('\n📧 Login: admin@ofauria.com');
-  console.log('🔑 Password: admin123');
+  // Ne JAMAIS afficher le mot de passe ici : soit il vient de env (deja connu),
+  // soit il a ete affiche une seule fois au moment de la creation ci-dessus.
 
   await db.pool.end();
 }

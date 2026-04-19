@@ -75,6 +75,17 @@ export const saleController = {
     }
 
     const taxAmount = 0;
+
+    // Defense metier : la remise ne doit jamais depasser le sous-total (OWASP A04-4).
+    // Le schema Zod borne deja discountAmount a [0, 999999.99] et coerce le type.
+    if (discountAmount > subtotal) {
+      res.status(400).json({
+        success: false,
+        error: { message: `Remise (${discountAmount}) superieure au sous-total (${subtotal})` },
+      });
+      return;
+    }
+
     const total = subtotal - discountAmount + taxAmount;
 
     // Require an open cash register session

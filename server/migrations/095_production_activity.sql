@@ -8,5 +8,5 @@ CREATE TABLE IF NOT EXISTS production_plan_activity (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_plan_activity_plan_id ON production_plan_activity(plan_id);
-CREATE INDEX idx_plan_activity_created_at ON production_plan_activity(plan_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_plan_activity_plan_id ON production_plan_activity(plan_id);
+CREATE INDEX IF NOT EXISTS idx_plan_activity_created_at ON production_plan_activity(plan_id, created_at DESC);
