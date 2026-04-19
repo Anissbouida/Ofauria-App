@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
@@ -6,10 +5,11 @@ import { revokedTokenRepository } from '../repositories/revoked-token.repository
 import { hashPassword, comparePassword } from '../utils/hash.js';
 import { generateToken } from '../utils/jwt.js';
 
-// OWASP A07-4 : hash factice pour uniformiser le temps de reponse
-// entre un email inexistant et un password incorrect. Pre-calcule une fois
-// au demarrage (match le format bcrypt v2b / cost 12).
-const DUMMY_HASH = '$2b$12$' + crypto.randomBytes(22).toString('base64').slice(0, 53);
+// OWASP A07-4 : hash bcrypt factice (reel, parsable) utilise pour uniformiser
+// le temps de reponse entre un email inexistant et un password incorrect.
+// Le hash vient d'un password placeholder inutilisable. bcrypt.compare rejette
+// toute entree contre ce hash en ~200-400ms (cost 12), identique au cas nominal.
+const DUMMY_HASH = '$2b$12$UxU1Tp4KJsAmO.WHvNvvveuwXdUvUlXrtWSW61B3P/ZS4ArHjAgt6';
 
 // OWASP A04-2 : politique de lockout.
 // Apres LOGIN_FAIL_THRESHOLD echecs consecutifs, le compte est
