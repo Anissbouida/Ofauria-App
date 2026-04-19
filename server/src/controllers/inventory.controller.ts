@@ -66,25 +66,67 @@ export const inventoryController = {
   },
   async adjust(req: AuthRequest, res: Response) {
     const { ingredientId, quantity, type = 'adjustment', note } = req.body;
-    if (!ingredientId || quantity === undefined) {
+
+    // Whitelist types acceptes (doit matcher la contrainte DB
+    // inventory_transactions_type_check).
+    const ALLOWED_TYPES = new Set(['restock', 'usage', 'adjustment', 'waste', 'recycle', 'production']);
+    if (!ingredientId || quantity === undefined || Number.isNaN(Number(quantity))) {
       res.status(400).json({ success: false, error: { message: 'Ingredient et quantite requis' } });
       return;
     }
+    if (!ALLOWED_TYPES.has(type)) {
+      res.status(400).json({
+        success: false,
+        error: { message: `Type d'ajustement invalide (valeurs: ${[...ALLOWED_TYPES].join(', ')})` },
+      });
+      return;
+    }
+    const qty = Number(quantity);
+    if (Math.abs(qty) > 1_000_000) {
+      res.status(400).json({ success: false, error: { message: 'Quantite demesuree' } });
+      return;
+    }
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
-      const storeFilter = req.user!.storeId ? ' AND store_id = $3' : '';
-      const params: unknown[] = [quantity, ingredientId];
-      if (req.user!.storeId) params.push(req.user!.storeId);
+      const storeFilter = req.user!.storeId ? ' AND store_id = $2' : '';
+      const lockParams: unknown[] = [ingredientId];
+      if (req.user!.storeId) lockParams.push(req.user!.storeId);
+
+      // Lock la ligne d'inventaire et verifie stock suffisant avant decrement.
+      const lockRes = await client.query(
+        `SELECT current_quantity FROM inventory
+         WHERE ingredient_id = $1${storeFilter}
+         FOR UPDATE`,
+        lockParams
+      );
+      if (lockRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        res.status(404).json({ success: false, error: { message: 'Inventaire introuvable pour cet ingredient' } });
+        return;
+      }
+      const current = parseFloat(lockRes.rows[0].current_quantity);
+      if (qty < 0 && current + qty < 0) {
+        await client.query('ROLLBACK');
+        res.status(409).json({
+          success: false,
+          error: { message: `Stock insuffisant (disponible: ${current}, demande: ${Math.abs(qty)})` },
+        });
+        return;
+      }
+
+      const updateParams: unknown[] = [qty, ingredientId];
+      if (req.user!.storeId) updateParams.push(req.user!.storeId);
       await client.query(
         `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
-         WHERE ingredient_id = $2${storeFilter}`,
-        params
+         WHERE ingredient_id = $2${req.user!.storeId ? ' AND store_id = $3' : ''}`,
+        updateParams
       );
       await client.query(
         `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [ingredientId, type, quantity, note || null, req.user!.userId, req.user!.storeId || null]
+        [ingredientId, type, qty, note || null, req.user!.userId, req.user!.storeId || null]
       );
       await client.query('COMMIT');
     } catch (err) {

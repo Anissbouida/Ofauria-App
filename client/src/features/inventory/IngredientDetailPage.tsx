@@ -986,7 +986,10 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   onSave: (data: { quantity: number; type: string; note?: string }) => void;
   isLoading: boolean;
 }) {
-  const [form, setForm] = useState({ quantity: '', type: 'loss', note: '' });
+  // Valeurs alignees avec la contrainte DB inventory_transactions_type_check :
+  // 'waste' = perte/casse (decremente), 'adjustment' = correction (decremente),
+  // 'restock' = reapprovisionnement manuel (incremente).
+  const [form, setForm] = useState({ quantity: '', type: 'waste', note: '' });
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1009,12 +1012,14 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
           e.preventDefault();
           const qty = parseFloat(form.quantity);
           if (isNaN(qty) || qty <= 0) return;
-          onSave({ quantity: qty, type: form.type, note: form.note || undefined });
+          // Signe : decrement pour perte/correction, increment pour restock.
+          const signedQty = form.type === 'restock' ? qty : -qty;
+          onSave({ quantity: signedQty, type: form.type, note: form.note || undefined });
         }} className="p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Type d'ajustement</label>
             <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-              <option value="loss">Perte / Casse</option>
+              <option value="waste">Perte / Casse</option>
               <option value="adjustment">Correction d'inventaire</option>
               <option value="restock">Réapprovisionnement manuel</option>
             </select>
