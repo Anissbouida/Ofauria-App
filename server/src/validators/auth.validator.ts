@@ -27,9 +27,12 @@ export const registerSchema = z.object({
   role: z.enum(['admin', 'manager', 'cashier', 'saleswoman', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale']),
 });
 
-// OWASP A07-1 : PIN minimum 6 chiffres (10^6 combinaisons = 11.5 jours
-// de brute-force a 1 req/s, acceptable avec lockout + rate limit actifs).
-// A terme, passer a 8 chiffres est recommande (migration coordonnee UI).
+// OWASP A07-1 : PIN numerique de 4 a 10 chiffres.
+// NOTE TRANSITION : la recommandation est >= 6 chiffres (10^6 combinaisons).
+// On accepte temporairement 4 chiffres pour les comptes legacy (Khadija, etc.).
+// Le rate limit (5 tentatives/heure) + lockout compte apres 5 echecs (A04-2)
+// rendent le brute-force de 10 000 combinaisons long. A reserrer a {6,10}
+// une fois tous les comptes migres.
 export const pinLoginSchema = z.object({
-  pinCode: z.string().regex(/^\d{6,10}$/, 'PIN numerique de 6 a 10 chiffres'),
+  pinCode: z.string().regex(/^\d{4,10}$/, 'PIN numerique de 4 a 10 chiffres'),
 });
