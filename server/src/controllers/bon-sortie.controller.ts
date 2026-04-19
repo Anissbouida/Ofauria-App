@@ -20,6 +20,17 @@ export const bonSortieController = {
       const data = await bonSortieRepository.generate(parsed.data.planId, parsed.data.storeId, userId);
       res.status(201).json({ data });
     } catch (err: any) {
+      // Etat metier legitime : plan sans recettes/besoins ou bon deja existant.
+      // On renvoie 200 avec data:null pour que l'UI n'affiche pas d'erreur et
+      // laisse l'utilisateur voir le plan normalement.
+      if (err instanceof Error && (
+        err.message.startsWith('Aucun besoin') ||
+        err.message.startsWith('Bon deja') ||
+        err.message.startsWith('Ce bon')
+      )) {
+        res.status(200).json({ data: null, reason: err.message });
+        return;
+      }
       const msg = safeErrorMessage(err, 'Erreur lors de la generation du bon de sortie');
       res.status(500).json({ error: msg });
     }
