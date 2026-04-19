@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { permissionRepository } from '../repositories/permission.repository.js';
+import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
 
 export const userController = {
@@ -36,6 +37,17 @@ export const userController = {
       await userRepository.update(user.id, { pinCode: pinHash });
     }
     const updated = pinCode ? await userRepository.findById(user.id) : user;
+
+    // OWASP A09-2 : audit trail creation compte.
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_created',
+      userId: req.user?.userId,
+      targetUserId: updated!.id,
+      email: updated!.email,
+      success: true,
+      details: { role: updated!.role, hasPin: !!updated!.pin_code },
+    });
+
     res.status(201).json({
       success: true, data: {
         id: updated!.id, email: updated!.email, firstName: updated!.first_name, lastName: updated!.last_name,
@@ -81,6 +93,27 @@ export const userController = {
 
     const user = await userRepository.update(req.params.id, updateData as Parameters<typeof userRepository.update>[1]);
     if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+
+    // OWASP A07-5 : si les privileges ont change, invalider les tokens
+    // existants de l'utilisateur cible en bumpant sa token_version.
+    const privilegeChange = role !== undefined || storeId !== undefined || isActive === false || !!password;
+    if (privilegeChange) {
+      await userRepository.bumpTokenVersion(user.id);
+    }
+
+    // OWASP A09-2 : audit trail.
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_updated',
+      userId: req.user?.userId,
+      targetUserId: user.id,
+      email: user.email,
+      success: true,
+      details: {
+        changed: Object.keys(updateData),
+        privilegeChange,
+      },
+    });
+
     res.json({
       success: true, data: {
         id: user.id, email: user.email, firstName: user.first_name, lastName: user.last_name,
@@ -90,7 +123,16 @@ export const userController = {
   },
 
   async remove(req: AuthRequest, res: Response) {
+    // A07-5 : bump avant desactivation pour invalider les sessions actives.
+    await userRepository.bumpTokenVersion(req.params.id);
     await userRepository.delete(req.params.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_updated',
+      userId: req.user?.userId,
+      targetUserId: req.params.id,
+      success: true,
+      details: { action: 'deactivated' },
+    });
     res.json({ success: true, data: null });
   },
 
@@ -110,6 +152,8 @@ export const userController = {
   async setPermissions(req: AuthRequest, res: Response) {
     const { permissions } = req.body;
     await permissionRepository.setPermissions(req.params.id, permissions);
+    // OWASP A07-5 : un changement de permissions invalide les tokens actifs.
+    await userRepository.bumpTokenVersion(req.params.id);
     const perms = await permissionRepository.findByUserId(req.params.id);
     const data = perms.map(p => ({
       module: p.module,
@@ -119,6 +163,14 @@ export const userController = {
       canDelete: p.can_delete,
       config: p.config,
     }));
+    // OWASP A09-2 : audit trail modif permissions.
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'permission_changed',
+      userId: req.user?.userId,
+      targetUserId: req.params.id,
+      success: true,
+      details: { modules: data.map(d => d.module) },
+    });
     res.json({ success: true, data });
   },
 

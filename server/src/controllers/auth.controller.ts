@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
+import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
 import { generateToken } from '../utils/jwt.js';
 
@@ -32,6 +33,12 @@ export const authController = {
       // OWASP A07-4 : execute un compare factice pour uniformiser le timing
       // et empecher l'enumeration d'emails existants via analyse de latence.
       await comparePassword(password, DUMMY_HASH);
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'login_failed',
+        email: String(email || '').slice(0, 255),
+        success: false,
+        details: { reason: 'unknown_or_inactive' },
+      });
       res.status(401).json({ success: false, error: { message: 'Email ou mot de passe incorrect' } });
       return;
     }
@@ -39,6 +46,11 @@ export const authController = {
     // Refus si compte verrouille (A04-2).
     const lockedUntil = await userRepository.isLocked(user.id);
     if (lockedUntil) {
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'login_failed',
+        userId: user.id, email: user.email, success: false,
+        details: { reason: 'locked', until: lockedUntil.toISOString() },
+      });
       res.status(423).json({ success: false, error: { message: lockoutErrorMessage(lockedUntil) } });
       return;
     }
@@ -48,7 +60,17 @@ export const authController = {
       const { count, lockedUntil: newLock } = await userRepository.recordFailedLogin(
         user.id, LOGIN_FAIL_THRESHOLD, LOGIN_LOCK_DURATION_MS
       );
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'login_failed',
+        userId: user.id, email: user.email, success: false,
+        details: { reason: 'bad_password', failedCount: count },
+      });
       if (newLock && newLock > new Date()) {
+        await authEventRepository.recordFromRequest(req, {
+          eventType: 'account_locked',
+          userId: user.id, email: user.email, success: false,
+          details: { until: newLock.toISOString(), threshold: LOGIN_FAIL_THRESHOLD },
+        });
         res.status(423).json({ success: false, error: { message: lockoutErrorMessage(newLock) } });
         return;
       }
@@ -62,8 +84,12 @@ export const authController = {
 
     // Reset compteur sur login reussi.
     await userRepository.resetFailedLogins(user.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'login_success',
+      userId: user.id, email: user.email, success: true,
+    });
 
-    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined });
+    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
     res.json({
       success: true,
       data: {
@@ -115,7 +141,9 @@ export const authController = {
 
     const user = await userRepository.findByPinCode(pinCode);
     if (!user || !user.is_active) {
-      // Pas d'utilisateur a verrouiller (le PIN ne matche aucun user), on retourne 401 generique.
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'pin_login_failed', success: false, details: { reason: 'no_match' },
+      });
       res.status(401).json({ success: false, error: { message: 'Code PIN incorrect' } });
       return;
     }
@@ -123,14 +151,21 @@ export const authController = {
     // Refus si compte verrouille (A04-2).
     const lockedUntil = await userRepository.isLocked(user.id);
     if (lockedUntil) {
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'pin_login_failed', userId: user.id, email: user.email, success: false,
+        details: { reason: 'locked', until: lockedUntil.toISOString() },
+      });
       res.status(423).json({ success: false, error: { message: lockoutErrorMessage(lockedUntil) } });
       return;
     }
 
     // Reset sur login PIN reussi.
     await userRepository.resetFailedLogins(user.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'pin_login_success', userId: user.id, email: user.email, success: true,
+    });
 
-    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined });
+    const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
     res.json({
       success: true,
       data: {
@@ -168,6 +203,11 @@ export const authController = {
     const exp = req.user?.exp;
     if (jti && userId && exp) {
       await revokedTokenRepository.revoke(jti, userId, exp);
+    }
+    if (userId) {
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'logout', userId, success: true, details: { jti },
+      });
     }
     res.json({ success: true });
   },

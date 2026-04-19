@@ -6,6 +6,9 @@ interface TokenPayload {
   userId: string;
   role: string;
   storeId?: string;
+  // OWASP A07-5 : version incrementee quand les privileges changent,
+  // force les tokens existants a etre refuses apres un changement de role.
+  tokenVersion: number;
 }
 
 // Payload decode incluant les claims standards JWT (iat, exp, jti).

@@ -11,6 +11,7 @@ export interface UserRow {
   role: string;
   is_active: boolean;
   store_id: string | null;
+  token_version: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -128,5 +129,21 @@ export const userRepository = {
       [id]
     );
     return result.rows[0]?.locked_until ?? null;
+  },
+
+  // OWASP A07-5 : invalidation de tous les tokens existants d'un user.
+  // Incrementer la version force les tokens JWT existants a etre rejetes
+  // par le middleware (comparaison version token vs version DB).
+  async bumpTokenVersion(id: string): Promise<number> {
+    const result = await db.query(
+      'UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1 RETURNING token_version',
+      [id]
+    );
+    return result.rows[0]?.token_version ?? 0;
+  },
+
+  async getTokenVersion(id: string): Promise<number | null> {
+    const result = await db.query('SELECT token_version FROM users WHERE id = $1', [id]);
+    return result.rows[0]?.token_version ?? null;
   },
 };
