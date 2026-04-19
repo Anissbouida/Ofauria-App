@@ -154,11 +154,19 @@ export const saleRepository = {
           [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Decrement vitrine (display) stock — skip for advance sales (stock deducted at delivery).
-        // POS sells strictly from the vitrine: stock_quantity is backroom reserve
-        // and is only moved via replenishment reception (transferBackroomToVitrine).
-        // Derive skip logic from saleType rather than trusting the caller's flag.
-        const shouldSkipStock = data.saleType === 'advance' || (data.skipStockDeduction && data.saleType !== 'standard');
+        // Decrement vitrine (display) stock for regular POS sales only.
+        // - 'standard'  (vente directe POS) : decremente la vitrine.
+        // - 'advance'   (avance sur commande client) : produit pas encore
+        //               fabrique, pas de stock a decrementer.
+        // - 'delivery'  (livraison commande client deja payee partiellement) :
+        //               le produit a ete fabrique specifiquement pour la
+        //               commande via un plan de production + BSI, il n'a
+        //               jamais transite par la vitrine commune — on ne touche
+        //               pas au stock vitrine.
+        const shouldSkipStock =
+          data.saleType === 'advance' ||
+          data.saleType === 'delivery' ||
+          data.skipStockDeduction === true;
         if (!shouldSkipStock) {
           if (!data.storeId) {
             throw new Error('storeId requis pour une vente POS (vitrine strictement par magasin)');
