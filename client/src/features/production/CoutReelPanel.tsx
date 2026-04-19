@@ -13,22 +13,33 @@ interface CoutReelPanelProps {
   isChef: boolean;
 }
 
+// NOTE : l'API Postgres renvoie les colonnes `numeric` sous forme de string
+// (pg driver default). On type donc les montants en `number | string` et on
+// passe partout par `toNum()` avant d'appeler des methodes numeriques.
+type Money = number | string | null | undefined;
+
 interface CoutReel {
   id: string;
   plan_id: string;
-  cout_matieres: number;
-  cout_main_oeuvre: number;
-  cout_energie: number;
-  cout_pertes: number;
-  cout_total: number;
-  cout_prevu: number | null;
-  ecart_pct: number | null;
-  detail_matieres: { ingredient_id: string; name: string; qty: number; unit_cost: number; total: number }[];
-  detail_main_oeuvre: { employee_id: string; name: string; minutes: number; hourly_rate: number; total: number }[];
-  detail_energie: { equipement_id: string; name: string; minutes: number; cout_horaire: number; total: number }[];
-  detail_pertes: { categorie: string; quantite: number; cout_unitaire: number; total: number }[];
+  cout_matieres: Money;
+  cout_main_oeuvre: Money;
+  cout_energie: Money;
+  cout_pertes: Money;
+  cout_total: Money;
+  cout_prevu: Money;
+  ecart_pct: Money;
+  detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
+  detail_main_oeuvre: { employee_id: string; name: string; minutes: Money; hourly_rate: Money; total: Money }[];
+  detail_energie: { equipement_id: string; name: string; minutes: Money; cout_horaire: Money; total: Money }[];
+  detail_pertes: { categorie: string; quantite: Money; cout_unitaire: Money; total: Money }[];
   calculated_by_name: string;
   calculated_at: string;
+}
+
+function toNum(v: Money): number {
+  if (v == null) return 0;
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPanelProps) {
@@ -52,9 +63,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
 
   if (planStatus !== 'completed' && planStatus !== 'in_progress') return null;
 
-  const formatDH = (val: number | null | undefined) => {
+  const formatDH = (val: Money) => {
     if (val == null) return '—';
-    return `${parseFloat(String(val)).toFixed(2)} DH`;
+    return `${toNum(val).toFixed(2)} DH`;
   };
 
   const sections = [
@@ -109,24 +120,28 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
           </div>
 
           {/* Variance */}
-          {cout.cout_prevu != null && (
-            <div className={`mx-4 mb-3 p-3 rounded-xl border flex items-center gap-3 ${
-              (cout.ecart_pct || 0) <= 0 ? 'bg-emerald-50 border-emerald-200' : (cout.ecart_pct || 0) <= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
-            }`}>
-              <DollarSign size={16} className="text-gray-500" />
-              <div className="flex-1">
-                <span className="text-xs text-gray-500">Prevu: {formatDH(cout.cout_prevu)}</span>
-                <span className="mx-2 text-gray-300">|</span>
-                <span className="text-xs text-gray-500">Reel: {formatDH(cout.cout_total)}</span>
-              </div>
-              <div className={`flex items-center gap-1 text-sm font-bold ${
-                (cout.ecart_pct || 0) <= 0 ? 'text-emerald-700' : (cout.ecart_pct || 0) <= 10 ? 'text-amber-700' : 'text-red-700'
+          {cout.cout_prevu != null && (() => {
+            const ecart = toNum(cout.ecart_pct);
+            const hasEcart = cout.ecart_pct != null;
+            return (
+              <div className={`mx-4 mb-3 p-3 rounded-xl border flex items-center gap-3 ${
+                ecart <= 0 ? 'bg-emerald-50 border-emerald-200' : ecart <= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
               }`}>
-                {(cout.ecart_pct || 0) <= 0 ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
-                {cout.ecart_pct != null ? `${cout.ecart_pct > 0 ? '+' : ''}${cout.ecart_pct.toFixed(1)}%` : '—'}
+                <DollarSign size={16} className="text-gray-500" />
+                <div className="flex-1">
+                  <span className="text-xs text-gray-500">Prevu: {formatDH(cout.cout_prevu)}</span>
+                  <span className="mx-2 text-gray-300">|</span>
+                  <span className="text-xs text-gray-500">Reel: {formatDH(cout.cout_total)}</span>
+                </div>
+                <div className={`flex items-center gap-1 text-sm font-bold ${
+                  ecart <= 0 ? 'text-emerald-700' : ecart <= 10 ? 'text-amber-700' : 'text-red-700'
+                }`}>
+                  {ecart <= 0 ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
+                  {hasEcart ? `${ecart > 0 ? '+' : ''}${ecart.toFixed(1)}%` : '—'}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Expandable detail sections */}
           <div className="border-t border-gray-100 divide-y divide-gray-100">
@@ -144,9 +159,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
                   <tbody>{cout.detail_matieres.map((d, i) => (
                     <tr key={i} className="border-t border-gray-50">
                       <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.qty.toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.unit_cost.toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{d.total.toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.qty).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.unit_cost).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -167,9 +182,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
                   <tbody>{cout.detail_main_oeuvre.map((d, i) => (
                     <tr key={i} className="border-t border-gray-50">
                       <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.minutes}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.hourly_rate.toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{d.total.toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.hourly_rate).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -190,9 +205,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
                   <tbody>{cout.detail_energie.map((d, i) => (
                     <tr key={i} className="border-t border-gray-50">
                       <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.minutes}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{d.cout_horaire.toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{d.total.toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_horaire).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
