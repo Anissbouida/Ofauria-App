@@ -13,7 +13,9 @@ export const saleController = {
       return;
     }
     const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, page = '1', limit = '20' } = req.query as Record<string, string>;
-    const p = parseInt(page); const l = parseInt(limit);
+    // OWASP API4 : borner pagination pour eviter DoS DB.
+    const p = Math.max(1, Math.min(100000, parseInt(page) || 1));
+    const l = Math.max(1, Math.min(200, parseInt(limit) || 20));
     const result = await saleRepository.findAll({
       dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId,
       storeId: req.user!.storeId,

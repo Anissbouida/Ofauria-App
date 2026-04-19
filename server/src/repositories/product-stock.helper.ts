@@ -71,7 +71,9 @@ export async function adjustVitrineStock(
   storeId: string,
   change: number,
 ): Promise<number> {
-  // For decrements (sales), lock the row and validate stock first
+  // For decrements (sales), lock the row and validate stock first.
+  // OWASP A04-3 : on refuse explicitement la vente si stock insuffisant,
+  // au lieu de clamp a 0 silencieusement (empeche les ventes fantomes).
   if (change < 0) {
     const lockResult = await client.query(
       `SELECT vitrine_quantity FROM product_store_stock
@@ -81,8 +83,12 @@ export async function adjustVitrineStock(
     );
     const currentVitrine = lockResult.rows[0] ? parseFloat(lockResult.rows[0].vitrine_quantity) : 0;
     if (currentVitrine < Math.abs(change)) {
-      // Allow the sale but clamp to 0 — log the shortfall
-      console.warn(`[stock] Vitrine insuffisante pour produit ${productId}: disponible ${currentVitrine}, demandé ${Math.abs(change)}`);
+      const err = new Error(
+        `Stock vitrine insuffisant pour produit ${productId} : disponible ${currentVitrine}, demande ${Math.abs(change)}`
+      ) as Error & { code?: string; statusCode?: number };
+      err.code = 'INSUFFICIENT_VITRINE_STOCK';
+      err.statusCode = 409;
+      throw err;
     }
   }
 

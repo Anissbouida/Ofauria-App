@@ -92,4 +92,41 @@ export const userRepository = {
   async delete(id: string): Promise<void> {
     await db.query('UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
   },
+
+  // ─── Account lockout (OWASP A04-2) ────────────────────────
+  // Increments failed counter. Si seuil atteint, verrouille pour `lockDurationMs`.
+  async recordFailedLogin(id: string, threshold: number, lockDurationMs: number): Promise<{ count: number; lockedUntil: Date | null }> {
+    const result = await db.query(
+      `UPDATE users
+       SET failed_login_count = failed_login_count + 1,
+           last_failed_login_at = NOW(),
+           locked_until = CASE
+             WHEN failed_login_count + 1 >= $2 THEN NOW() + ($3 || ' milliseconds')::interval
+             ELSE locked_until
+           END,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING failed_login_count, locked_until`,
+      [id, threshold, lockDurationMs]
+    );
+    const row = result.rows[0];
+    return { count: row?.failed_login_count ?? 0, lockedUntil: row?.locked_until ?? null };
+  },
+
+  async resetFailedLogins(id: string): Promise<void> {
+    await db.query(
+      `UPDATE users
+       SET failed_login_count = 0, locked_until = NULL, last_failed_login_at = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
+  },
+
+  async isLocked(id: string): Promise<Date | null> {
+    const result = await db.query(
+      'SELECT locked_until FROM users WHERE id = $1 AND locked_until > NOW()',
+      [id]
+    );
+    return result.rows[0]?.locked_until ?? null;
+  },
 };
