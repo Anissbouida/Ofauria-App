@@ -15,10 +15,31 @@ export const cashRegisterController = {
   async getById(req: AuthRequest, res: Response) {
     const session = await cashRegisterRepository.findById(req.params.id);
     if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    // Verification store (multi-tenant)
+    if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    // Verification ownership : admin/manager voient tout dans leur store,
+    // cashier/saleswoman uniquement leur propre session
+    const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
+    if (!isPrivileged && session.user_id !== req.user!.userId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse a la session d\'un autre utilisateur' } });
+      return;
+    }
     res.json({ success: true, data: session });
   },
 
   async getInventoryItems(req: AuthRequest, res: Response) {
+    const session = await cashRegisterRepository.findById(req.params.id);
+    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
+    if (!isPrivileged && session.user_id !== req.user!.userId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
     const items = await cashRegisterRepository.getInventoryItems(req.params.id);
     res.json({ success: true, data: items });
   },
