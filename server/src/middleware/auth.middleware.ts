@@ -14,15 +14,31 @@ export interface AuthRequest extends Request {
   };
 }
 
-export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+// OWASP A02-5 : nom du cookie d'auth (doit matcher auth.controller).
+const AUTH_COOKIE_NAME = 'ofauria_auth';
+
+function extractToken(req: AuthRequest): string | null {
+  // Priorite au cookie HttpOnly (web/prod). Fallback Bearer header pour
+  // clients legacy (mobile Capacitor existant, tests curl, integrations).
+  const cookies = (req as AuthRequest & { cookies?: Record<string, string> }).cookies;
+  if (cookies?.[AUTH_COOKIE_NAME]) {
+    return cookies[AUTH_COOKIE_NAME];
+  }
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  if (header && header.startsWith('Bearer ')) {
+    return header.slice(7);
+  }
+  return null;
+}
+
+export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const token = extractToken(req);
+  if (!token) {
     res.status(401).json({ success: false, error: { message: 'Token manquant' } });
     return;
   }
 
   try {
-    const token = header.slice(7);
     const payload = verifyToken(token);
 
     // OWASP A07-2 : refuse les tokens revoques (blacklist).

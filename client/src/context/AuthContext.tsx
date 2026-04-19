@@ -38,8 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const performLogout = useCallback(() => {
     clearTimers();
     setTimeoutWarning(false);
+    // OWASP A02-5 : plus de token en localStorage. Cookie HttpOnly efface
+    // cote serveur via /auth/logout. On garde seulement les donnees user
+    // hydratees en memoire — clear silencieux des residus legacy.
     localStorage.removeItem('ofauria_token');
     localStorage.removeItem('ofauria_user');
+    // Fire-and-forget : on appelle /auth/logout pour revoquer + clear cookie.
+    // Si echec reseau, le cookie expirera naturellement.
+    authApi.logout?.().catch(() => undefined);
     setUser(null);
     queryClient.clear();
   }, [clearTimers]);
@@ -96,24 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const token = localStorage.getItem('ofauria_token');
-    if (token) {
-      authApi.me()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem('ofauria_token');
-          localStorage.removeItem('ofauria_user');
-        })
-        .finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
+    // OWASP A02-5 : on ne peut plus lire le token JS (HttpOnly), on tente
+    // directement /auth/me. Le cookie est envoye automatiquement via
+    // withCredentials. Si 401, l'utilisateur n'est pas connecte.
+    authApi.me()
+      .then(setUser)
+      .catch(() => {
+        // Nettoie les residus legacy potentiels.
+        localStorage.removeItem('ofauria_token');
+        localStorage.removeItem('ofauria_user');
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = async (data: LoginRequest) => {
+    // Le backend pose le cookie HttpOnly. On garde le user en memoire,
+    // pas de token stocke cote client.
     const result = await authApi.login(data);
-    localStorage.setItem('ofauria_token', result.token);
-    localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();
@@ -121,8 +126,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithPin = async (pinCode: string) => {
     const result = await authApi.pinLogin(pinCode);
-    localStorage.setItem('ofauria_token', result.token);
-    localStorage.setItem('ofauria_user', JSON.stringify(result.user));
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();

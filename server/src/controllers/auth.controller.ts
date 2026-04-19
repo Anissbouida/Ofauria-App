@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { env } from '../config/env.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
@@ -22,6 +23,44 @@ function lockoutErrorMessage(lockedUntil: Date): string {
   const secs = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / 1000));
   const mins = Math.ceil(secs / 60);
   return `Compte temporairement verrouille (reessayez dans ~${mins} min)`;
+}
+
+// OWASP A02-5 : cookie d'auth HttpOnly, non accessible via JS (XSS-proof).
+// SameSite=Strict bloque la majorite des CSRF. Secure impose HTTPS en prod.
+const AUTH_COOKIE_NAME = 'ofauria_auth';
+const IS_PROD = env.NODE_ENV === 'production';
+
+// Convertit '8h' / '7d' / '15m' en millisecondes pour le cookie maxAge.
+function parseDurationMs(v: string): number {
+  const match = /^(\d+)([smhd])$/.exec(v.trim());
+  if (!match) return 8 * 60 * 60 * 1000; // defaut 8h
+  const n = parseInt(match[1], 10);
+  switch (match[2]) {
+    case 's': return n * 1000;
+    case 'm': return n * 60 * 1000;
+    case 'h': return n * 60 * 60 * 1000;
+    case 'd': return n * 24 * 60 * 60 * 1000;
+    default: return 8 * 60 * 60 * 1000;
+  }
+}
+
+function setAuthCookie(res: Response, token: string) {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: IS_PROD, // HTTPS only en prod ; en dev HTTP accepte le cookie
+    sameSite: 'strict',
+    path: '/',
+    maxAge: parseDurationMs(env.JWT_EXPIRES_IN),
+  });
+}
+
+function clearAuthCookie(res: Response) {
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: IS_PROD,
+    sameSite: 'strict',
+    path: '/',
+  });
 }
 
 export const authController = {
@@ -90,6 +129,7 @@ export const authController = {
     });
 
     const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+    setAuthCookie(res, token);
     res.json({
       success: true,
       data: {
@@ -166,6 +206,7 @@ export const authController = {
     });
 
     const token = generateToken({ userId: user.id, role: user.role, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+    setAuthCookie(res, token);
     res.json({
       success: true,
       data: {
@@ -209,6 +250,8 @@ export const authController = {
         eventType: 'logout', userId, success: true, details: { jti },
       });
     }
+    // A02-5 : efface le cookie HttpOnly.
+    clearAuthCookie(res);
     res.json({ success: true });
   },
 

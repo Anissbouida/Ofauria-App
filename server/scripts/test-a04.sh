@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Tests OWASP A04 Insecure Design — Ofauria
 set -u
+
+# OWASP A08 : les mutations necessitent un Origin reconnu par le serveur.
+ORIGIN_HDR="Origin: http://localhost:5173"
+_CURL_BIN=$(which curl)
+curl() { "$_CURL_BIN" -H "$ORIGIN_HDR" "$@"; }
 API="${API:-http://localhost:3001/api/v1}"
 PASS=0
 FAIL=0

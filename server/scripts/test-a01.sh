@@ -3,6 +3,11 @@
 # Prerequis : serveur sur http://localhost:3001 + seed avec admin@ofauria.com / admin123
 
 set -u
+
+# OWASP A08 : les mutations necessitent un Origin reconnu par le serveur.
+ORIGIN_HDR="Origin: http://localhost:5173"
+_CURL_BIN=$(which curl)
+curl() { "$_CURL_BIN" -H "$ORIGIN_HDR" "$@"; }
 API="${API:-http://localhost:3001/api/v1}"
 PASS=0
 FAIL=0

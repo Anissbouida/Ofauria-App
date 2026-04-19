@@ -1,4 +1,5 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
@@ -7,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/error.middleware.js';
+import { originCheck } from './middleware/csrf.middleware.js';
 import { runWithTimezone } from './utils/timezone.js';
 import { logger } from './utils/logger.js';
 
@@ -85,13 +87,23 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`Origin ${origin} non autorisee par CORS`));
+      // Retourne false au lieu de throw => reponse sans ACAO, le navigateur
+      // bloque la requete cote client. Le middleware originCheck retourne
+      // 403 propre si la requete passe quand meme (non-browser).
+      callback(null, false);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Timezone', 'X-CSRF-Token'],
 }));
+
+// Cookie parsing (OWASP A02-5 : JWT stocke en HttpOnly cookie)
+app.use(cookieParser());
+
+// OWASP A08 : Origin/Referer check anti-CSRF pour toute mutation.
+// A faire AVANT les routes, APRES cors + cookieParser.
+app.use('/api/v1', originCheck(allowedOrigins));
 
 // Body parsing
 app.use(express.json({ limit: '10kb' }));
