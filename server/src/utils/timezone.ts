@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { logger } from './logger.js';
 
 const timezoneStorage = new AsyncLocalStorage<string>();
 
@@ -32,7 +33,9 @@ function isValidTimezone(tz: string): boolean {
 export function runWithTimezone(timezone: string, fn: () => void) {
   if (!isValidTimezone(timezone)) {
     if (timezone && timezone !== DEFAULT_TIMEZONE) {
-      console.warn(`[timezone] Rejet timezone non autorisee: ${JSON.stringify(timezone).slice(0, 80)}`);
+      // Log structure : utile pour detecter des tentatives d'injection
+      // (OWASP A09 monitoring). La valeur est tronquee pour eviter tout abus.
+      logger.warn({ rejectedTimezone: String(timezone).slice(0, 80) }, 'Rejet timezone non autorisee');
     }
     timezoneStorage.run(DEFAULT_TIMEZONE, fn);
     return;
