@@ -89,7 +89,7 @@ export const productionController = {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en brouillon pour etre confirme' } });
       return;
     }
-    const { warnings } = await productionRepository.confirm(req.params.id);
+    const { warnings } = await productionRepository.confirm(req.params.id, req.user!.userId);
 
     // Auto-detect semi-finished needs: reserve available stock, create production
     // plans for any deficit. Skip semi-finished plans themselves to avoid recursion.

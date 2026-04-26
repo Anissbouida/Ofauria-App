@@ -141,8 +141,27 @@ export const productionCoutRepository = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async calculateAndSave(planId: string, userId: string) {
-    // 1. Coût matières — from actual ingredient consumption during production
-    const matieresResult = await db.query(
+    // 1. Coût matières — FIFO réel : utilise le prix des lots effectivement consommés.
+    //    Source autoritaire : production_lot_usage (lien plan → lot avec quantité utilisée).
+    //    Fallback : inventory_transactions × ingredients.unit_cost si aucun lot_usage enregistré
+    //    (anciennes données, consommation manuelle sans allocation de lot).
+    const lotUsageResult = await db.query(
+      `SELECT plu.ingredient_id, i.name,
+              SUM(plu.quantity_used) as qty,
+              SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) as total,
+              CASE WHEN SUM(plu.quantity_used) > 0
+                   THEN SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) / SUM(plu.quantity_used)
+                   ELSE 0 END as unit_cost_avg
+       FROM production_lot_usage plu
+       JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
+       JOIN ingredients i ON i.id = plu.ingredient_id
+       WHERE plu.production_plan_id = $1
+       GROUP BY plu.ingredient_id, i.name`,
+      [planId]
+    );
+    const lotCoveredIds = new Set(lotUsageResult.rows.map(r => r.ingredient_id));
+
+    const fallbackResult = await db.query(
       `SELECT it.ingredient_id, i.name, ABS(it.quantity_change) as qty,
               COALESCE(i.unit_cost, 0) as unit_cost,
               ABS(it.quantity_change) * COALESCE(i.unit_cost, 0) as total
@@ -151,11 +170,23 @@ export const productionCoutRepository = {
        WHERE it.production_plan_id = $1 AND it.type = 'production'`,
       [planId]
     );
-    const detailMatieres = matieresResult.rows.map(r => ({
-      ingredient_id: r.ingredient_id, name: r.name,
-      qty: parseFloat(r.qty), unit_cost: parseFloat(r.unit_cost),
-      total: parseFloat(r.total),
-    }));
+
+    const detailMatieres: { ingredient_id: string; name: string; qty: number; unit_cost: number; total: number }[] = [];
+    for (const r of lotUsageResult.rows) {
+      detailMatieres.push({
+        ingredient_id: r.ingredient_id, name: r.name,
+        qty: parseFloat(r.qty), unit_cost: parseFloat(r.unit_cost_avg),
+        total: parseFloat(r.total),
+      });
+    }
+    for (const r of fallbackResult.rows) {
+      if (lotCoveredIds.has(r.ingredient_id)) continue;
+      detailMatieres.push({
+        ingredient_id: r.ingredient_id, name: r.name,
+        qty: parseFloat(r.qty), unit_cost: parseFloat(r.unit_cost),
+        total: parseFloat(r.total),
+      });
+    }
     const coutMatieres = detailMatieres.reduce((s, d) => s + d.total, 0);
 
     // 2. Coût main d'oeuvre — from temps_travail

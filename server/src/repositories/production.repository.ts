@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { adjustProductStock } from './product-stock.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { bonSortieRepository } from './bon-sortie.repository.js';
+import { notificationRepository } from './notification.repository.js';
 import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
 
@@ -262,7 +263,7 @@ export const productionRepository = {
     }
   },
 
-  async confirm(planId: string) {
+  async confirm(planId: string, userId?: string) {
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
@@ -422,15 +423,43 @@ export const productionRepository = {
 
       await client.query('COMMIT');
 
-      // ═══ Phase 3: Auto-generate bon de sortie after confirmation ═══
+      // ═══ Phase 3: auto-generation du BSI + notification magasinier ═══
+      // Workflow : la confirmation du plan genere automatiquement le BSI en statut 'genere'.
+      // Le magasinier recoit une notification et prend en charge la preparation des ingredients.
+      // Le chef suit l'avancement dans le sous-onglet "Gestion du bon de sortie".
       try {
-        const storeId = planDateResult.rows[0]?.store_id;
+        const storeId = planDateResult.rows[0]?.store_id as string | undefined;
         if (storeId && needsMap.size > 0) {
-          await bonSortieRepository.generate(planId, storeId, '');
+          const bsi = await bonSortieRepository.generate(planId, storeId, userId);
+          if (bsi?.id) {
+            // Notification aux magasiniers du store : nouveau BSI a preparer.
+            // Non-bloquant : si le systeme de notifs echoue, la confirmation du plan reste OK.
+            try {
+              await notificationRepository.create({
+                targetRole: 'magasinier',
+                storeId,
+                type: 'bsi_generated',
+                title: 'Nouvelle demande d\'ingredients',
+                message: `BSI ${bsi.numero || ''} a preparer en economat`,
+                referenceType: 'bon_sortie',
+                referenceId: bsi.id as string,
+                createdBy: userId,
+              });
+            } catch (notifErr) {
+              console.error('[production.confirm] notification BSI non emise:', notifErr);
+            }
+          }
         }
-      } catch (bonErr) {
-        // Non-blocking: bon de sortie generation failure should not fail confirmation
-        warnings.push('Le bon de sortie n\'a pas pu etre genere automatiquement.');
+      } catch (bsiErr: any) {
+        // Etat metier legitime : plan sans recette/besoin -> on ne cree pas de BSI mais on laisse
+        // passer la confirmation. Les vraies erreurs techniques sont loguees.
+        const msg = bsiErr?.message || '';
+        if (msg.startsWith('Aucun besoin') || msg.startsWith('Bon deja') || msg.startsWith('Ce bon')) {
+          warnings.push('Aucun bon de sortie a generer (plan sans ingredient a prelever).');
+        } else {
+          console.error('[production.confirm] BSI auto-gen echoue:', bsiErr);
+          warnings.push('Le bon de sortie n\'a pas pu etre genere automatiquement. Regenerez-le manuellement.');
+        }
       }
 
       return { warnings, waitingProductIds };
@@ -462,21 +491,31 @@ export const productionRepository = {
       `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
     );
     if (!planInfo.rows[0]?.is_semi_finished_plan) {
-      const bsiResult = await db.query(
-        `SELECT id, status, numero FROM production_bons_sortie
-         WHERE plan_id = $1 AND status != 'annule'
-         ORDER BY created_at DESC LIMIT 1`,
+      // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
+      // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
+      const needsResult = await db.query(
+        `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
         [planId]
       );
-      if (bsiResult.rows.length === 0) {
-        throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
-      }
-      const bsi = bsiResult.rows[0];
-      if (bsi.status !== 'cloture') {
-        const statusLabels: Record<string, string> = {
-          genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
-        };
-        throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+      const hasIngredientNeeds = needsResult.rows.length > 0;
+
+      if (hasIngredientNeeds) {
+        const bsiResult = await db.query(
+          `SELECT id, status, numero FROM production_bons_sortie
+           WHERE plan_id = $1 AND status != 'annule'
+           ORDER BY created_at DESC LIMIT 1`,
+          [planId]
+        );
+        if (bsiResult.rows.length === 0) {
+          throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
+        }
+        const bsi = bsiResult.rows[0];
+        if (bsi.status !== 'cloture') {
+          const statusLabels: Record<string, string> = {
+            genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
+          };
+          throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+        }
       }
     }
 
