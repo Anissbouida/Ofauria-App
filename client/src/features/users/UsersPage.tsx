@@ -180,6 +180,7 @@ export default function UsersPage() {
                     <option value="beldi_sale">Beldi & Sale</option>
                     <option value="saleswoman">Vendeuse</option>
                     <option value="cashier">Caissier</option>
+                    <option value="magasinier">Magasinier</option>
                   </select>
                 </div>
                 <div>

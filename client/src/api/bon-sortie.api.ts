@@ -1,13 +1,24 @@
 import api from './client';
 
 export const bonSortieApi = {
-  // Generate a bon de sortie for a plan
+  // Generate a bon de sortie for a plan.
+  // Le backend peut renvoyer 200 avec data: null + reason (plan sans ingredients par ex.) :
+  // on retourne l'enveloppe complete { data, reason } pour que l'UI puisse distinguer.
   generate: (planId: string, storeId: string) =>
-    api.post('/bons-sortie/generate', { planId, storeId }).then(r => r.data.data),
+    api.post('/bons-sortie/generate', { planId, storeId })
+       .then(r => ({ data: r.data.data, reason: r.data.reason as string | undefined })),
 
   // Get bon(s) for a plan
   getByPlan: (planId: string) =>
     api.get(`/bons-sortie/plan/${planId}`).then(r => r.data.data),
+
+  // File d'attente magasinier : BSI a preparer / en cours / prets pour le store
+  warehouseQueue: () =>
+    api.get('/bons-sortie/warehouse/queue').then(r => r.data.data),
+
+  // Historique magasinier : BSI valides par le chef (prelevement+) ou annules
+  warehouseHistory: (params?: { limit?: number; offset?: number }) =>
+    api.get('/bons-sortie/warehouse/history', { params }).then(r => r.data),
 
   // Get a single bon by id
   getById: (bonId: string) =>
@@ -16,6 +27,17 @@ export const bonSortieApi = {
   // Start prelevement (picking)
   startPrelevement: (bonId: string) =>
     api.put(`/bons-sortie/${bonId}/prelevement`).then(r => r.data.data),
+
+  // ─── Workflow Magasinier ───
+  // Magasinier : prendre en charge un BSI (genere -> preparation)
+  markPreparation: (bonId: string) =>
+    api.put(`/bons-sortie/${bonId}/preparation`).then(r => r.data.data),
+  // Magasinier : marquer pret a remettre (preparation -> pret)
+  markReady: (bonId: string) =>
+    api.put(`/bons-sortie/${bonId}/ready`).then(r => r.data.data),
+  // Chef : refuser la reception avec motif (pret -> preparation)
+  chefReject: (bonId: string, reason: string) =>
+    api.put(`/bons-sortie/${bonId}/chef-reject`, { reason }).then(r => r.data.data),
 
   // Update a line's actual quantity
   updateLigne: (ligneId: string, data: { actualQuantity: number; notes?: string }) =>

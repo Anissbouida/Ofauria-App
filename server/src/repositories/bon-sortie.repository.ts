@@ -8,6 +8,22 @@ export const bonSortieRepository = {
     try {
       await client.query('BEGIN');
 
+      // 0. Garde-fou anti-doublon : verrouille la ligne du plan + verifie qu'un BSI
+      //    non-annule n'existe pas deja. Sans ce check, un double clic ou un appel
+      //    concurrent (React StrictMode, retries reseau) cree plusieurs BSI pour
+      //    le meme plan a quelques millisecondes d'intervalle.
+      await client.query(`SELECT id FROM production_plans WHERE id = $1 FOR UPDATE`, [planId]);
+      const existing = await client.query(
+        `SELECT id, numero, status FROM production_bons_sortie
+         WHERE plan_id = $1 AND status != 'annule'
+         LIMIT 1`,
+        [planId]
+      );
+      if (existing.rows.length > 0) {
+        await client.query('ROLLBACK');
+        throw new Error(`Bon deja genere pour ce plan : ${existing.rows[0].numero}`);
+      }
+
       // 1. Get ingredient needs for this plan
       const needsResult = await client.query(
         `SELECT pin.ingredient_id, ing.name AS ingredient_name, ing.unit AS ingredient_unit,
@@ -135,6 +151,72 @@ export const bonSortieRepository = {
     }
   },
 
+  // ─── Historique magasinier : BSI ayant quitte la file active (chef a valide ou annule) ───
+  // Statuts retournes : 'prelevement', 'verifie', 'cloture', 'annule'. Limite/offset pour pagination.
+  async findHistoryForWarehouse(storeId: string, limit = 50, offset = 0) {
+    const countResult = await db.query(
+      `SELECT COUNT(*)::int as total FROM production_bons_sortie
+       WHERE store_id = $1 AND status IN ('prelevement', 'verifie', 'cloture', 'annule')`,
+      [storeId]
+    );
+    const total = countResult.rows[0]?.total ?? 0;
+
+    const result = await db.query(
+      `SELECT bs.*,
+              pp.plan_date, pp.type AS plan_type,
+              ug.first_name || ' ' || ug.last_name AS generated_by_name,
+              up2.first_name || ' ' || up2.last_name AS preparation_by_name,
+              ur.first_name || ' ' || ur.last_name AS ready_by_name,
+              up.first_name || ' ' || up.last_name AS prelevement_by_name,
+              uc.first_name || ' ' || uc.last_name AS closed_by_name,
+              (SELECT COUNT(*) FROM production_bons_sortie_lignes bsl WHERE bsl.bon_id = bs.id) AS total_lines
+       FROM production_bons_sortie bs
+       LEFT JOIN production_plans pp ON pp.id = bs.plan_id
+       LEFT JOIN users ug ON ug.id = bs.generated_by
+       LEFT JOIN users up2 ON up2.id = bs.preparation_by
+       LEFT JOIN users ur ON ur.id = bs.ready_by
+       LEFT JOIN users up ON up.id = bs.prelevement_by
+       LEFT JOIN users uc ON uc.id = bs.closed_by
+       WHERE bs.store_id = $1
+         AND bs.status IN ('prelevement', 'verifie', 'cloture', 'annule')
+       ORDER BY COALESCE(bs.closed_at, bs.prelevement_at, bs.updated_at) DESC
+       LIMIT $2 OFFSET $3`,
+      [storeId, limit, offset]
+    );
+    return { rows: result.rows, total };
+  },
+
+  // ─── File d'attente magasinier : liste tous les BSI en attente de preparation ou en cours ───
+  // Statuts retournes : 'genere' (a prendre en charge), 'preparation' (en cours),
+  // 'pret' (en attente de validation chef). Permet au magasinier de voir sa file d'attente.
+  async findActiveForWarehouse(storeId: string) {
+    const result = await db.query(
+      `SELECT bs.*,
+              pp.plan_date, pp.type AS plan_type,
+              ug.first_name || ' ' || ug.last_name AS generated_by_name,
+              up2.first_name || ' ' || up2.last_name AS preparation_by_name,
+              ur.first_name || ' ' || ur.last_name AS ready_by_name,
+              (SELECT COUNT(*) FROM production_bons_sortie_lignes bsl WHERE bsl.bon_id = bs.id) AS total_lines
+       FROM production_bons_sortie bs
+       LEFT JOIN production_plans pp ON pp.id = bs.plan_id
+       LEFT JOIN users ug ON ug.id = bs.generated_by
+       LEFT JOIN users up2 ON up2.id = bs.preparation_by
+       LEFT JOIN users ur ON ur.id = bs.ready_by
+       WHERE bs.store_id = $1
+         AND bs.status IN ('genere', 'preparation', 'pret')
+       ORDER BY
+         CASE bs.status
+           WHEN 'genere' THEN 0
+           WHEN 'preparation' THEN 1
+           WHEN 'pret' THEN 2
+           ELSE 3
+         END,
+         bs.created_at ASC`,
+      [storeId]
+    );
+    return result.rows;
+  },
+
   // ─── Get bon(s) for a plan with all lines ───
   async findByPlan(planId: string) {
     const result = await db.query(
@@ -215,16 +297,75 @@ export const bonSortieRepository = {
   },
 
   // ─── Start prelevement: update status ───
+  // Accepte les statuts 'genere' (flow legacy sans magasinier) ET 'pret' (flow magasinier,
+  // chef valide la reception -> on demarre le prelevement pour la tracabilite des ecarts).
   async startPrelevement(bonId: string, userId: string) {
     const result = await db.query(
       `UPDATE production_bons_sortie
        SET status = 'prelevement', prelevement_by = $1, prelevement_at = NOW(), updated_at = NOW()
-       WHERE id = $2 AND status = 'genere'
+       WHERE id = $2 AND status IN ('genere', 'pret')
        RETURNING *`,
       [userId, bonId]
     );
     if (result.rows.length === 0) {
       throw new Error('Bon de sortie introuvable ou statut invalide pour demarrer le prelevement');
+    }
+    return result.rows[0];
+  },
+
+  // ─── Magasinier : prendre en charge la preparation ───
+  // Transition 'genere' -> 'preparation'. Le magasinier marque qu'il a vu la demande
+  // et commence la preparation physique des ingredients en economat.
+  async markAsPreparation(bonId: string, userId: string) {
+    const result = await db.query(
+      `UPDATE production_bons_sortie
+       SET status = 'preparation', preparation_by = $1, preparation_at = NOW(), updated_at = NOW()
+       WHERE id = $2 AND status = 'genere'
+       RETURNING *`,
+      [userId, bonId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Bon de sortie introuvable ou statut invalide pour demarrer la preparation');
+    }
+    return result.rows[0];
+  },
+
+  // ─── Magasinier : marquer comme pret a remettre ───
+  // Transition 'preparation' -> 'pret'. Le magasinier a fini la preparation,
+  // les ingredients sont prets a etre remis au chef (qui sera notifie).
+  async markAsReady(bonId: string, userId: string) {
+    const result = await db.query(
+      `UPDATE production_bons_sortie
+       SET status = 'pret', ready_by = $1, ready_at = NOW(),
+           chef_reject_reason = NULL, chef_reject_at = NULL, chef_reject_by = NULL,
+           updated_at = NOW()
+       WHERE id = $2 AND status = 'preparation'
+       RETURNING *`,
+      [userId, bonId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Bon de sortie introuvable ou statut invalide pour marquer comme pret');
+    }
+    return result.rows[0];
+  },
+
+  // ─── Chef : refuser la reception (non-conformite) ───
+  // Transition 'pret' -> 'preparation' avec motif. Le chef signale une non-conformite
+  // (quantite, qualite, substitution non acceptable) et renvoie le BSI au magasinier
+  // pour ajustement. Le motif est trace pour l'audit.
+  async chefReject(bonId: string, userId: string, reason: string) {
+    const result = await db.query(
+      `UPDATE production_bons_sortie
+       SET status = 'preparation',
+           chef_reject_by = $1, chef_reject_at = NOW(), chef_reject_reason = $2,
+           ready_by = NULL, ready_at = NULL,
+           updated_at = NOW()
+       WHERE id = $3 AND status = 'pret'
+       RETURNING *`,
+      [userId, reason, bonId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Bon de sortie introuvable ou statut invalide pour refus');
     }
     return result.rows[0];
   },
@@ -263,7 +404,22 @@ export const bonSortieRepository = {
   },
 
   // ─── Verify the bon: check all lines are processed ───
+  // Idempotent : si deja 'verifie' ou 'cloture', retourne le bon actuel sans erreur.
+  // Evite les erreurs quand validateBon() est appele deux fois (double clic ou
+  // StrictMode) : le 1er appel verifie, le 2eme retombe sur l'etat actuel.
   async verify(bonId: string, userId: string) {
+    // Si le bon est deja avance, retourner l'etat actuel (idempotent).
+    const current = await db.query(
+      `SELECT * FROM production_bons_sortie WHERE id = $1`,
+      [bonId]
+    );
+    if (current.rows.length === 0) {
+      throw new Error('Bon de sortie introuvable');
+    }
+    if (current.rows[0].status === 'verifie' || current.rows[0].status === 'cloture') {
+      return current.rows[0];
+    }
+
     // Check all lines are processed (not en_attente)
     const pendingResult = await db.query(
       `SELECT COUNT(*) FROM production_bons_sortie_lignes
@@ -288,7 +444,20 @@ export const bonSortieRepository = {
   },
 
   // ─── Close the bon ───
+  // Idempotent : si deja 'cloture', retourne le bon actuel sans erreur (double
+  // appel de validation tolere, pas de toast rouge trompeur).
   async close(bonId: string, userId: string) {
+    const current = await db.query(
+      `SELECT * FROM production_bons_sortie WHERE id = $1`,
+      [bonId]
+    );
+    if (current.rows.length === 0) {
+      throw new Error('Bon de sortie introuvable');
+    }
+    if (current.rows[0].status === 'cloture') {
+      return current.rows[0];
+    }
+
     const result = await db.query(
       `UPDATE production_bons_sortie
        SET status = 'cloture', closed_by = $1, closed_at = NOW(), updated_at = NOW()

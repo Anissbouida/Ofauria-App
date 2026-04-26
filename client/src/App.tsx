@@ -30,6 +30,7 @@ import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
 import RequestDetailPage from './features/replenishment/RequestDetailPage';
 import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
+import WarehousePage from './features/warehouse/WarehousePage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/production/:id/bon-sortie" element={<BonSortiePrelevementPage />} />
+              <Route path="/warehouse" element={<WarehousePage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />

@@ -33,6 +33,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     '/inventory': 'Inventaire',
     '/recipes': 'Recettes',
     '/production': 'Production',
+    '/warehouse': 'Economat',
     '/employees': 'Employes',
     '/users': 'Utilisateurs',
     '/reports': 'Rapports',

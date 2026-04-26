@@ -7,6 +7,12 @@ export const ROLES = {
   VIENNOISERIE: 'viennoiserie',
   BELDI_SALE: 'beldi_sale',
   SALESWOMAN: 'saleswoman',
+  /**
+   * Magasinier : rôle intermédiaire entre le chef et le stock. Reçoit les demandes BSI
+   * (bon de sortie d'ingrédients) du chef, prépare physiquement les ingrédients,
+   * marque la préparation comme prête, puis le chef valide la réception.
+   */
+  MAGASINIER: 'magasinier',
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -27,6 +33,10 @@ export const ROLE_GROUPS = {
   CHEFS: [ROLES.BAKER, ROLES.PASTRY_CHEF, ROLES.VIENNOISERIE, ROLES.BELDI_SALE] as Role[],
   /** Store-facing staff (admin, manager, cashier, saleswoman) */
   STORE_STAFF: [ROLES.ADMIN, ROLES.MANAGER, ROLES.CASHIER, ROLES.SALESWOMAN] as Role[],
+  /** Magasinier : preparation physique des ingredients BSI (admin/manager couvrent aussi) */
+  WAREHOUSE: [ROLES.ADMIN, ROLES.MANAGER, ROLES.MAGASINIER] as Role[],
+  /** Qui peut consulter un BSI (PRODUCTION + magasinier) */
+  BSI_VIEWERS: [ROLES.ADMIN, ROLES.MANAGER, ROLES.BAKER, ROLES.PASTRY_CHEF, ROLES.VIENNOISERIE, ROLES.BELDI_SALE, ROLES.MAGASINIER] as Role[],
 } as const;
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -38,6 +48,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   viennoiserie: 'Viennoiserie',
   beldi_sale: 'Beldi & Salé',
   saleswoman: 'Vendeuse',
+  magasinier: 'Magasinier',
 };
 
 /**

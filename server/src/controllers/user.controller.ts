@@ -91,8 +91,23 @@ export const userController = {
       }
     }
 
+    // Snapshot de l'ancien role pour detecter un changement de role
+    const oldUser = await userRepository.findById(req.params.id);
+    const oldRole = (oldUser as any)?.role as string | undefined;
+
     const user = await userRepository.update(req.params.id, updateData as Parameters<typeof userRepository.update>[1]);
     if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+
+    // Si le role a change, purger les permissions custom pour que le fallback
+    // DEFAULT_ROLE_MODULES du nouveau role s'applique (sinon les permissions
+    // configurees sous l'ancien role masquent les modules du nouveau role).
+    if (role !== undefined && oldRole && role !== oldRole) {
+      try {
+        await permissionRepository.clearByUserId(user.id);
+      } catch (err) {
+        console.error('[user.update] clearPermissions echec (non-bloquant):', err);
+      }
+    }
 
     // OWASP A07-5 : si les privileges ont change, invalider les tokens
     // existants de l'utilisateur cible en bumpant sa token_version.

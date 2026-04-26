@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingBag, Package, ClipboardList,
-  Users, ChefHat, Warehouse, UserCog, BarChart3, Monitor, Factory, Receipt, Lock, Calculator
+  Users, ChefHat, Warehouse, UserCog, BarChart3, Monitor, Factory, Receipt, Lock, Calculator, Truck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -18,6 +18,7 @@ const navigation: { name: string; href: string; icon: typeof LayoutDashboard; mo
   { name: 'Inventaire', href: '/inventory', icon: Warehouse, module: 'inventory' },
   { name: 'Recettes', href: '/recipes', icon: ChefHat, module: 'recipes' },
   { name: 'Production', href: '/production', icon: Factory, module: 'production' },
+  { name: 'Economat', href: '/warehouse', icon: Truck, module: 'warehouse' },
   { name: 'Approvisionnement', href: '/replenishment', icon: Package, module: 'replenishment' },
   { name: 'RH', href: '/employees', icon: UserCog, module: 'employees' },
   { name: 'Comptabilite', href: '/accounting', icon: Calculator, module: 'accounting' },

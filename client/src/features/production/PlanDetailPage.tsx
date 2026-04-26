@@ -5,6 +5,7 @@ import { productionApi } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
+import { BonSortiePanel } from './BonSortiePanel';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
@@ -14,12 +15,13 @@ import {
   User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
   ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
   ShoppingCart, Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
-  MessageSquare, Send, Droplets
+  MessageSquare, Send, Droplets, Info, Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ProductionLaunchModal from './ProductionLaunchModal';
+import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
 import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
@@ -51,6 +53,8 @@ export default function PlanDetailPage() {
   const [printHtml, setPrintHtml] = useState<string | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
+  // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
+  const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 
   const { data: plan, isLoading } = useQuery({
     queryKey: ['production', id],
@@ -107,38 +111,70 @@ export default function PlanDetailPage() {
     setAddingNote(false);
   };
 
-  // Bon de sortie for this plan
+  // Bon de sortie for this plan — fetche des que le plan existe pour le wizard.
+  // Avant: query activee seulement apres 'confirmed'. Desormais on charge aussi en 'draft' pour
+  // savoir si le BSI a deja ete prepare (etape 2 du wizard).
   const { data: bonsSortie = [] } = useQuery({
     queryKey: ['bons-sortie', id],
     queryFn: () => bonSortieApi.getByPlan(id!),
-    enabled: !!id && ['confirmed', 'in_progress', 'completed'].includes(plan?.status),
+    enabled: !!id && !!plan,
   });
   const activeBon = (bonsSortie as Record<string, unknown>[]).find((b: Record<string, unknown>) => b.status !== 'annule') as Record<string, unknown> | undefined;
 
   // Semi-fini plans don't need their own bon de sortie — ingredients are in the parent plan's BSI
   const isSemiFini = plan?.dependency_of && (plan.dependency_of as Record<string, unknown>[]).length > 0;
 
-  // Auto-generate bon de sortie if plan is confirmed/in_progress but no bon exists.
-  // Tri-state pour eviter le spinner infini :
-  //   'pending'  = pas encore tente
-  //   'loading'  = generation en cours (affiche le spinner)
-  //   'done'     = succes (bon cree) OU plan sans ingredients (pas besoin de BSI)
-  const [bonAutoState, setBonAutoState] = useState<'pending' | 'loading' | 'done'>('pending');
+  // Preparation BSI explicite (wizard etape 2) — l'utilisateur clique "Preparer le bon de sortie".
+  // Le backend ne genere plus automatiquement lors de la confirmation, pour forcer la revue
+  // des besoins ingredient avant de s'engager a produire.
+  // Si generate() renvoie data=null avec un reason (plan sans recette -> rien a prelever),
+  // on memorise le motif pour remplacer la banniere "Preparer le bon de sortie" par un
+  // message explicatif, au lieu d'inciter l'utilisateur a recliquer en boucle.
+  const [bonNotNeededReason, setBonNotNeededReason] = useState<string | null>(null);
+  // Modal de declaration de perte (rebut de production : brule, rate, machine en panne, etc.)
+  const [showLossModal, setShowLossModal] = useState(false);
+
+  // Onglets de la page : 'preparation' (BSI + ingredients) | 'production' (items + execution).
+  // L'onglet Production n'apparait qu'une fois le BSI cloture (ou inutile, ou deja en cours).
+  const [activePlanTab, setActivePlanTab] = useState<'preparation' | 'production'>('preparation');
+  // Sous-onglets dans Preparation :
+  //   - 'needs'  : Besoins en ingredients (en haut) + Apercu FEFO (en bas) — info read-only
+  //   - 'bsi'    : Gestion inline du bon de sortie (prelevement/validation)
+  const [prepSubTab, setPrepSubTab] = useState<'needs' | 'bsi'>('needs');
+  // Auto-bascule sur 'production' quand le plan est deja demarre/termine a l'ouverture
   useEffect(() => {
-    if (
-      plan && !isSemiFini && !activeBon && bonAutoState === 'pending' &&
-      ['confirmed', 'in_progress'].includes(plan.status) &&
-      (bonsSortie as Record<string, unknown>[]).length === 0
-    ) {
-      setBonAutoState('loading');
-      bonSortieApi.generate(id!, plan.store_id as string)
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
-        })
-        .catch(() => { /* bon already exists, no ingredients, or network issue */ })
-        .finally(() => setBonAutoState('done'));
+    if (plan && (plan.status === 'in_progress' || plan.status === 'completed')) {
+      setActivePlanTab('production');
     }
-  }, [plan?.status, activeBon, bonsSortie, bonAutoState]);
+  }, [plan?.status]);
+  // Auto-bascule sur le sous-onglet "Bon de sortie" quand un BSI est genere
+  // (l'operateur vient de cliquer "Preparer le bon de sortie", on l'emmene directement
+  // sur l'interface de prelevement sans changer de page).
+  useEffect(() => {
+    if (activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule') {
+      setPrepSubTab('bsi');
+    }
+  }, [activeBon?.id, activeBon?.status]);
+
+  const prepareBonMutation = useMutation({
+    mutationFn: () => bonSortieApi.generate(id!, plan!.store_id as string),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
+      if (result?.data) {
+        setBonNotNeededReason(null);
+        notify.success('Bon de sortie genere — procedez au prelevement des ingredients');
+      } else {
+        const reason = result?.reason || 'Aucun ingredient a prelever pour ce plan (produits sans recette).';
+        setBonNotNeededReason(reason);
+        notify(reason, { icon: '\u2139\ufe0f', duration: 6000 });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        || 'Erreur lors de la generation du bon de sortie';
+      notify.error(msg);
+    },
+  });
 
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
@@ -789,6 +825,176 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const totalSurplus = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.surplus_frigo as number) || 0), 0);
   const totalContenants = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.nb_contenants as number) || 0), 0);
 
+  // Gating des onglets :
+  //   - Plan semi-fini : tout est affiche (UI dediee, pas de tabs)
+  //   - Plan en 'draft' : tout est affiche (pas encore de workflow BSI/production)
+  //   - Sinon : sections filtrees par activePlanTab
+  const showPrep = isSemiFini || plan.status === 'draft' || activePlanTab === 'preparation';
+  const showProd = isSemiFini || plan.status === 'draft' || activePlanTab === 'production';
+  // Sous-gating onglet Preparation :
+  const showPrepNeeds = showPrep && (isSemiFini || plan.status === 'draft' || prepSubTab === 'needs');
+  const showPrepBsi = showPrep && (isSemiFini || plan.status === 'draft' || prepSubTab === 'bsi');
+
+  // Bloc Besoins en ingredients extrait en JSX pour pouvoir le placer au-dessus de
+  // l'apercu FEFO (demande UX : besoins en haut, FEFO en bas dans le sous-onglet "Besoins").
+  const ingredientNeedsBlock = (showPrepNeeds && plan.status !== 'draft' && needs.length > 0) ? (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+            <Beaker size={18} className="text-white" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">Besoins en ingredients</h2>
+            <span className="text-xs text-gray-500">{needs.length} ingredient(s)</span>
+          </div>
+        </div>
+        {insufficientNeeds.length > 0 && (
+          <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
+            <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
+          </span>
+        )}
+      </div>
+      <div className="divide-y divide-gray-50">
+        {needs.map((need: Record<string, unknown>) => {
+          const needed = parseFloat(need.needed_quantity as string);
+          const available = parseFloat(need.available_quantity as string);
+          const sufficient = need.is_sufficient as boolean;
+          const pct = needed > 0 ? Math.min(Math.round((available / needed) * 100), 100) : 100;
+          return (
+            <div key={need.id as string} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${!sufficient ? 'bg-red-50/30' : ''}`}>
+              <div className={`w-1 h-10 rounded-full flex-shrink-0 ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
+                <div className="text-xs text-gray-400">{need.unit as string}</div>
+              </div>
+              <div className="w-24 flex-shrink-0">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
+                </div>
+                <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
+              </div>
+              <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="text-center">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
+                  <div className="text-sm font-bold text-gray-700">{needed.toFixed(2)}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
+                  <div className="text-sm font-bold text-gray-700">{available.toFixed(2)}</div>
+                </div>
+              </div>
+              {sufficient ? (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
+                  <CheckCircle size={10} /> OK
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
+                  <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  // Bloc "Semi-finis requis" (etape pre-production) — rendu dans l'onglet Production.
+  const semiFinishedDepsBlock = (showProd && plan.dependencies && (plan.dependencies as Record<string, unknown>[]).length > 0) ? (() => {
+    const deps = plan.dependencies as Record<string, unknown>[];
+    const fulfilledCount = deps.filter((d) => d.status === 'fulfilled').length;
+    const totalDeps = deps.length;
+    const allFulfilled = fulfilledCount === totalDeps;
+    const progressPct = totalDeps > 0 ? Math.round((fulfilledCount / totalDeps) * 100) : 0;
+    return (
+      <div className={`bg-white rounded-xl border ${allFulfilled ? 'border-green-200' : 'border-amber-200'} p-4`}>
+        <div className="flex items-center gap-2 mb-3">
+          <Beaker size={18} className={allFulfilled ? 'text-green-600' : 'text-amber-600'} />
+          <h3 className="font-bold text-gray-800 text-sm">Semi-finis requis</h3>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+            allFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {fulfilledCount}/{totalDeps}
+          </span>
+          {!allFulfilled && (
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ml-auto">
+              <Lock size={10} /> BLOQUE
+            </span>
+          )}
+        </div>
+        <div className="w-full h-2 bg-gray-100 rounded-full mb-3 overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-500 ${allFulfilled ? 'bg-green-500' : 'bg-amber-500'}`}
+            style={{ width: `${progressPct}%` }} />
+        </div>
+        <div className="space-y-2">
+          {deps.map((dep: Record<string, unknown>) => {
+            const status = dep.status as string;
+            const isFulfilled = status === 'fulfilled';
+            const depPlanId = dep.dependency_plan_id as string | null;
+            const depPlanStatus = dep.dep_plan_status as string | null;
+            const needed = parseFloat(dep.quantity_needed as string);
+            const fromStock = parseFloat(dep.quantity_from_stock as string);
+            const toProduce = parseFloat(dep.quantity_to_produce as string);
+            const itemPct = needed > 0 ? Math.round(((isFulfilled ? needed : fromStock) / needed) * 100) : 0;
+            return (
+              <div key={dep.id as string}
+                className={`px-4 py-3 rounded-lg border ${
+                  isFulfilled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+                }`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    {isFulfilled
+                      ? <CheckCircle size={16} className="text-green-500" />
+                      : <Clock size={16} className="text-amber-500 animate-pulse" />}
+                    <span className="font-semibold text-gray-800 text-sm">{dep.sub_recipe_name as string}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!isFulfilled && depPlanStatus && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        depPlanStatus === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                        depPlanStatus === 'confirmed' ? 'bg-indigo-100 text-indigo-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {depPlanStatus === 'in_progress' ? 'En production' : depPlanStatus === 'confirmed' ? 'Confirme' : depPlanStatus}
+                      </span>
+                    )}
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      isFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {isFulfilled ? 'Disponible' : 'En attente'}
+                    </span>
+                    {depPlanId && (
+                      <button onClick={() => navigate(`/production/${depPlanId}`)}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline font-medium">
+                        Voir
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full h-1.5 bg-gray-100 rounded-full mb-1 overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${isFulfilled ? 'bg-green-400' : 'bg-amber-400'}`}
+                    style={{ width: `${itemPct}%` }} />
+                </div>
+                <div className="text-xs text-gray-500 flex gap-3">
+                  <span>Besoin: <strong>{needed.toFixed(1)}</strong></span>
+                  {fromStock > 0 && <span className="text-green-600">{fromStock.toFixed(1)} en stock</span>}
+                  {toProduce > 0 && <span className="text-amber-600">{toProduce.toFixed(1)} a produire</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {!allFulfilled && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
+            <AlertTriangle size={14} />
+            <span>La production ne peut pas demarrer tant que les semi-finis sont en attente.</span>
+          </div>
+        )}
+      </div>
+    );
+  })() : null;
+
   return (
     <div className="space-y-6">
       {/* ══════════════ HEADER CARD ══════════════ */}
@@ -884,102 +1090,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       </div>
 
-      {/* ══════════════ SEMI-FINISHED DEPENDENCIES ══════════════ */}
-      {plan.dependencies && (plan.dependencies as Record<string, unknown>[]).length > 0 && (() => {
-        const deps = plan.dependencies as Record<string, unknown>[];
-        const fulfilledCount = deps.filter((d) => d.status === 'fulfilled').length;
-        const totalDeps = deps.length;
-        const allFulfilled = fulfilledCount === totalDeps;
-        const progressPct = totalDeps > 0 ? Math.round((fulfilledCount / totalDeps) * 100) : 0;
-        return (
-          <div className={`bg-white rounded-xl border ${allFulfilled ? 'border-green-200' : 'border-amber-200'} p-4`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Beaker size={18} className={allFulfilled ? 'text-green-600' : 'text-amber-600'} />
-              <h3 className="font-bold text-gray-800 text-sm">Semi-finis requis</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                allFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-              }`}>
-                {fulfilledCount}/{totalDeps}
-              </span>
-              {!allFulfilled && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ml-auto">
-                  <Lock size={10} /> BLOQUE
-                </span>
-              )}
-            </div>
-            {/* Progress bar */}
-            <div className="w-full h-2 bg-gray-100 rounded-full mb-3 overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-500 ${allFulfilled ? 'bg-green-500' : 'bg-amber-500'}`}
-                style={{ width: `${progressPct}%` }} />
-            </div>
-            <div className="space-y-2">
-              {deps.map((dep: Record<string, unknown>) => {
-                const status = dep.status as string;
-                const isFulfilled = status === 'fulfilled';
-                const depPlanId = dep.dependency_plan_id as string | null;
-                const depPlanStatus = dep.dep_plan_status as string | null;
-                const needed = parseFloat(dep.quantity_needed as string);
-                const fromStock = parseFloat(dep.quantity_from_stock as string);
-                const toProduce = parseFloat(dep.quantity_to_produce as string);
-                const itemPct = needed > 0 ? Math.round(((isFulfilled ? needed : fromStock) / needed) * 100) : 0;
-                return (
-                  <div key={dep.id as string}
-                    className={`px-4 py-3 rounded-lg border ${
-                      isFulfilled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
-                    }`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
-                        {isFulfilled
-                          ? <CheckCircle size={16} className="text-green-500" />
-                          : <Clock size={16} className="text-amber-500 animate-pulse" />}
-                        <span className="font-semibold text-gray-800 text-sm">{dep.sub_recipe_name as string}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!isFulfilled && depPlanStatus && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            depPlanStatus === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                            depPlanStatus === 'confirmed' ? 'bg-indigo-100 text-indigo-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {depPlanStatus === 'in_progress' ? 'En production' : depPlanStatus === 'confirmed' ? 'Confirme' : depPlanStatus}
-                          </span>
-                        )}
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                          isFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {isFulfilled ? 'Disponible' : 'En attente'}
-                        </span>
-                        {depPlanId && (
-                          <button onClick={() => navigate(`/production/${depPlanId}`)}
-                            className="text-xs text-blue-600 hover:text-blue-800 underline font-medium">
-                            Voir
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {/* Per-dependency progress */}
-                    <div className="w-full h-1.5 bg-gray-100 rounded-full mb-1 overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${isFulfilled ? 'bg-green-400' : 'bg-amber-400'}`}
-                        style={{ width: `${itemPct}%` }} />
-                    </div>
-                    <div className="text-xs text-gray-500 flex gap-3">
-                      <span>Besoin: <strong>{needed.toFixed(1)}</strong></span>
-                      {fromStock > 0 && <span className="text-green-600">{fromStock.toFixed(1)} en stock</span>}
-                      {toProduce > 0 && <span className="text-amber-600">{toProduce.toFixed(1)} a produire</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {!allFulfilled && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
-                <AlertTriangle size={14} />
-                <span>La production ne peut pas demarrer tant que les semi-finis sont en attente.</span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* Bloc "Semi-finis requis" retire de cet emplacement — desormais rendu dans la zone Production
+          via la variable semiFinishedDepsBlock pour qu'il apparaisse sous les onglets. */}
 
       {/* ══════════════ SEMI-FINI DEDICATED INTERFACE ══════════════ */}
       {isSemiFini && (() => {
@@ -1100,6 +1212,95 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         );
       })()}
 
+      {/* ══════════════ TABS (Preparation / Production) ══════════════ */}
+      {/* Les onglets ne s'affichent pas :
+            - en 'draft' (rien a montrer encore)
+            - pour un plan semi-fini (UI dediee au-dessus)
+          L'onglet Production n'est cliquable qu'une fois le BSI pret (cloture),
+          inutile (pas de recette), ou si la production est deja demarree/terminee. */}
+      {!isSemiFini && plan.status !== 'draft' && (() => {
+        const productionReady =
+          plan.status === 'in_progress' ||
+          plan.status === 'completed' ||
+          !!bonNotNeededReason ||
+          (activeBon?.status === 'cloture');
+        const prepBadgeColor = productionReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+        const prepBadgeLabel = productionReady ? '\u2713 Pret' : 'En cours';
+        return (
+          <div className="bg-white border border-gray-200 rounded-2xl p-1.5 flex items-center gap-1 shadow-sm w-fit">
+            <button
+              type="button"
+              onClick={() => setActivePlanTab('preparation')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                activePlanTab === 'preparation'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}>
+              <Truck size={16} />
+              <span>1. Preparation</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                activePlanTab === 'preparation' ? 'bg-white/25 text-white' : prepBadgeColor
+              }`}>
+                {prepBadgeLabel}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => productionReady && setActivePlanTab('production')}
+              disabled={!productionReady}
+              title={productionReady ? undefined : 'Disponible apres la cloture du bon de sortie'}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                activePlanTab === 'production'
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md'
+                  : productionReady
+                    ? 'text-gray-600 hover:bg-gray-50'
+                    : 'text-gray-300 cursor-not-allowed'
+              }`}>
+              {productionReady ? <Factory size={16} /> : <Lock size={16} />}
+              <span>2. Production</span>
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* ══════════════ SOUS-ONGLETS de l'onglet Preparation ══════════════ */}
+      {!isSemiFini && plan.status !== 'draft' && activePlanTab === 'preparation' && (
+        <div className="flex items-center gap-1 border-b border-gray-200">
+          <button
+            type="button"
+            onClick={() => setPrepSubTab('needs')}
+            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
+              prepSubTab === 'needs'
+                ? 'border-amber-500 text-amber-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            <Beaker size={14} />
+            <span>Besoins en ingredients &amp; FEFO</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPrepSubTab('bsi')}
+            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
+              prepSubTab === 'bsi'
+                ? 'border-amber-500 text-amber-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            <Truck size={14} />
+            <span>Gestion du bon de sortie</span>
+            {activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule' && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                En cours
+              </span>
+            )}
+            {activeBon && activeBon.status === 'cloture' && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                &#10003;
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* ══════════════ ACTION BUTTONS ══════════════ */}
       <div className="flex flex-wrap gap-3">
         {plan.status === 'draft' && isChef && (
@@ -1109,33 +1310,51 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
           </button>
         )}
-        {['confirmed', 'in_progress'].includes(plan.status) && !isSemiFini && (
+        {showPrepBsi && ['confirmed', 'in_progress'].includes(plan.status) && !isSemiFini && (
           <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
             <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients
           </button>
         )}
-        {plan.status === 'confirmed' && (() => {
+        {showProd && plan.status === 'confirmed' && (() => {
           const deps = (plan.dependencies || []) as Record<string, unknown>[];
           const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
+          // Wizard etape 3 : production bloquee tant que le BSI n'est pas cloture.
+          // Les plans semi-finis sont exemptes (leur BSI est celui du plan parent).
+          // Cas "plan sans recette" (bonNotNeededReason) : aucun BSI necessaire, on debloque.
+          const bsiBlocked = !isSemiFini && !bonNotNeededReason && (!activeBon || activeBon.status !== 'cloture');
+          const bsiBlockReason = !activeBon
+            ? 'Preparez d\'abord le bon de sortie'
+            : activeBon.status !== 'cloture'
+              ? 'Cloturer le bon de sortie (livraison des ingredients) avant de demarrer'
+              : '';
+          const disabled = startMutation.isPending || hasPendingDeps || bsiBlocked;
+          const blockLabel = hasPendingDeps
+            ? 'Semi-finis en attente'
+            : bsiBlocked
+              ? 'BSI non cloture'
+              : startMutation.isPending ? 'Demarrage...' : 'Demarrer la production';
+          const tooltip = hasPendingDeps
+            ? 'Semi-finis en attente — production impossible'
+            : bsiBlocked ? bsiBlockReason : undefined;
           return (
             <>
               {isChef && (
                 <button onClick={() => startMutation.mutate()}
-                  disabled={startMutation.isPending || hasPendingDeps}
-                  title={hasPendingDeps ? 'Semi-finis en attente — production impossible' : undefined}
+                  disabled={disabled}
+                  title={tooltip}
                   className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2 text-sm ${
-                    hasPendingDeps
+                    hasPendingDeps || bsiBlocked
                       ? 'bg-gray-300 cursor-not-allowed'
                       : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:shadow-lg'
                   }`}>
-                  {hasPendingDeps ? <Lock size={16} /> : startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                  {hasPendingDeps ? 'Semi-finis en attente' : startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
+                  {(hasPendingDeps || bsiBlocked) ? <Lock size={16} /> : startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  {blockLabel}
                 </button>
               )}
             </>
           );
         })()}
-        {plan.status === 'in_progress' && isChef && (() => {
+        {showProd && plan.status === 'in_progress' && isChef && (() => {
           const pendingItems = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
           const inProgressItems = items.filter((it: Record<string, unknown>) => it.status === 'in_progress');
           const allProduced = pendingItems.length === 0 && inProgressItems.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
@@ -1178,47 +1397,66 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             </>
           );
         })()}
-        {plan.status === 'completed' && isChef && (
+        {showProd && plan.status === 'completed' && isChef && (
           <button onClick={() => printFicheProduction()} className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
             <Printer size={16} className="text-emerald-600" /> Fiche de production
           </button>
         )}
+        {/* Declarer une perte de production : visible pendant la production et a la cloture
+            (cas brule, rate, panne machine, matiere defectueuse). Tracabilite via productionPlanId. */}
+        {showProd && ['in_progress', 'completed'].includes(plan.status) && isChef && !isSemiFini && (
+          <button onClick={() => setShowLossModal(true)}
+            className="px-5 py-2.5 bg-white border border-red-200 text-red-700 rounded-xl font-medium hover:bg-red-50 transition-all flex items-center gap-2 text-sm shadow-sm">
+            <Trash2 size={16} className="text-red-600" /> Declarer une perte
+          </button>
+        )}
       </div>
 
-      {/* ══════════════ BON DE SORTIE CARD (hidden for semi-fini plans) ══════════════ */}
-      {!isSemiFini && !activeBon && ['confirmed', 'in_progress'].includes(plan.status) && bonAutoState === 'loading' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gray-200 flex items-center justify-center shrink-0">
-            <Loader2 size={16} className="text-gray-400 animate-spin" />
+      {/* ══════════════ WIZARD ETAPE 2 : BON DE SORTIE (sous-onglet Gestion BSI) ══════════════ */}
+      {showPrepBsi && !isSemiFini && !activeBon && bonNotNeededReason && ['confirmed', 'in_progress'].includes(plan.status) && (
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+            <Info size={18} className="text-gray-500" />
           </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-700 text-sm">Bon de sortie ingredients</h3>
-            <p className="text-xs text-gray-500">Generation en cours...</p>
-          </div>
-        </div>
-      )}
-      {!isSemiFini && !activeBon && ['confirmed', 'in_progress'].includes(plan.status) && bonAutoState === 'done' && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <AlertTriangle size={16} className="text-amber-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-800 text-sm">Aucun bon de sortie</h3>
-            <p className="text-xs text-gray-600">
-              Les produits de ce plan n'ont pas de recette associee — aucun besoin en ingredients a prelever.
-              Ajoutez des recettes aux produits pour generer un bon de sortie.
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-800 text-sm">Pas de bon de sortie a preparer</h3>
+            <p className="text-xs text-gray-600 mt-0.5">{bonNotNeededReason}</p>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Ajoutez des recettes aux produits de ce plan pour activer le prelevement d'ingredients.
             </p>
           </div>
         </div>
       )}
-      {!isSemiFini && activeBon && (() => {
-        const bon = activeBon;
-        const bonLines = (bon.lines || []) as Record<string, unknown>[];
-        const totalLines = bonLines.length;
-        const prelevees = bonLines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
-        const enAttente = bonLines.filter((l) => l.status === 'en_attente').length;
-        const isCloture = bon.status === 'cloture';
 
+      {/* Cas normal : BSI pas encore visible cote UI (vient juste d'etre auto-genere, ou echec silencieux).
+          Le BSI est desormais genere AUTOMATIQUEMENT a la confirmation du plan par le backend, qui envoie
+          une notification au magasinier. Cette banniere sert de filet de securite si l'auto-gen a echoue
+          ou si la query n'a pas encore ramene le BSI (courte fenetre de rafraichissement). */}
+      {showPrepBsi && !isSemiFini && !activeBon && !bonNotNeededReason && ['confirmed', 'in_progress'].includes(plan.status) && (
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+            <Loader2 size={18} className="text-gray-500 animate-spin" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">Bon de sortie en cours de generation...</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Le magasinier sera notifie automatiquement des qu'il est pret a etre prepare.
+              Si rien ne s'affiche apres quelques secondes, utilisez le bouton ci-dessous.
+            </p>
+            {isChef && (
+              <button
+                onClick={() => prepareBonMutation.mutate()}
+                disabled={prepareBonMutation.isPending}
+                className="mt-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-60">
+                {prepareBonMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {prepareBonMutation.isPending ? 'Generation...' : 'Relancer la generation'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {showPrepBsi && !isSemiFini && activeBon && (() => {
+        const bon = activeBon;
         const bonStatusConfig: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
           genere: { label: 'Genere', bg: 'bg-blue-100', text: 'text-blue-700', icon: <ClipboardList size={14} /> },
           prelevement: { label: 'En prelevement', bg: 'bg-amber-100', text: 'text-amber-700', icon: <ShoppingCart size={14} /> },
@@ -1226,38 +1464,37 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           cloture: { label: 'Livre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
         };
         const bsc = bonStatusConfig[bon.status as string] || bonStatusConfig.genere;
-
+        const isCloture = bon.status === 'cloture';
         return (
-          <div className={`border rounded-2xl p-4 shadow-sm flex items-center gap-4 ${
-            isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
-          }`}>
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-              isCloture ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-amber-500 to-orange-500'
+          <div className="space-y-4">
+            {/* En-tete du BSI (statut + numero) — compact, pas de bouton "gerer" car la gestion
+                se fait inline juste en dessous via BonSortiePanel. */}
+            <div className={`border rounded-2xl p-4 shadow-sm flex items-center gap-4 ${
+              isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
             }`}>
-              <Truck size={18} className="text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-gray-800 text-sm">Bon de sortie</h3>
-                <span className="text-xs text-gray-500 font-mono">{bon.numero as string}</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${bsc.bg} ${bsc.text}`}>
-                  {bsc.icon} {bsc.label}
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {isCloture
-                  ? 'Ingredients livres — production prete'
-                  : `${prelevees}/${totalLines} prelevees${enAttente > 0 ? ` — ${enAttente} en attente` : ''}`}
-              </p>
-            </div>
-            <button onClick={() => navigate(`/production/${id}/bon-sortie`)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                isCloture
-                  ? 'bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                  : 'bg-amber-500 text-white hover:bg-amber-600'
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                isCloture ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-amber-500 to-orange-500'
               }`}>
-              <Eye size={14} /> {isCloture ? 'Consulter' : 'Gerer le prelevement'}
-            </button>
+                <Truck size={18} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-gray-800 text-sm">Bon de sortie</h3>
+                  <span className="text-xs text-gray-500 font-mono">{bon.numero as string}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${bsc.bg} ${bsc.text}`}>
+                    {bsc.icon} {bsc.label}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {isCloture
+                    ? 'Ingredients livres — vous pouvez passer a l\'onglet Production'
+                    : 'Prelevement des ingredients — gerez les lignes ci-dessous'}
+                </p>
+              </div>
+            </div>
+
+            {/* Panneau de prelevement inline — remplace la navigation vers /production/:id/bon-sortie */}
+            <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
           </div>
         );
       })()}
@@ -1341,8 +1578,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ WARNINGS BANNER ══════════════ */}
-      {plan.warnings && (plan.warnings as string[]).length > 0 && (
+      {/* ══════════════ WARNINGS BANNER (onglet Preparation) ══════════════ */}
+      {showPrep && plan.warnings && (plan.warnings as string[]).length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />
@@ -1361,8 +1598,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ FEFO LOT PREVIEW ══════════════ */}
-      {fefoPreview.length > 0 && ['confirmed', 'in_progress'].includes(plan.status) && (
+      {/* Besoins en ingredients — rendu en premier dans le sous-onglet "Besoins & FEFO" */}
+      {ingredientNeedsBlock}
+
+      {/* ══════════════ FEFO LOT PREVIEW (sous-onglet Besoins) ══════════════ */}
+      {showPrepNeeds && fefoPreview.length > 0 && ['confirmed', 'in_progress'].includes(plan.status) && (
         <div className="bg-white rounded-xl border border-cyan-200 p-4">
           <div className="flex items-center gap-2 mb-3">
             <Droplets size={18} className="text-cyan-600" />
@@ -1481,8 +1721,11 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         )}
       </div>
 
-      {/* ══════════════ CALCUL INVERSE BANNER ══════════════ */}
-      {frigoItems.length > 0 && (
+      {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
+      {semiFinishedDepsBlock}
+
+      {/* ══════════════ CALCUL INVERSE BANNER (onglet Production) ══════════════ */}
+      {showProd && frigoItems.length > 0 && (
         <div className="bg-gradient-to-r from-indigo-50 to-cyan-50 border border-indigo-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Layers size={16} className="text-indigo-600" />
@@ -1513,8 +1756,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ ROLE FILTER BANNER ══════════════ */}
-      {allowedSlugs && (
+      {/* ══════════════ ROLE FILTER BANNER (onglet Production) ══════════════ */}
+      {showProd && allowedSlugs && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
             <Filter size={16} className="text-amber-600" />
@@ -1525,8 +1768,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ ITEMS SECTION ══════════════ */}
-      {linkedReplenishment ? (() => {
+      {/* ══════════════ ITEMS SECTION (onglet Production) ══════════════ */}
+      {showProd && <>{linkedReplenishment ? (() => {
         const repItems = (linkedReplenishment.items || []) as Record<string, unknown>[];
         const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
         const effectiveSlugs = allowedSlugs || planRoleSlugs;
@@ -1884,10 +2127,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </table>
           </div>
         </div>
-      )}
+      )}</>}
 
-      {/* ══════════════ WAITING LIST ══════════════ */}
-      {plan.status !== 'draft' && (() => {
+      {/* ══════════════ WAITING LIST (onglet Production) ══════════════ */}
+      {showProd && plan.status !== 'draft' && (() => {
         const waitingItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting');
         const restoredItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'restored');
         if (waitingItems.length === 0 && restoredItems.length === 0) return null;
@@ -1985,8 +2228,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         );
       })()}
 
-      {/* ══════════════ INGREDIENT NEEDS ══════════════ */}
-      {plan.status !== 'draft' && needs.length > 0 && (
+      {/* ══════════════ INGREDIENT NEEDS : DESACTIVE ici, rendu en haut via ingredientNeedsBlock ══════════════ */}
+      {false && showPrep && plan.status !== 'draft' && needs.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -2057,7 +2300,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       )}
 
       {/* ══════════════ LOT TRACEABILITY ══════════════ */}
-      {(plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
+      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
@@ -2108,7 +2351,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       )}
 
       {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
-      {plan && ['in_progress', 'completed'].includes(plan.status) && (
+      {showProd && plan && ['in_progress', 'completed'].includes(plan.status) && (
         <>
           <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
           <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
@@ -2128,6 +2371,16 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           fefoPreview={fefoPreview}
           onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); setTimerStepName(null); }}
           onCompleted={() => {}}
+        />
+      )}
+
+      {/* Modal declaration de perte (contexte production) */}
+      {showLossModal && (
+        <LossDeclarationModal
+          context="production"
+          productionPlanId={id!}
+          productIdFilter={items.map((it: Record<string, unknown>) => it.product_id as string)}
+          onClose={() => { setShowLossModal(false); queryClient.invalidateQueries({ queryKey: ['production', id] }); }}
         />
       )}
 

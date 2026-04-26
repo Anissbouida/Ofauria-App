@@ -20,6 +20,13 @@ export const permissionRepository = {
     return result.rows;
   },
 
+  /** Supprime toutes les permissions custom d'un utilisateur. Le fallback DEFAULT_ROLE_MODULES
+   *  prendra alors effet automatiquement. Utilise quand le role change pour eviter que des
+   *  permissions configurees sous l'ancien role ne restent actives. */
+  async clearByUserId(userId: string): Promise<void> {
+    await db.query('DELETE FROM user_permissions WHERE user_id = $1', [userId]);
+  },
+
   async setPermissions(userId: string, permissions: {
     module: string;
     canView: boolean;
