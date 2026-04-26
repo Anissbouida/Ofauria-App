@@ -20,6 +20,8 @@ export const createRecipeSchema = z.object({
   instructions: z.string().optional().nullable(),
   yieldQuantity: z.number().positive('Le rendement doit être positif').default(1),
   yieldUnit: z.string().max(20).default('unit'),
+  marginMultiplier: z.number().positive('Le multiplicateur doit être positif').default(3),
+  salePrice: z.number().nonnegative('Le prix de vente doit être positif').optional().nullable(),
   isBase: z.boolean().default(false),
   etapes: z.array(etapeSchema).default([]),
   ingredients: z.array(z.object({

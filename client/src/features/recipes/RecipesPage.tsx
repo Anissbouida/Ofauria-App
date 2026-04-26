@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { productsApi } from '../../api/products.api';
@@ -911,6 +912,167 @@ interface FormEtape {
 
 type FormTab = 'info' | 'composition' | 'etapes' | 'instructions';
 
+/**
+ * Champ de selection avec recherche automatique.
+ * Remplace les <select> natifs pour faciliter la saisie quand la liste est longue.
+ * - Clic/focus : ouvre le menu avec input de recherche auto-focus
+ * - Tape pour filtrer (insensible a la casse et aux accents)
+ * - Fleches haut/bas : navigation ; Entree : selection ; Echap : fermeture
+ * - Clic exterieur : fermeture
+ */
+function SearchableSelect({
+  items, value, onChange, placeholder = '-- Choisir --', renderHint, className = '',
+}: {
+  items: Record<string, unknown>[];
+  value: string;
+  onChange: (id: string, item?: Record<string, unknown>) => void;
+  placeholder?: string;
+  renderHint?: (item: Record<string, unknown>) => string | null;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const selected = items.find(i => i.id === value);
+
+  const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const filtered = useMemo(() => {
+    if (!query.trim()) return items;
+    const q = normalize(query);
+    return items.filter(i => normalize(String(i.name || '')).includes(q));
+  }, [items, query]);
+
+  // Compute popup position relative to button, with flip-up when near bottom.
+  const recomputePosition = () => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const popupHeight = 320; // max popup height (approx)
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const flipUp = spaceBelow < popupHeight && rect.top > popupHeight;
+    const width = Math.max(rect.width, 320);
+    setPopupStyle({
+      position: 'fixed',
+      left: rect.left,
+      width,
+      top: flipUp ? undefined : rect.bottom + 4,
+      bottom: flipUp ? window.innerHeight - rect.top + 4 : undefined,
+      maxHeight: popupHeight,
+      zIndex: 100,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePosition();
+    const onResize = () => recomputePosition();
+    const onScroll = () => recomputePosition();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, true); // capture: catch modal scroll too
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setHighlight(0);
+      setTimeout(() => inputRef.current?.focus(), 10);
+    }
+  }, [open]);
+
+  useEffect(() => { setHighlight(0); }, [query]);
+
+  // Keep highlighted item in view when navigating with keyboard
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.children[highlight] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlight, open]);
+
+  const pick = (item: Record<string, unknown>) => {
+    onChange(item.id as string, item);
+    setOpen(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[highlight]) pick(filtered[highlight]); }
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); }
+    else if (e.key === 'Tab') { setOpen(false); }
+  };
+
+  const popup = open ? (
+    <div ref={popupRef} style={popupStyle}
+      className="bg-white border border-gray-200 rounded-lg shadow-xl flex flex-col overflow-hidden">
+      <div className="p-2 border-b border-gray-100 bg-gray-50 shrink-0">
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
+            placeholder="Rechercher..." autoComplete="off"
+            className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+      </div>
+      <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
+        {filtered.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-gray-400">Aucun resultat</div>
+        ) : filtered.map((item, i) => {
+          const hint = renderHint ? renderHint(item) : null;
+          const isActive = i === highlight;
+          const isSelected = item.id === value;
+          return (
+            <button key={item.id as string} type="button"
+              onMouseEnter={() => setHighlight(i)}
+              onClick={() => pick(item)}
+              className={`w-full px-3 py-2 text-left flex items-center justify-between gap-3 text-sm transition-colors ${
+                isActive ? 'bg-amber-50' : 'bg-white'
+              } ${isSelected ? 'font-semibold text-amber-700' : 'text-gray-800'}`}>
+              <span className="truncate flex-1">{item.name as string}</span>
+              {hint && <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">{hint}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div className={`relative ${className}`}>
+      <button ref={buttonRef} type="button" onClick={() => setOpen(o => !o)}
+        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-amber-500 flex items-center justify-between gap-2 ${
+          open ? 'border-amber-400 ring-2 ring-amber-500' : 'border-gray-200 hover:border-gray-300'
+        }`}>
+        <span className={`truncate ${selected ? 'text-gray-900' : 'text-gray-400'}`}>
+          {selected ? (selected.name as string) : placeholder}
+        </span>
+        <ChevronRight size={14} className={`text-gray-400 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {popup && createPortal(popup, document.body)}
+    </div>
+  );
+}
+
 function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: {
   recipeId: string | null;
   onClose: () => void;
@@ -954,6 +1116,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const [contenantId, setContenantId] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('1');
   const [yieldUnit, setYieldUnit] = useState('unit');
+  const [marginMultiplier, setMarginMultiplier] = useState('3');
+  const [salePrice, setSalePrice] = useState('');
   const [instructions, setInstructions] = useState('');
   const [isBase, setIsBase] = useState(defaultIsBase);
   const [formIngredients, setFormIngredients] = useState<FormIngredient[]>([{ ingredientId: '', quantity: '', unit: '' }]);
@@ -966,6 +1130,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setContenantId(existingRecipe.contenant_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
     setYieldUnit(existingRecipe.yield_unit || 'unit');
+    setMarginMultiplier(String(existingRecipe.margin_multiplier ?? 3));
+    setSalePrice(existingRecipe.product_price ? String(existingRecipe.product_price) : '');
     setInstructions(existingRecipe.instructions || '');
     setIsBase(existingRecipe.is_base || false);
     setFormIngredients(
@@ -1093,10 +1259,11 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
     const data: Record<string, unknown> = {
       name,
-      productId: isBase ? null : productId,
+      productId: isBase ? null : (productId || null),
       contenantId: contenantId || null,
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
+      marginMultiplier: parseFloat(marginMultiplier) || 3,
       instructions,
       isBase,
       etapes: validEtapes,
@@ -1296,6 +1463,60 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{contenantId ? 'Pre-rempli depuis le contenant — ajustable si besoin' : 'Ex: 5 kg pour une pate, 3 moules pour une genoise'}</p>
                 </div>
+
+                {!isBase && (() => {
+                  const yieldQ = parseFloat(yieldQuantity) || 1;
+                  const costPerUnit = yieldQ > 0 ? liveCost / yieldQ : 0;
+                  const handleMultiplierChange = (val: string) => {
+                    setMarginMultiplier(val);
+                    const m = parseFloat(val);
+                    if (!isNaN(m) && costPerUnit > 0) setSalePrice((costPerUnit * m).toFixed(2));
+                  };
+                  const handlePriceChange = (val: string) => {
+                    setSalePrice(val);
+                    const p = parseFloat(val);
+                    if (!isNaN(p) && costPerUnit > 0) setMarginMultiplier((p / costPerUnit).toFixed(2));
+                  };
+                  return (
+                    <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-3">
+                      <div className="text-sm font-semibold text-gray-700">Tarification</div>
+
+                      <div className="bg-white rounded-lg px-3 py-2 border border-amber-100">
+                        <div className="text-xs text-gray-500">Coût / pièce (calculé)</div>
+                        <div className="font-bold text-gray-800">{costPerUnit.toFixed(2)} DH</div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Multiplicateur de marge</label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">×</span>
+                            <input
+                              type="number" min={0.01} step="0.01"
+                              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                              value={marginMultiplier}
+                              onChange={(e) => handleMultiplierChange(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente (DH)</label>
+                          <input
+                            type="number" min={0} step="0.01"
+                            className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold text-amber-900"
+                            value={salePrice}
+                            onChange={(e) => handlePriceChange(e.target.value)}
+                            placeholder={(costPerUnit * (parseFloat(marginMultiplier) || 0)).toFixed(2)}
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-gray-500">
+                        Saisis l'un OU l'autre — l'autre se recalcule. Le prix du produit lié sera mis à jour à l'enregistrement.
+                      </p>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
@@ -1332,13 +1553,13 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                               : 0;
                             return (
                               <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
-                                <select className="w-full px-3 py-2 bg-gray-50 border border-amber-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                  value={row.subRecipeId} onChange={(e) => updateSubRecipeRow(idx, 'subRecipeId', e.target.value)}>
-                                  <option value="">-- Preparation --</option>
-                                  {availableBaseRecipes.map((r: Record<string, unknown>) => (
-                                    <option key={r.id as string} value={r.id as string}>{r.name as string}</option>
-                                  ))}
-                                </select>
+                                <SearchableSelect
+                                  items={availableBaseRecipes as Record<string, unknown>[]}
+                                  value={row.subRecipeId}
+                                  onChange={(id) => updateSubRecipeRow(idx, 'subRecipeId', id)}
+                                  placeholder="-- Preparation --"
+                                  renderHint={(r) => r.yield_quantity ? `${r.yield_quantity} ${r.yield_unit || 'u.'}` : null}
+                                />
                                 <input type="number" step="0.01" min="0"
                                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                                   value={row.quantity} onChange={(e) => updateSubRecipeRow(idx, 'quantity', e.target.value)} placeholder="0" />
@@ -1388,19 +1609,24 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                         const rowCost = selectedIng && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedIng.unit_cost as string || '0') * factor : 0;
                         return (
                           <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
-                            <select className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                              value={row.ingredientId} onChange={(e) => {
-                                const newIng = allIngredients.find((i: Record<string, unknown>) => i.id === e.target.value) as Record<string, unknown> | undefined;
+                            <SearchableSelect
+                              items={allIngredients as Record<string, unknown>[]}
+                              value={row.ingredientId}
+                              onChange={(id, item) => {
                                 const updated = [...formIngredients];
-                                updated[idx] = { ...updated[idx], ingredientId: e.target.value, unit: newIng ? newIng.unit as string : '' };
+                                updated[idx] = { ...updated[idx], ingredientId: id, unit: item ? (item.unit as string) : '' };
                                 setFormIngredients(updated);
-                              }}>
-                              <option value="">-- Ingredient --</option>
-                              {allIngredients.map((i: Record<string, unknown>) => (
-                                <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
-                              ))}
-                            </select>
-                            <input type="number" step="0.01" min="0"
+                              }}
+                              placeholder="-- Ingredient --"
+                              renderHint={(i) => {
+                                const cost = parseFloat(i.unit_cost as string || '0');
+                                const parts: string[] = [];
+                                if (i.unit) parts.push(i.unit as string);
+                                if (cost > 0) parts.push(`${cost.toFixed(2)} DH/${i.unit as string}`);
+                                return parts.length ? parts.join(' · ') : null;
+                              }}
+                            />
+                            <input type="number" step="any" min="0"
                               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                               value={row.quantity} onChange={(e) => updateIngredientRow(idx, 'quantity', e.target.value)} placeholder="0" />
                             <select className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 font-medium"

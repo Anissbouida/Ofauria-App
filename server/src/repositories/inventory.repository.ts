@@ -161,7 +161,11 @@ export const ingredientRepository = {
           totalCost += costPerUnit * parseFloat(sr.quantity);
         }
         await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
-        // Cascade up to parent recipes
+        // Sync linked product price (cost_price + price = cost/unit * marginMultiplier)
+        const margin = parseFloat(recipe.margin_multiplier || '3');
+        const yieldQty = parseFloat(recipe.yield_quantity || '1');
+        await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+        // Cascade up to parent recipes (also syncs their product price via recalcParents)
         await recipeRepository.recalcParents(row.recipe_id);
       }
     }

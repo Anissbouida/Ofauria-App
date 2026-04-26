@@ -144,6 +144,10 @@ function CatalogueTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      // Le lien produit<->recette vit dans la table recipes (colonne product_id),
+      // donc il faut aussi invalider le cache des recettes pour que ProductFormModal
+      // voie la nouvelle association a la reouverture (sinon le champ parait vide).
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
       notify.success(editingProduct ? 'Produit mis à jour' : 'Produit créé');
       setShowForm(false); setEditingProduct(null);
     },
@@ -615,6 +619,16 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   // Find the recipe currently linked to this product (for display info only)
   const currentRecipe = product ? allRecipesList.find(r => r.product_id === product.id) : null;
 
+  // Pre-remplir le champ recipeId a l'ouverture du modal en edition.
+  // Sans ce useEffect, le form affichait "recipeId: ''" a l'ouverture meme si le produit
+  // avait deja une recette liee, donc le champ apparaissait vide dans l'UI.
+  useEffect(() => {
+    if (currentRecipe?.id && form.recipeId !== currentRecipe.id) {
+      setForm(f => ({ ...f, recipeId: currentRecipe.id as string }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRecipe?.id]);
+
   // Prevent backdrop click from closing the modal on mount (mobile touch event propagation)
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(t); }, []);
@@ -1043,9 +1057,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Prix de vente (DH)</label>
-                    <input type="number" step="0.01"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
-                      value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required placeholder="0.00" />
+                    <input type="number" step="0.01" readOnly tabIndex={-1}
+                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 cursor-not-allowed"
+                      value={form.price} placeholder="0.00" />
+                    <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
                   </div>
                 </div>
 
@@ -1053,9 +1068,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Prix de revient (DH)</label>
-                    <input type="number" step="0.01"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="Optionnel" />
+                    <input type="number" step="0.01" readOnly tabIndex={-1}
+                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-700 cursor-not-allowed"
+                      value={form.costPrice} placeholder="Auto" />
+                    <p className="text-xs text-gray-400 mt-1">Calculé depuis le coût des ingrédients de la recette</p>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">

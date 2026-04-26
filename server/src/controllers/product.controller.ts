@@ -93,9 +93,57 @@ export const productController = {
     }
   },
   async update(req: AuthRequest, res: Response) {
-    const data = { ...req.body };
+    // Extrait recipeId du payload : le lien produit<->recette est stocke dans la table recipes
+    // (colonne recipes.product_id), pas dans la table products. Le mapping de productRepository.update
+    // n'inclut donc pas recipeId et le droppait silencieusement avant ce fix.
+    const { recipeId, ...rest } = req.body;
+    const data = { ...rest };
     if (data.name) data.slug = slugify(data.name);
-    const product = await productRepository.update(req.params.id, data);
+
+    const productId = req.params.id;
+
+    // Si recipeId est fourni (y compris chaine vide/null pour detacher), on ajuste le lien.
+    // Cas :
+    //   - recipeId = '<id>' : delier l'ancienne recette du produit, puis lier la nouvelle
+    //   - recipeId = '' ou null : detacher toute recette du produit
+    //   - recipeId === undefined : le champ n'est pas dans le payload -> on ne touche pas au lien
+    if (recipeId !== undefined) {
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+
+        if (recipeId) {
+          const recipeCheck = await client.query('SELECT id, product_id FROM recipes WHERE id = $1', [recipeId]);
+          if (recipeCheck.rows.length === 0) {
+            await client.query('ROLLBACK');
+            res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
+            return;
+          }
+          const existingProductId = recipeCheck.rows[0].product_id;
+          if (existingProductId && existingProductId !== productId) {
+            await client.query('ROLLBACK');
+            res.status(400).json({ success: false, error: { message: 'Cette recette est deja liee a un autre produit.' } });
+            return;
+          }
+          // Detacher la recette actuellement liee a ce produit (s'il y en a une differente)
+          await client.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1 AND id <> $2', [productId, recipeId]);
+          // Lier la nouvelle recette
+          await client.query('UPDATE recipes SET product_id = $1 WHERE id = $2', [productId, recipeId]);
+        } else {
+          // Detacher toute recette liee
+          await client.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1', [productId]);
+        }
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    const product = await productRepository.update(productId, data);
     res.json({ success: true, data: product });
   },
   async remove(req: AuthRequest, res: Response) {

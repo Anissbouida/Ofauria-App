@@ -115,7 +115,7 @@ export const recipeRepository = {
 
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
-    contenantId?: string; etapes?: unknown[];
+    contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
   }) {
@@ -149,10 +149,11 @@ export const recipeRepository = {
         }
       }
 
+      const margin = data.marginMultiplier && data.marginMultiplier > 0 ? data.marginMultiplier : 3;
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || [])]
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -183,6 +184,8 @@ export const recipeRepository = {
         }
       }
 
+      await this.syncProductPrice(client, data.productId || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
+
       await client.query('COMMIT');
       return recipeResult.rows[0];
     } catch (err) {
@@ -193,9 +196,25 @@ export const recipeRepository = {
     }
   },
 
+  /** Sync linked product cost_price + price.
+   *  If `overridePrice` is provided (manual entry), use it as-is for `products.price`.
+   *  Otherwise compute price = cost_per_unit * marginMultiplier.
+   */
+  async syncProductPrice(executor: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, productId: string | null, totalCost: number, yieldQuantity: number, marginMultiplier: number, overridePrice: number | null = null) {
+    if (!productId || yieldQuantity <= 0) return;
+    const costPerUnit = totalCost / yieldQuantity;
+    const price = overridePrice !== null && overridePrice >= 0
+      ? overridePrice
+      : costPerUnit * marginMultiplier;
+    await executor.query(
+      `UPDATE products SET cost_price = $1, price = $2, updated_at = NOW() WHERE id = $3`,
+      [costPerUnit, price, productId]
+    );
+  },
+
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
-    contenantId?: string; etapes?: unknown[];
+    contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     changedBy?: string; changeNote?: string;
@@ -256,10 +275,13 @@ export const recipeRepository = {
         }
       }
 
+      const margin = data.marginMultiplier && data.marginMultiplier > 0
+        ? data.marginMultiplier
+        : parseFloat(currentRecipe?.margin_multiplier || '3');
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, contenant_id = $7, etapes = $8, updated_at = NOW()
-         WHERE id = $9`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, contenant_id = $7, etapes = $8, margin_multiplier = $9, updated_at = NOW()
+         WHERE id = $10`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin, id]
       );
 
       // Re-insert ingredients
@@ -293,6 +315,8 @@ export const recipeRepository = {
           );
         }
       }
+
+      await this.syncProductPrice(client, currentRecipe?.product_id || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
 
       await client.query('COMMIT');
 
@@ -331,6 +355,10 @@ export const recipeRepository = {
       }
 
       await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+
+      const margin = parseFloat(recipe.margin_multiplier || '3');
+      const yieldQty = parseFloat(recipe.yield_quantity || '1');
+      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
 
       // Recurse up to grandparents
       await this.recalcParents(row.recipe_id, visited);
