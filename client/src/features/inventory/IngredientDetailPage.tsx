@@ -25,6 +25,16 @@ const INGREDIENT_CATEGORIES = [
   { value: 'epices', label: 'Épices & Arômes' },
   { value: 'levures', label: 'Levures & Agents levants' },
   { value: 'emballages', label: 'Emballages' },
+  { value: 'conserves', label: 'Conserves' },
+  { value: 'legumes', label: 'Légumes' },
+  { value: 'sauces', label: 'Sauces & Condiments' },
+  { value: 'decors', label: 'Décors & Garnitures' },
+  { value: 'gelifiants', label: 'Gélifiants' },
+  { value: 'preparations', label: 'Préparations' },
+  { value: 'viandes', label: 'Viandes & Volailles' },
+  { value: 'pates_riz', label: 'Pâtes & Riz' },
+  { value: 'sel_vinaigre', label: 'Sel & Vinaigre' },
+  { value: 'colorants', label: 'Colorants' },
   { value: 'autre', label: 'Autre' },
 ];
 
@@ -40,6 +50,16 @@ const CATEGORY_COLORS: Record<string, string> = {
   epices: 'bg-red-100 text-red-700',
   levures: 'bg-violet-100 text-violet-700',
   emballages: 'bg-gray-100 text-gray-600',
+  conserves: 'bg-teal-100 text-teal-700',
+  legumes: 'bg-emerald-100 text-emerald-700',
+  sauces: 'bg-rose-100 text-rose-700',
+  decors: 'bg-purple-100 text-purple-700',
+  gelifiants: 'bg-cyan-100 text-cyan-700',
+  preparations: 'bg-indigo-100 text-indigo-700',
+  viandes: 'bg-red-200 text-red-800',
+  pates_riz: 'bg-yellow-200 text-yellow-800',
+  sel_vinaigre: 'bg-slate-100 text-slate-700',
+  colorants: 'bg-fuchsia-100 text-fuchsia-700',
   autre: 'bg-gray-100 text-gray-500',
 };
 
@@ -71,6 +91,7 @@ interface Lot {
   supplier_name: string | null;
   quantity_received: string;
   quantity_remaining: string;
+  unit_cost: string | null;
   expiration_date: string | null;
   manufactured_date: string | null;
   received_at: string;
@@ -761,6 +782,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
           <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
             {lot.supplier_name ? <span>{lot.supplier_name}</span> : null}
+            {lot.unit_cost && parseFloat(lot.unit_cost) > 0 ? (
+              <span className="font-semibold text-gray-600">
+                {parseFloat(lot.unit_cost).toFixed(2)} DH/{lot.ingredient_unit}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -769,6 +795,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           <p className="text-sm font-bold text-gray-800">
             {remaining.toFixed(1)} / {received.toFixed(1)} {lot.ingredient_unit}
           </p>
+          {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 ? (
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Valeur: {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
+            </p>
+          ) : null}
           <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1 ml-auto">
             <div className={`h-full rounded-full ${pct > 50 ? 'bg-emerald-400' : pct > 20 ? 'bg-amber-400' : 'bg-red-400'}`}
               style={{ width: `${pct}%` }} />

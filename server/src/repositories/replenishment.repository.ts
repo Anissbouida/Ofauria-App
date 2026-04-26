@@ -297,15 +297,25 @@ export const replenishmentRepository = {
         frigoMap[row.product_id] = Math.floor(parseFloat(row.frigo_quantity));
       }
 
-      // 3c. Production profiles (contenant info for calcul inverse)
+      // 3c. Production profiles (contenant info for calcul inverse).
+      // Hierarchie de resolution du contenant/rendement :
+      //   1) produit_profil_production (specifique au produit, avec surcharges eventuelles)
+      //   2) fallback : contenant lie a la recette (recipes.contenant_id)
+      // Sans ce fallback, un produit qui n'a que sa recette (pas de profil specifique)
+      // voit ses plans crees avec la demande brute, sans arrondi au cadre/fournee.
       const profileResult = await client.query(
-        `SELECT pp.produit_id, pp.contenant_id,
-                COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) as quantite_theorique,
-                COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) as pertes_fixes,
-                (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) as quantite_nette_cible
-         FROM produit_profil_production pp
-         JOIN production_contenants pc ON pc.id = pp.contenant_id
-         WHERE pp.produit_id = ANY($1)`,
+        `SELECT p.id AS produit_id,
+                COALESCE(pp.contenant_id, r.contenant_id) AS contenant_id,
+                COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) AS quantite_theorique,
+                COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) AS pertes_fixes,
+                (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique)
+                 - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) AS quantite_nette_cible
+         FROM products p
+         LEFT JOIN produit_profil_production pp ON pp.produit_id = p.id
+         LEFT JOIN recipes r ON r.product_id = p.id
+         LEFT JOIN production_contenants pc ON pc.id = COALESCE(pp.contenant_id, r.contenant_id)
+         WHERE p.id = ANY($1)
+           AND COALESCE(pp.contenant_id, r.contenant_id) IS NOT NULL`,
         [productIds]
       );
       const profileMap: Record<string, { contenantId: string; quantiteNetteCible: number; quantiteTheorique: number }> = {};

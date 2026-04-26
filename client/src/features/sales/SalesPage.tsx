@@ -1040,8 +1040,15 @@ export default function SalesPage() {
                     </div>
                   )}
 
-                  {/* Inventory Bilan */}
-                  {isClosed && s.inv_total_replenished !== null && parseInt(String(s.inv_total_replenished)) > 0 && (
+                  {/* Inventory Bilan — affiche des qu'un daily_inventory_check existe pour la session,
+                      meme si tous les totaux sont a 0 (passation courte, vitrine vide, etc.).
+                      Le LEFT JOIN renvoie null quand aucun check n'a ete enregistre. */}
+                  {isClosed && (
+                    s.inv_total_replenished !== null ||
+                    s.inv_total_sold !== null ||
+                    s.inv_total_remaining !== null ||
+                    s.inv_total_discrepancy !== null
+                  ) && (
                     <InventoryBilan session={s} />
                   )}
 

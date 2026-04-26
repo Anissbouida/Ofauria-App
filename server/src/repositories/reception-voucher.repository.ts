@@ -134,8 +134,8 @@ export const receptionVoucherRepository = {
         );
         if (!poItem) continue;
 
-        // Update price on PO item if provided and was NULL
-        if (item.unitPrice != null && poItem.unit_price == null) {
+        // Update price on PO item if provided and PO had no real price (NULL or 0)
+        if (item.unitPrice != null && (poItem.unit_price == null || parseFloat(poItem.unit_price) === 0)) {
           await client.query(
             `UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2`,
             [item.unitPrice, item.poItemId]
@@ -223,21 +223,34 @@ export const receptionVoucherRepository = {
         if (existingInv.rows.length === 0) {
           // Build invoice items from PO items
           const poItems = allItems.rows;
+          // Effective price = last reception voucher price if set, else PO price.
+          // Guarantees the invoice reflects the real paid price even when PO price was 0/NULL.
           const poItemDetails = await client.query(
-            `SELECT poi.*, ing.name as ingredient_name
+            `SELECT poi.id, poi.ingredient_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
+                    ing.name as ingredient_name,
+                    COALESCE(
+                      (SELECT rvi.unit_price FROM reception_voucher_items rvi
+                       WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
+                       ORDER BY rvi.id DESC LIMIT 1),
+                      poi.unit_price
+                    ) AS effective_unit_price
              FROM purchase_order_items poi
              JOIN ingredients ing ON ing.id = poi.ingredient_id
              WHERE poi.purchase_order_id = $1`,
             [data.purchaseOrderId]
           );
 
-          const invoiceItems = poItemDetails.rows.map((it: Record<string, unknown>) => ({
-            ingredientId: it.ingredient_id as string,
-            description: it.ingredient_name as string,
-            quantity: parseFloat(it.quantity_delivered as string),
-            unitPrice: parseFloat(it.unit_price as string),
-            subtotal: parseFloat(it.quantity_delivered as string) * parseFloat(it.unit_price as string),
-          }));
+          const invoiceItems = poItemDetails.rows.map((it: Record<string, unknown>) => {
+            const qty = parseFloat(it.quantity_delivered as string);
+            const price = parseFloat((it.effective_unit_price as string) ?? '0') || 0;
+            return {
+              ingredientId: it.ingredient_id as string,
+              description: it.ingredient_name as string,
+              quantity: qty,
+              unitPrice: price,
+              subtotal: qty * price,
+            };
+          });
 
           const amount = invoiceItems.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
           const invoiceNumber = await invoiceRepository.generateInvoiceNumber('received');

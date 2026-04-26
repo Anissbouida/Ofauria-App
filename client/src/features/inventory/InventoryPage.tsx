@@ -28,6 +28,16 @@ const INGREDIENT_CATEGORIES = [
   { value: 'epices', label: 'Épices & Arômes' },
   { value: 'levures', label: 'Levures & Agents levants' },
   { value: 'emballages', label: 'Emballages' },
+  { value: 'conserves', label: 'Conserves' },
+  { value: 'legumes', label: 'Légumes' },
+  { value: 'sauces', label: 'Sauces & Condiments' },
+  { value: 'decors', label: 'Décors & Garnitures' },
+  { value: 'gelifiants', label: 'Gélifiants' },
+  { value: 'preparations', label: 'Préparations' },
+  { value: 'viandes', label: 'Viandes & Volailles' },
+  { value: 'pates_riz', label: 'Pâtes & Riz' },
+  { value: 'sel_vinaigre', label: 'Sel & Vinaigre' },
+  { value: 'colorants', label: 'Colorants' },
   { value: 'autre', label: 'Autre' },
 ];
 
@@ -43,6 +53,16 @@ const CATEGORY_COLORS: Record<string, string> = {
   epices: 'bg-red-100 text-red-700',
   levures: 'bg-violet-100 text-violet-700',
   emballages: 'bg-gray-100 text-gray-600',
+  conserves: 'bg-teal-100 text-teal-700',
+  legumes: 'bg-emerald-100 text-emerald-700',
+  sauces: 'bg-rose-100 text-rose-700',
+  decors: 'bg-purple-100 text-purple-700',
+  gelifiants: 'bg-cyan-100 text-cyan-700',
+  preparations: 'bg-indigo-100 text-indigo-700',
+  viandes: 'bg-red-200 text-red-800',
+  pates_riz: 'bg-yellow-200 text-yellow-800',
+  sel_vinaigre: 'bg-slate-100 text-slate-700',
+  colorants: 'bg-fuchsia-100 text-fuchsia-700',
   autre: 'bg-gray-100 text-gray-500',
 };
 
@@ -260,6 +280,9 @@ export default function InventoryPage() {
                 <SortHeader col="name">Ingrédient</SortHeader>
                 <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
                 <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 hidden md:table-cell" title="Dernier prix d'achat saisi — utilise pour estimer le cout des recettes">
+                  <span className="inline-flex items-center gap-1">Dernier prix <span className="text-[9px] font-normal text-gray-400">(estim. recette)</span></span>
+                </th>
                 <SortHeader col="quantity">Stock</SortHeader>
                 <SortHeader col="lots" className="hidden lg:table-cell">Lots</SortHeader>
                 <SortHeader col="days_stock" className="hidden lg:table-cell">Jours stock</SortHeader>
@@ -269,9 +292,9 @@ export default function InventoryPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
               ) : filteredInventory.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Aucun ingrédient trouvé</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Aucun ingrédient trouvé</td></tr>
               ) : filteredInventory.map((item, idx) => {
                 const qty = parseFloat(item.current_quantity);
                 const threshold = parseFloat(item.minimum_threshold);
@@ -307,6 +330,19 @@ export default function InventoryPage() {
                     {/* Supplier */}
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span className="text-xs text-gray-500">{item.supplier || '—'}</span>
+                    </td>
+                    {/* Dernier prix d'achat — base du cout estime des recettes */}
+                    <td className="px-4 py-3 hidden md:table-cell text-right">
+                      {(() => {
+                        const cost = parseFloat(item.unit_cost || '0');
+                        return cost > 0 ? (
+                          <span className="text-xs font-semibold text-gray-700">
+                            {cost.toFixed(2)} <span className="text-[10px] text-gray-400">DH/{item.unit}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">—</span>
+                        );
+                      })()}
                     </td>
                     {/* Stock */}
                     <td className="px-4 py-3">
