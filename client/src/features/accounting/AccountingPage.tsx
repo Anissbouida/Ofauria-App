@@ -10,10 +10,11 @@ import {
   X, Check, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Calculator, CreditCard, Coins, Scale,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, Upload,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
+import CaisseImportModal from './CaisseImportModal';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 type AccTab = 'caisse' | 'charges' | 'resume' | 'losses';
@@ -214,6 +215,7 @@ function CaisseTab() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set());
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['caisse-register', year, month],
@@ -284,10 +286,20 @@ function CaisseTab() {
           </select>
           <input type="number" value={year} onChange={e => setYear(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-24" />
         </div>
-        <button onClick={handleExport} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-          <Download size={14} /> Exporter
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-2 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm"
+          >
+            <Upload size={14} /> Importer Excel caisse
+          </button>
+          <button onClick={handleExport} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
+            <Download size={14} /> Exporter
+          </button>
+        </div>
       </div>
+
+      {showImportModal && <CaisseImportModal onClose={() => setShowImportModal(false)} />}
 
       {/* Report line */}
       {data && (data.previousBalance.cashNet !== 0 || data.previousBalance.cardCumul !== 0) && (

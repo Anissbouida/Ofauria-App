@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { caisseController, supplierController, expenseCategoryController, revenueCategoryController, invoiceController, paymentController } from '../controllers/accounting.controller.js';
+import { caisseImportController } from '../controllers/caisse-import.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -60,6 +61,20 @@ invoicesRouter.post('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.AD
 invoicesRouter.delete('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.removeAttachment);
 invoicesRouter.get('/:id/download-docx', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.downloadDocx);
 invoicesRouter.get('/:id/download-pdf', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.downloadDocx);
+
+// Upload Excel de caisse (in-memory, 5MB max, .xlsx/.xls)
+const caisseImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, ext === '.xlsx' || ext === '.xls');
+  },
+});
+
+export const caisseImportRouter = Router();
+caisseImportRouter.post('/preview', authenticate, authorize(ROLES.ADMIN), caisseImportUpload.single('file'), caisseImportController.preview);
+caisseImportRouter.post('/commit', authenticate, authorize(ROLES.ADMIN), caisseImportUpload.single('file'), caisseImportController.commit);
 
 export const paymentsRouter = Router();
 paymentsRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.list);
