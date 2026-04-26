@@ -1,9 +1,12 @@
 import api from './client';
 
 export const unsoldDecisionApi = {
-  /** Produits invendus avec suggestions automatiques */
-  suggestions: () =>
-    api.get('/unsold-decisions/suggestions').then(r => r.data.data),
+  /** Produits invendus avec suggestions automatiques.
+   *  closeType adapte la fenetre d'analyse : 'fin_journee' ignore les passations intermediaires
+   *  pour inclure toutes les ventes et approvisionnements depuis la derniere fin de journee. */
+  suggestions: (closeType?: 'passation' | 'fin_journee') =>
+    api.get('/unsold-decisions/suggestions', { params: closeType ? { closeType } : undefined })
+       .then(r => r.data.data),
 
   /** Enregistrer les decisions */
   save: (data: {

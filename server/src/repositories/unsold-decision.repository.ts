@@ -111,12 +111,75 @@ export const unsoldDecisionRepository = {
   /**
    * Charge les invendus avec suggestion automatique pour chaque produit.
    * Appele quand l'operateur ouvre l'ecran de decisions invendus.
+   *
+   * Fenetre de comptabilisation :
+   *   - Si une session de caisse est ouverte pour le store -> depuis opened_at jusqu'a maintenant
+   *     (gere proprement les shifts qui chevauchent minuit)
+   *   - Sinon fallback -> journee locale courante
+   *
+   * Couverture :
+   *   - Produits avec stock magasin > 0 (vitrine theorique)
+   *   - Produits approvisionnes pendant la fenetre (meme si tout vendu -> controle approv vs vendus)
+   *   - Produits vendus pendant la fenetre (controle de vente, meme si stock = 0)
    */
-  async getUnsoldWithSuggestions(storeId: string) {
+  async getUnsoldWithSuggestions(storeId: string, closeType?: string) {
     const tz = getUserTimezone();
+    // Fenetre d'analyse : TOUJOURS cloisonnee par shift.
+    //   -> depuis la derniere fermeture (peu importe son type) OU l'ouverture de la session courante.
+    //   On veut voir ce qui s'est passe DANS LE SHIFT COURANT uniquement (approvisionnement,
+    //   ventes, comptage vitrine du moment), peu importe que ce soit une passation ou une
+    //   fin de journee. Chaque shift ne compte que son propre approv et sa propre passation
+    //   recue, sans cumuler les shifts anterieurs deja cloturres.
+    void closeType;
+    const windowResult = await db.query(
+      `SELECT
+         (SELECT closed_at FROM cash_register_sessions
+           WHERE store_id = $1 AND status = 'closed' AND closed_at IS NOT NULL
+           ORDER BY closed_at DESC LIMIT 1) as last_closed_at,
+         (SELECT opened_at FROM cash_register_sessions
+           WHERE store_id = $1 AND status = 'open'
+           ORDER BY opened_at DESC LIMIT 1) as current_open_at`,
+      [storeId]
+    );
+    const lastClosedAt: Date | null = windowResult.rows[0]?.last_closed_at ?? null;
+    const currentOpenAt: Date | null = windowResult.rows[0]?.current_open_at ?? null;
+    const windowStart: Date | null = lastClosedAt ?? currentOpenAt ?? null;
     const result = await db.query(`
+      WITH sales_window AS (
+        SELECT si.product_id, SUM(si.quantity)::int as sold_qty
+          FROM sale_items si
+          JOIN sales s ON s.id = si.sale_id
+         WHERE s.store_id = $1
+           AND (
+             ($2::timestamptz IS NOT NULL AND s.created_at >= $2::timestamptz)
+             OR ($2::timestamptz IS NULL AND DATE(s.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}'))
+           )
+         GROUP BY si.product_id
+      ),
+      replen_window AS (
+        SELECT ri2.product_id,
+               SUM(COALESCE(ri2.qty_received, ri2.qty_to_store, ri2.requested_quantity))::int as replenished_qty
+          FROM replenishment_request_items ri2
+          JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
+         WHERE rr2.store_id = $1
+           AND (
+             ($2::timestamptz IS NOT NULL AND rr2.created_at >= $2::timestamptz)
+             OR ($2::timestamptz IS NULL AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}'))
+           )
+           AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged', 'partially_received')
+         GROUP BY ri2.product_id
+      ),
+      relevant_products AS (
+        SELECT pss.product_id, COALESCE(pss.vitrine_quantity, 0)::int as current_stock
+          FROM product_store_stock pss
+         WHERE pss.store_id = $1 AND COALESCE(pss.vitrine_quantity, 0) > 0
+        UNION
+        SELECT st.product_id, 0 FROM sales_window st
+        UNION
+        SELECT rt.product_id, 0 FROM replen_window rt
+      )
       SELECT
-        pss.product_id,
+        rp.product_id,
         p.name as product_name,
         p.image_url as product_image,
         p.cost_price,
@@ -131,45 +194,38 @@ export const unsoldDecisionRepository = {
         p.max_reexpositions,
         p.sale_type,
         ri.name as recycle_ingredient_name,
-        COALESCE(pss.stock_quantity, 0)::int as current_stock,
-        COALESCE(
-          (SELECT SUM(si.quantity)
-           FROM sale_items si
-           JOIN sales s ON s.id = si.sale_id
-           WHERE s.store_id = $1
-             AND DATE(s.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
-             AND si.product_id = pss.product_id),
-          0
-        )::int as sold_qty,
-        COALESCE(
-          (SELECT SUM(COALESCE(ri2.qty_received, ri2.qty_to_store, ri2.requested_quantity))
-           FROM replenishment_request_items ri2
-           JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
-           WHERE rr2.store_id = $1
-             AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
-             AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged', 'partially_received')
-             AND ri2.product_id = pss.product_id),
-          0
-        )::int as replenished_today_qty,
+        -- current_stock = source de verite du stock vitrine maintenant (utilise comme theorique cote UI)
+        -- initial_stock = derive algebriquement : ce qu'il y avait au debut de la fenetre
+        --               = stock_maintenant + ventes_depuis - approv_depuis
+        MAX(rp.current_stock) as current_stock,
+        COALESCE(st.sold_qty, 0)::int as sold_qty,
+        COALESCE(rt.replenished_qty, 0)::int as replenished_today_qty,
+        GREATEST(0, MAX(rp.current_stock) + COALESCE(st.sold_qty, 0) - COALESCE(rt.replenished_qty, 0))::int as initial_stock,
         COALESCE(pdt.current_reexposition_count, 0) as reexposition_count,
         pdt.display_expires_at,
         pdt.produced_at,
         pdt.expires_at,
         pdt.status as display_status
-      FROM product_store_stock pss
-      JOIN products p ON p.id = pss.product_id
+      FROM relevant_products rp
+      JOIN products p ON p.id = rp.product_id
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN ingredients ri ON ri.id = p.recycle_ingredient_id
+      LEFT JOIN sales_window st ON st.product_id = rp.product_id
+      LEFT JOIN replen_window rt ON rt.product_id = rp.product_id
       LEFT JOIN LATERAL (
         SELECT pdt2.current_reexposition_count, pdt2.display_expires_at, pdt2.produced_at, pdt2.expires_at, pdt2.status
         FROM product_display_tracking pdt2
-        WHERE pdt2.product_id = pss.product_id AND pdt2.store_id = $1 AND pdt2.status = 'active'
+        WHERE pdt2.product_id = rp.product_id AND pdt2.store_id = $1 AND pdt2.status = 'active'
         ORDER BY pdt2.produced_at DESC LIMIT 1
       ) pdt ON true
-      WHERE pss.store_id = $1
-        AND COALESCE(pss.stock_quantity, 0) > 0
+      GROUP BY rp.product_id, p.name, p.image_url, p.cost_price, p.price,
+               c.name, c.slug, p.shelf_life_days, p.display_life_hours,
+               p.is_reexposable, p.is_recyclable, p.recycle_ingredient_id, p.max_reexpositions,
+               p.sale_type, ri.name, st.sold_qty, rt.replenished_qty,
+               pdt.current_reexposition_count, pdt.display_expires_at, pdt.produced_at,
+               pdt.expires_at, pdt.status
       ORDER BY c.name, p.name
-    `, [storeId]);
+    `, [storeId, windowStart]);
 
     // Enrichir chaque produit avec la suggestion automatique
     return result.rows.map(row => {
@@ -330,9 +386,9 @@ export const unsoldDecisionRepository = {
             );
 
           } else if (d.finalDestination === 'waste') {
-            // Reduire stock produit
+            // Les invendus sont exposes en vitrine — decrement de vitrine_quantity
             await client.query(
-              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [d.remainingQty, d.productId, data.storeId]
             );

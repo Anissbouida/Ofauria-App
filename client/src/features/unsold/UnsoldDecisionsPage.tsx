@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
+import { cashRegisterApi } from '../../api/cash-register.api';
 import { useAuth } from '../../context/AuthContext';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { format } from 'date-fns';
@@ -127,6 +128,14 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
     queryFn: unsoldDecisionApi.suggestions,
   });
 
+  // Recuperer la session de caisse ouverte — necessaire pour rattacher les decisions
+  // (le serveur refuse desormais les decisions orphelines sans sessionId).
+  const { data: activeSession } = useQuery({
+    queryKey: ['cash-register-session'],
+    queryFn: cashRegisterApi.currentSession,
+  });
+  const activeSessionId = (activeSession as { id?: string } | null)?.id;
+
   // Initialize counts from product data
   useMemo(() => {
     const newCounts: Record<string, number> = {};
@@ -221,7 +230,11 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
           };
         });
 
-      return unsoldDecisionApi.save({ decisions: allDecisions });
+      return unsoldDecisionApi.save({
+        sessionId: activeSessionId,
+        closeType: 'fin_journee',
+        decisions: allDecisions,
+      });
     },
     onSuccess: () => {
       setMsg({ type: 'success', text: 'Decisions enregistrees avec succes. Les effets sur le stock ont ete appliques.' });
@@ -265,6 +278,27 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
 
   return (
     <div className="space-y-5">
+      {/* Banniere : obligation de session active pour eviter decisions orphelines */}
+      {!activeSessionId && (
+        <div className="rounded-xl p-4 flex items-start gap-3 text-sm bg-amber-50 border border-amber-200">
+          <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-amber-800">
+            <div className="font-semibold">Aucune caisse ouverte</div>
+            <div className="mt-1">
+              Les decisions invendus doivent etre rattachees a une session de caisse. Ouvre une session sur l'ecran POS, puis finalise la fermeture (passation ou fin de journee) pour enregistrer les decisions.
+            </div>
+          </div>
+        </div>
+      )}
+      {activeSessionId && (
+        <div className="rounded-xl p-3 flex items-center gap-2 text-sm bg-blue-50 border border-blue-200">
+          <Info size={16} className="text-blue-500 shrink-0" />
+          <span className="text-blue-700">
+            Pour une fermeture complete (montant, ecarts, statut session), utilise plutot l'ecran de fermeture de caisse depuis le POS. Cette page reste disponible pour verifier/ajuster les decisions rattachees a la session en cours.
+          </span>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
@@ -526,6 +560,10 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
         </div>
         <button
           onClick={() => {
+            if (!activeSessionId) {
+              setMsg({ type: 'error', text: 'Aucune caisse ouverte — impossible d\'enregistrer des decisions. Ouvre une session depuis le POS.' });
+              return;
+            }
             // Check that all overrides have reasons
             for (const p of products as Product[]) {
               const pid = p.product_id as string;
@@ -541,7 +579,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
             }
             saveMutation.mutate();
           }}
-          disabled={saveMutation.isPending || summary.total === 0}
+          disabled={saveMutation.isPending || summary.total === 0 || !activeSessionId}
           className="btn-primary px-8 py-3 text-base flex items-center gap-2 disabled:opacity-50"
         >
           {saveMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}

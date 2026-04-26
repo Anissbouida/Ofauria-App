@@ -154,6 +154,14 @@ export default function POSPage() {
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
   const [inventoryDestinations, setInventoryDestinations] = useState<Record<string, string>>({});
   const [inventoryDone, setInventoryDone] = useState(false);
+  // Ajout manuel d'un produit a l'inventaire (cas : produit physiquement en vitrine
+  // mais sans trace d'approvisionnement officiel dans product_store_stock)
+  const [showAddInvProduct, setShowAddInvProduct] = useState(false);
+  const [addInvSearch, setAddInvSearch] = useState('');
+  // Filtre clic-sur-carte pour la modale d'inventaire de fermeture.
+  // null = tout afficher, sinon on filtre la liste sur le critere correspondant.
+  type InvFilter = null | 'replenished' | 'sold' | 'theoretical' | 'counted' | 'discrepancy' | 'unsold';
+  const [inventoryFilter, setInventoryFilter] = useState<InvFilter>(null);
 
   // Loss declaration state
   const [showLossModal, setShowLossModal] = useState(false);
@@ -218,6 +226,14 @@ export default function POSPage() {
     enabled: !!activeSession && !!user?.storeId && isTopCategory && !search,
   });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
+  // Catalogue complet pour le panneau "Ajouter un produit manquant" de la modal de fermeture.
+  // Chargement paresseux : ne s'active que quand l'operateur ouvre le panneau.
+  const { data: allCatalogForClose } = useQuery({
+    queryKey: ['pos-close-catalog'],
+    queryFn: () => productsApi.list({ isAvailable: 'true', limit: '1000', strictStore: 'true' }),
+    enabled: !!user?.storeId && showAddInvProduct,
+    staleTime: 60_000,
+  });
   const { data: customersData } = useQuery({
     queryKey: ['customers-search', customerSearch],
     queryFn: () => customersApi.list({ search: customerSearch, limit: '5' }),
@@ -296,23 +312,42 @@ export default function POSPage() {
       const data = await cashRegisterApi.close(type);
       // Load unsold items with intelligent suggestions
       let invItems: Record<string, unknown>[] = [];
-      try { invItems = await unsoldDecisionApi.suggestions() || []; } catch { /* no items */ }
+      // Propage closeType pour que le backend ajuste la fenetre : en fin_journee on veut
+      // toutes les ventes/approvs depuis la derniere fin_journee (ignorer les passations
+      // intermediaires), pas juste depuis la derniere fermeture de shift.
+      try { invItems = await unsoldDecisionApi.suggestions(type) || []; } catch { /* no items */ }
       return { data, invItems, type };
     },
-    onSuccess: ({ data, invItems, type }) => {
+    onSuccess: async ({ data, invItems, type }) => {
       setCloseResult(data);
       setCloseType(type);
       if (invItems.length > 0) {
         setInventoryItems(invItems);
-        // Pre-fill remaining qty = 0 (caissière doit saisir le comptage réel)
+        // Passation & fin de journee : pre-remplir a 0 par defaut.
+        // Hypothese realiste : tout est vendu, la caissiere ajuste seulement ce qui reste en vitrine.
         const qtys: Record<string, number> = {};
-        for (const it of invItems) {
-          qtys[it.product_id as string] = 0;
-        }
+        for (const it of invItems) qtys[it.product_id as string] = 0;
         setInventoryQtys(qtys);
+        setInventoryDestinations({});
         setCloseStep('inventory');
         setInventoryDone(false);
       } else {
+        // Vitrine vide : en passation, on cree quand meme un marqueur d'audit "vitrine verifiee vide"
+        // pour garder la tracabilite du shift. En fin_journee, on skippe (pas d'items a decider).
+        if (type === 'passation') {
+          try {
+            await unsoldDecisionApi.save({
+              sessionId: data.id as string,
+              closeType: 'passation',
+              decisions: [],
+            });
+          } catch (err: unknown) {
+            console.error('Erreur audit passation vide:', err);
+            const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+            if (msg) notify.error(`Audit passation: ${msg}`);
+            // On ne bloque pas la fermeture pour autant
+          }
+        }
         setCloseStep('input');
         setInventoryDone(true);
       }
@@ -1670,11 +1705,83 @@ export default function POSPage() {
                         : 'Verifiez les quantites et decidez du devenir de chaque produit invendu.'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Package size={18} />
-                    <span className="font-semibold">{inventoryItems.length} articles</span>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => { setShowAddInvProduct(v => !v); setAddInvSearch(''); }}
+                      className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors flex items-center gap-1.5">
+                      <Plus size={14} /> Ajouter un produit
+                    </button>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Package size={18} />
+                      <span className="font-semibold">{inventoryItems.length} articles</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Panneau d'ajout manuel (pour produits en vitrine non tracks dans product_store_stock) */}
+                {showAddInvProduct && (() => {
+                  const allCatalogProducts = (allCatalogForClose?.data as Record<string, unknown>[] | undefined) || [];
+                  const alreadyAddedIds = new Set(inventoryItems.map(i => i.product_id as string));
+                  const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                  const q = normalize(addInvSearch.trim());
+                  const candidates = allCatalogProducts
+                    .filter(p => !alreadyAddedIds.has(p.id as string))
+                    .filter(p => !q || normalize((p.name as string) || '').includes(q))
+                    .slice(0, 20);
+                  return (
+                    <div className="mb-4 bg-indigo-50/40 border border-indigo-200 rounded-xl p-3">
+                      <div className="relative mb-2">
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <input type="text" value={addInvSearch} onChange={(e) => setAddInvSearch(e.target.value)} autoFocus
+                          placeholder="Rechercher un produit du catalogue..."
+                          className="w-full pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      </div>
+                      <div className="max-h-56 overflow-y-auto space-y-1">
+                        {candidates.length === 0 ? (
+                          <div className="px-2 py-3 text-center text-xs text-gray-400">
+                            {allCatalogProducts.length === 0 ? 'Chargement du catalogue...' : 'Aucun produit (deja dans l\'inventaire ou pas de correspondance)'}
+                          </div>
+                        ) : candidates.map(p => (
+                          <button key={p.id as string} type="button"
+                            onClick={() => {
+                              const newItem: Record<string, unknown> = {
+                                product_id: p.id,
+                                product_name: p.name,
+                                product_image: p.image_url,
+                                cost_price: p.cost_price || 0,
+                                price: p.price || 0,
+                                category_name: (p.category_name as string) || 'Ajoute manuellement',
+                                category_slug: p.category_slug,
+                                shelf_life_days: p.shelf_life_days,
+                                display_life_hours: p.display_life_hours,
+                                is_reexposable: p.is_reexposable,
+                                is_recyclable: p.is_recyclable,
+                                recycle_ingredient_id: p.recycle_ingredient_id,
+                                max_reexpositions: p.max_reexpositions,
+                                sale_type: p.sale_type,
+                                current_stock: 0,
+                                sold_qty: 0,
+                                replenished_today_qty: 0,
+                                reexposition_count: 0,
+                                suggested_destination: closeType === 'passation' ? 'reexpose' : 'waste',
+                                suggested_reason: 'Ajoute manuellement a l\'inventaire',
+                              };
+                              setInventoryItems(prev => [...prev, newItem]);
+                              setAddInvSearch('');
+                              // Garde le panneau ouvert pour permettre d'ajouter plusieurs produits d'affilee
+                            }}
+                            className="w-full flex items-center justify-between gap-3 px-3 py-2 bg-white hover:bg-indigo-50 rounded-lg text-left transition-colors border border-transparent hover:border-indigo-200">
+                            <span className="text-sm font-medium text-gray-800 truncate">{p.name as string}</span>
+                            {p.category_name ? <span className="text-[10px] text-gray-400 shrink-0">{p.category_name as string}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex justify-end mt-2">
+                        <button type="button" onClick={() => setShowAddInvProduct(false)}
+                          className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">Fermer</button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Summary bar */}
                 {(() => {
@@ -1682,9 +1789,12 @@ export default function POSPage() {
                   let totalKeep = 0, totalRecycle = 0, totalDestroy = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
+                    const initial = parseInt(it.initial_stock as string) || 0;
                     const replenished = parseInt(it.replenished_today_qty as string) || 0;
                     const sold = parseInt(it.sold_qty as string) || 0;
-                    const theoretical = replenished - sold;
+                    // Theorique = current_stock du serveur (source de verite : ce qui devrait etre en vitrine maintenant).
+                    // Equivalent algebriquement a initial + replenished - sold.
+                    const theoretical = parseInt(it.current_stock as string) || (initial + replenished - sold);
                     const counted = inventoryQtys[pid] ?? 0;
                     totalReplenished += replenished;
                     totalSold += sold;
@@ -1698,29 +1808,40 @@ export default function POSPage() {
                       else totalDestroy += counted;
                     }
                   });
+                  // Carte cliquable : clic active le filtre, re-clic le desactive.
+                  // Feedback visuel : ring + shadow quand la carte est active.
+                  const toggleFilter = (f: InvFilter) => setInventoryFilter(prev => prev === f ? null : f);
+                  const activeClass = (f: InvFilter) => inventoryFilter === f
+                    ? 'ring-2 ring-offset-1 shadow-md scale-[1.02]'
+                    : 'hover:shadow-sm hover:scale-[1.01]';
                   return (
                     <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-5">
-                      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center">
+                      <button type="button" onClick={() => toggleFilter('replenished')}
+                        className={`bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('replenished')} ${inventoryFilter === 'replenished' ? 'ring-indigo-400' : ''}`}>
                         <div className="text-2xl font-bold text-indigo-700">{totalReplenished}</div>
                         <div className="text-xs text-indigo-600 font-medium">Approvisionne</div>
-                      </div>
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                      </button>
+                      <button type="button" onClick={() => toggleFilter('sold')}
+                        className={`bg-blue-50 border border-blue-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('sold')} ${inventoryFilter === 'sold' ? 'ring-blue-400' : ''}`}>
                         <div className="text-2xl font-bold text-blue-700">{totalSold}</div>
                         <div className="text-xs text-blue-600 font-medium">Vendus</div>
-                      </div>
-                      <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-center">
+                      </button>
+                      <button type="button" onClick={() => toggleFilter('theoretical')}
+                        className={`bg-purple-50 border border-purple-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('theoretical')} ${inventoryFilter === 'theoretical' ? 'ring-purple-400' : ''}`}>
                         <div className="text-2xl font-bold text-purple-700">{totalTheoreticalRemaining}</div>
                         <div className="text-xs text-purple-600 font-medium">Theorique</div>
-                      </div>
-                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                      </button>
+                      <button type="button" onClick={() => toggleFilter('counted')}
+                        className={`bg-gray-50 border border-gray-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('counted')} ${inventoryFilter === 'counted' ? 'ring-gray-400' : ''}`}>
                         <div className="text-2xl font-bold text-gray-700">{totalCounted}</div>
                         <div className="text-xs text-gray-600 font-medium">Saisi</div>
-                      </div>
-                      <div className={`rounded-xl p-3 text-center border ${
-                        closeType === 'passation'
-                          ? 'bg-blue-50 border-blue-200'
-                          : totalDiscrepancySum === 0 ? 'bg-green-50 border-green-200' : totalDiscrepancySum > 0 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'
-                      }`}>
+                      </button>
+                      <button type="button" onClick={() => toggleFilter('discrepancy')}
+                        className={`rounded-xl p-3 text-center border transition-all cursor-pointer ${activeClass('discrepancy')} ${
+                          closeType === 'passation'
+                            ? 'bg-blue-50 border-blue-200'
+                            : totalDiscrepancySum === 0 ? 'bg-green-50 border-green-200' : totalDiscrepancySum > 0 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'
+                        } ${inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'ring-blue-400' : totalDiscrepancySum === 0 ? 'ring-green-400' : totalDiscrepancySum > 0 ? 'ring-orange-400' : 'ring-red-400') : ''}`}>
                         <div className={`text-2xl font-bold ${
                           closeType === 'passation'
                             ? 'text-blue-700'
@@ -1731,16 +1852,33 @@ export default function POSPage() {
                             ? 'text-blue-600'
                             : totalDiscrepancySum === 0 ? 'text-green-600' : totalDiscrepancySum > 0 ? 'text-orange-600' : 'text-red-600'
                         }`}>{closeType === 'passation' ? 'Reste' : 'Ecart'}</div>
-                      </div>
+                      </button>
                       {closeType !== 'passation' && (totalKeep > 0 || totalRecycle > 0 || totalDestroy > 0) && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                        <button type="button" onClick={() => toggleFilter('unsold')}
+                          className={`bg-amber-50 border border-amber-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('unsold')} ${inventoryFilter === 'unsold' ? 'ring-amber-400' : ''}`}>
                           <div className="text-2xl font-bold text-amber-700">{totalKeep + totalRecycle + totalDestroy}</div>
                           <div className="text-xs text-amber-600 font-medium">Invendus</div>
-                        </div>
+                        </button>
                       )}
                     </div>
                   );
                 })()}
+
+                {/* Banniere filtre actif */}
+                {inventoryFilter && (
+                  <div className="mb-3 flex items-center gap-2 text-xs">
+                    <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-medium">
+                      Filtre actif : {inventoryFilter === 'replenished' ? 'Approvisionnes (> 0)'
+                        : inventoryFilter === 'sold' ? 'Vendus (> 0)'
+                        : inventoryFilter === 'theoretical' ? 'Reste theorique (> 0)'
+                        : inventoryFilter === 'counted' ? 'Saisis (> 0)'
+                        : inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'Reste (> 0)' : 'Ecart (\u2260 0)')
+                        : 'Invendus a decider (> 0)'}
+                    </span>
+                    <button type="button" onClick={() => setInventoryFilter(null)}
+                      className="text-gray-500 hover:text-gray-700 underline">Tout afficher</button>
+                  </div>
+                )}
 
                 {/* Items grouped by category */}
                 {(() => {
@@ -1749,9 +1887,32 @@ export default function POSPage() {
                     recycle: { bg: 'bg-cyan-100 border-cyan-300', text: 'text-cyan-800', label: 'Recycler', icon: '♻' },
                     waste: { bg: 'bg-red-100 border-red-300', text: 'text-red-800', label: 'Detruire', icon: '✗' },
                   };
+                  // Applique le filtre actif sur les cartes de resume (clic sur une carte).
+                  // Chaque critere mappe sur la meme derivation que le total affiche sur la carte.
+                  const filteredItems = inventoryItems.filter((it) => {
+                    if (!inventoryFilter) return true;
+                    const pid = it.product_id as string;
+                    const initial = parseInt(it.initial_stock as string) || 0;
+                    const replenished = parseInt(it.replenished_today_qty as string) || 0;
+                    const sold = parseInt(it.sold_qty as string) || 0;
+                    const theoretical = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
+                    const counted = inventoryQtys[pid] ?? 0;
+                    const discrepancy = theoretical - counted;
+                    switch (inventoryFilter) {
+                      case 'replenished': return replenished > 0;
+                      case 'sold': return sold > 0;
+                      case 'theoretical': return theoretical > 0;
+                      case 'counted': return counted > 0;
+                      case 'discrepancy':
+                        return closeType === 'passation' ? counted > 0 : discrepancy !== 0;
+                      case 'unsold': return counted > 0; // Invendus = produits restants comptes avec destination
+                      default: return true;
+                    }
+                  });
+
                   // Group items by category
                   const grouped: Record<string, typeof inventoryItems> = {};
-                  inventoryItems.forEach((it) => {
+                  filteredItems.forEach((it) => {
                     const cat = (it.category_name as string) || 'Sans categorie';
                     if (!grouped[cat]) grouped[cat] = [];
                     grouped[cat].push(it);
@@ -1760,6 +1921,13 @@ export default function POSPage() {
 
                   return (
                     <div className="space-y-3 mb-4 max-h-[50vh] overflow-y-auto">
+                      {categoryNames.length === 0 && inventoryFilter && (
+                        <div className="px-4 py-8 text-center text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                          Aucun produit ne correspond a ce filtre.{' '}
+                          <button type="button" onClick={() => setInventoryFilter(null)}
+                            className="text-indigo-600 hover:text-indigo-800 underline font-medium">Effacer le filtre</button>
+                        </div>
+                      )}
                       {categoryNames.map((catName) => {
                         const catItems = grouped[catName];
                         const catCount = catItems.reduce((sum, it) => {
@@ -1793,10 +1961,14 @@ export default function POSPage() {
                             <div className="divide-y divide-gray-100">
                               {catItems.map((it) => {
                                 const pid = it.product_id as string;
+                                const initial = parseInt(it.initial_stock as string) || 0;
                                 const replenished = parseInt(it.replenished_today_qty as string) || 0;
                                 const sold = parseInt(it.sold_qty as string) || 0;
-                                const theoreticalRemaining = Math.max(0, replenished - sold);
-                                const counted = inventoryQtys[pid] ?? 0;
+                                // Theorique = current_stock (source de verite), fallback derive si absent
+                                const theoreticalRemaining = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
+                                const countedRaw = inventoryQtys[pid];
+                                const hasBeenCounted = countedRaw !== undefined;
+                                const counted = countedRaw ?? 0;
                                 const discrepancy = theoreticalRemaining - counted;
 
                                 const sugDest = (it.suggested_destination as string) || 'waste';
@@ -1810,6 +1982,7 @@ export default function POSPage() {
 
                                 return (
                                   <div key={pid} className={`grid ${closeType === 'passation' ? 'grid-cols-8' : 'grid-cols-12'} gap-2 items-center px-4 py-3 transition-colors ${
+                                    !hasBeenCounted ? 'bg-yellow-50/60 ring-1 ring-inset ring-yellow-200' :
                                     closeType !== 'passation' && finalDest === 'waste' ? 'bg-red-50/30' : closeType !== 'passation' && finalDest === 'recycle' ? 'bg-cyan-50/30' : discrepancy !== 0 ? 'bg-amber-50/50' : 'hover:bg-gray-50'
                                   }`}>
                                     {/* Product */}
@@ -1840,9 +2013,20 @@ export default function POSPage() {
                                           className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
                                           <Minus size={12} />
                                         </button>
-                                        <input type="number" min={0} value={counted}
-                                          onChange={(e) => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                                          className="w-14 h-7 text-center text-sm font-bold border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500" />
+                                        <input type="number" min={0}
+                                          value={hasBeenCounted ? counted : ''}
+                                          placeholder="?"
+                                          onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === '') {
+                                              setInventoryQtys(prev => { const n = { ...prev }; delete n[pid]; return n; });
+                                            } else {
+                                              setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(v) || 0) }));
+                                            }
+                                          }}
+                                          className={`w-14 h-7 text-center text-sm font-bold border rounded-lg focus:ring-2 focus:ring-amber-500 ${
+                                            hasBeenCounted ? 'border-gray-300' : 'border-yellow-400 bg-yellow-50 placeholder-yellow-500'
+                                          }`} />
                                         <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
                                           className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
                                           <Plus size={12} />
@@ -1851,7 +2035,9 @@ export default function POSPage() {
                                     </div>
                                     {/* Passation: Reste (saisi) | Fin journée: Écart (théorique - saisi) */}
                                     <div className="col-span-1 text-center">
-                                      {closeType === 'passation' ? (
+                                      {!hasBeenCounted ? (
+                                        <span className="text-sm font-bold text-yellow-600">—</span>
+                                      ) : closeType === 'passation' ? (
                                         <span className={`text-sm font-bold ${counted > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{counted}</span>
                                       ) : discrepancy !== 0 ? (
                                         <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-orange-600' : 'text-red-600'}`}>
@@ -1908,9 +2094,10 @@ export default function POSPage() {
                   let totalCounted = 0;
                   inventoryItems.forEach((it) => {
                     const pid = it.product_id as string;
+                    const initial = parseInt(it.initial_stock as string) || 0;
                     const replenished = parseInt(it.replenished_today_qty as string) || 0;
                     const sold = parseInt(it.sold_qty as string) || 0;
-                    const theoretical = Math.max(0, replenished - sold);
+                    const theoretical = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
                     const counted = inventoryQtys[pid] ?? 0;
                     totalDiscrepancy += theoretical - counted;
                     totalCounted += counted;
@@ -1946,26 +2133,53 @@ export default function POSPage() {
                   );
                 })()}
 
+                {(() => {
+                  const uncountedCount = inventoryItems.filter(it => inventoryQtys[(it.product_id as string)] === undefined).length;
+                  const totalItems = inventoryItems.length;
+                  const missingDestination = closeType === 'fin_journee'
+                    ? inventoryItems.filter(it => {
+                        const pid = it.product_id as string;
+                        const c = inventoryQtys[pid];
+                        return c !== undefined && c > 0 && !inventoryDestinations[pid] && !(it.suggested_destination);
+                      }).length
+                    : 0;
+                  const cannotValidate = uncountedCount > 0 || missingDestination > 0;
+                  return (
+                <>
+                {uncountedCount > 0 && (
+                  <div className="rounded-xl p-3 flex items-center gap-2 text-sm mb-3 bg-yellow-50 border border-yellow-200">
+                    <AlertTriangle size={18} className="text-yellow-600" />
+                    <span className="text-yellow-800 font-medium">
+                      {uncountedCount} / {totalItems} produit(s) pas encore compte(s). Saisis une quantite (0 si aucun en vitrine) pour chaque produit avant de valider.
+                    </span>
+                  </div>
+                )}
                 <div className="flex gap-3">
                   <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="btn-secondary flex-1 py-3 text-base">Annuler</button>
                   <button onClick={async () => {
+                    if (cannotValidate) return;
                     try {
-                      // Build decisions/inventory data
+                      // Build decisions/inventory data — inclure TOUS les produits comptes (y compris 0)
+                      // pour garder la trace "verifie, rien en vitrine" dans daily_inventory_check_items.
                       const decisions = inventoryItems
-                        .filter(it => {
-                          const pid = it.product_id as string;
-                          const counted = inventoryQtys[pid] ?? 0;
-                          return counted > 0;
-                        })
+                        .filter(it => inventoryQtys[(it.product_id as string)] !== undefined)
                         .map((it) => {
                           const pid = it.product_id as string;
                           const counted = inventoryQtys[pid] ?? 0;
                           const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const soldQty = parseInt(it.sold_qty as string) || 0;
                           const sugDest = (it.suggested_destination as string) || 'waste';
-                          // En passation, pas de destination finale — on met 'reexpose' par defaut (stock inchange)
-                          const finalDest = closeType === 'passation' ? 'reexpose' : (inventoryDestinations[pid] || sugDest);
+                          // Destination finale :
+                          // - fin_journee : override operateur si saisi, sinon suggestion systeme
+                          // - passation  : la colonne "Decision" est MASQUEE dans l'UI (pas de choix possible),
+                          //   on neutralise donc la destination a 'reexpose' (on laisse tel quel pour le shift suivant).
+                          //   Le repo skip de toute facon les effets de stock (isPassation guard), mais sans cette
+                          //   neutralisation on enregistrait des decisions fantomes 'waste'/'recycle' dans
+                          //   unsold_decisions, polluant l'historique et le dashboard.
+                          const finalDest = closeType === 'passation'
+                            ? (inventoryDestinations[pid] || 'reexpose')
+                            : (inventoryDestinations[pid] || sugDest);
                           const isOvr = finalDest !== sugDest;
 
                           return {
@@ -1994,30 +2208,40 @@ export default function POSPage() {
                           };
                         });
 
-                      if (decisions.length > 0) {
+                      // Sauvegarde les decisions. En passation, liste vide acceptee cote serveur
+                      // (marqueur audit "vitrine verifiee vide"). En fin_journee le serveur rejettera
+                      // une liste vide — cas bloque en amont par cannotValidate de toute facon.
+                      if (decisions.length > 0 || closeType === 'passation') {
                         await unsoldDecisionApi.save({
                           sessionId: closeResult?.id as string,
                           closeType,
                           decisions,
                         });
                         notify.success(closeType === 'passation'
-                          ? `Inventaire passation enregistre (${decisions.length} articles)`
+                          ? (decisions.length > 0
+                              ? `Inventaire passation enregistre (${decisions.length} articles)`
+                              : 'Inventaire passation enregistre (vitrine vide)')
                           : `${decisions.length} decisions invendus enregistrees`);
-                      } else {
-                        notify.success('Aucun invendu a traiter');
                       }
+                      setInventoryDone(true);
+                      setCloseStep('input');
                     } catch (err: unknown) {
+                      // Erreur reelle cote serveur : on affiche le message et on NE progresse PAS vers input —
+                      // l'audit de shift doit rester consistent, on laisse la caissiere reessayer ou corriger.
                       console.error('Erreur sauvegarde invendus:', err);
                       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Erreur lors de l\'enregistrement';
                       notify.error(msg);
+                      return;
                     }
-                    setInventoryDone(true);
-                    setCloseStep('input');
                   }}
-                    className="btn-primary flex-1 py-3 text-base font-semibold">
+                    disabled={cannotValidate}
+                    className={`btn-primary flex-1 py-3 text-base font-semibold ${cannotValidate ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     {closeType === 'passation' ? 'Valider l\'inventaire' : 'Valider les decisions'}
                   </button>
                 </div>
+                </>
+                  );
+                })()}
               </>
             ) : closeStep === 'input' ? (
               <>
@@ -2250,9 +2474,10 @@ export default function POSPage() {
                       <div className="max-h-48 overflow-y-auto space-y-1">
                         {inventoryItems.map((it) => {
                           const pid = it.product_id as string;
+                          const initial = parseInt(it.initial_stock as string) || 0;
                           const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
-                          const theoretical = Math.max(0, replenished - sold);
+                          const theoretical = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
                           const counted = inventoryQtys[pid] ?? 0;
                           const ecart = theoretical - counted;
                           return (
@@ -2276,9 +2501,10 @@ export default function POSPage() {
                         let totalReplenished = 0, totalSold = 0, totalTheoretical = 0, totalCounted = 0, totalEcart = 0;
                         inventoryItems.forEach((it) => {
                           const pid = it.product_id as string;
+                          const initial = parseInt(it.initial_stock as string) || 0;
                           const replenished = parseInt(it.replenished_today_qty as string) || 0;
                           const sold = parseInt(it.sold_qty as string) || 0;
-                          const theoretical = Math.max(0, replenished - sold);
+                          const theoretical = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
                           const counted = inventoryQtys[pid] ?? 0;
                           totalReplenished += replenished; totalSold += sold; totalTheoretical += theoretical; totalCounted += counted;
                           totalEcart += theoretical - counted;

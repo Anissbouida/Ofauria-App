@@ -105,8 +105,19 @@ app.use(cookieParser());
 // A faire AVANT les routes, APRES cors + cookieParser.
 app.use('/api/v1', originCheck(allowedOrigins));
 
-// Body parsing
-app.use(express.json({ limit: '10kb' }));
+// Body parsing — limite stricte 10 Ko par defaut (OWASP A04, surface DoS reduite).
+// Certaines routes batch (inventaire fin de shift/journee) ont leur propre parser avec
+// une limite elargie ; on les skip ici pour laisser leur parser local prendre la main.
+const ROUTES_WITH_LOCAL_JSON_PARSER = [
+  '/api/v1/unsold-decisions',
+];
+const globalJsonParser = express.json({ limit: '10kb' });
+app.use((req, res, next) => {
+  if (ROUTES_WITH_LOCAL_JSON_PARSER.some(p => req.path === p || req.path.startsWith(p + '/'))) {
+    return next();
+  }
+  return globalJsonParser(req, res, next);
+});
 
 // Capture user timezone from request header and store in async context
 app.use((req, res, next) => {

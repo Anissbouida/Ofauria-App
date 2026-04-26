@@ -10,9 +10,19 @@ import { getApiErrorMessage } from '../../utils/api-error';
 interface Props {
   onClose: () => void;
   sessionId?: string;
+  /** Contexte de declaration. 'vitrine' (defaut) = perte cote POS/magasin.
+   *  'production' = perte pendant la fabrication (rebut, loupe, brule...). */
+  context?: 'vitrine' | 'production';
+  /** ID du plan de production (obligatoire en contexte 'production' pour la tracabilite). */
+  productionPlanId?: string;
+  /** Pre-filtrage des produits selectionnables (ex: uniquement les produits du plan). */
+  productIdFilter?: string[];
+  /** Titre/sous-titre personnalises (optionnels). */
+  title?: string;
+  subtitle?: string;
 }
 
-const LOSS_REASONS = [
+const LOSS_REASONS_VITRINE = [
   { value: 'chute', label: 'Chute / Tombé', icon: '💥' },
   { value: 'casse', label: 'Cassé / Écrasé', icon: '💔' },
   { value: 'perime', label: 'Périmé', icon: '⏰' },
@@ -22,7 +32,25 @@ const LOSS_REASONS = [
   { value: 'autre', label: 'Autre', icon: '📝' },
 ];
 
-export default function LossDeclarationModal({ onClose, sessionId }: Props) {
+const LOSS_REASONS_PRODUCTION = [
+  { value: 'brule', label: 'Brule / Trop cuit', icon: '🔥' },
+  { value: 'rate', label: 'Loupe / Rate', icon: '❌' },
+  { value: 'machine', label: 'Panne machine', icon: '⚙️' },
+  { value: 'matiere_defectueuse', label: 'Matiere defectueuse', icon: '🌾' },
+  { value: 'chute', label: 'Chute / Tombé', icon: '💥' },
+  { value: 'qualite_non_conforme', label: 'Qualite non conforme', icon: '⚠️' },
+  { value: 'erreur_humaine', label: 'Erreur humaine', icon: '🙁' },
+  { value: 'autre', label: 'Autre', icon: '📝' },
+];
+
+export default function LossDeclarationModal({
+  onClose, sessionId, context = 'vitrine', productionPlanId, productIdFilter,
+}: Props) {
+  void sessionId; // reserve pour futur besoin
+  const isProduction = context === 'production';
+  const LOSS_REASONS = isProduction ? LOSS_REASONS_PRODUCTION : LOSS_REASONS_VITRINE;
+  const lossType = isProduction ? 'production' : 'vitrine';
+
   const [step, setStep] = useState<'product' | 'details' | 'done'>('product');
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Record<string, unknown> | null>(null);
@@ -36,12 +64,16 @@ export default function LossDeclarationModal({ onClose, sessionId }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: productsData } = useQuery({
-    queryKey: ['products', 'pos-loss'],
+    queryKey: ['products', 'loss-modal', context],
     queryFn: () => productsApi.list({ limit: '500' }),
   });
 
   const products = (productsData?.data || []) as Record<string, unknown>[];
   const filtered = products.filter((p) => {
+    // Filtre par liste de produits autorises (ex: produits du plan en cours)
+    if (productIdFilter && productIdFilter.length > 0 && !productIdFilter.includes(p.id as string)) {
+      return false;
+    }
     if (!search) return true;
     const name = (p.name as string || '').toLowerCase();
     return name.includes(search.toLowerCase());
@@ -89,10 +121,11 @@ export default function LossDeclarationModal({ onClose, sessionId }: Props) {
       await productLossesApi.create({
         productId: selectedProduct.id as string,
         quantity,
-        lossType: 'vitrine',
+        lossType,
         reason,
         reasonNote: reasonNote || undefined,
         photoUrl: photoUrl || undefined,
+        ...(productionPlanId ? { productionPlanId } : {}),
       });
       notify.success('Perte declaree avec succes');
       setStep('done');
