@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { getUserTimezone } from '../utils/timezone.js';
 
 export const cashRegisterRepository = {
   async findOpenSession(userId: string) {
@@ -17,8 +18,14 @@ export const cashRegisterRepository = {
     if (params.storeId) { conditions.push(`cs.store_id = $${i++}`); values.push(params.storeId); }
     if (params.userId) { conditions.push(`cs.user_id = $${i++}`); values.push(params.userId); }
     if (params.status) { conditions.push(`cs.status = $${i++}`); values.push(params.status); }
-    if (params.dateFrom) { conditions.push(`cs.opened_at >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`cs.opened_at < ($${i++}::date + 1)`); values.push(params.dateTo); }
+    // Filtrage dans le fuseau utilisateur. Pour les sessions cloturees on filtre sur
+    // closed_at (date a laquelle le CA a ete genere) — une passation ouverte hier soir
+    // et close ce matin doit apparaitre sur la date de fermeture, pas la date d'ouverture.
+    // Pour les sessions encore ouvertes (closed_at null) on retombe sur opened_at.
+    const tzCs = getUserTimezone();
+    const dateExpr = `COALESCE((cs.closed_at AT TIME ZONE '${tzCs}')::date, (cs.opened_at AT TIME ZONE '${tzCs}')::date)`;
+    if (params.dateFrom) { conditions.push(`${dateExpr} >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`${dateExpr} <= $${i++}`); values.push(params.dateTo); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countResult = await db.query(`SELECT COUNT(*) FROM cash_register_sessions cs ${where}`, values);

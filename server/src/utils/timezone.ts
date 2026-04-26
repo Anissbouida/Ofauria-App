@@ -19,6 +19,14 @@ const ALLOWED_TIMEZONES = new Set<string>([
   'Europe/Madrid',
   'America/New_York',
   'America/Los_Angeles',
+  // Canada — utilisateurs a Montreal / Toronto / Vancouver
+  'America/Montreal',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Edmonton',
+  'America/Halifax',
+  'America/Winnipeg',
+  'America/St_Johns',
   'Asia/Dubai',
 ]);
 

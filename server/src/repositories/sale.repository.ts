@@ -15,8 +15,11 @@ export const saleRepository = {
     let needItemJoin = false;
 
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
-    if (params.dateFrom) { conditions.push(`s.created_at >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`s.created_at < ($${i++}::date + 1)`); values.push(params.dateTo); }
+    // Filtrer les dates dans le fuseau de l'utilisateur (sinon une vente Montreal le 22 avril a 21h46
+    // = 01h46 UTC le 23 avril tombe a tort dans le filtre "23 avril").
+    const tzFind = getUserTimezone();
+    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date <= $${i++}`); values.push(params.dateTo); }
     if (params.customerId) { conditions.push(`s.customer_id = $${i++}`); values.push(params.customerId); }
     if (params.paymentMethod) { conditions.push(`s.payment_method = $${i++}`); values.push(params.paymentMethod); }
     if (params.userId) { conditions.push(`s.user_id = $${i++}`); values.push(params.userId); }
@@ -247,8 +250,10 @@ export const saleRepository = {
     let i = 1;
 
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
-    if (params.dateFrom) { conditions.push(`s.created_at >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`s.created_at < ($${i++}::date + 1)`); values.push(params.dateTo); }
+    // Meme remise en fuseau utilisateur que findAll (evite les decalages de date aux heures limites).
+    const tzSum = getUserTimezone();
+    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date <= $${i++}`); values.push(params.dateTo); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -256,8 +261,8 @@ export const saleRepository = {
     const retConditions: string[] = [];
     const retValues: unknown[] = [];
     let ri = 1;
-    if (params.dateFrom) { retConditions.push(`sr.created_at >= $${ri++}`); retValues.push(params.dateFrom); }
-    if (params.dateTo) { retConditions.push(`sr.created_at < ($${ri++}::date + 1)`); retValues.push(params.dateTo); }
+    if (params.dateFrom) { retConditions.push(`(sr.created_at AT TIME ZONE '${tzSum}')::date >= $${ri++}`); retValues.push(params.dateFrom); }
+    if (params.dateTo) { retConditions.push(`(sr.created_at AT TIME ZONE '${tzSum}')::date <= $${ri++}`); retValues.push(params.dateTo); }
     const retWhere = retConditions.length ? `WHERE sr.type = 'return' AND ${retConditions.join(' AND ')}` : `WHERE sr.type = 'return'`;
 
     if (params.groupBy === 'category') {
