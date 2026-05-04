@@ -158,7 +158,89 @@ export const ingredientLotRepository = {
     return result.rows;
   },
 
-  /** FEFO consumption: consume ingredient from lots ordered by expiration date (First Expired, First Out) */
+  /**
+   * Phase Économat/Pesage : ouvre N contenants pour transferer du stock scelle
+   * (economat_quantity) vers le stock en cours d'utilisation (pesage_quantity).
+   *
+   * @param qtyToOpen quantite a transferer
+   * @returns total qty effectivement ouverte (clamp si economat insuffisant)
+   *
+   * Effets :
+   *   - economat_quantity -= qtyToOpen
+   *   - pesage_quantity += qtyToOpen
+   *   - first_opened_at fixe a NOW si premiere ouverture du lot
+   *   - effective_expiry_after_opening calcule (MIN DLC originale et opening + shelf_life_after_opening_days)
+   *   - opening_history append
+   *   - inventory_transactions type='open_container'
+   */
+  async openContainer(
+    client: PoolClient,
+    lotId: string,
+    qtyToOpen: number,
+    userId?: string,
+    note?: string
+  ): Promise<number> {
+    if (qtyToOpen <= 0) return 0;
+
+    const lockResult = await client.query(
+      `SELECT il.id, il.economat_quantity, il.pesage_quantity, il.first_opened_at,
+              il.expiration_date, il.ingredient_id, il.store_id,
+              ing.name AS ingredient_name
+         FROM ingredient_lots il
+         JOIN ingredients ing ON ing.id = il.ingredient_id
+        WHERE il.id = $1
+        FOR UPDATE`,
+      [lotId]
+    );
+    if (lockResult.rowCount === 0) {
+      throw new Error(`Lot ${lotId} introuvable`);
+    }
+    const lot = lockResult.rows[0];
+
+    const economatAvailable = parseFloat(lot.economat_quantity);
+    const actualToOpen = Math.min(qtyToOpen, economatAvailable);
+    if (actualToOpen <= 0) return 0;
+
+    const now = new Date();
+
+    // Append entry à opening_history (audit ouverture, mais la DLC ingredient
+    // reste celle imprimee sur le paquet — pas de DLV apres ouverture pour
+    // les ingredients, contrairement aux produits finis).
+    const newHistoryEntry = {
+      qty: actualToOpen,
+      opened_at: now.toISOString(),
+      opened_by: userId ?? null,
+      note: note ?? null,
+    };
+
+    await client.query(
+      `UPDATE ingredient_lots
+         SET economat_quantity = economat_quantity - $1,
+             pesage_quantity = pesage_quantity + $1,
+             first_opened_at = COALESCE(first_opened_at, $2::timestamptz),
+             opening_history = opening_history || $3::jsonb
+       WHERE id = $4`,
+      [actualToOpen, now.toISOString(), JSON.stringify(newHistoryEntry), lotId]
+    );
+
+    // Trace mouvement
+    await client.query(
+      `INSERT INTO inventory_transactions
+         (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
+       VALUES ($1, 'open_container', $2, $3, $4, $5, $6)`,
+      [lot.ingredient_id, actualToOpen,
+       note ?? `Ouverture contenant: ${lot.ingredient_name} x${actualToOpen}`,
+       userId ?? null, lot.store_id, lotId]
+    );
+
+    return actualToOpen;
+  },
+
+  /**
+   * FEFO consumption : consume ingredient depuis le stock Pesage uniquement.
+   * Si Pesage insuffisant, ouvre automatiquement N contenants depuis Économat
+   * (selon container_size de l'ingredient) pour combler le déficit.
+   */
   async consumeFEFO(
     client: PoolClient,
     ingredientId: string,
@@ -166,18 +248,80 @@ export const ingredientLotRepository = {
     productionPlanId: string,
     storeId?: string
   ): Promise<{ lotId: string; quantityUsed: number }[]> {
-    const conditions = [`ingredient_id = $1`, `status IN ('active', 'expired')`, `quantity_remaining > 0`];
-    const values: unknown[] = [ingredientId];
-    if (storeId) { conditions.push(`store_id = $2`); values.push(storeId); }
+    if (quantityNeeded <= 0) return [];
 
-    // Lock rows for concurrent safety — active lots first, then expired as fallback
+    // 1. Vérifier le stock Pesage disponible
+    const pesageStockResult = await client.query(
+      `SELECT COALESCE(SUM(pesage_quantity), 0) as pesage_total
+         FROM ingredient_lots
+        WHERE ingredient_id = $1 AND status = 'active' AND pesage_quantity > 0
+          ${storeId ? 'AND store_id = $2' : ''}`,
+      storeId ? [ingredientId, storeId] : [ingredientId]
+    );
+    const pesageAvailable = parseFloat(pesageStockResult.rows[0].pesage_total);
+
+    // 2. Si Pesage insuffisant : auto-ouverture depuis Économat
+    if (pesageAvailable < quantityNeeded) {
+      const deficit = quantityNeeded - pesageAvailable;
+
+      // Récupère container_size pour calculer le nombre de contenants à ouvrir
+      const ingResult = await client.query(
+        `SELECT container_size, name FROM ingredients WHERE id = $1`,
+        [ingredientId]
+      );
+      const containerSize = parseFloat(ingResult.rows[0]?.container_size) || 0;
+      const ingredientName = ingResult.rows[0]?.name || 'inconnu';
+
+      // Lots Économat dispo (FEFO)
+      const economatLotsResult = await client.query(
+        `SELECT id, economat_quantity FROM ingredient_lots
+          WHERE ingredient_id = $1 AND status = 'active' AND economat_quantity > 0
+            ${storeId ? 'AND store_id = $2' : ''}
+          ORDER BY expiration_date ASC NULLS LAST, received_at ASC
+          FOR UPDATE`,
+        storeId ? [ingredientId, storeId] : [ingredientId]
+      );
+
+      let stillNeedToOpen = deficit;
+      for (const ecoLot of economatLotsResult.rows) {
+        if (stillNeedToOpen <= 0) break;
+
+        const ecoQty = parseFloat(ecoLot.economat_quantity);
+        // On ouvre au moins l'equivalent du déficit, arrondi au container superieur si possible
+        let openQty: number;
+        if (containerSize > 0) {
+          const containersNeeded = Math.ceil(stillNeedToOpen / containerSize);
+          openQty = Math.min(containersNeeded * containerSize, ecoQty);
+        } else {
+          openQty = Math.min(stillNeedToOpen, ecoQty);
+        }
+
+        await this.openContainer(
+          client, ecoLot.id, openQty,
+          undefined,
+          `Auto-ouverture pour production: ${ingredientName} (besoin ${deficit.toFixed(2)})`
+        );
+        stillNeedToOpen -= openQty;
+      }
+
+      if (stillNeedToOpen > 0) {
+        // Pesage + Economat reunis insuffisants — on continue quand meme,
+        // le warning sera traite cote production.repository.
+        console.warn(`[consumeFEFO] Stock total insuffisant pour ${ingredientName}: manque ${stillNeedToOpen.toFixed(2)}`);
+      }
+    }
+
+    // 3. Maintenant on consomme depuis Pesage en FEFO sur la DLC
     const lotsResult = await client.query(
-      `SELECT id, quantity_remaining, expiration_date, status FROM ingredient_lots
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-                expiration_date ASC NULLS LAST, received_at ASC
-       FOR UPDATE`,
-      values
+      `SELECT id, pesage_quantity, expiration_date, status
+         FROM ingredient_lots
+        WHERE ingredient_id = $1 AND status = 'active' AND pesage_quantity > 0
+          ${storeId ? 'AND store_id = $2' : ''}
+        ORDER BY expiration_date ASC NULLS LAST,
+                 first_opened_at ASC NULLS FIRST,
+                 received_at ASC
+        FOR UPDATE`,
+      storeId ? [ingredientId, storeId] : [ingredientId]
     );
 
     const consumed: { lotId: string; quantityUsed: number }[] = [];
@@ -186,17 +330,20 @@ export const ingredientLotRepository = {
     for (const lot of lotsResult.rows) {
       if (remaining <= 0) break;
 
-      const available = parseFloat(lot.quantity_remaining);
+      const available = parseFloat(lot.pesage_quantity);
       const take = Math.min(available, remaining);
 
       await client.query(
-        `UPDATE ingredient_lots SET quantity_remaining = quantity_remaining - $1,
-         status = CASE WHEN quantity_remaining - $1 <= 0 THEN 'depleted' ELSE status END
-         WHERE id = $2`,
+        `UPDATE ingredient_lots
+            SET pesage_quantity = pesage_quantity - $1,
+                status = CASE
+                  WHEN economat_quantity = 0 AND pesage_quantity - $1 <= 0 THEN 'depleted'
+                  ELSE status
+                END
+          WHERE id = $2`,
         [take, lot.id]
       );
 
-      // Record production lot usage (forward traceability)
       await client.query(
         `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used)
          VALUES ($1, $2, $3, $4)`,
@@ -206,9 +353,6 @@ export const ingredientLotRepository = {
       consumed.push({ lotId: lot.id, quantityUsed: take });
       remaining -= take;
     }
-
-    // If remaining > 0, not enough tracked lots exist (old inventory without lots)
-    // The aggregate inventory deduction will still happen — this is graceful degradation
 
     return consumed;
   },
@@ -311,6 +455,132 @@ export const ingredientLotRepository = {
       [id]
     );
     return result.rows[0] || null;
+  },
+
+  /**
+   * Envoie un lot aux pertes : retire l'integralite du stock (Economat + Pesage),
+   * trace dans inventory_transactions type='waste' avec motif explicite,
+   * passe le lot en status='waste'.
+   *
+   * @param reason 'dlc_expired' | 'dlv_expired' | 'damaged' | 'quarantine_failed' | 'other'
+   */
+  async sendToLosses(
+    lotId: string,
+    reason: string,
+    userId: string,
+    note?: string
+  ): Promise<{ lot: Record<string, unknown>; lostQuantity: number; lostValue: number; reasonLabel: string }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const lockResult = await client.query(
+        `SELECT il.id, il.economat_quantity, il.pesage_quantity, il.unit_cost,
+                il.expiration_date, il.lot_number,
+                il.ingredient_id, il.store_id, il.status,
+                ing.name AS ingredient_name, ing.unit AS ingredient_unit
+           FROM ingredient_lots il
+           JOIN ingredients ing ON ing.id = il.ingredient_id
+          WHERE il.id = $1
+          FOR UPDATE`,
+        [lotId]
+      );
+      if (lockResult.rowCount === 0) {
+        throw new Error(`Lot ${lotId} introuvable`);
+      }
+      const lot = lockResult.rows[0];
+
+      if (lot.status === 'waste' || lot.status === 'depleted') {
+        throw new Error(`Lot deja traite (statut: ${lot.status})`);
+      }
+
+      const economatQty = parseFloat(lot.economat_quantity) || 0;
+      const pesageQty = parseFloat(lot.pesage_quantity) || 0;
+      const totalLost = economatQty + pesageQty;
+      const unitCost = parseFloat(lot.unit_cost) || 0;
+      const lostValue = totalLost * unitCost;
+
+      // Mapping des motifs pour libelle UI (DLV non applicable aux ingredients)
+      const reasonLabels: Record<string, string> = {
+        dlc_expired: 'DLC expiree',
+        damaged: 'Lot endommage',
+        quarantine_failed: 'Echec controle qualite',
+        other: 'Autre',
+      };
+      const reasonLabel = reasonLabels[reason] || reasonLabels.other;
+
+      // Trace mouvement de waste
+      if (totalLost > 0) {
+        await client.query(
+          `INSERT INTO inventory_transactions
+             (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
+           VALUES ($1, 'waste', $2, $3, $4, $5, $6)`,
+          [
+            lot.ingredient_id,
+            -totalLost,
+            `${reasonLabel} — Lot ${lot.lot_number} : ${totalLost.toFixed(3)} ${lot.ingredient_unit} (${lostValue.toFixed(2)} DH)${note ? ' — ' + note : ''}`,
+            userId,
+            lot.store_id,
+            lotId,
+          ]
+        );
+      }
+
+      // Marque le lot comme rebut
+      const updatedLot = await client.query(
+        `UPDATE ingredient_lots
+            SET status = 'waste',
+                economat_quantity = 0,
+                pesage_quantity = 0,
+                notes = COALESCE(notes, '') || E'\\n[' || NOW()::date::text || '] Envoyé aux pertes : ' || $2
+          WHERE id = $1
+          RETURNING *`,
+        [lotId, reasonLabel + (note ? ' — ' + note : '')]
+      );
+
+      await client.query('COMMIT');
+      return {
+        lot: updatedLot.rows[0],
+        lostQuantity: totalLost,
+        lostValue,
+        reasonLabel,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Liste des lots avec DLC ou DLV depassee qui sont encore actifs (a traiter).
+   * Utilise par l'UI pour afficher la bande alerte + dialog de gestion en bloc.
+   */
+  async findExpiredActiveLots(storeId?: string) {
+    const conditions: string[] = [
+      `il.status = 'active'`,
+      `(il.economat_quantity + il.pesage_quantity) > 0`,
+      `il.expiration_date IS NOT NULL AND il.expiration_date < CURRENT_DATE`,
+    ];
+    const values: unknown[] = [];
+    if (storeId) { conditions.push(`il.store_id = $1`); values.push(storeId); }
+
+    const result = await db.query(
+      `SELECT il.id, il.lot_number, il.supplier_lot_number,
+              il.economat_quantity, il.pesage_quantity,
+              (il.economat_quantity + il.pesage_quantity) as total_qty,
+              il.expiration_date, il.first_opened_at, il.unit_cost,
+              ing.id as ingredient_id, ing.name as ingredient_name, ing.unit as ingredient_unit, ing.category,
+              'dlc_expired' as expiry_reason,
+              (CURRENT_DATE - il.expiration_date) as days_expired
+         FROM ingredient_lots il
+         JOIN ingredients ing ON ing.id = il.ingredient_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY (CURRENT_DATE - il.expiration_date) DESC, ing.name`,
+      values
+    );
+    return result.rows;
   },
 
   /** Dashboard stats: summary of lot status */

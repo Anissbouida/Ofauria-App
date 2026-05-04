@@ -26,6 +26,7 @@ const router = Router();
 router.get('/', authenticate, productController.list);
 router.get('/top-selling', authenticate, productController.topSelling);
 router.get('/alerts/low-stock', authenticate, productController.lowStock);
+router.get('/:id/effective-deadline', authenticate, productController.effectiveDeadline);
 router.get('/:id', authenticate, productController.getById);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.create);
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.update);

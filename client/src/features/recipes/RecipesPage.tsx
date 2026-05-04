@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
+import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, Weight, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
@@ -1098,6 +1099,12 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     queryFn: ingredientsApi.list,
   });
 
+  // Catalogue emballages — modele dedie, separe des ingredients (pas de DLC, pas de FEFO).
+  const { data: allPackaging = [] } = useQuery({
+    queryKey: ['packaging-items-list'],
+    queryFn: () => packagingApi.list(),
+  });
+
   const { data: baseRecipes = [] } = useQuery({
     queryKey: ['base-recipes'],
     queryFn: recipesApi.listBase,
@@ -1121,6 +1128,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const [instructions, setInstructions] = useState('');
   const [isBase, setIsBase] = useState(defaultIsBase);
   const [formIngredients, setFormIngredients] = useState<FormIngredient[]>([{ ingredientId: '', quantity: '', unit: '' }]);
+  // Phase Emballages : state separe pointant vers packaging_items
+  const [formPackaging, setFormPackaging] = useState<{ packagingId: string; quantity: string; unit: string }[]>([]);
   const [formSubRecipes, setFormSubRecipes] = useState<FormSubRecipe[]>([]);
   const [formEtapes, setFormEtapes] = useState<FormEtape[]>([]);
 
@@ -1142,6 +1151,15 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setFormSubRecipes(
       existingRecipe.sub_recipes && existingRecipe.sub_recipes.length > 0
         ? existingRecipe.sub_recipes.map(sr => ({ subRecipeId: sr.sub_recipe_id, quantity: String(sr.quantity) }))
+        : []
+    );
+    setFormPackaging(
+      Array.isArray((existingRecipe as Record<string, unknown>).packaging) && ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).length > 0
+        ? ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).map(p => ({
+            packagingId: p.packaging_id as string,
+            quantity: String(p.quantity),
+            unit: (p.unit as string) || (p.base_unit as string) || 'piece',
+          }))
         : []
     );
     setFormEtapes(
@@ -1207,15 +1225,27 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const availableBaseRecipes = baseRecipes.filter((br: Record<string, unknown>) => br.id !== recipeId);
 
-  const ingredientCost = formIngredients.reduce((sum, row) => {
-    if (!row.ingredientId || !row.quantity) return sum;
+  // Cout des ingredients alimentaires (formIngredients pointe sur ingredients table)
+  const computeIngRowCost = (row: FormIngredient): number => {
+    if (!row.ingredientId || !row.quantity) return 0;
     const ing = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId);
-    if (!ing) return sum;
+    if (!ing) return 0;
     const ingBaseUnit = ing.unit as string || 'unit';
     const recipeUnit = row.unit || ingBaseUnit;
     const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
-    return sum + parseFloat(row.quantity) * parseFloat(ing.unit_cost as string || '0') * factor;
-  }, 0);
+    return parseFloat(row.quantity) * parseFloat(ing.unit_cost as string || '0') * factor;
+  };
+  const ingredientCost = formIngredients.reduce((sum, row) => sum + computeIngRowCost(row), 0);
+  const foodCost = ingredientCost;  // Tous les ingredients sont alimentaires maintenant (les emballages sont separes)
+
+  // Cout emballages (formPackaging pointe sur packaging_items table)
+  const computePkgRowCost = (row: { packagingId: string; quantity: string }): number => {
+    if (!row.packagingId || !row.quantity) return 0;
+    const pkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+    if (!pkg) return 0;
+    return parseFloat(row.quantity) * parseFloat(pkg.unit_cost as string || '0');
+  };
+  const packagingCost = formPackaging.reduce((sum, row) => sum + computePkgRowCost(row), 0);
 
   const subRecipeCost = formSubRecipes.reduce((sum, row) => {
     if (!row.subRecipeId || !row.quantity) return sum;
@@ -1225,7 +1255,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     return sum + costPerUnit * parseFloat(row.quantity);
   }, 0);
 
-  const liveCost = ingredientCost + subRecipeCost;
+  const liveCost = ingredientCost + subRecipeCost + packagingCost;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1257,6 +1287,11 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         responsable_role: e.responsable_role || null,
       }));
 
+    // Packaging valides : on filtre les lignes vides
+    const validPackaging = formPackaging
+      .filter(row => row.packagingId && row.quantity && parseFloat(row.quantity) > 0)
+      .map(row => ({ packagingId: row.packagingId, quantity: parseFloat(row.quantity), unit: row.unit || 'piece' }));
+
     const data: Record<string, unknown> = {
       name,
       productId: isBase ? null : (productId || null),
@@ -1269,6 +1304,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       etapes: validEtapes,
       ingredients: validIngredients,
       subRecipes: validSubRecipes,
+      packaging: validPackaging,
     };
 
     if (isEdit) updateMutation.mutate(data);
@@ -1579,18 +1615,18 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 )}
 
-                {/* Ingredients */}
+                {/* Section : Ingredients alimentaires (table ingredients) */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Scale size={16} className="text-amber-700" /> Ingredients
+                      <Scale size={16} className="text-amber-700" /> Ingredients alimentaires
+                      {foodCost > 0 && <span className="text-xs text-gray-400 font-normal ml-1">{foodCost.toFixed(2)} DH</span>}
                     </h3>
                     <button type="button" onClick={addIngredientRow}
                       className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 font-medium px-3 py-1.5 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors">
                       <PlusCircle size={14} /> Ajouter
                     </button>
                   </div>
-
                   <div className="border border-gray-200 rounded-xl overflow-hidden">
                     <div className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 text-xs font-semibold text-gray-500 px-4 py-2.5 bg-gray-50 uppercase tracking-wider">
                       <span>Ingredient</span>
@@ -1647,7 +1683,79 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 </div>
 
-                {/* Live cost */}
+                {/* Section : Emballages (table packaging_items dediee, sans DLC ni FEFO) */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <Package size={16} className="text-blue-700" /> Emballages
+                      {packagingCost > 0 && <span className="text-xs text-gray-400 font-normal ml-1">{packagingCost.toFixed(2)} DH</span>}
+                    </h3>
+                    <button type="button" onClick={() => setFormPackaging([...formPackaging, { packagingId: '', quantity: '', unit: 'piece' }])}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                      <PlusCircle size={14} /> Ajouter
+                    </button>
+                  </div>
+                  <div className="border border-blue-100 rounded-xl overflow-hidden">
+                    <div className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 text-xs font-semibold text-blue-700 px-4 py-2.5 bg-blue-50/50 uppercase tracking-wider">
+                      <span>Emballage</span>
+                      <span>Quantite</span>
+                      <span>Unite</span>
+                      <span>Cout</span>
+                      <span></span>
+                    </div>
+                    <div className="divide-y divide-blue-50">
+                      {formPackaging.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-gray-400 italic">
+                          Aucun emballage — clique sur Ajouter (caissette, boite, etiquette, film...)
+                        </div>
+                      ) : (
+                        formPackaging.map((row, idx) => {
+                          const selectedPkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+                          const baseUnit = (selectedPkg?.unit as string) || 'piece';
+                          const rowCost = selectedPkg && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedPkg.unit_cost as string || '0') : 0;
+                          return (
+                            <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
+                              <SearchableSelect
+                                items={allPackaging as Record<string, unknown>[]}
+                                value={row.packagingId}
+                                onChange={(id, item) => {
+                                  const updated = [...formPackaging];
+                                  updated[idx] = { ...updated[idx], packagingId: id, unit: item ? (item.unit as string) : 'piece' };
+                                  setFormPackaging(updated);
+                                }}
+                                placeholder="-- Emballage --"
+                                renderHint={(p) => {
+                                  const cost = parseFloat(p.unit_cost as string || '0');
+                                  const parts: string[] = [];
+                                  if (p.format) parts.push(p.format as string);
+                                  if (cost > 0) parts.push(`${cost.toFixed(2)} DH/${p.unit as string}`);
+                                  return parts.length ? parts.join(' · ') : null;
+                                }}
+                              />
+                              <input type="number" step="any" min="0"
+                                className="w-full px-3 py-2 bg-blue-50/30 border border-blue-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-semibold"
+                                value={row.quantity}
+                                onChange={(e) => {
+                                  const updated = [...formPackaging];
+                                  updated[idx] = { ...updated[idx], quantity: e.target.value };
+                                  setFormPackaging(updated);
+                                }}
+                                placeholder="0" />
+                              <span className="text-xs text-gray-500 text-center font-medium">{baseUnit}</span>
+                              <span className="text-xs font-bold text-blue-700 text-center">{rowCost > 0 ? `${rowCost.toFixed(2)}` : '—'}</span>
+                              <button type="button" onClick={() => setFormPackaging(formPackaging.filter((_, i) => i !== idx))}
+                                className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 size={14} className="text-red-400" />
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live cost — split alimentaires / emballages / preparations de base */}
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-2">
                   {subRecipeCost > 0 && (
                     <div className="flex justify-between items-center text-sm">
@@ -1655,10 +1763,20 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                       <span className="font-semibold text-amber-700">{subRecipeCost.toFixed(2)} DH</span>
                     </div>
                   )}
-                  {ingredientCost > 0 && (
+                  {foodCost > 0 && (
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">Ingredients</span>
-                      <span className="font-semibold text-gray-700">{ingredientCost.toFixed(2)} DH</span>
+                      <span className="text-gray-600 flex items-center gap-1.5">
+                        <Scale size={12} className="text-amber-500" /> Ingredients alimentaires
+                      </span>
+                      <span className="font-semibold text-gray-700">{foodCost.toFixed(2)} DH</span>
+                    </div>
+                  )}
+                  {packagingCost > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600 flex items-center gap-1.5">
+                        <Package size={12} className="text-blue-500" /> Emballages
+                      </span>
+                      <span className="font-semibold text-blue-700">{packagingCost.toFixed(2)} DH</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-1 border-t border-amber-200">

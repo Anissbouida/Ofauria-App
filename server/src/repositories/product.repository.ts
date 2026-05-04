@@ -29,6 +29,32 @@ export const productRepository = {
           : `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.vitrine_quantity, 0) as vitrine_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`)
       : `p.stock_quantity, p.stock_min_threshold,`;
 
+    // Phase D — pour chaque produit en vitrine, calcule la deadline effective
+    // (MIN entre DLV des lots et DDE des lots) + un flag is_expired si plus
+    // aucun lot vendable. Sert au POS pour griser les produits non vendables.
+    const lotMetricsJoin = params.storeId
+      ? `LEFT JOIN LATERAL (
+           SELECT
+             MIN(LEAST(
+               COALESCE(pl.expires_at::timestamptz, 'infinity'::timestamptz),
+               COALESCE(pl.display_expires_at, 'infinity'::timestamptz)
+             )) as effective_deadline,
+             MIN(pl.expires_at) FILTER (WHERE pl.expires_at IS NOT NULL) as nearest_dlv,
+             MIN(pl.display_expires_at) FILTER (WHERE pl.display_expires_at IS NOT NULL) as nearest_dde,
+             BOOL_OR(
+               (pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE)
+               AND (pl.display_expires_at IS NULL OR pl.display_expires_at > NOW())
+             ) as has_valid_lot
+           FROM product_lots pl
+           WHERE pl.product_id = p.id AND pl.store_id = pss.store_id
+             AND pl.status = 'active' AND pl.vitrine_qty > 0
+         ) lot_metrics ON true`
+      : '';
+    const lotMetricsCols = params.storeId
+      ? `lot_metrics.effective_deadline, lot_metrics.nearest_dlv, lot_metrics.nearest_dde,
+         (lot_metrics.has_valid_lot IS NOT NULL AND lot_metrics.has_valid_lot = false) as is_expired,`
+      : '';
+
     values.push(params.limit, params.offset);
     const result = await db.query(
       `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
@@ -38,10 +64,12 @@ export const productRepository = {
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.created_at, p.updated_at,
               ${stockColumns}
+              ${lotMetricsCols}
               c.name as category_name, c.slug as category_slug,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
        FROM products p
        ${storeStockJoin}
+       ${lotMetricsJoin}
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN users u ON u.id = p.responsible_user_id
        ${where}

@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
+import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const saleRepository = {
@@ -174,6 +175,21 @@ export const saleRepository = {
           if (!data.storeId) {
             throw new Error('storeId requis pour une vente POS (vitrine strictement par magasin)');
           }
+          // Phase A — Securite alimentaire : rejet si DLV ou DDE atteinte sur tous
+          // les lots disponibles. Le check est defensif (en plus du masquage UI).
+          const saleabilityIssue = await productLotRepository.checkSaleability(item.productId, data.storeId);
+          if (saleabilityIssue) {
+            const reasonLabel = saleabilityIssue.reason === 'DDE_EXPIREE'
+              ? 'duree d\'exposition vitrine (DDE)'
+              : 'date limite de vente (DLV)';
+            const err = new Error(
+              `Vente refusee : ${reasonLabel} atteinte pour le produit ${item.productId}`
+            ) as Error & { code?: string; statusCode?: number };
+            err.code = saleabilityIssue.reason;
+            err.statusCode = 409;
+            throw err;
+          }
+
           const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, -item.quantity);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
@@ -181,6 +197,17 @@ export const saleRepository = {
             [item.productId, -item.quantity, stockAfter,
              `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId]
           );
+
+          // Phase 1 — Mirror sur product_lots FEFO : decremente vitrine_qty
+          // des lots les plus proches de leur DLC. Le decompte par lot est
+          // ce qui rendra la tracabilite sortie possible (audit HACCP).
+          // FEFO exclut deja les lots expires par defaut (Phase A).
+          const fefoPlan = await productLotRepository.planFefoVitrineConsumption(
+            client, item.productId, data.storeId, item.quantity
+          );
+          for (const step of fefoPlan) {
+            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty);
+          }
         }
       }
 

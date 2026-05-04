@@ -22,6 +22,7 @@ router.post('/:id/start-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTIO
 router.post('/:id/produce-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.produceItems));
 router.post('/:id/transfer-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.transferItems));
 router.post('/:id/restore-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.restoreItems));
+router.post('/:id/needs/:ingredientId/request-verification', authenticate, asyncHandler(productionController.requestStockVerification));
 router.post('/:id/cancel-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.cancelItems));
 router.post('/:id/complete', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.complete));
 router.post('/:id/detect-semi-finished', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.detectSemiFinished));

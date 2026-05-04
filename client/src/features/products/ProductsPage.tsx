@@ -13,6 +13,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 import ProductionProfileTab from './ProductionProfileTab';
 import SemiFinisTab from './SemiFinisTab';
+import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
 
 type ViewMode = 'grid' | 'table';
@@ -22,7 +23,7 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Tabs */}
+      {/* Tabs principaux en haut */}
       <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
         <button
           onClick={() => setActiveTab('pipeline')}
@@ -59,8 +60,13 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      {activeTab === 'catalogue' ? <CatalogueTab />
-        : activeTab === 'semi-finis' ? <SemiFinisTab />
+      {activeTab === 'catalogue' ? (
+        <>
+          {/* Bandeau alerte lots produits expires (DLC ou DLV) — lie au catalogue */}
+          <ExpiredProductLotsBanner />
+          <CatalogueTab />
+        </>
+      ) : activeTab === 'semi-finis' ? <SemiFinisTab />
         : <ProductPipelineTab />}
     </div>
   );
@@ -507,10 +513,10 @@ function CatalogueTab() {
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700" title="Sur commande">CMD</span>
                         )}
                         {Boolean(p.shelf_life_days) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title={`DLV: ${p.shelf_life_days} jour(s)`}>{String(p.shelf_life_days)}j</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title={`DLV: ${p.shelf_life_days} jour(s) depuis production`}>DLV {String(p.shelf_life_days)}j</span>
                         )}
                         {Boolean(p.display_life_hours) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`Exposition: ${p.display_life_hours}h`}>{String(p.display_life_hours)}h</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`DDE: ${p.display_life_hours}h depuis transfert vitrine`}>DDE {String(p.display_life_hours)}h</span>
                         )}
                         {Boolean(p.is_recyclable) && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700" title="Recyclable">♻️</span>
@@ -1218,18 +1224,18 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DLV - Duree de vie (jours)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DLV — Duree limite de vie (jours)</label>
                     <input type="number" step="1" min="0"
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} placeholder="Ex: 3" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Date limite de vente depuis la production</p>
+                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte a partir de la <strong>date de production</strong>, indep. du transfert vitrine</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Exposition vitrine (heures)</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DDE — Duree d&apos;exposition vitrine (heures)</label>
                     <input type="number" step="1" min="0"
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 10" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Duree max en vitrine par jour</p>
+                      value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
+                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte a partir du <strong>transfert en vitrine</strong>. Echeance effective = MIN(DLV, DDE)</p>
                   </div>
                 </div>
 

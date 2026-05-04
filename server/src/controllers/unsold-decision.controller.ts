@@ -81,12 +81,25 @@ export const unsoldDecisionController = {
     // Mode fin_journee : exiger les destinations explicites
     if (closeType === 'fin_journee') {
       const invalid = decisions.find((d: { finalDestination?: string; remainingQty?: number }) =>
-        (d.remainingQty ?? 0) > 0 && !['reexpose', 'recycle', 'waste'].includes(d.finalDestination || '')
+        (d.remainingQty ?? 0) > 0 && !['reexpose', 'recycle', 'waste', 'retour_stock'].includes(d.finalDestination || '')
       );
       if (invalid) {
         res.status(400).json({
           success: false,
-          error: { message: 'Chaque produit restant doit avoir une destination (reexpose, recycle ou waste) en mode fin_journee' },
+          error: { message: 'Chaque produit restant doit avoir une destination (reexpose, recycle, waste ou retour_stock) en mode fin_journee' },
+        });
+        return;
+      }
+
+      // Phase 5 — comptage physique : motif obligatoire si ecart d'inventaire
+      const missingMotif = decisions.find((d: { initialQty?: number; soldQty?: number; remainingQty?: number; discrepancyMotif?: string }) => {
+        const disc = (d.initialQty ?? 0) - (d.soldQty ?? 0) - (d.remainingQty ?? 0);
+        return disc > 0 && !d.discrepancyMotif?.trim();
+      });
+      if (missingMotif) {
+        res.status(400).json({
+          success: false,
+          error: { message: `Motif obligatoire pour ecart d'inventaire (produit ${(missingMotif as { productName?: string }).productName || 'inconnu'})` },
         });
         return;
       }
@@ -143,5 +156,46 @@ export const unsoldDecisionController = {
     const { sessionId } = req.params;
     const decisions = await unsoldDecisionRepository.findBySession(sessionId);
     res.json({ success: true, data: decisions });
+  },
+
+  /** GET /unsold-decisions/recycle-destinations/:productId — destinations possibles
+   *  pour un produit recyclable. Sert au dropdown multi-destinations cote UI. */
+  async recycleDestinations(req: AuthRequest, res: Response) {
+    const { productId } = req.params;
+    const result = await unsoldDecisionRepository.getRecycleDestinations(productId);
+    res.json({ success: true, data: result });
+  },
+
+  /** GET /unsold-decisions/expired — items en vitrine dont DLC ou DLV est atteinte.
+   *  Sert de modal bloquant a la fermeture journee. */
+  async expired(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) {
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      return;
+    }
+    const items = await unsoldDecisionRepository.getExpiredItems(storeId);
+    res.json({ success: true, data: items });
+  },
+
+  /** POST /unsold-decisions/destroy-expired — confirme la destruction des items expires.
+   *  Body: { items: [{ productId, quantity, reason, unitCost?, productName? }] } */
+  async destroyExpired(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) {
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      return;
+    }
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (items.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'Aucun produit a detruire' } });
+      return;
+    }
+    const result = await unsoldDecisionRepository.destroyExpiredItems({
+      storeId,
+      decidedBy: req.user!.userId,
+      items,
+    });
+    res.json({ success: true, data: result });
   },
 };

@@ -20,6 +20,15 @@ const router = Router();
 // Suggestions auto pour l'inventaire en cours
 router.get('/suggestions', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.suggestions));
 
+// Items expires (DLC/DLV) — modal bloquant fermeture journee
+router.get('/expired', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.expired));
+
+// Destinations de recyclage configurees pour un produit
+router.get('/recycle-destinations/:productId', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.recycleDestinations));
+
+// Confirmer destruction des items expires
+router.post('/destroy-expired', bigJsonParser, authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.destroyExpired));
+
 // Statistiques tableau de bord
 router.get('/stats', authenticate, asyncHandler(unsoldDecisionController.stats));
 

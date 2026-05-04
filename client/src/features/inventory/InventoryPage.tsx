@@ -6,7 +6,7 @@ import { ingredientLotsApi } from '../../api/inventory.api';
 import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
   Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight, ChevronDown,
-  ArrowUp, ArrowDown, ArrowUpDown, Timer,
+  ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -78,6 +78,13 @@ interface InventoryItem {
   category: string;
   last_restocked_at: string | null;
   active_lots_count: string;
+  // Phase Économat / Pesage
+  economat_quantity?: string;
+  pesage_quantity?: string;
+  economat_lots_count?: string;
+  pesage_lots_count?: string;
+  pesage_nearest_dlc?: string | null;
+  container_size?: string | null;
   nearest_dlc: string | null;
   expired_lots_count: string;
   expiring_soon_count: string;
@@ -100,8 +107,34 @@ export default function InventoryPage() {
 
   const { data: expiringLots = [] } = useQuery({ queryKey: ['ingredient-lots-expiring'], queryFn: () => ingredientLotsApi.expiring(7) });
   const { data: expiredLots = [] } = useQuery({ queryKey: ['ingredient-lots-expired'], queryFn: ingredientLotsApi.expired });
+  const { data: expiredActiveLots = [] } = useQuery({
+    queryKey: ['ingredient-lots-expired-active'],
+    queryFn: ingredientLotsApi.expiredActive,
+    refetchInterval: 60_000,  // refresh chaque minute
+  });
   const { data: inventory = [], isLoading } = useQuery({ queryKey: ['inventory'], queryFn: inventoryApi.list });
   const { data: alerts = [] } = useQuery({ queryKey: ['inventory-alerts'], queryFn: inventoryApi.alerts });
+
+  // Phase pertes : dialog d'envoi aux pertes
+  const [lossDialogLot, setLossDialogLot] = useState<Record<string, unknown> | null>(null);
+  const sendToLossesMutation = useMutation({
+    mutationFn: ({ lotId, reason, note }: { lotId: string; reason: string; note?: string }) =>
+      ingredientLotsApi.sendToLosses(lotId, reason, note),
+    onSuccess: (data) => {
+      const d = data as { lostQuantity: number; lostValue: number; reasonLabel: string };
+      notify.success(
+        `Lot envoyé aux pertes : ${d.lostQuantity.toFixed(2)} u (${d.lostValue.toFixed(2)} DH) — ${d.reasonLabel}`
+      );
+      queryClient.invalidateQueries({ queryKey: ['ingredient-lots-expired-active'] });
+      queryClient.invalidateQueries({ queryKey: ['ingredient-lots-expired'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setLossDialogLot(null);
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      notify.error(e?.response?.data?.error?.message || 'Erreur');
+    },
+  });
 
   const addIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
@@ -115,8 +148,8 @@ export default function InventoryPage() {
       items = items.filter(i => i.ingredient_name.toLowerCase().includes(q) || (i.supplier || '').toLowerCase().includes(q) || (i.active_lot_numbers || '').toLowerCase().includes(q));
     }
     if (categoryFilter) items = items.filter(i => (i.category || 'autre') === categoryFilter);
-    if (viewFilter === 'low') items = items.filter(i => parseFloat(i.current_quantity) <= parseFloat(i.minimum_threshold) && parseFloat(i.minimum_threshold) > 0);
-    else if (viewFilter === 'ok') items = items.filter(i => parseFloat(i.current_quantity) > parseFloat(i.minimum_threshold) || parseFloat(i.minimum_threshold) === 0);
+    if (viewFilter === 'low') items = items.filter(i => parseFloat(i.current_quantity) <= parseFloat(i.minimum_threshold));
+    else if (viewFilter === 'ok') items = items.filter(i => parseFloat(i.current_quantity) > parseFloat(i.minimum_threshold));
     else if (viewFilter === 'expiring') items = items.filter(i => (parseInt(i.expired_lots_count) || 0) > 0 || (parseInt(i.expiring_soon_count) || 0) > 0);
 
     items = [...items].sort((a, b) => {
@@ -175,8 +208,8 @@ export default function InventoryPage() {
       {/* ══════ HEADER ══════ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventaire & Traçabilité</h1>
-          <p className="text-sm text-gray-500 mt-1">Traçabilité complète des ingrédients</p>
+          <h1 className="text-2xl font-bold text-gray-900">Économat — Stock principal</h1>
+          <p className="text-sm text-gray-500 mt-1">Sacs, boîtes et contenants scellés. Une fois ouverts, ils basculent en Pesage.</p>
         </div>
         <button onClick={() => setShowAddIngredient(true)} className="btn-primary flex items-center gap-2">
           <Package size={16} /> Ajouter un ingrédient
@@ -206,7 +239,79 @@ export default function InventoryPage() {
         </button>
       </div>
 
-      {/* ══════ DLC ALERTS ══════ */}
+      {/* ══════ NEW : LOTS EXPIRES A TRAITER (DLC ou DLV depassee) ══════ */}
+      {(expiredActiveLots as Record<string, unknown>[]).length > 0 && (() => {
+        const lots = expiredActiveLots as Record<string, unknown>[];
+        return (
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center shrink-0 animate-pulse">
+                <AlertTriangle size={20} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-bold text-red-900">
+                  {lots.length} lot{lots.length > 1 ? 's' : ''} expiré{lots.length > 1 ? 's' : ''} à retirer du stock
+                </p>
+                <p className="text-xs text-red-700 mt-0.5">
+                  Ces ingrédients doivent être envoyés aux pertes — la date imprimée sur le paquet est dépassée.
+                </p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-red-200 divide-y divide-red-50 max-h-80 overflow-y-auto">
+              {lots.map((lot) => {
+                const reason = lot.expiry_reason as string;
+                const totalQty = parseFloat(lot.total_qty as string) || 0;
+                const unitCost = parseFloat(lot.unit_cost as string) || 0;
+                const lostValue = totalQty * unitCost;
+                const daysExpired = lot.days_expired as number;
+                return (
+                  <div key={lot.id as string} className="px-4 py-2.5 flex items-center gap-3 hover:bg-red-50/30">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-gray-900 truncate">{lot.ingredient_name as string}</span>
+                        <span className="text-[10px] font-mono text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                          {(lot.lot_number as string) || '?'}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700">
+                          DLC expirée
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        Expiré depuis <strong className="text-red-600">{daysExpired}j</strong> ·
+                        <span className="ml-1">Économat : {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string}</span>
+                        <span className="ml-2">Pesage : {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold text-red-700">{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
+                      <div className="text-[10px] text-gray-500">{lostValue.toFixed(2)} DH perdus</div>
+                    </div>
+                    <button
+                      onClick={() => setLossDialogLot(lot)}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shrink-0">
+                      <Trash2 size={12} /> Envoyer aux pertes
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Dialog d'envoi aux pertes */}
+      {lossDialogLot && (
+        <SendToLossesDialog
+          lot={lossDialogLot}
+          isPending={sendToLossesMutation.isPending}
+          onClose={() => setLossDialogLot(null)}
+          onConfirm={(reason, note) => sendToLossesMutation.mutate({
+            lotId: lossDialogLot.id as string, reason, note,
+          })}
+        />
+      )}
+
+      {/* ══════ DLC ALERTS — anciens lots expires sans stock (legacy display) ══════ */}
       {(expiredLots as Record<string, unknown>[]).length > 0 && (() => {
         const allExpired = expiredLots as Record<string, unknown>[];
         const visibleExpired = showAllExpired ? allExpired : allExpired.slice(0, 3);
@@ -344,17 +449,33 @@ export default function InventoryPage() {
                         );
                       })()}
                     </td>
-                    {/* Stock */}
+                    {/* Stock — split Économat / Pesage */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-bold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-800'}`}>
-                          {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
-                        </span>
-                        <span className="text-[10px] text-gray-400">{item.unit}</span>
-                        <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
-                          <div className={`h-full rounded-full ${isOut ? 'bg-red-500' : isLow ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
+                      {(() => {
+                        const economatQty = parseFloat(item.economat_quantity || '0');
+                        const pesageQty = parseFloat(item.pesage_quantity || '0');
+                        return (
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-bold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-800'}`}>
+                                {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
+                              </span>
+                              <span className="text-[10px] text-gray-400">{item.unit}</span>
+                              <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
+                                <div className={`h-full rounded-full ${isOut ? 'bg-red-500' : isLow ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                            <div className="flex gap-2 text-[9px]">
+                              <span className="text-amber-700" title="Stock scellé en Économat">
+                                <strong>{economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</strong> écon.
+                              </span>
+                              <span className="text-blue-700" title="Stock ouvert en Pesage">
+                                <strong>{pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</strong> pesage
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     {/* Lots */}
                     <td className="px-4 py-3 hidden lg:table-cell">
@@ -448,6 +569,117 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
             <button type="submit" disabled={isLoading} className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-violet-600 hover:bg-violet-700 transition-colors disabled:opacity-50">{isLoading ? 'Ajout...' : 'Ajouter'}</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ════════ SendToLossesDialog ═══════════════════════════════════════════
+// Dialog confirmation : envoie un lot expire aux pertes (DLC ou DLV depassee).
+// Demande un motif (pre-selectionne selon expiry_reason) + note optionnelle.
+function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
+  lot: Record<string, unknown>;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string, note?: string) => void;
+}) {
+  const initialReason = (lot.expiry_reason as string) || 'dlc_expired';
+  const [reason, setReason] = useState(initialReason);
+  const [note, setNote] = useState('');
+
+  const totalQty = parseFloat(lot.total_qty as string) || 0;
+  const unitCost = parseFloat(lot.unit_cost as string) || 0;
+  const lostValue = totalQty * unitCost;
+  const economatQty = parseFloat(lot.economat_quantity as string) || 0;
+  const pesageQty = parseFloat(lot.pesage_quantity as string) || 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-red-100 bg-gradient-to-r from-red-50 to-orange-50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-red-500 flex items-center justify-center shrink-0">
+            <Trash2 size={18} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-red-900">Envoyer aux pertes</h3>
+            <p className="text-xs text-red-700 mt-0.5">Action irréversible — le lot sera retiré du stock.</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-red-100 rounded-lg">
+            <X size={18} className="text-red-700" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Recap lot */}
+          <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Produit</span>
+              <span className="font-semibold text-gray-900">{lot.ingredient_name as string}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">N° lot</span>
+              <span className="font-mono text-xs text-gray-700">{(lot.lot_number as string) || '?'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Stock à retirer</span>
+              <span className="font-bold text-red-700">
+                {totalQty.toFixed(2)} {lot.ingredient_unit as string}
+                <span className="text-xs text-gray-400 ml-1">
+                  ({economatQty > 0 ? `${economatQty.toFixed(1)} écon.` : ''}
+                  {economatQty > 0 && pesageQty > 0 ? ' + ' : ''}
+                  {pesageQty > 0 ? `${pesageQty.toFixed(1)} pesage` : ''})
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+              <span className="text-gray-500">Valeur perdue</span>
+              <span className="font-bold text-red-700">{lostValue.toFixed(2)} DH</span>
+            </div>
+          </div>
+
+          {/* Motif */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Motif</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption dépassée' },
+                { v: 'damaged', label: 'Endommagé', sub: 'Casse, contamination' },
+                { v: 'quarantine_failed', label: 'Échec contrôle', sub: 'Non conforme' },
+                { v: 'other', label: 'Autre', sub: 'Préciser dans la note' },
+              ] as const).map(opt => (
+                <button key={opt.v} type="button" onClick={() => setReason(opt.v)}
+                  className={`px-3 py-2 rounded-lg border text-left transition-all ${
+                    reason === opt.v
+                      ? 'border-red-400 bg-red-50 ring-2 ring-red-200'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}>
+                  <div className="text-sm font-semibold text-gray-900">{opt.label}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Note optionnelle */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              placeholder="Détails additionnels..."
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500" />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} disabled={isPending}
+              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
+              Annuler
+            </button>
+            <button onClick={() => onConfirm(reason, note || undefined)}
+              disabled={isPending}
+              className="flex-1 py-2.5 px-4 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {isPending ? 'Envoi...' : <><Trash2 size={14} /> Confirmer l&apos;envoi aux pertes</>}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

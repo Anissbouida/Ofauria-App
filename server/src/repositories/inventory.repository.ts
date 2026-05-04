@@ -4,27 +4,55 @@ import { recipeRepository } from './recipe.repository.js';
 export const inventoryRepository = {
   async findAll(storeId?: string) {
     const where = storeId ? 'WHERE inv.store_id = $1' : '';
-    const lotStoreFilter = storeId ? 'AND il.store_id = $1' : '';
+    const lotStoreFilter = storeId ? 'AND store_id = $1' : '';
+    const txStoreFilter = storeId ? 'AND store_id = $1' : '';
     const params = storeId ? [storeId] : [];
     const result = await db.query(
-      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
-              -- Lot traceability summary
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 ${lotStoreFilter}) as active_lots_count,
-              (SELECT MIN(il.expiration_date) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date IS NOT NULL ${lotStoreFilter}) as nearest_dlc,
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date < CURRENT_DATE ${lotStoreFilter}) as expired_lots_count,
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 ${lotStoreFilter}) as expiring_soon_count,
-              (SELECT string_agg(DISTINCT il.supplier_lot_number, ', ' ORDER BY il.supplier_lot_number) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.supplier_lot_number IS NOT NULL ${lotStoreFilter}) as active_lot_numbers,
-              -- Average daily consumption over last 30 days (negative transactions = consumption)
-              (SELECT COALESCE(ABS(SUM(it.quantity_change)) / NULLIF(GREATEST(
-                EXTRACT(DAY FROM (NOW() - MIN(it.created_at)))::int, 1
-              ), 0), 0)
-               FROM inventory_transactions it
-               WHERE it.ingredient_id = inv.ingredient_id
-                 AND it.quantity_change < 0
-                 AND it.created_at >= NOW() - INTERVAL '30 days'
-                 ${storeId ? 'AND it.store_id = $1' : ''}
-              ) as avg_daily_consumption
-       FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
+      `WITH lot_stats AS (
+         SELECT ingredient_id,
+                COALESCE(SUM(economat_quantity), 0) as economat_quantity,
+                COALESCE(SUM(pesage_quantity), 0) as pesage_quantity,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0) as active_lots_count,
+                COUNT(*) FILTER (WHERE economat_quantity > 0) as economat_lots_count,
+                COUNT(*) FILTER (WHERE pesage_quantity > 0) as pesage_lots_count,
+                MIN(expiration_date) FILTER (WHERE quantity_remaining > 0 AND expiration_date IS NOT NULL) as nearest_dlc,
+                MIN(expiration_date) FILTER (WHERE pesage_quantity > 0) as pesage_nearest_dlc,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0 AND expiration_date < CURRENT_DATE) as expired_lots_count,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0 AND expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) as expiring_soon_count,
+                string_agg(DISTINCT supplier_lot_number, ', ' ORDER BY supplier_lot_number)
+                  FILTER (WHERE quantity_remaining > 0 AND supplier_lot_number IS NOT NULL) as active_lot_numbers
+         FROM ingredient_lots
+         WHERE status = 'active' ${lotStoreFilter}
+         GROUP BY ingredient_id
+       ),
+       consumption_stats AS (
+         SELECT ingredient_id,
+                COALESCE(ABS(SUM(quantity_change)) / NULLIF(GREATEST(
+                  EXTRACT(DAY FROM (NOW() - MIN(created_at)))::int, 1
+                ), 0), 0) as avg_daily_consumption
+         FROM inventory_transactions
+         WHERE quantity_change < 0
+           AND created_at >= NOW() - INTERVAL '30 days'
+           ${txStoreFilter}
+         GROUP BY ingredient_id
+       )
+       SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
+              ing.container_size,
+              COALESCE(ls.economat_quantity, 0) as economat_quantity,
+              COALESCE(ls.pesage_quantity, 0) as pesage_quantity,
+              COALESCE(ls.active_lots_count, 0) as active_lots_count,
+              COALESCE(ls.economat_lots_count, 0) as economat_lots_count,
+              COALESCE(ls.pesage_lots_count, 0) as pesage_lots_count,
+              ls.nearest_dlc,
+              ls.pesage_nearest_dlc,
+              COALESCE(ls.expired_lots_count, 0) as expired_lots_count,
+              COALESCE(ls.expiring_soon_count, 0) as expiring_soon_count,
+              ls.active_lot_numbers,
+              COALESCE(cs.avg_daily_consumption, 0) as avg_daily_consumption
+       FROM inventory inv
+       JOIN ingredients ing ON ing.id = inv.ingredient_id
+       LEFT JOIN lot_stats ls ON ls.ingredient_id = inv.ingredient_id
+       LEFT JOIN consumption_stats cs ON cs.ingredient_id = inv.ingredient_id
        ${where}
        ORDER BY ing.category, ing.name`,
       params

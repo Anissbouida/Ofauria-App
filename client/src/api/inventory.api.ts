@@ -14,11 +14,19 @@ export const ingredientLotsApi = {
   getById: (id: string) => api.get(`/ingredient-lots/${id}`).then(r => r.data.data),
   expiring: (days: number = 7) => api.get('/ingredient-lots/expiring', { params: { days } }).then(r => r.data.data),
   expired: () => api.get('/ingredient-lots/expired').then(r => r.data.data),
+  expiredActive: () => api.get('/ingredient-lots/expired-active').then(r => r.data.data),
   stats: () => api.get('/ingredient-lots/stats').then(r => r.data.data),
   traceability: (lotId: string) => api.get(`/ingredient-lots/${lotId}/traceability`).then(r => r.data.data),
   productionLots: (planId: string) => api.get(`/ingredient-lots/production/${planId}`).then(r => r.data.data),
   quarantine: (id: string) => api.post(`/ingredient-lots/${id}/quarantine`).then(r => r.data.data),
   markAsWaste: (id: string) => api.post(`/ingredient-lots/${id}/waste`).then(r => r.data.data),
+  /** Phase Économat/Pesage : ouverture contenant + envoi aux pertes */
+  openContainer: (id: string, quantity: number, note?: string) =>
+    api.post(`/ingredient-lots/${id}/open-container`, { quantity, note }).then(r => r.data.data),
+  markDepleted: (id: string, note?: string) =>
+    api.post(`/ingredient-lots/${id}/mark-depleted`, { note }).then(r => r.data.data),
+  sendToLosses: (id: string, reason: string, note?: string) =>
+    api.post(`/ingredient-lots/${id}/send-to-losses`, { reason, note }).then(r => r.data.data),
   saveQualityCheck: (rvId: string, data: Record<string, unknown>) => api.post(`/ingredient-lots/quality-check/${rvId}`, data).then(r => r.data.data),
   getQualityCheck: (rvId: string) => api.get(`/ingredient-lots/quality-check/${rvId}`).then(r => r.data.data),
   fefoPreview: (planId: string) => api.get(`/ingredient-lots/production/${planId}/fefo-preview`).then(r => r.data.data),

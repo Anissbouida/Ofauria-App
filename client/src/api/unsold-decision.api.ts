@@ -35,6 +35,7 @@ export const unsoldDecisionApi = {
       expiresAt?: string;
       producedAt?: string;
       unitCost?: number;
+      discrepancyMotif?: string;
     }[];
     notes?: string;
   }) => api.post('/unsold-decisions', data).then(r => r.data.data),
@@ -50,4 +51,12 @@ export const unsoldDecisionApi = {
   /** Decisions d'une session */
   bySession: (sessionId: string) =>
     api.get(`/unsold-decisions/session/${sessionId}`).then(r => r.data.data),
+
+  /** Phase 3 — Items en vitrine avec DLC ou DLV depassee. Modal bloquant fermeture journee. */
+  expired: () =>
+    api.get('/unsold-decisions/expired').then(r => r.data.data),
+
+  /** Phase 3 — Confirmer la destruction des items expires */
+  destroyExpired: (items: { productId: string; quantity: number; reason: string; unitCost?: number; productName?: string }[]) =>
+    api.post('/unsold-decisions/destroy-expired', { items }).then(r => r.data.data),
 };

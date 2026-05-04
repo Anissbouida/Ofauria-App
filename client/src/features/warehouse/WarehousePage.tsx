@@ -211,10 +211,10 @@ export default function WarehousePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Truck size={24} className="text-amber-600" />
-            Economat
+            Pesage — Stock en cours
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Preparez les bons de sortie d'ingredients demandes par les chefs.
+            BSI à préparer + sacs/contenants ouverts en cours d'utilisation. Source FEFO de la production.
           </p>
         </div>
         <button

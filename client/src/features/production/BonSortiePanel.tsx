@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bonSortieApi } from '../../api/bon-sortie.api';
+import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
 import {
-  Loader2, CheckCircle, AlertTriangle, Package, Check, XCircle,
+  Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check, XCircle,
   RefreshCw, ChevronDown, ChevronUp, Edit3, Truck,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -115,6 +116,54 @@ export function BonSortiePanel({
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
+  // Ouvrir contenant economat -> pesage + marquer la ligne preleve en 1 clic.
+  // Pour les lignes 'rupture' ou allocated >= needed (cas "a ouvrir depuis economat").
+  const openAndPickMutation = useMutation({
+    mutationFn: async ({ line }: { line: Record<string, unknown> }) => {
+      const lotId = line.ingredient_lot_id as string;
+      const qty = parseFloat(line.allocated_quantity as string || '0');
+      if (!lotId || qty <= 0) throw new Error('Lot ou quantite invalide');
+      // 1. Ouvrir le contenant (transfert economat -> pesage)
+      await ingredientLotsApi.openContainer(lotId, qty, `Ouvert depuis BSI ${bon?.numero || ''}`);
+      // 2. Marquer la ligne BSI comme prelevee
+      await bonSortieApi.updateLigne(line.id as string, { actualQuantity: qty });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur ouverture contenant'),
+  });
+
+  // Batch : ouvrir tous les contenants economat des lignes "a ouvrir" en une seule action.
+  const [openingAll, setOpeningAll] = useState(false);
+  const openAllContainers = async () => {
+    if (toOpenLines.length === 0) return;
+    setOpeningAll(true);
+    let success = 0;
+    let failed = 0;
+    try {
+      for (const line of toOpenLines) {
+        try {
+          const lotId = line.ingredient_lot_id as string;
+          const qty = parseFloat(line.allocated_quantity as string || '0');
+          if (!lotId || qty <= 0) { failed++; continue; }
+          await ingredientLotsApi.openContainer(lotId, qty, `Ouvert depuis BSI ${bon?.numero || ''}`);
+          await bonSortieApi.updateLigne(line.id as string, { actualQuantity: qty });
+          success++;
+        } catch {
+          failed++;
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      if (failed === 0) notify.success(`${success} contenant(s) ouvert(s) et prelevés`);
+      else notify(`${success} ouvert(s), ${failed} erreur(s)`, { icon: '⚠️' });
+    } finally {
+      setOpeningAll(false);
+    }
+  };
+
   const closeMutation = useMutation({
     mutationFn: () => bonSortieApi.close(bon!.id as string),
     onSuccess: () => {
@@ -130,13 +179,56 @@ export function BonSortiePanel({
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
-  // Stats
+  // BSI partiel : valider ce qui est prelevé, garder le reste en attente
+  const commitPartialMutation = useMutation({
+    mutationFn: () => bonSortieApi.commitPartial(bon!.id as string),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      notify.success(`Prélèvement partiel validé (${data?.done_count || 0} prêt(s), ${data?.pending_count || 0} en attente)`);
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+  });
+
+  // Après réapprovisionnement : refait le FEFO sur les lignes en attente
+  const completePendingMutation = useMutation({
+    mutationFn: () => bonSortieApi.completePending(bon!.id as string),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      if (data?.remainingPendingLines === 0) {
+        notify.success(`Toutes les lignes ont été allouées (${data?.resolved} résolue(s))`);
+      } else {
+        notify.success(`${data?.resolved || 0} ligne(s) résolue(s), ${data?.remainingPendingLines || 0} encore en attente`);
+      }
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+  });
+
+  // Stats — la progression compte les lignes effectivement prelevees,
+  // pas le complement de "en_attente" (sinon les lignes 'rupture' sont
+  // comptees comme prelevees a tort, affichant 100% des le debut).
   const totalLines = lines.length;
   const prelevees = lines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
-  const enAttente = lines.filter((l) => l.status === 'en_attente').length;
+  const enAttente = lines.filter((l) => ['en_attente', 'rupture'].includes(l.status as string)).length;
   const nonBloquees = lines.filter((l) => l.status === 'en_attente' && !l.lot_expired && l.lot_status !== 'expired');
   const allDone = totalLines > 0 && enAttente === 0;
-  const progressPct = totalLines > 0 ? Math.round(((totalLines - enAttente) / totalLines) * 100) : 0;
+  const progressPct = totalLines > 0 ? Math.round((prelevees / totalLines) * 100) : 0;
+
+  // Phase BSI partiel — vraies ruptures uniquement (allocated < needed OU pas de lot attache).
+  // Les lignes 'rupture' avec allocated >= needed ET un lot attache sont en realite
+  // "a ouvrir depuis l'economat" (stock dispo dans le contenant, juste pas encore en pesage)
+  // → c'est une etape normale du workflow, pas une rupture.
+  const ruptureLines = lines.filter((l) =>
+    parseFloat(l.allocated_quantity as string || '0') < parseFloat(l.needed_quantity as string || '0')
+    || (l.status === 'rupture' && !l.ingredient_lot_id)
+  );
+  const toOpenLines = lines.filter((l) =>
+    l.status === 'rupture'
+    && !!l.ingredient_lot_id
+    && parseFloat(l.allocated_quantity as string || '0') >= parseFloat(l.needed_quantity as string || '0')
+  );
+  const hasRupture = ruptureLines.length > 0;
+  const isPartial = bon?.status === 'preparation_partielle';
+  const canCommitPartial = bon?.status === 'preparation' && hasRupture && prelevees > 0;
 
   const confirmLine = (line: Record<string, unknown>) => {
     const allocated = parseFloat(line.allocated_quantity as string || '0');
@@ -164,14 +256,22 @@ export function BonSortiePanel({
   const validateBon = async () => {
     setValidating(true);
     try {
-      if (bon!.status === 'prelevement') {
+      // Chaine complete des transitions terminales : pret -> prelevement -> verifie -> cloture
+      // (le bouton "Valider" peut etre clique depuis n'importe lequel de ces statuts).
+      if (bon!.status === 'pret') {
+        await bonSortieApi.startPrelevement(bon!.id as string);
+      }
+      // Apres startPrelevement on est en 'prelevement' → verify peut etre appele.
+      // verify est idempotent (ne fait rien si deja verifie/cloture).
+      if (['prelevement', 'pret'].includes(bon!.status as string)) {
         await bonSortieApi.verify(bon!.id as string);
       }
       await bonSortieApi.close(bon!.id as string);
       await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      await queryClient.invalidateQueries({ queryKey: ['production', planId] });
       notify.success('Bon valide et cloture — ingredients livres');
     } catch (e: any) {
-      notify.error(e?.response?.data?.error || 'Erreur de validation');
+      notify.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || 'Erreur de validation');
     } finally {
       setValidating(false);
     }
@@ -269,13 +369,28 @@ export function BonSortiePanel({
             )}
           </div>
           {isMagasinier && (
-            <button
-              onClick={() => markReadyMutation.mutate()}
-              disabled={markReadyMutation.isPending}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center gap-1.5 shrink-0">
-              {markReadyMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              Pret a remettre
-            </button>
+            <div className="flex flex-col gap-2 shrink-0">
+              <button
+                onClick={() => markReadyMutation.mutate()}
+                disabled={markReadyMutation.isPending || hasRupture || enAttente > 0}
+                title={
+                  hasRupture ? 'Ingredients en rupture — utilisez "Valider partiel"' :
+                  enAttente > 0 ? `${enAttente} ingredient(s) non encore preleve(s)` : ''
+                }
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5">
+                {markReadyMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                Pret a remettre
+              </button>
+              {canCommitPartial && (
+                <button
+                  onClick={() => commitPartialMutation.mutate()}
+                  disabled={commitPartialMutation.isPending}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 flex items-center gap-1.5">
+                  {commitPartialMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
+                  Valider partiel
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -286,8 +401,12 @@ export function BonSortiePanel({
       {bon.status === 'pret' && (() => {
         const requesterId = bon.generated_by as string | undefined;
         const isRequester = !!currentUserId && !!requesterId && currentUserId === requesterId;
-        // Autoriser la validation par l'admin en secours (ex: chef absent, deverrouillage).
-        const canValidate = isChef && (isRequester || user?.role === 'admin');
+        // canValidate : peuvent accepter la reception
+        //  - le chef qui a genere le BSI (isRequester)
+        //  - admin/manager en secours
+        //  - tout chef de production (le BSI generator peut etre l'admin via "Restaurer",
+        //    mais c'est l'equipe production cible qui recoit physiquement)
+        const canValidate = isChef && (isRequester || ['admin', 'manager'].includes(user?.role || '') || ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || ''));
         const requesterName = (bon.generated_by_name as string) || 'le chef demandeur';
         return (
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4">
@@ -350,6 +469,96 @@ export function BonSortiePanel({
         </div>
         );
       })()}
+
+      {/* Bandeau info : ingredients a ouvrir depuis l'economat (stock dispo, pas encore au pesage) */}
+      {!isClosed && toOpenLines.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+            <PackageOpen size={16} className="text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-900">
+              {toOpenLines.length} ingredient{toOpenLines.length > 1 ? 's' : ''} a ouvrir depuis l'economat
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Stock disponible mais pas encore en pesage — ouvrir le contenant economat pour les prelever.
+            </p>
+          </div>
+          {isMagasinier && (
+            <button
+              onClick={openAllContainers}
+              disabled={openingAll}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+            >
+              {openingAll ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}
+              {openingAll ? 'Ouverture...' : `Ouvrir tous (${toOpenLines.length})`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Phase BSI partiel : bandeau alerte ruptures (vraies ruptures uniquement) */}
+      {!isClosed && hasRupture && (
+        <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
+          <div className="flex items-start gap-3 mb-2">
+            <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} className="text-orange-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-orange-900">
+                {ruptureLines.length} ingredient{ruptureLines.length > 1 ? 's' : ''} en rupture / partiel
+              </p>
+              <p className="text-xs text-orange-700 mt-0.5">
+                {isMagasinier
+                  ? 'Le stock est insuffisant pour ces ingredients. Tu peux prelever ce qui est dispo et valider en partiel — la production continuera apres reapprovisionnement.'
+                  : 'Le magasinier est informe — un transfert partiel est possible le temps du reapprovisionnement.'}
+              </p>
+            </div>
+          </div>
+          <ul className="text-xs text-orange-800 ml-12 space-y-0.5 mt-2">
+            {ruptureLines.slice(0, 5).map((l, i) => {
+              const need = parseFloat(l.needed_quantity as string || '0');
+              const avail = parseFloat(l.allocated_quantity as string || '0');
+              const missing = need - avail;
+              return (
+                <li key={i}>
+                  <strong>{l.ingredient_name as string}</strong> :
+                  dispo <span className="font-mono">{avail.toFixed(2)} {l.unit as string}</span> /
+                  besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> →
+                  <span className="text-red-700 font-semibold"> manque {missing.toFixed(2)}</span>
+                </li>
+              );
+            })}
+            {ruptureLines.length > 5 && <li className="italic">+ {ruptureLines.length - 5} autres ingredients...</li>}
+          </ul>
+        </div>
+      )}
+
+      {/* Phase BSI partiel : bandeau "preparation partielle" pour reprendre apres reappro */}
+      {isPartial && (
+        <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+              <Package size={18} className="text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-900">BSI en preparation partielle</p>
+              <p className="text-xs text-blue-700 mt-0.5">
+                Une partie a ete prelevee. Reste {ruptureLines.length} ingredient{ruptureLines.length > 1 ? 's' : ''} en attente d'approvisionnement.
+              </p>
+            </div>
+          </div>
+          {isMagasinier && (
+            <button
+              onClick={() => completePendingMutation.mutate()}
+              disabled={completePendingMutation.isPending}
+              className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              {completePendingMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              Reprendre la preparation (re-allouer apres reappro)
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Progress bar */}
       {!isClosed && (
@@ -453,6 +662,20 @@ export function BonSortiePanel({
                       <Check size={16} />
                     </button>
                   </div>
+                )}
+
+                {/* Ligne 'a ouvrir depuis economat' (status=rupture, lot attache, allocated>=needed) :
+                    1 clic pour ouvrir le contenant + marquer prelevee */}
+                {!isClosed && !isVerified && lineStatus === 'rupture' && !!line.ingredient_lot_id && allocated >= parseFloat(line.needed_quantity as string || '0') && allocated > 0 && isMagasinier && (
+                  <button
+                    onClick={() => openAndPickMutation.mutate({ line })}
+                    disabled={openAndPickMutation.isPending}
+                    className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1 text-xs font-semibold shrink-0 shadow-sm"
+                    title="Ouvrir le contenant economat et prelever"
+                  >
+                    {openAndPickMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <PackageOpen size={12} />}
+                    Ouvrir & prelever
+                  </button>
                 )}
 
                 {isDone && (

@@ -163,6 +163,32 @@ export const bonSortieController = {
     }
   },
 
+  // BSI partiel : valide ce qui est preleve, garde le reste en attente d'approvisionnement
+  async commitPartial(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user?.userId;
+      const data = await bonSortieRepository.commitPartial(id, userId);
+      res.json({ data });
+    } catch (err: any) {
+      const msg = safeErrorMessage(err, 'Erreur lors du commit partiel');
+      res.status(400).json({ error: msg });
+    }
+  },
+
+  // Apres reapprovisionnement : refait le FEFO sur les lignes en attente
+  async completePending(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user?.userId;
+      const data = await bonSortieRepository.completePending(id, userId);
+      res.json({ data });
+    } catch (err: any) {
+      const msg = safeErrorMessage(err, 'Erreur lors de la completion');
+      res.status(400).json({ error: msg });
+    }
+  },
+
   async cancel(req: Request, res: Response) {
     try {
       const id = req.params.id as string;

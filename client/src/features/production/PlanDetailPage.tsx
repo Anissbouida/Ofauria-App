@@ -23,6 +23,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import ProductionLaunchModal from './ProductionLaunchModal';
 import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
+import PrintModeSelectorModal from './PrintModeSelectorModal';
+import type { LotLabelData } from '../../lib/niimbot';
 import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
 import CoutReelPanel from './CoutReelPanel';
@@ -51,6 +53,7 @@ export default function PlanDetailPage() {
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
   const [timerStepName, setTimerStepName] = useState<string | null>(null);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
+  const [printChoiceItem, setPrintChoiceItem] = useState<Record<string, unknown> | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
   // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
@@ -133,6 +136,7 @@ export default function PlanDetailPage() {
   const [bonNotNeededReason, setBonNotNeededReason] = useState<string | null>(null);
   // Modal de declaration de perte (rebut de production : brule, rate, machine en panne, etc.)
   const [showLossModal, setShowLossModal] = useState(false);
+  const [restockNeed, setRestockNeed] = useState<Record<string, unknown> | null>(null);
 
   // Onglets de la page : 'preparation' (BSI + ingredients) | 'production' (items + execution).
   // L'onglet Production n'apparait qu'une fois le BSI cloture (ou inutile, ou deja en cours).
@@ -206,6 +210,28 @@ export default function PlanDetailPage() {
       return ln.substring(0, ln.lastIndexOf('-'));
     }
     return `LOT-${dateStr}`;
+  };
+
+  const buildLotLabelData = (item: Record<string, unknown>): LotLabelData | null => {
+    if (!plan) return null;
+    const prodTs = item.production_timestamp || item.produced_at;
+    const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date as string);
+    const sld = item.shelf_life_days as number;
+    const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
+    const planDate = new Date(plan.plan_date as string);
+    const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-001`;
+    const isReexposable = item.is_reexposable as boolean;
+    const isRecyclable = item.is_recyclable as boolean;
+    const cycleLabel = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
+    return {
+      productName: String(item.product_name || ''),
+      lotNumber,
+      quantity: String(item.actual_quantity ?? item.planned_quantity ?? ''),
+      productionDate: format(prodDate, 'dd/MM HH:mm'),
+      expirationDate: dlcDate ? format(dlcDate, 'dd/MM/yyyy') : null,
+      cycleLabel,
+      companyName: settings.companyName,
+    };
   };
 
   const printProductionTicket = (item: Record<string, unknown>) => {
@@ -698,10 +724,19 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     mutationFn: (itemIds: string[]) => productionApi.restoreItems(id!, itemIds),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
+      queryClient.invalidateQueries({ queryKey: ['bon-sortie'] });
       if (result.warnings?.length > 0) {
         result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       } else {
         notify.success('Article(s) restaure(s) avec succes');
+      }
+      // Feedback BSI : completed (re-FEFO partiel) OU generated (creation initiale)
+      if (result.bsi?.generated) {
+        notify.success(result.bsi.message || 'Bon de sortie genere');
+      } else if (result.bsi?.completed) {
+        notify.success(result.bsi.message || 'Bon de sortie complete');
+      } else if (result.bsi?.message) {
+        notify(result.bsi.message, { icon: '\u2139\ufe0f' });
       }
     },
     onError: (error: any) => {
@@ -717,6 +752,23 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     },
     onError: (error: any) => {
       notify.error(error?.response?.data?.error?.message || 'Erreur lors de l\'annulation');
+    },
+  });
+
+  // Demande de verification stock : envoie une notification au magasinier/economat
+  // pour qu'il verifie physiquement la dispo et marque OK (ou approvisionne).
+  // Le chef voit ensuite une badge "Demande envoyee" sur la ligne.
+  const [requestedVerifications, setRequestedVerifications] = useState<Set<string>>(new Set());
+  const requestVerificationMutation = useMutation({
+    mutationFn: (data: { ingredientId: string; note?: string }) =>
+      productionApi.requestStockVerification(id!, data.ingredientId, data.note),
+    onSuccess: (_d, vars) => {
+      setRequestedVerifications(prev => new Set(prev).add(vars.ingredientId));
+      notify.success('Demande envoyee au responsable stock');
+      setRestockNeed(null);
+    },
+    onError: (error: any) => {
+      notify.error(error?.response?.data?.error?.message || 'Erreur lors de la demande');
     },
   });
 
@@ -849,11 +901,28 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             <span className="text-xs text-gray-500">{needs.length} ingredient(s)</span>
           </div>
         </div>
-        {insufficientNeeds.length > 0 && (
-          <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
-            <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {insufficientNeeds.length > 0 && (
+            <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
+              <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
+            </span>
+          )}
+          {(() => {
+            const waiting = (plan.items as Record<string, unknown>[] || [])
+              .filter(it => it.waiting_status === 'waiting');
+            if (waiting.length === 0 || !isChef) return null;
+            return (
+              <button
+                onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
+                disabled={restoreMutation.isPending}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-sm"
+                title="Re-verifier la dispo et relancer les articles en attente. Complete aussi le bon de sortie si necessaire."
+              >
+                <RotateCcw size={12} /> Restaurer ({waiting.length}) & relancer production
+              </button>
+            );
+          })()}
+        </div>
       </div>
       <div className="divide-y divide-gray-50">
         {needs.map((need: Record<string, unknown>) => {
@@ -889,9 +958,27 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   <CheckCircle size={10} /> OK
                 </span>
               ) : (
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
-                  <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
-                </span>
+                <>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
+                    <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
+                  </span>
+                  {requestedVerifications.has(need.ingredient_id as string) ? (
+                    <span
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 flex-shrink-0"
+                      title="Demande envoyee au responsable stock"
+                    >
+                      <CheckCircle size={12} /> Demande envoyee
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setRestockNeed(need)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1 flex-shrink-0 transition-colors shadow-sm"
+                      title="Demander au responsable stock de verifier la dispo"
+                    >
+                      <Send size={12} /> Demander au stock
+                    </button>
+                  )}
+                </>
               )}
             </div>
           );
@@ -1460,8 +1547,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         const bonStatusConfig: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
           genere: { label: 'Genere', bg: 'bg-blue-100', text: 'text-blue-700', icon: <ClipboardList size={14} /> },
           prelevement: { label: 'En prelevement', bg: 'bg-amber-100', text: 'text-amber-700', icon: <ShoppingCart size={14} /> },
+          prelevement_partielle: { label: 'Prelevement partiel', bg: 'bg-orange-100', text: 'text-orange-700', icon: <AlertTriangle size={14} /> },
+          preparation: { label: 'En preparation', bg: 'bg-amber-100', text: 'text-amber-700', icon: <Package size={14} /> },
+          preparation_partielle: { label: 'Preparation partielle', bg: 'bg-orange-100', text: 'text-orange-700', icon: <AlertTriangle size={14} /> },
+          pret: { label: 'Pret a remettre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
           verifie: { label: 'Verifie', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <Eye size={14} /> },
           cloture: { label: 'Livre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
+          annule: { label: 'Annule', bg: 'bg-red-100', text: 'text-red-700', icon: <XCircle size={14} /> },
         };
         const bsc = bonStatusConfig[bon.status as string] || bonStatusConfig.genere;
         const isCloture = bon.status === 'cloture';
@@ -1957,7 +2049,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                                 <Play size={12} /> Continuer
                               </button>
                             ) : isProduced ? (
-                              <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
+                              <button onClick={() => setPrintChoiceItem(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
                                 <Printer size={13} /> Ticket
                               </button>
                             ) : null}
@@ -2115,7 +2207,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                           <Play size={12} /> Continuer
                         </button>
                       ) : isProduced ? (
-                        <button onClick={() => printProductionTicket(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
+                        <button onClick={() => setPrintChoiceItem(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
                           <Printer size={13} /> Ticket
                         </button>
                       ) : null}
@@ -2388,6 +2480,109 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       {printHtml && (
         <PrintOverlay html={printHtml} onClose={() => setPrintHtml(null)} />
       )}
+
+      {/* Choix imprimante : NIIMBOT B1 PRO (Web Bluetooth) ou apercu HTML */}
+      {printChoiceItem && (() => {
+        const lotData = buildLotLabelData(printChoiceItem);
+        if (!lotData) return null;
+        return (
+          <PrintModeSelectorModal
+            lotData={lotData}
+            onPreviewHtml={() => printProductionTicket(printChoiceItem)}
+            onClose={() => setPrintChoiceItem(null)}
+          />
+        );
+      })()}
+
+      {/* Demande de verification stock au responsable economat/pesage */}
+      {restockNeed && (
+        <RequestStockVerificationModal
+          need={restockNeed}
+          isPending={requestVerificationMutation.isPending}
+          onClose={() => setRestockNeed(null)}
+          onConfirm={(payload) => requestVerificationMutation.mutate(payload)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════ REQUEST STOCK VERIFICATION MODAL ═══════════════════════ */
+function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: {
+  need: Record<string, unknown>;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: (data: { ingredientId: string; note?: string }) => void;
+}) {
+  const needed = parseFloat(need.needed_quantity as string) || 0;
+  const available = parseFloat(need.available_quantity as string) || 0;
+  const deficit = Math.max(0, needed - available);
+  const [note, setNote] = useState('');
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onConfirm({ ingredientId: need.ingredient_id as string, note: note || undefined });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="px-5 py-4 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+            <Send size={18} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-blue-900">Demander au responsable stock</h3>
+            <p className="text-xs text-blue-700 mt-0.5">Une notification sera envoyee au magasinier/economat pour verifier la dispo.</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-blue-100 rounded-lg">
+            <XCircle size={18} className="text-blue-700" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="p-5 space-y-4">
+          <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Ingredient</span>
+              <span className="font-semibold text-gray-900">{need.ingredient_name as string}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">Besoin / Dispo</span>
+              <span className="font-mono text-xs text-gray-700">
+                {needed.toFixed(2)} / {available.toFixed(2)} {need.unit as string}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+              <span className="text-gray-500">Manque</span>
+              <span className="font-bold text-red-700">{deficit.toFixed(2)} {need.unit as string}</span>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+            <Info size={14} className="inline mr-1.5 align-text-bottom" />
+            Le responsable stock va verifier physiquement l'ingredient et marquer "OK" s'il est disponible.
+            Apres confirmation, vous pourrez restaurer l'article en attente.
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="Ex : verifier dans la reserve B..."
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} disabled={isPending}
+              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
+              Annuler
+            </button>
+            <button type="submit" disabled={isPending}
+              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              {isPending ? 'Envoi...' : <><Send size={14} /> Envoyer la demande</>}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

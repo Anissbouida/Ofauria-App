@@ -14,7 +14,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -127,8 +127,10 @@ export default function POSPage() {
   const [openingAmount, setOpeningAmount] = useState('0');
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
-  const [closeStep, setCloseStep] = useState<'choose-type' | 'inventory' | 'input' | 'result'>('choose-type');
+  const [closeStep, setCloseStep] = useState<'choose-type' | 'expired' | 'inventory' | 'input' | 'result'>('choose-type');
   const [closeType, setCloseType] = useState<'passation' | 'fin_journee'>('fin_journee');
+  // Phase 3 — items vitrine avec DLC ou DLV depassee, bloquent la fermeture journee
+  const [expiredItems, setExpiredItems] = useState<Record<string, unknown>[]>([]);
   const DENOMINATIONS = [
     { value: 0.5, label: '0.50', type: 'coin', img: '/images/money/coin-050.svg' },
     { value: 1, label: '1', type: 'coin', img: '/images/money/coin-1.svg' },
@@ -153,6 +155,10 @@ export default function POSPage() {
   const [inventoryItems, setInventoryItems] = useState<Record<string, unknown>[]>([]);
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
   const [inventoryDestinations, setInventoryDestinations] = useState<Record<string, string>>({});
+  // Phase recyclage multi-destinations : ingredient_id choisi par produit (override le defaut)
+  const [inventoryRecycleDest, setInventoryRecycleDest] = useState<Record<string, string>>({});
+  // Phase 5 comptage physique : motif obligatoire pour les ecarts d'inventaire
+  const [inventoryMotifs, setInventoryMotifs] = useState<Record<string, string>>({});
   const [inventoryDone, setInventoryDone] = useState(false);
   // Ajout manuel d'un produit a l'inventaire (cas : produit physiquement en vitrine
   // mais sans trace d'approvisionnement officiel dans product_store_stock)
@@ -353,7 +359,40 @@ export default function POSPage() {
       }
       setShowCloseModal(true);
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la fermeture')),
+    onError: (e: unknown) => {
+      // Phase 3 — backend renvoie 409 EXPIRED_ITEMS_PENDING quand des items vitrine
+      // (DLC/DLV depassee) doivent etre detruits avant la fermeture journee.
+      const err = e as { response?: { status?: number; data?: { error?: { code?: string; details?: { items?: Record<string, unknown>[] } } } } };
+      if (err?.response?.status === 409 && err.response.data?.error?.code === 'EXPIRED_ITEMS_PENDING') {
+        const items = err.response.data?.error?.details?.items || [];
+        setExpiredItems(items);
+        setCloseStep('expired');
+        setShowCloseModal(true);
+        return;
+      }
+      notify.error(getApiErrorMessage(e, 'Erreur lors de la fermeture'));
+    },
+  });
+
+  // Phase 3 — confirme la destruction des items expires puis re-tente la fermeture
+  const destroyExpiredMutation = useMutation({
+    mutationFn: async () => {
+      const items = expiredItems.map(it => ({
+        productId: it.product_id as string,
+        productName: it.product_name as string,
+        quantity: parseFloat(it.vitrine_qty as string) || 0,
+        reason: (it.expiry_reason as string) || 'perime',
+        unitCost: parseFloat(it.cost_price as string) || 0,
+      }));
+      return unsoldDecisionApi.destroyExpired(items);
+    },
+    onSuccess: () => {
+      notify.success(`${expiredItems.length} produit(s) detruit(s)`);
+      setExpiredItems([]);
+      // Re-declenche la fermeture maintenant que les items expires sont traites
+      closeMutation.mutate(closeType);
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la destruction')),
   });
 
   const submitAmountMutation = useMutation({
@@ -827,12 +866,25 @@ export default function POSPage() {
                   const isAlerted = stockAlert?.productId === p.id;
                   const threshold = parseFloat(p.stock_min_threshold as string) || 0;
                   const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
+                  // Phase A — DLV/DDE expiree : produit non vendable, on grise + bloque l'add to cart
+                  const isExpired = p.is_expired === true;
+                  // Phase C — DLV/DDE proche (< 24h) : badge orange warning
+                  const nowMs = Date.now();
+                  const dlvMs = p.nearest_dlv ? new Date(p.nearest_dlv as string).getTime() : null;
+                  const ddeMs = p.nearest_dde ? new Date(p.nearest_dde as string).getTime() : null;
+                  const dlvCriticalH = dlvMs ? (dlvMs - nowMs) / 3600000 : Infinity;
+                  const ddeCriticalH = ddeMs ? (ddeMs - nowMs) / 3600000 : Infinity;
+                  const minH = Math.min(dlvCriticalH, ddeCriticalH);
+                  const isDeadlineSoon = !isExpired && minH < 24 && minH > 0;
                   if (outOfStock) return null;
                   return (
-                    <button key={p.id as string} onClick={() => !outOfStock && addToCart(p)}
-                      disabled={outOfStock}
+                    <button key={p.id as string} onClick={() => !outOfStock && !isExpired && addToCart(p)}
+                      disabled={outOfStock || isExpired}
+                      title={isExpired ? 'DLV ou DDE atteinte — vente bloquee' : ''}
                       className={`rounded-xl p-2 text-left transition-all border flex flex-col relative h-[140px] ${
-                        outOfStock
+                        isExpired
+                          ? 'bg-red-50 border-red-300 opacity-60 cursor-not-allowed'
+                          : outOfStock
                           ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
                           : isAlerted
                             ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
@@ -840,7 +892,17 @@ export default function POSPage() {
                               ? 'bg-white border-red-200 hover:shadow-lg hover:border-red-300 hover:scale-[1.02] active:scale-[0.98]'
                               : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
                       }`}>
-                      {isLowStock && (
+                      {isExpired && (
+                        <span className="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full z-10">
+                          DLV/DDE expiree
+                        </span>
+                      )}
+                      {isDeadlineSoon && (
+                        <span className="absolute top-1 left-1 text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full z-10">
+                          {Math.round(minH)}h restant
+                        </span>
+                      )}
+                      {isLowStock && !isExpired && (
                         <span className="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full z-10 flex items-center gap-0.5">
                           <AlertTriangle size={9} /> {stock}
                         </span>
@@ -1692,6 +1754,68 @@ export default function POSPage() {
                 <button onClick={() => { setShowCloseModal(false); }}
                   className="btn-secondary w-full py-3">Annuler</button>
               </>
+            ) : closeStep === 'expired' ? (
+              <>
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <AlertCircle size={24} className="text-red-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Produits expires en vitrine</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {expiredItems.length} produit(s) ont leur DLC ou DLV depassee. Ils doivent etre detruits avant la fermeture journee.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border border-red-200 rounded-xl overflow-hidden mb-4">
+                  <div className="grid grid-cols-[1fr_80px_120px_100px] gap-2 text-xs font-semibold text-red-700 px-4 py-2.5 bg-red-50 uppercase tracking-wider">
+                    <span>Produit</span>
+                    <span className="text-right">Qty</span>
+                    <span>Motif</span>
+                    <span className="text-right">Valeur</span>
+                  </div>
+                  <div className="divide-y divide-red-100 max-h-[40vh] overflow-y-auto">
+                    {expiredItems.map((it, i) => {
+                      const qty = parseFloat(it.vitrine_qty as string) || 0;
+                      const cost = parseFloat(it.cost_price as string) || 0;
+                      const reason = it.expiry_reason as string;
+                      return (
+                        <div key={i} className="grid grid-cols-[1fr_80px_120px_100px] gap-2 px-4 py-2.5 text-sm items-center">
+                          <span className="font-medium text-gray-800">{it.product_name as string}</span>
+                          <span className="text-right font-bold">{qty}</span>
+                          <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium text-center">
+                            {reason === 'dlc_expiree' ? 'DLC' : 'DLV'} expiree
+                          </span>
+                          <span className="text-right text-gray-700">{(qty * cost).toFixed(2)} DH</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
+                  En confirmant, ces produits seront <strong>retires de la vitrine</strong>, enregistres dans les <strong>pertes</strong> avec motif &quot;DLC/DLV expiree&quot;, et la fermeture journee pourra continuer.
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => { setShowCloseModal(false); setExpiredItems([]); setCloseStep('choose-type'); }}
+                    disabled={destroyExpiredMutation.isPending}
+                    className="btn-secondary flex-1 py-3">Annuler</button>
+                  <button onClick={() => destroyExpiredMutation.mutate()}
+                    disabled={destroyExpiredMutation.isPending}
+                    className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                    {destroyExpiredMutation.isPending ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Destruction...
+                      </>
+                    ) : (
+                      <>Confirmer destruction et continuer</>
+                    )}
+                  </button>
+                </div>
+              </>
             ) : closeStep === 'inventory' && closeResult ? (
               <>
                 <div className="flex items-center justify-between mb-4">
@@ -1796,7 +1920,9 @@ export default function POSPage() {
                     // Equivalent algebriquement a initial + replenished - sold.
                     const theoretical = parseInt(it.current_stock as string) || (initial + replenished - sold);
                     const counted = inventoryQtys[pid] ?? 0;
-                    totalReplenished += replenished;
+                    // "Approv" = ce qui etait disponible a la vente sur la fenetre =
+                    // stock initial du shift (carryover passation) + nouveaux approvs.
+                    totalReplenished += (initial + replenished);
                     totalSold += sold;
                     totalTheoreticalRemaining += Math.max(0, theoretical);
                     totalCounted += counted;
@@ -1884,6 +2010,7 @@ export default function POSPage() {
                 {(() => {
                   const destStyles: Record<string, { bg: string; text: string; label: string; icon: string }> = {
                     reexpose: { bg: 'bg-green-100 border-green-300', text: 'text-green-800', label: 'Vitrine J+1', icon: '✓' },
+                    retour_stock: { bg: 'bg-emerald-100 border-emerald-300', text: 'text-emerald-800', label: 'Retour reserve', icon: '⤴' },
                     recycle: { bg: 'bg-cyan-100 border-cyan-300', text: 'text-cyan-800', label: 'Recycler', icon: '♻' },
                     waste: { bg: 'bg-red-100 border-red-300', text: 'text-red-800', label: 'Detruire', icon: '✗' },
                   };
@@ -1994,9 +2121,9 @@ export default function POSPage() {
                                         <span className="text-[10px] text-blue-500 block mt-0.5 truncate" title={sugReason}>{sugReason}</span>
                                       )}
                                     </div>
-                                    {/* Approvisionné */}
+                                    {/* Approvisionné = stock initial du shift (carryover passation) + nouveaux approvs */}
                                     <div className="col-span-1 text-center">
-                                      <span className="text-sm font-bold text-indigo-700">{replenished}</span>
+                                      <span className="text-sm font-bold text-indigo-700">{initial + replenished}</span>
                                     </div>
                                     {/* Vendu */}
                                     <div className="col-span-1 text-center">
@@ -2049,20 +2176,34 @@ export default function POSPage() {
                                     {closeType !== 'passation' && (
                                     <div className="col-span-4">
                                       {counted > 0 ? (
-                                        <div className="flex items-center gap-1 justify-center">
-                                          {(['reexpose', 'recycle', 'waste'] as const).map(d => {
+                                        <div className="flex items-center gap-1 justify-center flex-wrap">
+                                          {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => {
                                             const dConf = destStyles[d];
                                             const isActive = finalDest === d;
-                                            const canReexpose = it.is_reexposable || sugDest === 'reexpose';
+                                            // Strict : on ne contourne pas is_reexposable=false meme si le serveur suggerait reexpose.
+                                            const canReexpose = !!it.is_reexposable;
+                                            // retour_stock dispo uniquement si DLV restante > 24h (saleType dlv ou multi-jours)
+                                            const canRetourStock = (it.sale_type as string) === 'dlv' || ((it.shelf_life_days as number) ?? 0) > 1;
                                             const canRecycle = it.is_recyclable && it.recycle_ingredient_id;
-                                            const disabled = (d === 'reexpose' && !canReexpose) || (d === 'recycle' && !canRecycle);
+                                            const disabled =
+                                              (d === 'reexpose' && !canReexpose) ||
+                                              (d === 'retour_stock' && !canRetourStock) ||
+                                              (d === 'recycle' && !canRecycle);
+                                            const ringColor = d === 'reexpose' ? 'ring-green-400'
+                                              : d === 'retour_stock' ? 'ring-emerald-400'
+                                              : d === 'recycle' ? 'ring-cyan-400'
+                                              : 'ring-red-400';
+                                            const tipDisabled = d === 'reexpose' ? 'Non re-exposable'
+                                              : d === 'retour_stock' ? 'DLV trop courte pour retour reserve'
+                                              : d === 'recycle' ? 'Non recyclable'
+                                              : '';
                                             return (
                                               <button key={d}
                                                 onClick={() => !disabled && setInventoryDestinations(prev => ({ ...prev, [pid]: d }))}
                                                 disabled={disabled as boolean}
-                                                title={d === 'reexpose' && disabled ? 'Non re-exposable' : d === 'recycle' && disabled ? 'Non recyclable' : dConf.label}
+                                                title={disabled ? tipDisabled : dConf.label}
                                                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                                                  isActive ? `${dConf.bg} ${dConf.text} ring-2 ring-offset-1 ${d === 'reexpose' ? 'ring-green-400' : d === 'recycle' ? 'ring-cyan-400' : 'ring-red-400'}` :
+                                                  isActive ? `${dConf.bg} ${dConf.text} ring-2 ring-offset-1 ${ringColor}` :
                                                   disabled ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' :
                                                   'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                                                 }`}>
@@ -2074,6 +2215,39 @@ export default function POSPage() {
                                         </div>
                                       ) : (
                                         <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
+                                      )}
+                                      {/* Dropdown multi-destinations quand recyclage choisi et plusieurs options configurees */}
+                                      {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, unknown>[]).length > 1 && (
+                                        <div className="mt-1.5 flex justify-center">
+                                          <select
+                                            value={inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || ''}
+                                            onChange={(e) => setInventoryRecycleDest(prev => ({ ...prev, [pid]: e.target.value }))}
+                                            className="text-[11px] px-2 py-1 rounded-md border border-cyan-200 bg-cyan-50 text-cyan-800 font-medium focus:ring-1 focus:ring-cyan-400"
+                                          >
+                                            {(it.recycle_destinations as { ingredient_id: string; ingredient_name: string; label?: string }[]).map(rd => (
+                                              <option key={rd.ingredient_id} value={rd.ingredient_id}>
+                                                {rd.label || rd.ingredient_name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      )}
+                                      {/* Phase 5 : motif obligatoire pour ecart d'inventaire (theorique > comptage physique) */}
+                                      {closeType === 'fin_journee' && discrepancy < 0 && (
+                                        <div className="mt-1.5">
+                                          <select
+                                            value={inventoryMotifs[pid] || ''}
+                                            onChange={(e) => setInventoryMotifs(prev => ({ ...prev, [pid]: e.target.value }))}
+                                            className={`w-full text-[11px] px-2 py-1 rounded-md border font-medium focus:ring-1 ${inventoryMotifs[pid] ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400' : 'border-red-300 bg-red-50 text-red-700 focus:ring-red-400 animate-pulse'}`}
+                                          >
+                                            <option value="">⚠ Motif d'ecart obligatoire ({Math.abs(discrepancy)} manquant)</option>
+                                            <option value="casse">Casse non declaree</option>
+                                            <option value="vol">Vol / disparition</option>
+                                            <option value="erreur_declaration">Erreur de declaration ant.</option>
+                                            <option value="degustation">Degustation interne</option>
+                                            <option value="autre">Autre</option>
+                                          </select>
+                                        </div>
                                       )}
                                     </div>
                                     )}
@@ -2168,6 +2342,7 @@ export default function POSPage() {
                           const pid = it.product_id as string;
                           const counted = inventoryQtys[pid] ?? 0;
                           const replenished = parseInt(it.replenished_today_qty as string) || 0;
+                          const initialFromCarryover = parseInt(it.initial_stock as string) || 0;
                           const soldQty = parseInt(it.sold_qty as string) || 0;
                           const sugDest = (it.suggested_destination as string) || 'waste';
                           // Destination finale :
@@ -2186,7 +2361,9 @@ export default function POSPage() {
                             productId: pid,
                             productName: it.product_name as string,
                             categoryName: (it.category_name as string) || undefined,
-                            initialQty: replenished,
+                            // initialQty = total reçu sur la fenetre = stock report passation + nouveaux approvs.
+                            // Sert au calcul de l'ecart cote serveur : discrepancy = (initialQty - soldQty) - remainingQty.
+                            initialQty: initialFromCarryover + replenished,
                             soldQty: soldQty,
                             remainingQty: counted,
                             suggestedDestination: sugDest,
@@ -2199,7 +2376,8 @@ export default function POSPage() {
                             maxReexpositions: it.max_reexpositions as number | undefined,
                             currentReexpositionCount: (it.reexposition_count as number) || 0,
                             isRecyclable: it.is_recyclable as boolean | undefined,
-                            recycleIngredientId: (it.recycle_ingredient_id as string) || undefined,
+                            recycleIngredientId: inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || undefined,
+                            discrepancyMotif: inventoryMotifs[pid] || undefined,
                             saleType: (it.sale_type as string) || undefined,
                             displayExpiresAt: (it.display_expires_at as string) || undefined,
                             expiresAt: (it.expires_at as string) || undefined,

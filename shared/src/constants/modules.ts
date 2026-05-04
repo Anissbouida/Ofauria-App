@@ -6,6 +6,9 @@ export const APP_MODULES = {
   orders: 'orders',
   products: 'products',
   customers: 'customers',
+  /** ex-inventory : stock principal scelle (sacs/boites intacts). */
+  economat: 'economat',
+  /** alias retrocompat pour inventory : meme module que economat */
   inventory: 'inventory',
   recipes: 'recipes',
   production: 'production',
@@ -17,8 +20,12 @@ export const APP_MODULES = {
   settings: 'settings',
   replenishment: 'replenishment',
   unsold: 'unsold',
-  /** Tableau de bord du magasinier : file d'attente des BSI a preparer. */
+  /** ex-warehouse : pesage = stock en cours d'utilisation + file BSI magasinier. */
+  pesage: 'pesage',
+  /** alias retrocompat pour warehouse */
   warehouse: 'warehouse',
+  /** Catalogue + stock des emballages (caissettes, boites, etiquettes...). */
+  packaging: 'packaging',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -30,7 +37,8 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   orders: 'Commandes',
   products: 'Produits',
   customers: 'Clients',
-  inventory: 'Inventaire',
+  economat: 'Économat',
+  inventory: 'Économat',  // alias
   recipes: 'Recettes',
   production: 'Production',
   employees: 'Personnel',
@@ -41,21 +49,23 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   settings: 'Parametres',
   replenishment: 'Approvisionnement',
   unsold: 'Invendus',
-  warehouse: 'Economat',
+  pesage: 'Pesage',
+  warehouse: 'Pesage',  // alias retrocompat
+  packaging: 'Emballages',
 };
 
 /** Default permissions per role (used when no custom permissions are set) */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'inventory', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'warehouse'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
-  baker: ['inventory', 'recipes', 'production', 'replenishment'],
-  pastry_chef: ['inventory', 'recipes', 'production', 'replenishment'],
-  viennoiserie: ['inventory', 'recipes', 'production', 'replenishment'],
-  beldi_sale: ['inventory', 'recipes', 'production', 'replenishment'],
-  /** Magasinier : economat (tableau des BSI a preparer) + inventaire + approvisionnement. */
-  magasinier: ['warehouse', 'inventory', 'replenishment'],
+  baker: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
+  pastry_chef: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
+  viennoiserie: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
+  beldi_sale: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
+  /** Magasinier : pesage (BSI + sacs ouverts) + economat (stock scelle) + approv + emballages. */
+  magasinier: ['pesage', 'economat', 'replenishment', 'packaging'],
 };
 
 export interface UserPermission {

@@ -62,4 +62,12 @@ export const bonSortieApi = {
   // Regenerate bon for a plan
   regenerate: (planId: string, storeId?: string) =>
     api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId }).then(r => r.data.data),
+
+  // BSI partiel : valide ce qui est preleve, garde le reste en attente d'approvisionnement
+  commitPartial: (bonId: string) =>
+    api.put(`/bons-sortie/${bonId}/commit-partial`).then(r => r.data.data),
+
+  // Apres reapprovisionnement : refait le FEFO sur les lignes en attente
+  completePending: (bonId: string) =>
+    api.put(`/bons-sortie/${bonId}/complete-pending`).then(r => r.data.data),
 };

@@ -5,6 +5,8 @@ import { bonSortieRepository } from './bon-sortie.repository.js';
 import { notificationRepository } from './notification.repository.js';
 import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
+import { productLotRepository } from './product-lot.repository.js';
+import { packagingItemRepository } from './packaging-item.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
@@ -634,6 +636,39 @@ export const productionRepository = {
             }
           }
         }
+
+        // ─── Phase Emballages : consommation packaging du plan ───
+        // Pour chaque item produit, on consomme les emballages de la recette
+        // au prorata de actual_quantity / yield_quantity.
+        if (storeId) {
+          const packagingNeeds = await client.query(
+            `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
+             FROM recipe_packaging rp
+             JOIN packaging_items pi ON pi.id = rp.packaging_id
+             WHERE rp.recipe_id = $1`,
+            [recipe.id]
+          );
+          for (const pk of packagingNeeds.rows) {
+            const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
+            if (pkConsumption <= 0) continue;
+            try {
+              await packagingItemRepository.adjustStock(client, {
+                packagingId: pk.packaging_id,
+                storeId,
+                change: -pkConsumption,
+                type: 'consumption',
+                referenceId: planId,
+                referenceType: 'production_plan',
+                unitCost: parseFloat(pk.unit_cost),
+                note: `Production: ${item.product_name} x${item.actual_quantity}`,
+                performedBy: userId,
+              });
+            } catch (pkErr) {
+              console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+              warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
+            }
+          }
+        }
       }
 
       // Update product stock (finished goods) based on actual production — store-isolated
@@ -664,6 +699,17 @@ export const productionRepository = {
                VALUES ($1, $2, NOW(), NOW() + ($3 * INTERVAL '1 day'), ${displayHours !== null ? `NOW() + ($4 * INTERVAL '1 hour')` : 'NULL'}, 'active')`,
               displayHours !== null ? [item.product_id, storeId, shelfDays, displayHours] : [item.product_id, storeId, shelfDays]
             );
+
+            // Phase 1 — Cree le product_lot pour la fournee (tracabilite + FEFO).
+            // Reste invisible pour les flux qui n'ont pas encore migre — strictement additif.
+            await productLotRepository.createFromProduction(client, {
+              productId: item.product_id,
+              storeId,
+              productionPlanId: planId,
+              quantityProduced: parseFloat(item.actual_quantity),
+              shelfLifeDays: shelfDays,
+              notes: `Production plan ${planId}`,
+            });
           }
         }
       }
@@ -984,6 +1030,17 @@ export const productionRepository = {
                VALUES ($1, $2, ${baseTime}, ${expiresExpr}, ${displayExpiresExpr}, 'active')`,
               params
             );
+
+            // Phase 1 — product_lot pour la fournee (additif, n'impacte pas les flux legacy)
+            await productLotRepository.createFromProduction(client, {
+              productId: item.product_id,
+              storeId,
+              productionPlanId: planId,
+              quantityProduced: parseFloat(item.actual_quantity),
+              shelfLifeDays: shelfDays,
+              producedAt: producedAt ? new Date(producedAt) : undefined,
+              notes: `Production partielle plan ${planId}`,
+            });
           }
         }
       }

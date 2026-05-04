@@ -297,8 +297,54 @@ export const productionController = {
     }
     try {
       const { warnings } = await productionRepository.restoreFromWaiting(req.params.id, itemIds);
+
+      // Auto-gestion du BSI : 3 cas a gerer apres restore
+      //   1. BSI absent + besoins existent -> on le genere et on notifie le magasinier
+      //   2. BSI en 'preparation_partielle' -> on re-FEFO les lignes en rupture
+      //   3. BSI en autre statut -> rien a faire (le magasinier suit son flow)
+      // Erreurs silencieuses : le restore reste valide meme si le BSI echoue.
+      const bsiInfo: { completed?: boolean; generated?: boolean; message?: string } = {};
+      try {
+        const bons = await bonSortieRepository.findByPlan(req.params.id);
+        if (!bons || bons.length === 0) {
+          // Cas 1 : aucun BSI, on tente la generation
+          if (plan.store_id) {
+            const generated = await bonSortieRepository.generate(req.params.id, plan.store_id as string, req.user!.userId);
+            if (generated?.id) {
+              bsiInfo.generated = true;
+              bsiInfo.message = `Bon de sortie ${generated.numero || ''} genere et envoye au magasinier`;
+              // Notif au magasinier
+              try {
+                const { createNotification: notify } = await import('../utils/notify.js');
+                await notify({
+                  targetRole: 'magasinier',
+                  storeId: plan.store_id as string,
+                  type: 'bsi_generated',
+                  title: 'Nouvelle demande d\'ingredients',
+                  message: `BSI ${generated.numero || ''} a preparer en economat`,
+                  referenceType: 'bon_sortie',
+                  referenceId: generated.id as string,
+                  createdBy: req.user!.userId,
+                });
+              } catch { /* non-blocking */ }
+            }
+          }
+        } else {
+          // Cas 2 : BSI en preparation partielle -> re-FEFO
+          const partialBon = bons.find((b: Record<string, unknown>) => b.status === 'preparation_partielle');
+          if (partialBon) {
+            const result = await bonSortieRepository.completePending(partialBon.id as string, req.user!.userId);
+            bsiInfo.completed = true;
+            bsiInfo.message = `Bon de sortie complete (${(result as Record<string, unknown>)?.resolved || 0} ligne(s) re-allouee(s))`;
+          }
+        }
+      } catch (bsiErr) {
+        bsiInfo.completed = false;
+        bsiInfo.message = bsiErr instanceof Error ? bsiErr.message : 'BSI non traite (verifier manuellement)';
+      }
+
       const updated = await productionRepository.findById(req.params.id);
-      res.json({ success: true, data: updated, warnings });
+      res.json({ success: true, data: updated, warnings, bsi: bsiInfo });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erreur lors de la restauration';
       res.status(409).json({ success: false, error: { message } });
@@ -434,6 +480,75 @@ export const productionController = {
     }
     await productionRepository.remove(req.params.id);
     res.json({ success: true, data: null });
+  },
+
+  // ═══ Demande de verification stock pour un ingredient en rupture ═══
+  // Le chef declenche depuis la page plan, le magasinier/economat recoit
+  // une notification pour aller verifier physiquement le stock.
+  async requestStockVerification(req: AuthRequest, res: Response) {
+    const { id, ingredientId } = req.params as { id: string; ingredientId: string };
+    const { note } = (req.body || {}) as { note?: string };
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id) || !uuidRegex.test(ingredientId)) {
+      res.status(400).json({ success: false, error: { message: 'ID invalide' } });
+      return;
+    }
+
+    const plan = await productionRepository.findById(id);
+    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+
+    const need = (plan.ingredient_needs as Record<string, unknown>[] || [])
+      .find(n => n.ingredient_id === ingredientId);
+    if (!need) {
+      res.status(404).json({ success: false, error: { message: 'Besoin ingredient non trouve' } });
+      return;
+    }
+
+    const ingredientName = need.ingredient_name as string;
+    const needed = parseFloat(need.needed_quantity as string) || 0;
+    const available = parseFloat(need.available_quantity as string) || 0;
+    const deficit = Math.max(0, needed - available);
+    const unit = (need.unit as string) || '';
+    const planDate = plan.plan_date instanceof Date
+      ? plan.plan_date.toISOString().slice(0, 10)
+      : (plan.plan_date?.toString().slice(0, 10) || '');
+
+    // Notification au magasinier (et a tous les responsables stock)
+    await createNotification({
+      targetRole: 'magasinier',
+      storeId: req.user!.storeId,
+      type: 'stock_verification_requested',
+      title: 'Verification stock demandee',
+      message: `Plan du ${planDate} : verifier la dispo de ${ingredientName} — manque ${deficit.toFixed(2)} ${unit}${note ? ` — Note : ${note}` : ''}`,
+      referenceType: 'production_plan',
+      referenceId: id,
+      createdBy: req.user!.userId,
+    });
+    // Egalement aux managers/admins pour visibilite
+    await createNotification({
+      targetRole: 'manager',
+      storeId: req.user!.storeId,
+      type: 'stock_verification_requested',
+      title: 'Verification stock demandee',
+      message: `Plan du ${planDate} : verifier la dispo de ${ingredientName} — manque ${deficit.toFixed(2)} ${unit}${note ? ` — Note : ${note}` : ''}`,
+      referenceType: 'production_plan',
+      referenceId: id,
+      createdBy: req.user!.userId,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        ingredientName,
+        deficit,
+        unit,
+        message: `Demande envoyee au responsable stock pour ${ingredientName}`,
+      },
+    });
   },
 
   // ═══ Semi-finished detection ═══

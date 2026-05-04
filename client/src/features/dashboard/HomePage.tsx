@@ -9,7 +9,7 @@ import { inventoryApi } from '../../api/inventory.api';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag, Truck,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
-  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock,
+  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock, Box,
   Plus, Zap,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
@@ -21,10 +21,11 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
   { name: 'Produits', description: 'Catalogue et tarifs', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', module: 'products' },
   { name: 'Clients', description: 'Fichier clients et fidelite', href: '/customers', icon: Users, color: 'bg-cyan-600', module: 'customers' },
-  { name: 'Inventaire', description: 'Stock matieres premieres', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
+  { name: 'Économat', description: 'Stock principal scelle (sacs/boites intacts)', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'economat' },
+  { name: 'Pesage', description: 'Stock en cours d\'utilisation + BSI magasinier', href: '/warehouse', icon: Truck, color: 'bg-amber-500', module: 'pesage' },
+  { name: 'Emballages', description: 'Caissettes, boites, etiquettes, films', href: '/packaging', icon: Box, color: 'bg-blue-500', module: 'packaging' },
   { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
   { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
-  { name: 'Economat', description: 'Preparation des bons de sortie ingredients', href: '/warehouse', icon: Truck, color: 'bg-amber-500', module: 'warehouse' },
   { name: 'Approvisionnement', description: 'Demandes et transferts de stock', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
   { name: 'RH', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
   { name: 'Comptabilite', description: 'Caisse, charges et tresorerie', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },

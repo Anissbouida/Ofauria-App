@@ -321,6 +321,9 @@ export default function LossesTab() {
       {/* Add loss modal */}
       {showForm && (
         <AddLossModal
+          lossTypeConfig={LOSS_TYPE_CONFIG}
+          reasonLabels={REASON_LABELS}
+          reasonsByType={REASONS_BY_TYPE}
           onClose={() => setShowForm(false)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['product-losses'] });
@@ -335,7 +338,13 @@ export default function LossesTab() {
 }
 
 /* ═══════════════════════ ADD LOSS MODAL ═══════════════════════ */
-function AddLossModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, reasonLabels: REASON_LABELS, reasonsByType: REASONS_BY_TYPE }: {
+  onClose: () => void;
+  onSuccess: () => void;
+  lossTypeConfig: Record<string, { label: string; color: string; bg: string; gradient: string; icon: typeof Flame }>;
+  reasonLabels: Record<string, string>;
+  reasonsByType: Record<string, string[]>;
+}) {
   const [lossType, setLossType] = useState('');
   const [reason, setReason] = useState('');
   const [reasonNote, setReasonNote] = useState('');

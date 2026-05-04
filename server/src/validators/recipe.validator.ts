@@ -33,6 +33,11 @@ export const createRecipeSchema = z.object({
     subRecipeId: z.string().uuid('ID sous-recette invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
   })).default([]),
+  packaging: z.array(z.object({
+    packagingId: z.string().uuid('ID emballage invalide'),
+    quantity: z.number().positive('La quantité doit être positive'),
+    unit: z.string().max(20).optional().nullable(),
+  })).default([]),
 });
 
 export const updateRecipeSchema = createRecipeSchema;

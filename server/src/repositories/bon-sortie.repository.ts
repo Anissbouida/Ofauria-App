@@ -64,33 +64,32 @@ export const bonSortieRepository = {
       );
       const bon = bonResult.rows[0];
 
-      // 4. For each ingredient need, allocate lots via FEFO and create lines
-      //    Priority: active lots first, then expired lots as fallback (avoids false ruptures)
+      // 4. For each ingredient need, allocate via 2-stage FEFO :
+      //    - Étape 1 : Pesage (lots déjà ouverts) - prioritaire
+      //    - Étape 2 : Économat (lots scellés) - lignes "à ouvrir" si Pesage insuffisant
+      //    - Étape 3 : Rupture si total insuffisant
       const lines = [];
       for (const need of needsResult.rows) {
         const neededQty = parseFloat(need.needed_quantity);
+        let remaining = neededQty;
 
-        // Get lots in FEFO order — active first, then expired as fallback
-        const lotsResult = await client.query(
-          `SELECT id, lot_number, supplier_lot_number, quantity_remaining, expiration_date, received_at, status
+        // Étape 1 : consommation depuis Pesage (FEFO sur DLC)
+        const pesageLotsResult = await client.query(
+          `SELECT id, lot_number, supplier_lot_number, pesage_quantity, expiration_date,
+                  received_at, status, first_opened_at
            FROM ingredient_lots
            WHERE ingredient_id = $1 AND store_id = $2
-             AND status IN ('active', 'expired') AND quantity_remaining > 0
-           ORDER BY
-             CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-             expiration_date ASC NULLS LAST,
-             received_at ASC`,
+             AND status IN ('active', 'expired') AND pesage_quantity > 0
+           ORDER BY expiration_date ASC NULLS LAST,
+                    first_opened_at ASC NULLS FIRST, received_at ASC`,
           [need.ingredient_id, storeId]
         );
 
-        let remaining = neededQty;
-
-        for (const lot of lotsResult.rows) {
+        for (const lot of pesageLotsResult.rows) {
           if (remaining <= 0) break;
-
-          const available = parseFloat(lot.quantity_remaining);
+          const available = parseFloat(lot.pesage_quantity);
           const take = Math.min(available, remaining);
-          const isExpired = lot.status === 'expired';
+          const isExpired = lot.expiration_date && new Date(lot.expiration_date) < new Date();
 
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
@@ -98,7 +97,7 @@ export const bonSortieRepository = {
              VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', $7)
              RETURNING *`,
             [bon.id, need.ingredient_id, lot.id, neededQty, take, need.ingredient_unit || 'kg',
-             isExpired ? `⚠ Lot expire (DLC: ${lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString('fr-FR') : 'N/A'})` : null]
+             `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee' : ''}`]
           );
 
           lines.push({
@@ -108,20 +107,65 @@ export const bonSortieRepository = {
             lot_number: lot.lot_number,
             supplier_lot_number: lot.supplier_lot_number,
             expiration_date: lot.expiration_date,
-            lot_expired: isExpired,
+            stock_source: 'pesage',
+            lot_expired: !!isExpired,
           });
 
           remaining -= take;
         }
 
-        // If remaining > 0, create a line without lot (true shortfall / rupture)
+        // Étape 2 : si Pesage insuffisant, allouer depuis Économat ("lignes à ouvrir")
+        if (remaining > 0) {
+          const economatLotsResult = await client.query(
+            `SELECT id, lot_number, supplier_lot_number, economat_quantity, expiration_date,
+                    received_at, status
+             FROM ingredient_lots
+             WHERE ingredient_id = $1 AND store_id = $2
+               AND status IN ('active', 'expired') AND economat_quantity > 0
+             ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+                      expiration_date ASC NULLS LAST, received_at ASC`,
+            [need.ingredient_id, storeId]
+          );
+
+          for (const lot of economatLotsResult.rows) {
+            if (remaining <= 0) break;
+            const available = parseFloat(lot.economat_quantity);
+            const take = Math.min(available, remaining);
+            const isExpired = lot.status === 'expired';
+
+            const lineResult = await client.query(
+              `INSERT INTO production_bons_sortie_lignes
+                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, 'rupture', $7)
+               RETURNING *`,
+              [bon.id, need.ingredient_id, lot.id, neededQty, take, need.ingredient_unit || 'kg',
+               `[À ouvrir depuis Économat] lot ${lot.lot_number}${isExpired ? ' — ⚠ Lot expire' : ''}`]
+            );
+
+            lines.push({
+              ...lineResult.rows[0],
+              ingredient_name: need.ingredient_name,
+              ingredient_unit: need.ingredient_unit,
+              lot_number: lot.lot_number,
+              supplier_lot_number: lot.supplier_lot_number,
+              expiration_date: lot.expiration_date,
+              stock_source: 'economat_to_open',
+              lot_expired: isExpired,
+            });
+
+            remaining -= take;
+          }
+        }
+
+        // Étape 3 : Rupture vraie (Pesage + Économat insuffisants)
         if (remaining > 0) {
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
-               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status)
-             VALUES ($1, $2, NULL, $3, $4, $5, 'rupture')
+               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
+             VALUES ($1, $2, NULL, $3, $4, $5, 'rupture', $6)
              RETURNING *`,
-            [bon.id, need.ingredient_id, neededQty, remaining, need.ingredient_unit || 'kg']
+            [bon.id, need.ingredient_id, neededQty, remaining, need.ingredient_unit || 'kg',
+             `🚨 Rupture totale — manque ${remaining.toFixed(2)} ${need.ingredient_unit || 'kg'}`]
           );
 
           lines.push({
@@ -131,8 +175,76 @@ export const bonSortieRepository = {
             lot_number: null,
             supplier_lot_number: null,
             expiration_date: null,
+            stock_source: 'rupture',
           });
         }
+      }
+
+      // ─── Phase Emballages : ajouter les lignes BSI emballages ───
+      // Pour chaque item du plan, on regarde la recette → recipe_packaging et
+      // on calcule le besoin emballage au prorata de la qty produite. Une seule
+      // ligne BSI par packaging_id, agregant les besoins de toutes les recettes.
+      const planItemsResult = await client.query(
+        `SELECT pi.product_id, pi.planned_quantity, r.id as recipe_id, r.yield_quantity
+         FROM production_plan_items pi
+         LEFT JOIN recipes r ON r.product_id = pi.product_id
+         WHERE pi.plan_id = $1 AND r.id IS NOT NULL`,
+        [planId]
+      );
+
+      const packagingNeedsMap = new Map<string, { qty: number; name: string; format: string | null; unit: string; unit_cost: number }>();
+      for (const planItem of planItemsResult.rows) {
+        const yieldQty = parseFloat(planItem.yield_quantity) || 1;
+        const itemQty = parseFloat(planItem.planned_quantity);
+        const pkResult = await client.query(
+          `SELECT rp.packaging_id, rp.quantity, rp.unit,
+                  pi.name, pi.format, pi.unit as base_unit, pi.unit_cost
+           FROM recipe_packaging rp
+           JOIN packaging_items pi ON pi.id = rp.packaging_id
+           WHERE rp.recipe_id = $1`,
+          [planItem.recipe_id]
+        );
+        for (const pk of pkResult.rows) {
+          const needed = (parseFloat(pk.quantity) / yieldQty) * itemQty;
+          const existing = packagingNeedsMap.get(pk.packaging_id) || {
+            qty: 0, name: pk.name, format: pk.format, unit: pk.unit || pk.base_unit, unit_cost: parseFloat(pk.unit_cost),
+          };
+          existing.qty += needed;
+          packagingNeedsMap.set(pk.packaging_id, existing);
+        }
+      }
+
+      // Ajouter les lignes packaging au BSI (status='en_attente' ou 'rupture' selon stock)
+      for (const [packagingId, need] of packagingNeedsMap) {
+        const stockResult = await client.query(
+          `SELECT COALESCE(stock_quantity, 0) as stock FROM packaging_store_stock
+           WHERE packaging_id = $1 AND store_id = $2`,
+          [packagingId, storeId]
+        );
+        const available = parseFloat(stockResult.rows[0]?.stock || '0');
+        const allocated = Math.min(available, need.qty);
+        const isRupture = allocated < need.qty;
+
+        const lineResult = await client.query(
+          `INSERT INTO production_bons_sortie_lignes
+             (bon_id, ingredient_id, packaging_id, needed_quantity, allocated_quantity, unit, status, notes)
+           VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
+           RETURNING *`,
+          [
+            bon.id, packagingId, need.qty, allocated, need.unit,
+            isRupture ? 'rupture' : 'en_attente',
+            isRupture ? `⚠ Stock insuffisant : ${available.toFixed(2)} dispo / ${need.qty.toFixed(2)} besoin` : null,
+          ]
+        );
+
+        lines.push({
+          ...lineResult.rows[0],
+          packaging_name: need.name,
+          packaging_format: need.format,
+          ingredient_name: need.name,  // alias pour compat UI existante
+          ingredient_unit: need.unit,
+          is_packaging: true,
+        });
       }
 
       // 5. Link bon to plan
@@ -420,15 +532,23 @@ export const bonSortieRepository = {
       return current.rows[0];
     }
 
-    // Check all lines are processed (not en_attente)
+    // Check ingredient lines only (packaging lines geres separement et invisibles dans l'UI BSI).
+    // Les lignes packaging restent en 'en_attente' jusqu'a la cloture (auto-confirmees).
     const pendingResult = await db.query(
       `SELECT COUNT(*) FROM production_bons_sortie_lignes
-       WHERE bon_id = $1 AND status IN ('en_attente')`,
+       WHERE bon_id = $1 AND status IN ('en_attente') AND ingredient_id IS NOT NULL`,
       [bonId]
     );
     if (parseInt(pendingResult.rows[0].count) > 0) {
-      throw new Error('Toutes les lignes doivent etre prelevees avant verification');
+      throw new Error('Toutes les lignes ingredients doivent etre prelevees avant verification');
     }
+    // Auto-confirme les lignes packaging restantes pour ne pas bloquer la cloture
+    await db.query(
+      `UPDATE production_bons_sortie_lignes
+       SET status = 'preleve', actual_quantity = allocated_quantity, updated_at = NOW()
+       WHERE bon_id = $1 AND status = 'en_attente' AND packaging_id IS NOT NULL`,
+      [bonId]
+    );
 
     const result = await db.query(
       `UPDATE production_bons_sortie
@@ -441,6 +561,206 @@ export const bonSortieRepository = {
       throw new Error('Bon de sortie introuvable ou statut invalide pour verification');
     }
     return result.rows[0];
+  },
+
+  // ─── BSI partiel : commit ce qui est preleve, garde le reste en attente d'approvisionnement ───
+  // Transition autorisee depuis 'preparation' (ou 'preparation_partielle' pour re-commit
+  // apres modifications). Logique :
+  //   - Les lignes 'preleve' / 'substitue' / 'ecart' sont conservees telles quelles
+  //   - Les lignes 'en_attente' (non encore touchees) sont gardees pour la suite
+  //   - Les lignes 'rupture' (FEFO insuffisant) restent rupture jusqu'au reapprov
+  //   - Le BSI passe en 'preparation_partielle' pour que le manager voie qu'il y a un blocage
+  // Refuse si AUCUNE ligne n'est preleve/ecart/substitue (rien a commiter).
+  async commitPartial(bonId: string, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const current = await client.query(
+        `SELECT * FROM production_bons_sortie WHERE id = $1 FOR UPDATE`,
+        [bonId]
+      );
+      if (current.rows.length === 0) throw new Error('Bon de sortie introuvable');
+      const bonStatus = current.rows[0].status;
+      if (!['preparation', 'preparation_partielle'].includes(bonStatus)) {
+        throw new Error(`Statut invalide pour commit partiel : ${bonStatus}`);
+      }
+
+      // Au moins 1 ligne doit avoir ete prelevee
+      const counts = await client.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status IN ('preleve', 'substitue', 'ecart')) AS done,
+           COUNT(*) FILTER (WHERE status IN ('en_attente', 'rupture')) AS pending
+         FROM production_bons_sortie_lignes WHERE bon_id = $1`,
+        [bonId]
+      );
+      const done = parseInt(counts.rows[0].done);
+      const pending = parseInt(counts.rows[0].pending);
+      if (done === 0) {
+        throw new Error('Aucune ligne prelevee — commit partiel refuse');
+      }
+      if (pending === 0) {
+        throw new Error('Aucune ligne en attente — utilisez "Pret pour livraison" plutot');
+      }
+
+      const result = await client.query(
+        `UPDATE production_bons_sortie
+         SET status = 'preparation_partielle',
+             partial_committed_by = $1, partial_committed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [userId, bonId]
+      );
+
+      await client.query('COMMIT');
+      return { ...result.rows[0], done_count: done, pending_count: pending };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // ─── BSI partiel : compléter les lignes en attente après réapprovisionnement ───
+  // Refait le FEFO sur les lignes 'en_attente' et 'rupture', alloue depuis le stock
+  // qui vient d'arriver. Les lignes en rupture qui restent en rupture sont gardees.
+  // Si TOUTES les lignes sont desormais allouees (pas de rupture restante) on peut
+  // remettre le BSI en 'preparation' (le magasinier doit refinaliser le prelevement)
+  // ou directement en 'pret' si toutes les lignes sont deja prelevees.
+  async completePending(bonId: string, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const current = await client.query(
+        `SELECT bs.*, p.id as plan_id_check FROM production_bons_sortie bs
+         LEFT JOIN production_plans p ON p.id = bs.plan_id
+         WHERE bs.id = $1 FOR UPDATE`,
+        [bonId]
+      );
+      if (current.rows.length === 0) throw new Error('Bon de sortie introuvable');
+      if (current.rows[0].status !== 'preparation_partielle') {
+        throw new Error(`Statut invalide pour complete-pending : ${current.rows[0].status}`);
+      }
+      const storeId = current.rows[0].store_id;
+
+      // 1. Recupere les lignes en attente / rupture avec leur ingredient
+      const pendingLines = await client.query(
+        `SELECT bsl.id, bsl.ingredient_id, bsl.needed_quantity, bsl.allocated_quantity,
+                bsl.status, ing.name as ingredient_name, ing.unit as ingredient_unit
+         FROM production_bons_sortie_lignes bsl
+         JOIN ingredients ing ON ing.id = bsl.ingredient_id
+         WHERE bsl.bon_id = $1 AND bsl.status IN ('en_attente', 'rupture')
+         ORDER BY ing.name`,
+        [bonId]
+      );
+
+      let resolved = 0;
+      let stillPending = 0;
+
+      for (const line of pendingLines.rows) {
+        const stillNeeded = parseFloat(line.needed_quantity) - parseFloat(line.allocated_quantity);
+        if (stillNeeded <= 0) continue;
+
+        // FEFO sur lots disponibles (active / expired) maintenant
+        const lots = await client.query(
+          `SELECT id, lot_number, quantity_remaining, expiration_date, status
+           FROM ingredient_lots
+           WHERE ingredient_id = $1 AND store_id = $2
+             AND status IN ('active', 'expired') AND quantity_remaining > 0
+           ORDER BY
+             CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+             expiration_date ASC NULLS LAST, received_at ASC`,
+          [line.ingredient_id, storeId]
+        );
+
+        let remaining = stillNeeded;
+
+        // Cas 1 : la ligne n'avait AUCUNE allocation (status='rupture' avec lot_id NULL)
+        //  -> on lui assigne le 1er lot et on cree des lignes supplementaires si besoin
+        // Cas 2 : la ligne avait une allocation partielle, on cree des lignes additionnelles
+        //  pour le residuel (la ligne d'origine garde sa qty allocated)
+        let firstUpdateDone = false;
+
+        for (const lot of lots.rows) {
+          if (remaining <= 0) break;
+          const take = Math.min(parseFloat(lot.quantity_remaining), remaining);
+
+          if (!firstUpdateDone && line.status === 'rupture') {
+            // Attache au lot trouve, met a jour le statut en 'en_attente'
+            await client.query(
+              `UPDATE production_bons_sortie_lignes
+               SET ingredient_lot_id = $1, allocated_quantity = $2, status = 'en_attente',
+                   notes = COALESCE(notes, '') || ' | Reapprov: lot attache',
+                   updated_at = NOW()
+               WHERE id = $3`,
+              [lot.id, take, line.id]
+            );
+            firstUpdateDone = true;
+          } else {
+            // Ligne supplementaire pour ce lot
+            await client.query(
+              `INSERT INTO production_bons_sortie_lignes
+                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
+               VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', 'Reapprov: ligne complementaire')`,
+              [bonId, line.ingredient_id, lot.id, take, line.ingredient_unit || 'kg']
+            );
+          }
+          remaining -= take;
+        }
+
+        if (remaining > 0) {
+          // Toujours en rupture
+          stillPending++;
+        } else {
+          resolved++;
+          // Si on n'a rien fait sur la ligne d'origine (cas oublie) on l'annule
+          if (!firstUpdateDone && line.status === 'rupture') {
+            await client.query(
+              `UPDATE production_bons_sortie_lignes
+               SET status = 'annule', notes = COALESCE(notes, '') || ' | Remplacee par lignes complementaires apres reapprov'
+               WHERE id = $1`,
+              [line.id]
+            );
+          }
+        }
+      }
+
+      // 2. Si plus aucune rupture/attente, repassage en 'preparation' pour finaliser le prelevement
+      const stillCount = await client.query(
+        `SELECT COUNT(*) FROM production_bons_sortie_lignes
+         WHERE bon_id = $1 AND status IN ('en_attente', 'rupture')`,
+        [bonId]
+      );
+      const remainingPending = parseInt(stillCount.rows[0].count);
+
+      let finalStatus = 'preparation_partielle';
+      if (remainingPending === 0) {
+        finalStatus = 'preparation';  // Tout dispo, magasinier peut prélever et marquer prêt
+        await client.query(
+          `UPDATE production_bons_sortie
+           SET status = 'preparation',
+               partial_completed_by = $1, partial_completed_at = NOW(),
+               updated_at = NOW()
+           WHERE id = $2`,
+          [userId, bonId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return {
+        bonId, finalStatus,
+        resolved, stillPending,
+        remainingPendingLines: remainingPending,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   // ─── Close the bon ───

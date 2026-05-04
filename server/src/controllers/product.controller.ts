@@ -1,8 +1,29 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productRepository } from '../repositories/product.repository.js';
+import { productLotRepository } from '../repositories/product-lot.repository.js';
 import { db } from '../config/database.js';
 import { adjustProductStock } from '../repositories/product-stock.helper.js';
+
+// Phase B — debounce le lazy trigger d'auto-expire pour ne pas le rejouer
+// a chaque requete (cout : 1 query par lot expire). On laisse passer toutes
+// les 60 secondes par store. En memoire process — multi-instances : c'est
+// idempotent donc on tolere une concurrence rare.
+const lastAutoExpire: Map<string, number> = new Map();
+const AUTO_EXPIRE_DEBOUNCE_MS = 60_000;
+async function maybeAutoExpire(storeId: string | null | undefined) {
+  if (!storeId) return;
+  const last = lastAutoExpire.get(storeId) ?? 0;
+  const now = Date.now();
+  if (now - last < AUTO_EXPIRE_DEBOUNCE_MS) return;
+  lastAutoExpire.set(storeId, now);
+  try {
+    await productLotRepository.autoExpireDueLots();
+  } catch (err) {
+    console.error('[autoExpireDueLots] erreur silencieuse :', err);
+    // On ne bloque pas la requete utilisateur si le job echoue
+  }
+}
 
 function slugify(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -31,6 +52,11 @@ export const productController = {
       return;
     }
 
+    // Phase B — Lazy auto-expire : debounced 60s par store, garantit que
+    // les lots dont la DLV ou DDE est passee sont auto-marques avant
+    // qu'ils n'apparaissent dans la liste POS comme vendables.
+    await maybeAutoExpire(req.user!.storeId);
+
     const result = await productRepository.findAll({
       categoryId: categoryId ? parseInt(categoryId) : undefined,
       search, isAvailable: isAvailable !== undefined ? isAvailable === 'true' : undefined,
@@ -42,6 +68,48 @@ export const productController = {
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },
+  // Phase D — debug/audit : retourne pour un produit les 2 deadlines + le min
+  // (effective). Utilise par les outils admin pour diagnostiquer pourquoi un
+  // produit est bloque a la vente.
+  async effectiveDeadline(req: AuthRequest, res: Response) {
+    const productId = req.params.id;
+    const storeId = req.user!.storeId;
+    if (!storeId) {
+      res.status(400).json({ success: false, error: { message: 'Aucun store rattache a l\'utilisateur' } });
+      return;
+    }
+    const result = await db.query(
+      `SELECT
+         pl.id as lot_id, pl.lot_number,
+         pl.expires_at as dlv,
+         pl.display_expires_at as dde,
+         pl.vitrine_qty, pl.backroom_qty, pl.status,
+         LEAST(
+           COALESCE(pl.expires_at::timestamptz, 'infinity'::timestamptz),
+           COALESCE(pl.display_expires_at, 'infinity'::timestamptz)
+         ) as effective_deadline,
+         (
+           (pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE)
+           AND (pl.display_expires_at IS NULL OR pl.display_expires_at > NOW())
+         ) as saleable
+       FROM product_lots pl
+       WHERE pl.product_id = $1 AND pl.store_id = $2 AND pl.status = 'active'
+         AND (pl.vitrine_qty + pl.backroom_qty) > 0
+       ORDER BY effective_deadline ASC`,
+      [productId, storeId]
+    );
+    res.json({
+      success: true,
+      data: {
+        productId,
+        storeId,
+        lots: result.rows,
+        soonest_deadline: result.rows[0]?.effective_deadline ?? null,
+        has_saleable_lot: result.rows.some(r => r.saleable),
+      },
+    });
+  },
+
   async getById(req: AuthRequest, res: Response) {
     const product = await productRepository.findById(req.params.id);
     if (!product) { res.status(404).json({ success: false, error: { message: 'Produit non trouvé' } }); return; }

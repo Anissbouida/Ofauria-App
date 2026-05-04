@@ -3,6 +3,7 @@ import { getCategoryRole } from '@ofauria/shared';
 import { getUserTimezone } from '../utils/timezone.js';
 import { productionRepository } from './production.repository.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
+import { productLotRepository } from './product-lot.repository.js';
 
 export const replenishmentRepository = {
 
@@ -604,6 +605,24 @@ export const replenishmentRepository = {
              VALUES ($1, 'replenishment_in', $2, (SELECT vitrine_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $3), $4, $5, $6, $3)`,
             [productId, moved, requestStoreId, `Reception approvisionnement (vitrine)`, requestId, closedBy]
           );
+
+          // Phase 1 — Mirror sur product_lots FEFO : consomme depuis le backroom
+          // des lots les plus anciens (DLC plus proche) et bascule en vitrine_qty.
+          // Si lot jamais expose -> set first_displayed_at + display_expires_at.
+          if (moved > 0) {
+            const productMeta = await client.query(
+              `SELECT display_life_hours FROM products WHERE id = $1`, [productId]
+            );
+            const displayHours = productMeta.rows[0]?.display_life_hours ?? null;
+            const plan = await productLotRepository.planFefoBackroomConsumption(
+              client, productId, requestStoreId, moved
+            );
+            for (const step of plan) {
+              await productLotRepository.transferBackroomToVitrine(
+                client, step.lotId, step.qty, displayHours ? parseInt(displayHours) : null
+              );
+            }
+          }
         }
       }
 
