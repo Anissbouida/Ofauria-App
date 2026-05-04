@@ -18,8 +18,17 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // OWASP MOB-2 : release jamais debuggable (pas de reverse-debug).
+            debuggable false
+            // Reduit le code et obfusque — frein au reverse engineering statique.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // Permet explicitement le debug local uniquement sur les builds debug.
+            debuggable true
+            applicationIdSuffix '.debug'
         }
     }
 }

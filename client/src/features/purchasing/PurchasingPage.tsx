@@ -37,33 +37,24 @@ export default function PurchasingPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-br from-blue-700 to-indigo-800 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
-        </div>
-        <div className="relative flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-            <ShoppingCart size={24} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Achats</h1>
-            <p className="text-blue-200 text-sm mt-0.5">Fournisseurs, commandes et facturation</p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Achats</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Fournisseurs, commandes et facturation</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1">
         <div className="flex gap-1 overflow-x-auto">
           {allTabs.map(t => {
             const Icon = t.icon;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                   tab === t.key
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}>
                 <Icon size={16} /> {t.label}
               </button>

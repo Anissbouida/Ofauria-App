@@ -46,6 +46,23 @@ export const invoicesApi = {
   removeAttachment: (id: string) => api.delete(`/invoices/${id}/attachment`).then(r => r.data.data),
 };
 
+export const caisseImportApi = {
+  preview: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/caisse-import/preview', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
+  commit: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/caisse-import/commit', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
+};
+
 export const paymentsApi = {
   list: (params?: Record<string, string>) => api.get('/payments', { params }).then(r => r.data.data),
   create: (data: Record<string, unknown>) => api.post('/payments', data).then(r => r.data.data),

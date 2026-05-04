@@ -20,6 +20,7 @@ const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 const STATUS_LABELS: Record<string, string> = {
   submitted: 'Envoyée',
   acknowledged: 'Prise en charge',
+  partially_received: 'Réception partielle',
   preparing: 'En préparation',
   transferred: 'Transféré',
   partially_delivered: 'Partiellement livré',
@@ -31,6 +32,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string; icon: React.ReactNode }> = {
   submitted: { bg: 'bg-yellow-100', text: 'text-yellow-700', dot: 'bg-yellow-400', icon: <Clock size={12} /> },
   acknowledged: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', icon: <Send size={12} /> },
+  partially_received: { bg: 'bg-teal-100', text: 'text-teal-700', dot: 'bg-teal-500', icon: <Truck size={12} /> },
   preparing: { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', icon: <PackageCheck size={12} /> },
   transferred: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', icon: <Truck size={12} /> },
   partially_delivered: { bg: 'bg-teal-100', text: 'text-teal-700', dot: 'bg-teal-500', icon: <Truck size={12} /> },
@@ -126,37 +128,31 @@ export default function ReplenishmentPage() {
   return (
     <div className="space-y-6">
       {/* ══════════════ HEADER ══════════════ */}
-      <div className="bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Approvisionnement</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{allRequests.length} demande(s) au total</p>
         </div>
-        <div className="relative flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                <Package size={22} />
-              </div>
-              Approvisionnement
-            </h1>
-            <p className="text-indigo-100 text-sm mt-1">{allRequests.length} demande(s) au total</p>
-          </div>
-          {(isStoreStaff || isAdmin) && (
-            <button onClick={() => setShowForm(true)} className="px-5 py-2.5 bg-white text-indigo-600 rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-              <Plus size={16} /> Nouvelle demande
-            </button>
-          )}
-        </div>
+        {(isStoreStaff || isAdmin) && (
+          <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
+            <Plus size={16} /> Nouvelle demande
+          </button>
+        )}
+      </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          {statsCards.map(s => (
-            <div key={s.label} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold">{s.value}</div>
-              <div className="text-xs text-white/70">{s.label}</div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {statsCards.map(s => (
+          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center text-white`}>
+                {s.icon}
+              </div>
             </div>
-          ))}
-        </div>
+            <p className="text-2xl font-bold text-gray-800">{s.value}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
+          </div>
+        ))}
       </div>
 
       {/* ══════════════ FILTER BAR ══════════════ */}
@@ -168,13 +164,13 @@ export default function ReplenishmentPage() {
               <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
                 className={`px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${
                   statusFilter === tab.key
-                    ? 'bg-white text-indigo-700 shadow-sm'
+                    ? 'bg-white text-gray-800 shadow-sm'
                     : 'text-gray-500 hover:text-gray-700'
                 }`}>
                 {tab.label}
                 {tab.count > 0 && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    statusFilter === tab.key ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-500'
+                    statusFilter === tab.key ? 'bg-gray-200 text-gray-700' : 'bg-gray-200 text-gray-500'
                   }`}>
                     {tab.count}
                   </span>
@@ -186,7 +182,7 @@ export default function ReplenishmentPage() {
           <div className="relative w-56">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Rechercher..." className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              placeholder="Rechercher..." className="input pl-9" />
             {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../../api/reports.api';
+import { productLossesApi } from '../../api/product-losses.api';
 import { format, subDays, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -74,6 +75,13 @@ export default function ReportsPage() {
   const { data: productData = [], isLoading: productsLoading } = useQuery({
     queryKey: ['reports-products', startDate, endDate],
     queryFn: () => reportsApi.products(startDate, endDate),
+  });
+
+  // Losses stats (current month)
+  const now = new Date();
+  const { data: lossStats } = useQuery({
+    queryKey: ['product-losses-stats', now.getMonth() + 1, now.getFullYear()],
+    queryFn: () => productLossesApi.stats(now.getMonth() + 1, now.getFullYear()),
   });
 
   const d = dashData || {
@@ -421,6 +429,65 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
+
+      {/* Losses: Top products + Top reasons */}
+      {lossStats && (lossStats.topProducts as Record<string, unknown>[])?.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
+                <BarChart3 size={14} className="text-white" />
+              </div>
+              <h2 className="text-sm font-semibold text-gray-700">Top produits les plus perdus</h2>
+              <span className="text-xs text-gray-400 ml-auto">Ce mois</span>
+            </div>
+            <div className="space-y-3">
+              {(lossStats.topProducts as Record<string, unknown>[]).slice(0, 5).map((p: Record<string, unknown>, i: number) => {
+                const cost = parseFloat(p.total_cost as string) || 0;
+                const maxCost = parseFloat((lossStats.topProducts as Record<string, unknown>[])[0]?.total_cost as string) || 1;
+                return (
+                  <div key={p.id as string} className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-700 truncate">{p.name as string}</p>
+                      <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-red-400 to-rose-500 rounded-full" style={{ width: `${(cost / maxCost) * 100}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-red-600 whitespace-nowrap">{formatCurrency(cost)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <AlertTriangle size={14} className="text-white" />
+              </div>
+              <h2 className="text-sm font-semibold text-gray-700">Motifs de perte les plus frequents</h2>
+              <span className="text-xs text-gray-400 ml-auto">Ce mois</span>
+            </div>
+            <div className="space-y-2.5">
+              {(lossStats.topReasons as Record<string, unknown>[]).slice(0, 6).map((r: Record<string, unknown>, i: number) => (
+                <div key={i} className="flex items-center justify-between py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">
+                      {String(r.loss_type)}
+                    </span>
+                    <span className="text-sm text-gray-700">{String(r.reason)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">{r.count as number}x</span>
+                    <span className="text-sm font-bold text-gray-700">{formatCurrency(parseFloat(r.total_cost as string) || 0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

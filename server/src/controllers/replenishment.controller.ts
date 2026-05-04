@@ -43,6 +43,9 @@ export const replenishmentController = {
       res.status(404).json({ success: false, error: { message: 'Demande non trouvee' } });
       return;
     }
+    if (req.user!.storeId && request.store_id && request.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: request });
   },
 
@@ -260,7 +263,9 @@ export const replenishmentController = {
       res.json({ success: true, data: result });
     } catch (err) {
       console.error('confirmReception error:', err);
-      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas etre confirmee' } });
+      const isBusinessError = err instanceof Error && (err.message.includes('stock') || err.message.includes('demande') || err.message.includes('statut'));
+      const msg = isBusinessError ? (err as Error).message : 'Cette demande ne peut pas etre confirmee';
+      res.status(409).json({ success: false, error: { message: msg } });
     }
   },
 
@@ -271,7 +276,7 @@ export const replenishmentController = {
       res.status(404).json({ success: false, error: { message: 'Demande non trouvee' } });
       return;
     }
-    if (!['submitted', 'acknowledged'].includes(request.status)) {
+    if (!['submitted', 'acknowledged', 'partially_received'].includes(request.status)) {
       res.status(409).json({ success: false, error: { message: 'Cette demande ne peut plus etre annulee' } });
       return;
     }
@@ -290,7 +295,7 @@ export const replenishmentController = {
           message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
           referenceType: 'production_plan',
           referenceId: plan.id,
-          createdBy: req.user?.id,
+          createdBy: req.user?.userId,
         });
       }
 
@@ -303,7 +308,7 @@ export const replenishmentController = {
         message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
         referenceType: 'production_plan',
         referenceId: plan.id,
-        createdBy: req.user?.id,
+        createdBy: req.user?.userId,
       });
     }
 
@@ -318,7 +323,11 @@ export const replenishmentController = {
 
   // Get product recommendations
   async recommendations(req: AuthRequest, res: Response) {
-    const recommendations = await replenishmentRepository.getRecommendations(req.user!.storeId);
+    if (!req.user?.storeId) {
+      res.status(400).json({ success: false, error: { message: 'Magasin requis' } });
+      return;
+    }
+    const recommendations = await replenishmentRepository.getRecommendations(req.user.storeId);
     res.json({ success: true, data: recommendations });
   },
 

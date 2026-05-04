@@ -14,6 +14,16 @@ export const customerController = {
     if (!customer) { res.status(404).json({ success: false, error: { message: 'Client non trouvé' } }); return; }
     res.json({ success: true, data: customer });
   },
+  async stats(req: AuthRequest, res: Response) {
+    const customer = await customerRepository.findById(req.params.id);
+    if (!customer) { res.status(404).json({ success: false, error: { message: 'Client non trouvé' } }); return; }
+    const stats = await customerRepository.stats(req.params.id);
+    res.json({ success: true, data: { customer, ...stats } });
+  },
+  async globalStats(_req: AuthRequest, res: Response) {
+    const stats = await customerRepository.globalStats();
+    res.json({ success: true, data: stats });
+  },
   async create(req: AuthRequest, res: Response) {
     const customer = await customerRepository.create(req.body);
     res.status(201).json({ success: true, data: customer });

@@ -73,13 +73,16 @@ export const purchaseOrderRepository = {
     return { ...poResult.rows[0], items: itemsResult.rows };
   },
 
-  async generateOrderNumber(): Promise<string> {
+  async generateOrderNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
+    const runner = client ?? db;
+    // Advisory lock prevents concurrent POs from generating the same number
+    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('po_number'))`);
     const year = getLocalYear();
-    const result = await db.query(
+    const result = await runner.query(
       `SELECT COUNT(*) FROM purchase_orders WHERE EXTRACT(YEAR FROM order_date) = $1`,
       [year]
     );
-    const seq = parseInt(result.rows[0].count) + 1;
+    const seq = parseInt((result.rows[0] as Record<string, string>).count) + 1;
     return `BC-${year}-${String(seq).padStart(4, '0')}`;
   },
 

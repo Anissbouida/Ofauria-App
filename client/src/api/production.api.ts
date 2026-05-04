@@ -18,10 +18,16 @@ export const productionApi = {
     api.post(`/production/transfers/${transferId}/receive`, { items }).then(r => r.data),
   restoreItems: (id: string, itemIds: string[]) =>
     api.post(`/production/${id}/restore-items`, { itemIds }).then(r => r.data),
+  requestStockVerification: (id: string, ingredientId: string, note?: string) =>
+    api.post(`/production/${id}/needs/${ingredientId}/request-verification`, { note }).then(r => r.data.data),
   cancelItems: (id: string, itemIds: string[], reason?: string) =>
     api.post(`/production/${id}/cancel-items`, { itemIds, reason }).then(r => r.data),
   complete: (id: string, items: { planItemId: string; actualQuantity: number }[], completionType?: string) =>
     api.post(`/production/${id}/complete`, { items, completionType }).then(r => r.data),
   analyzeSubRecipes: (id: string) => api.get(`/production/${id}/sub-recipe-analysis`).then(r => r.data.data),
+  detectSemiFinished: (id: string) => api.post(`/production/${id}/detect-semi-finished`).then(r => r.data),
+  getDependencies: (id: string) => api.get(`/production/${id}/dependencies`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/production/${id}`),
+  getActivities: (id: string) => api.get(`/production/${id}/activities`).then(r => r.data.data),
+  addActivity: (id: string, message: string) => api.post(`/production/${id}/activities`, { message }).then(r => r.data.data),
 };

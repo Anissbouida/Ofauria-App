@@ -25,6 +25,9 @@ export const purchaseOrderController = {
   async getById(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: po });
   },
 

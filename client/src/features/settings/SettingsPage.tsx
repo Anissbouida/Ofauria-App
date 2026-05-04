@@ -10,23 +10,11 @@ import {
   Printer, Upload, Image, Eye, Type, FileText, ToggleLeft, ToggleRight,
   Database, Tag, Check, X, ShieldCheck, ArrowDownUp, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, AlertTriangle, EyeOff, Users,
-  Paintbrush, Monitor, Sun, Moon, Layers,
+  Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
-const PRESET_COLORS = [
-  { name: 'Aubergine', primary: '#714B67', secondary: '#5f3d57' },
-  { name: 'Bleu', primary: '#264653', secondary: '#1d3640' },
-  { name: 'Vert', primary: '#2d6a4f', secondary: '#245740' },
-  { name: 'Rouge', primary: '#9b2226', secondary: '#7d1b1e' },
-  { name: 'Orange', primary: '#bc6c25', secondary: '#a05b1e' },
-  { name: 'Marine', primary: '#003049', secondary: '#00253a' },
-  { name: 'Indigo', primary: '#4338ca', secondary: '#3730a3' },
-  { name: 'Rose', primary: '#be185d', secondary: '#9d174d' },
-  { name: 'Marron', primary: '#6d4c41', secondary: '#5d4037' },
-];
 
 type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel';
 
@@ -37,15 +25,11 @@ export default function SettingsPage() {
 
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [subtitle, setSubtitle] = useState(settings.subtitle);
-  const [primaryColor, setPrimaryColor] = useState(settings.primaryColor);
-  const [secondaryColor, setSecondaryColor] = useState(settings.secondaryColor);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setCompanyName(settings.companyName);
     setSubtitle(settings.subtitle);
-    setPrimaryColor(settings.primaryColor);
-    setSecondaryColor(settings.secondaryColor);
   }, [settings]);
 
   if (user?.role !== 'admin') {
@@ -59,7 +43,7 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ companyName, subtitle, primaryColor, secondaryColor });
+      await updateSettings({ companyName, subtitle });
       notify.success('Parametres enregistres');
     } catch {
       notify.error('Erreur lors de la sauvegarde');
@@ -71,15 +55,11 @@ export default function SettingsPage() {
   const handleReset = () => {
     setCompanyName(settings.companyName);
     setSubtitle(settings.subtitle);
-    setPrimaryColor(settings.primaryColor);
-    setSecondaryColor(settings.secondaryColor);
   };
 
   const hasChanges =
     companyName !== settings.companyName ||
-    subtitle !== settings.subtitle ||
-    primaryColor !== settings.primaryColor ||
-    secondaryColor !== settings.secondaryColor;
+    subtitle !== settings.subtitle;
 
   const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { key: 'general', label: 'General', icon: <Building2 size={18} /> },
@@ -90,7 +70,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className={`${activeTab === 'referentiel' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6 transition-all`}>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Parametres</h1>
         {activeTab === 'general' && (
@@ -129,8 +109,6 @@ export default function SettingsPage() {
         <GeneralTab
           companyName={companyName} setCompanyName={setCompanyName}
           subtitle={subtitle} setSubtitle={setSubtitle}
-          primaryColor={primaryColor} setPrimaryColor={setPrimaryColor}
-          secondaryColor={secondaryColor} setSecondaryColor={setSecondaryColor}
         />
       )}
 
@@ -149,12 +127,9 @@ export default function SettingsPage() {
 
 function GeneralTab({
   companyName, setCompanyName, subtitle, setSubtitle,
-  primaryColor, setPrimaryColor, secondaryColor, setSecondaryColor,
 }: {
   companyName: string; setCompanyName: (v: string) => void;
   subtitle: string; setSubtitle: (v: string) => void;
-  primaryColor: string; setPrimaryColor: (v: string) => void;
-  secondaryColor: string; setSecondaryColor: (v: string) => void;
 }) {
   return (
     <>
@@ -180,86 +155,6 @@ function GeneralTab({
             <label className="block text-sm font-medium text-gray-700 mb-1">Sous-titre</label>
             <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
               className="input" placeholder="Boulangerie & Patisserie" />
-          </div>
-        </div>
-      </div>
-
-      {/* Theme colors */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Palette size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Theme et couleurs</h2>
-            <p className="text-sm text-gray-500">Personnalisez l'apparence de votre application</p>
-          </div>
-        </div>
-
-        {/* Preset colors */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-3">Themes predefinis</label>
-          <div className="flex flex-wrap gap-3">
-            {PRESET_COLORS.map((preset) => (
-              <button key={preset.name}
-                onClick={() => { setPrimaryColor(preset.primary); setSecondaryColor(preset.secondary); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
-                  primaryColor === preset.primary
-                    ? 'border-gray-800 shadow-md'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}>
-                <div className="w-6 h-6 rounded-full shadow-inner" style={{ backgroundColor: preset.primary }} />
-                <span className="text-sm font-medium text-gray-700">{preset.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Custom colors */}
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Couleur principale</label>
-            <div className="flex gap-2">
-              <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)}
-                className="w-12 h-10 rounded cursor-pointer border border-gray-200" />
-              <input type="text" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)}
-                className="input flex-1 font-mono" placeholder="#714B67" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Couleur secondaire (hover)</label>
-            <div className="flex gap-2">
-              <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)}
-                className="w-12 h-10 rounded cursor-pointer border border-gray-200" />
-              <input type="text" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)}
-                className="input flex-1 font-mono" placeholder="#5f3d57" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Live preview */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Apercu</h2>
-        <div className="rounded-xl overflow-hidden border">
-          <div className="h-12 flex items-center px-4 text-white" style={{ backgroundColor: primaryColor }}>
-            <span className="font-bold tracking-wide">{companyName || 'OFAURIA'}</span>
-            <span className="text-white/50 text-sm ml-2">/ Module</span>
-            <div className="flex-1" />
-            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">AB</div>
-          </div>
-          <div className="p-6 bg-gray-50">
-            <p className="text-gray-500 text-sm mb-3">{subtitle || 'Boulangerie & Patisserie'}</p>
-            <div className="flex gap-2">
-              <button className="px-4 py-2 rounded-lg text-white text-sm font-medium"
-                style={{ backgroundColor: primaryColor }}>
-                Bouton principal
-              </button>
-              <button className="px-4 py-2 rounded-lg text-white text-sm font-medium"
-                style={{ backgroundColor: secondaryColor }}>
-                Bouton hover
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1207,7 +1102,7 @@ function StoresSection() {
                 <p className="font-semibold text-gray-800">{store.name as string}</p>
                 <p className="text-sm text-gray-500">
                   {[store.city, store.address].filter(Boolean).join(' — ') || 'Aucune adresse'}
-                  {store.phone && <span className="ml-2">| {store.phone as string}</span>}
+                  {store.phone as unknown as boolean && <span className="ml-2">| {String(store.phone)}</span>}
                 </p>
               </div>
             </div>
@@ -1300,6 +1195,7 @@ function ReferentielTab() {
 /* ============ REFERENTIEL DASHBOARD ============ */
 
 function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
+  const [dashSearch, setDashSearch] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['ref-dashboard'],
     queryFn: referentielApi.dashboard,
@@ -1308,7 +1204,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-400" />
       </div>
     );
   }
@@ -1318,93 +1214,135 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const totalActive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.active_count as number) || 0), 0);
   const totalInactive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.inactive_count as number) || 0), 0);
 
+  const TABLE_ICONS: Record<string, { icon: typeof Database; color: string; bg: string }> = {
+    expense_categories:     { icon: Layers,    color: 'text-red-600',    bg: 'bg-red-50' },
+    revenue_categories:     { icon: Layers,    color: 'text-green-600',  bg: 'bg-green-50' },
+    categories:             { icon: Tag,       color: 'text-amber-600',  bg: 'bg-amber-50' },
+    ingredient_categories:  { icon: Tag,       color: 'text-orange-600', bg: 'bg-orange-50' },
+    loss_types:             { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' },
+    production_loss_reasons:{ icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-50' },
+    unsold_destinations:    { icon: RotateCw,  color: 'text-teal-600',   bg: 'bg-teal-50' },
+    yield_units:            { icon: ArrowDownUp, color: 'text-blue-600', bg: 'bg-blue-50' },
+    contract_types:         { icon: FileText,  color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    leave_types:            { icon: FileText,  color: 'text-purple-600', bg: 'bg-purple-50' },
+    employee_functions:     { icon: Users,     color: 'text-cyan-600',   bg: 'bg-cyan-50' },
+    payment_types:          { icon: Tag,       color: 'text-emerald-600',bg: 'bg-emerald-50' },
+  };
+  const defaultIcon = { icon: Database, color: 'text-gray-600', bg: 'bg-gray-100' };
+
+  const filteredTables = tables.filter(t => {
+    if (!dashSearch) return true;
+    const q = dashSearch.toLowerCase();
+    return String(t.label).toLowerCase().includes(q) || String(t.description || '').toLowerCase().includes(q);
+  });
+
   return (
     <div className="space-y-5">
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <p className="text-2xl font-bold text-gray-800">{tables.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Tables de reference</p>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
+            <Database size={22} className="text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-800">{tables.length}</p>
+            <p className="text-xs text-gray-500">Tables de reference</p>
+          </div>
         </div>
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <p className="text-2xl font-bold text-green-600">{totalActive}</p>
-          <p className="text-xs text-gray-500 mt-1">Entrees actives</p>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
+            <Check size={22} className="text-green-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-green-600">{totalActive}</p>
+            <p className="text-xs text-gray-500">Entrees actives</p>
+          </div>
         </div>
-        <div className="bg-white rounded-xl border p-4 text-center">
-          <p className="text-2xl font-bold text-amber-500">{totalInactive}</p>
-          <p className="text-xs text-gray-500 mt-1">Inactives</p>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
+            <EyeOff size={22} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-amber-500">{totalInactive}</p>
+            <p className="text-xs text-gray-500">Inactives</p>
+          </div>
         </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="relative">
+        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input type="text" value={dashSearch} onChange={e => setDashSearch(e.target.value)}
+          placeholder="Rechercher une table de parametrage..."
+          className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
       </div>
 
       {/* Table cards */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Database size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Tables de parametrage</h2>
-            <p className="text-sm text-gray-500">Cliquez pour gerer les entrees</p>
-          </div>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          {tables.map((t) => (
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {filteredTables.map((t) => {
+          const cfg = TABLE_ICONS[String(t.id)] || defaultIcon;
+          const IconComp = cfg.icon;
+          const count = (t.active_count as number) || 0;
+          const inactiveCount = (t.inactive_count as number) || 0;
+          return (
             <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
-              className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all text-left group">
-              <div className="w-10 h-10 rounded-lg bg-gray-50 group-hover:bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <Tag size={18} className="text-gray-500" />
+              className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all text-left group">
+              <div className={`w-11 h-11 rounded-xl ${cfg.bg} flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform`}>
+                <IconComp size={20} className={cfg.color} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-800 text-sm truncate">{String(t.label)}</p>
+                <p className="font-semibold text-gray-800 text-sm truncate group-hover:text-indigo-700 transition-colors">{String(t.label)}</p>
                 {Boolean(t.description) && (
-                  <p className="text-xs text-gray-400 truncate">{String(t.description)}</p>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{String(t.description)}</p>
                 )}
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-sm font-bold text-gray-700">{String(t.active_count)}</span>
-                {((t.inactive_count as number) || 0) > 0 && (
-                  <span className="text-[10px] text-amber-500">{String(t.inactive_count)} inactif(s)</span>
+              <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                <span className="text-lg font-bold text-gray-700">{count}</span>
+                {inactiveCount > 0 && (
+                  <span className="text-[10px] font-medium text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">{inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</span>
                 )}
               </div>
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
+      {filteredTables.length === 0 && (
+        <div className="text-center py-8 text-gray-400 text-sm">Aucune table ne correspond a votre recherche</div>
+      )}
 
       {/* Recent changes */}
       {recentChanges.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              <History size={20} className="text-gray-600" />
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+            <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <History size={18} className="text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-800">Dernieres modifications</h2>
-              <p className="text-sm text-gray-500">Historique des changements</p>
+              <h2 className="text-sm font-semibold text-gray-800">Dernieres modifications</h2>
+              <p className="text-xs text-gray-400">Historique des changements recents</p>
             </div>
           </div>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
             {recentChanges.slice(0, 15).map((log) => {
               const actionLabels: Record<string, string> = {
                 create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
               };
               const actionColors: Record<string, string> = {
-                create: 'bg-green-50 text-green-700', update: 'bg-blue-50 text-blue-700',
-                deactivate: 'bg-red-50 text-red-700', reactivate: 'bg-amber-50 text-amber-700',
+                create: 'bg-green-100 text-green-700', update: 'bg-blue-100 text-blue-700',
+                deactivate: 'bg-red-100 text-red-700', reactivate: 'bg-amber-100 text-amber-700',
               };
               const action = String(log.action);
               return (
-                <div key={String(log.id)} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-50">
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${actionColors[action] || 'bg-gray-50 text-gray-600'}`}>
+                <div key={String(log.id)} className="flex items-center gap-3 py-3 px-5 hover:bg-gray-50/50 transition-colors">
+                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${actionColors[action] || 'bg-gray-100 text-gray-600'}`}>
                     {actionLabels[action] || action}
                   </span>
-                  <span className="text-xs text-gray-500 font-medium">{String(log.table_label || log.table_id)}</span>
+                  <span className="text-sm text-gray-700 font-medium">{String(log.table_label || log.table_id)}</span>
                   <span className="flex-1" />
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-500">
                     {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : ''}
                   </span>
-                  <span className="text-[10px] text-gray-300">
+                  <span className="text-xs text-gray-400">
                     {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM HH:mm', { locale: fr }) : ''}
                   </span>
                 </div>
@@ -1559,33 +1497,33 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   return (
     <div className="space-y-4">
       {/* Header with back button */}
-      <div className="bg-white rounded-xl shadow-sm border p-5">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <ChevronLeft size={20} className="text-gray-500" />
+              className="p-2.5 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200">
+              <ChevronLeft size={18} className="text-gray-500" />
             </button>
             <div>
-              <h2 className="text-lg font-semibold text-gray-800">{String(table?.label || tableId)}</h2>
+              <h2 className="text-lg font-bold text-gray-800">{String(table?.label || tableId)}</h2>
               <p className="text-sm text-gray-500">
-                {activeCount} actif{activeCount > 1 ? 's' : ''}
-                {inactiveCount > 0 && <span className="text-amber-500 ml-1">· {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</span>}
+                <span className="font-semibold text-gray-700">{activeCount}</span> actif{activeCount > 1 ? 's' : ''}
+                {inactiveCount > 0 && <span className="text-amber-500 ml-1.5">· {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</span>}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowAudit(!showAudit)}
-              className={`p-2 rounded-lg transition-colors ${showAudit ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-400'}`}
+              className={`p-2.5 rounded-xl border transition-colors ${showAudit ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'hover:bg-gray-50 border-gray-200 text-gray-400'}`}
               title="Historique">
               <History size={18} />
             </button>
             <button onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))}
-              className="p-2 hover:bg-gray-100 rounded-lg text-gray-400" title="Exporter CSV">
+              className="p-2.5 hover:bg-gray-50 rounded-xl border border-gray-200 text-gray-400" title="Exporter CSV">
               <Download size={18} />
             </button>
             <button onClick={() => { resetForm(); setShowForm(true); }}
-              className="btn-primary flex items-center gap-2 text-sm">
+              className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl">
               <Plus size={16} /> Ajouter
             </button>
           </div>
@@ -1594,18 +1532,18 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
         {/* Search + filters */}
         <div className="flex items-center gap-3 mt-4">
           <div className="flex-1 relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              className="input pl-9 text-sm" placeholder="Rechercher..." />
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-colors" placeholder="Rechercher par libelle, code..." />
           </div>
           {!isNative && (
             <button onClick={() => setShowInactive(!showInactive)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all ${
                 showInactive
                   ? 'bg-amber-50 border-amber-200 text-amber-700'
                   : 'border-gray-200 text-gray-500 hover:bg-gray-50'
               }`}>
-              <EyeOff size={14} />
+              {showInactive ? <Eye size={14} /> : <EyeOff size={14} />}
               {showInactive ? 'Masquer inactifs' : 'Voir inactifs'}
             </button>
           )}
@@ -1614,34 +1552,34 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
 
       {/* Audit log panel */}
       {showAudit && (
-        <div className="bg-white rounded-xl shadow-sm border p-5">
-          <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <History size={16} /> Historique des modifications
-          </h3>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50">
+            <History size={16} className="text-indigo-500" />
+            <h3 className="font-semibold text-gray-700 text-sm">Historique des modifications</h3>
+          </div>
+          <div className="divide-y divide-gray-50 max-h-56 overflow-y-auto">
             {(auditData as Record<string, unknown>[] || []).length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Aucune modification enregistree</p>
+              <p className="text-sm text-gray-400 text-center py-6">Aucune modification enregistree</p>
             )}
             {(auditData as Record<string, unknown>[] || []).slice(0, 30).map((log: Record<string, unknown>) => {
               const actionLabels: Record<string, string> = {
                 create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
               };
               const actionColors: Record<string, string> = {
-                create: 'text-green-600', update: 'text-blue-600',
-                deactivate: 'text-red-600', reactivate: 'text-amber-600',
+                create: 'bg-green-100 text-green-700', update: 'bg-blue-100 text-blue-700',
+                deactivate: 'bg-red-100 text-red-700', reactivate: 'bg-amber-100 text-amber-700',
               };
               const action = String(log.action);
               return (
-                <div key={String(log.id)} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-gray-50">
-                  <span className={`font-medium ${actionColors[action] || 'text-gray-600'}`}>
+                <div key={String(log.id)} className="flex items-center gap-3 text-xs py-2.5 px-5 hover:bg-gray-50/50">
+                  <span className={`font-semibold px-2 py-0.5 rounded-full ${actionColors[action] || 'bg-gray-100 text-gray-600'}`}>
                     {actionLabels[action] || action}
                   </span>
-                  <span className="text-gray-400">—</span>
-                  <span className="text-gray-600">
+                  <span className="text-gray-600 font-medium">
                     {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : 'Systeme'}
                   </span>
                   <span className="flex-1" />
-                  <span className="text-gray-300">
+                  <span className="text-gray-400">
                     {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
                   </span>
                 </div>
@@ -1652,27 +1590,29 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
       )}
 
       {/* Entries list — hierarchical or flat */}
-      <div className="bg-white rounded-xl shadow-sm border p-5">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {isHierarchical ? (
-          <HierarchicalEntryList
-            entries={filtered}
-            onEdit={openEdit}
-            onDelete={(id) => deleteMutation.mutate(id)}
-            onReactivate={(id) => reactivateMutation.mutate(id)}
-            onAddChild={(parent) => {
-              resetForm();
-              const parentLevel = (parent._level as number) || (parent.metadata as Record<string, unknown>)?.level as number || 1;
-              setFMetadata({
-                ...fMetadata,
-                parent_id: String(parent.id),
-                level: parentLevel + 1,
-              });
-              setShowForm(true);
-            }}
-            isNative={isNative}
-          />
+          <div className="p-5">
+            <HierarchicalEntryList
+              entries={filtered}
+              onEdit={openEdit}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              onReactivate={(id) => reactivateMutation.mutate(id)}
+              onAddChild={(parent) => {
+                resetForm();
+                const parentLevel = (parent._level as number) || (parent.metadata as Record<string, unknown>)?.level as number || 1;
+                setFMetadata({
+                  ...fMetadata,
+                  parent_id: String(parent.id),
+                  level: parentLevel + 1,
+                });
+                setShowForm(true);
+              }}
+              isNative={isNative}
+            />
+          </div>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-gray-100">
             {filtered.map((entry) => (
               <EntryRow key={String(entry.id)} entry={entry} onEdit={openEdit}
                 onDelete={(id) => deleteMutation.mutate(id)}
@@ -1682,80 +1622,84 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           </div>
         )}
         {filtered.length === 0 && (
-          <p className="text-center py-8 text-gray-400 text-sm">
+          <p className="text-center py-10 text-gray-400 text-sm">
             {search ? 'Aucun resultat pour cette recherche' : 'Aucune entree dans cette table'}
           </p>
         )}
       </div>
 
-      {/* Add/Edit form */}
+      {/* Add/Edit form — Modal overlay */}
       {showForm && (
-        <div className="bg-white rounded-xl shadow-sm border p-5">
-          <h3 className="font-semibold text-gray-700 mb-4">
-            {editItem ? 'Modifier l\'entree' : 'Nouvelle entree'}
-            {Boolean(fMetadata.parent_id) && (
-              <span className="text-xs font-normal text-gray-400 ml-2">
-                (sous {String(entries.find(e => String(e.id) === String(fMetadata.parent_id))?.label || '...')})
-              </span>
-            )}
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Libelle *</label>
-              <input type="text" value={fLabel} onChange={(e) => setFLabel(e.target.value)}
-                className="input" placeholder={isHierarchical ? 'Ex: Charges sociales' : 'Ex: Kilogramme'} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={resetForm}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="font-bold text-gray-800">
+                {editItem ? 'Modifier l\'entree' : 'Nouvelle entree'}
+                {Boolean(fMetadata.parent_id) && (
+                  <span className="text-xs font-normal text-gray-400 ml-2">
+                    (sous {String(entries.find(e => String(e.id) === String(fMetadata.parent_id))?.label || '...')})
+                  </span>
+                )}
+              </h3>
+              <button onClick={resetForm} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <X size={18} className="text-gray-400" />
+              </button>
             </div>
-            {!isHierarchical && (
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Code (optionnel)</label>
-                <input type="text" value={fCode} onChange={(e) => setFCode(e.target.value)}
-                  className="input font-mono" placeholder="Ex: kg" />
-              </div>
-            )}
-          </div>
-          <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
-            <input type="text" value={fDescription} onChange={(e) => setFDescription(e.target.value)}
-              className="input" placeholder="Description optionnelle" />
-          </div>
-
-          {!isHierarchical && (
-            <div className="grid sm:grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Couleur</label>
-                <div className="flex gap-2">
-                  <input type="color" value={fColor || '#6b7280'} onChange={(e) => setFColor(e.target.value)}
-                    className="w-10 h-10 rounded cursor-pointer border border-gray-200" />
-                  <input type="text" value={fColor} onChange={(e) => setFColor(e.target.value)}
-                    className="input flex-1 font-mono text-sm" placeholder="#6b7280" />
-                  {fColor && (
-                    <button onClick={() => setFColor('')} className="p-2 hover:bg-gray-100 rounded-lg">
-                      <X size={16} className="text-gray-400" />
-                    </button>
-                  )}
+            <div className="p-6 space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Libelle *</label>
+                  <input type="text" value={fLabel} onChange={(e) => setFLabel(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder={isHierarchical ? 'Ex: Charges sociales' : 'Ex: Kilogramme'} autoFocus />
                 </div>
+                {!isHierarchical && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Code (optionnel)</label>
+                    <input type="text" value={fCode} onChange={(e) => setFCode(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ex: kg" />
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Description</label>
+                <input type="text" value={fDescription} onChange={(e) => setFDescription(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Description optionnelle" />
+              </div>
 
-          {/* Expense-specific: requires_po toggle */}
-          {tableId === 'expense_categories' && (
-            <div className="mb-4">
-              <ToggleSwitch
-                label="Bon de commande requis"
-                checked={Boolean(fMetadata.requires_po)}
-                onChange={(v) => setFMetadata({ ...fMetadata, requires_po: v })}
-              />
-            </div>
-          )}
+              {!isHierarchical && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Couleur</label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={fColor || '#6b7280'} onChange={(e) => setFColor(e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200" />
+                    <input type="text" value={fColor} onChange={(e) => setFColor(e.target.value)}
+                      className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="#6b7280" />
+                    {fColor && (
+                      <button onClick={() => setFColor('')} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X size={16} className="text-gray-400" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
-          <div className="flex gap-2 justify-end">
-            <button onClick={resetForm} className="btn-secondary text-sm">Annuler</button>
-            <button onClick={handleSubmit}
-              disabled={!fLabel.trim() || createMutation.isPending || updateMutation.isPending}
-              className="btn-primary text-sm">
-              {editItem ? 'Enregistrer' : 'Ajouter'}
-            </button>
+              {/* Expense-specific: requires_po toggle */}
+              {tableId === 'expense_categories' && (
+                <ToggleSwitch
+                  label="Bon de commande requis"
+                  checked={Boolean(fMetadata.requires_po)}
+                  onChange={(v) => setFMetadata({ ...fMetadata, requires_po: v })}
+                />
+              )}
+            </div>
+            <div className="flex gap-2 justify-end px-6 py-4 border-t border-gray-100 bg-gray-50/30">
+              <button onClick={resetForm} className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Annuler</button>
+              <button onClick={handleSubmit}
+                disabled={!fLabel.trim() || createMutation.isPending || updateMutation.isPending}
+                className="btn-primary text-sm px-5 py-2.5 rounded-xl">
+                {editItem ? 'Enregistrer' : 'Ajouter'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1766,11 +1710,6 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
 /* ============ HIERARCHICAL ENTRY LIST ============ */
 
 const LEVEL_LABELS = ['Categorie', 'Sous-categorie', 'Type'];
-const LEVEL_COLORS = [
-  'bg-gray-800 text-white',
-  'bg-gray-100 text-gray-700',
-  'bg-white text-gray-600 border border-gray-100',
-];
 
 function HierarchicalEntryList({
   entries,
@@ -1787,6 +1726,9 @@ function HierarchicalEntryList({
   onAddChild: (parent: Record<string, unknown>) => void;
   isNative: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const toggleCollapse = (id: string) => setCollapsed(prev => ({ ...prev, [id]: !prev[id] }));
+
   // Build tree structure
   const level1 = entries.filter(e => (e._level as number) === 1);
   const level2 = entries.filter(e => (e._level as number) === 2);
@@ -1798,7 +1740,7 @@ function HierarchicalEntryList({
   if (level1.length === 0 && entries.length > 0) {
     // Flat list fallback
     return (
-      <div className="space-y-2">
+      <div className="divide-y divide-gray-100">
         {entries.map((entry) => (
           <EntryRow key={String(entry.id)} entry={entry} onEdit={onEdit}
             onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={0} />
@@ -1808,88 +1750,109 @@ function HierarchicalEntryList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {level1.map((cat) => {
-        const children2 = getChildren(String(cat.id), level2);
-        const directChildren3 = getChildren(String(cat.id), level3);
+        const catId = String(cat.id);
+        const children2 = getChildren(catId, level2);
+        const directChildren3 = getChildren(catId, level3);
         const inactive = cat.is_active === false;
+        const isCollapsed = collapsed[catId];
+        const childCount = children2.length + directChildren3.length;
 
         return (
-          <div key={String(cat.id)} className={`rounded-xl border ${inactive ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}>
+          <div key={catId} className={`rounded-xl border overflow-hidden ${inactive ? 'opacity-50 border-gray-200' : 'border-gray-200 shadow-sm'}`}>
             {/* Level 1 header */}
-            <div className={`flex items-center justify-between p-3 ${LEVEL_COLORS[0]} rounded-t-xl`}>
-              <div className="flex items-center gap-2">
+            <div className={`flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-800 to-gray-700 text-white`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <button onClick={() => toggleCollapse(catId)}
+                  className="p-1 hover:bg-white/10 rounded-md transition-colors flex-shrink-0">
+                  {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                </button>
                 <span className="font-semibold text-sm">{String(cat.label)}</span>
-                <span className="text-[10px] opacity-70">{LEVEL_LABELS[0]}</span>
+                <span className="text-[10px] bg-white/15 px-2 py-0.5 rounded-full">{LEVEL_LABELS[0]}</span>
                 {Boolean(cat._requires_po) && (
-                  <span className="text-[10px] bg-blue-500/20 text-blue-200 px-1.5 py-0.5 rounded">BC requis</span>
+                  <span className="text-[10px] bg-blue-400/25 text-blue-200 px-2 py-0.5 rounded-full font-medium">BC requis</span>
                 )}
+                <span className="text-[10px] text-white/50">{childCount} element{childCount > 1 ? 's' : ''}</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 {!inactive && (
-                  <button onClick={() => onAddChild(cat)} className="p-1 hover:bg-white/10 rounded"
+                  <button onClick={() => onAddChild(cat)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
                     title="Ajouter une sous-categorie">
-                    <Plus size={14} />
+                    <Plus size={15} />
                   </button>
                 )}
-                <button onClick={() => onEdit(cat)} className="p-1 hover:bg-white/10 rounded">
+                <button onClick={() => onEdit(cat)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Modifier">
                   <Pencil size={14} />
                 </button>
-                <button onClick={() => { if (confirm('Desactiver cette categorie et tous ses enfants ?')) onDelete(String(cat.id)); }}
-                  className="p-1 hover:bg-white/10 rounded">
+                <button onClick={() => { if (confirm('Desactiver cette categorie et tous ses enfants ?')) onDelete(catId); }}
+                  className="p-1.5 hover:bg-red-500/20 rounded-lg transition-colors" title="Desactiver">
                   <Trash2 size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Level 2 subcategories */}
-            <div className="divide-y divide-gray-100">
-              {children2.map((sub) => {
-                const children3 = getChildren(String(sub.id), level3);
-                const subInactive = sub.is_active === false;
-                return (
-                  <div key={String(sub.id)} className={subInactive ? 'opacity-50' : ''}>
-                    {/* Level 2 row */}
-                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50">
-                      <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                        <span className="font-medium text-sm text-gray-700">{String(sub.label)}</span>
-                        <span className="text-[10px] text-gray-400">{LEVEL_LABELS[1]}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {!subInactive && (
-                          <button onClick={() => onAddChild(sub)} className="p-1 hover:bg-gray-200 rounded"
-                            title="Ajouter un type">
-                            <Plus size={13} className="text-gray-500" />
+            {/* Level 2 subcategories — collapsible */}
+            {!isCollapsed && (
+              <div className="divide-y divide-gray-100">
+                {children2.map((sub) => {
+                  const subId = String(sub.id);
+                  const children3 = getChildren(subId, level3);
+                  const subInactive = sub.is_active === false;
+                  const subCollapsed = collapsed[subId];
+                  return (
+                    <div key={subId} className={subInactive ? 'opacity-50' : ''}>
+                      {/* Level 2 row */}
+                      <div className="flex items-center justify-between px-5 py-3 bg-gray-50/80 group">
+                        <div className="flex items-center gap-2.5">
+                          {children3.length > 0 && (
+                            <button onClick={() => toggleCollapse(subId)}
+                              className="p-0.5 hover:bg-gray-200 rounded transition-colors">
+                              {subCollapsed ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronUp size={14} className="text-gray-400" />}
+                            </button>
+                          )}
+                          <div className="w-2 h-2 rounded-full bg-gray-400" />
+                          <span className="font-semibold text-sm text-gray-700">{String(sub.label)}</span>
+                          <span className="text-[10px] text-gray-400 bg-gray-200/60 px-1.5 py-0.5 rounded-full">{LEVEL_LABELS[1]}</span>
+                          {children3.length > 0 && (
+                            <span className="text-[10px] text-gray-400">{children3.length}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!subInactive && (
+                            <button onClick={() => onAddChild(sub)} className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
+                              title="Ajouter un type">
+                              <Plus size={14} className="text-gray-500" />
+                            </button>
+                          )}
+                          <button onClick={() => onEdit(sub)} className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors" title="Modifier">
+                            <Pencil size={14} className="text-gray-400" />
                           </button>
-                        )}
-                        <button onClick={() => onEdit(sub)} className="p-1 hover:bg-gray-200 rounded">
-                          <Pencil size={13} className="text-gray-400" />
-                        </button>
-                        <button onClick={() => { if (confirm('Desactiver cette sous-categorie ?')) onDelete(String(sub.id)); }}
-                          className="p-1 hover:bg-red-50 rounded">
-                          <Trash2 size={13} className="text-red-400" />
-                        </button>
+                          <button onClick={() => { if (confirm('Desactiver cette sous-categorie ?')) onDelete(subId); }}
+                            className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Desactiver">
+                            <Trash2 size={14} className="text-red-400" />
+                          </button>
+                        </div>
                       </div>
+                      {/* Level 3 types under this subcategory */}
+                      {!subCollapsed && children3.map((type) => (
+                        <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
+                          onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={2} />
+                      ))}
                     </div>
-                    {/* Level 3 types under this subcategory */}
-                    {children3.map((type) => (
-                      <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
-                        onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={2} />
-                    ))}
-                  </div>
-                );
-              })}
+                  );
+                })}
 
-              {/* Level 3 types directly under level 1 (no subcategory) */}
-              {directChildren3.map((type) => (
-                <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
-                  onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={1} />
-              ))}
-            </div>
+                {/* Level 3 types directly under level 1 (no subcategory) */}
+                {directChildren3.map((type) => (
+                  <EntryRow key={String(type.id)} entry={type} onEdit={onEdit}
+                    onDelete={onDelete} onReactivate={onReactivate} isNative={isNative} indent={1} />
+                ))}
+              </div>
+            )}
 
-            {children2.length === 0 && directChildren3.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-3">Aucun element</p>
+            {!isCollapsed && children2.length === 0 && directChildren3.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">Aucun element — cliquez + pour ajouter</p>
             )}
           </div>
         );
@@ -1911,50 +1874,50 @@ function EntryRow({
   indent: number;
 }) {
   const inactive = entry.is_active === false;
-  const paddingLeft = indent === 0 ? 'pl-3' : indent === 1 ? 'pl-8' : 'pl-12';
+  const paddingLeft = indent === 0 ? 'pl-5' : indent === 1 ? 'pl-10' : 'pl-14';
 
   return (
-    <div className={`flex items-center justify-between py-2 pr-3 ${paddingLeft} ${
-      inactive ? 'opacity-50 bg-gray-50' : 'hover:bg-gray-50'
-    } transition-colors`}>
-      <div className="flex items-center gap-2 min-w-0">
+    <div className={`flex items-center justify-between py-3.5 pr-4 ${paddingLeft} ${
+      inactive ? 'opacity-50 bg-gray-50/80' : 'hover:bg-indigo-50/30'
+    } transition-colors group`}>
+      <div className="flex items-center gap-3 min-w-0">
         {entry.color ? (
-          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: String(entry.color) }} />
+          <div className="w-4 h-4 rounded-md flex-shrink-0 ring-2 ring-white shadow-sm" style={{ backgroundColor: String(entry.color) }} />
         ) : (
-          <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" />
+          <div className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
         )}
-        <span className="text-sm text-gray-700">{String(entry.label)}</span>
+        <span className="text-sm font-medium text-gray-800">{String(entry.label)}</span>
         {Boolean(entry.code) && (
-          <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+          <span className="text-[11px] font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">
             {String(entry.code)}
           </span>
         )}
         {inactive && (
-          <span className="text-[10px] font-medium bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">Inactif</span>
+          <span className="text-[10px] font-semibold bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">Inactif</span>
         )}
         {Boolean(entry._requires_po) && (
-          <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">BC requis</span>
+          <span className="text-[10px] font-semibold bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">BC requis</span>
         )}
         {Boolean(entry.description) && (
-          <span className="text-[10px] text-gray-400 hidden sm:inline truncate max-w-[200px]">{String(entry.description)}</span>
+          <span className="text-xs text-gray-400 hidden sm:inline truncate max-w-[250px]">{String(entry.description)}</span>
         )}
       </div>
-      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+      <div className="flex items-center gap-1 flex-shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
         {inactive ? (
           <button onClick={() => onReactivate(String(entry.id))}
-            className="p-1 hover:bg-green-50 rounded" title="Reactiver">
-            <RotateCw size={13} className="text-green-500" />
+            className="p-2 hover:bg-green-100 rounded-lg transition-colors" title="Reactiver">
+            <RotateCw size={15} className="text-green-600" />
           </button>
         ) : (
           <>
-            <button onClick={() => onEdit(entry)} className="p-1 hover:bg-gray-100 rounded">
-              <Pencil size={13} className="text-gray-400" />
+            <button onClick={() => onEdit(entry)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
+              <Pencil size={15} className="text-gray-400" />
             </button>
             <button onClick={() => {
-              if (confirm(isNative ? 'Desactiver cette entree ?' : 'Desactiver cette entree ?'))
+              if (confirm('Desactiver cette entree ?'))
                 onDelete(String(entry.id));
-            }} className="p-1 hover:bg-red-50 rounded">
-              <Trash2 size={13} className="text-red-400" />
+            }} className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Desactiver">
+              <Trash2 size={15} className="text-red-400" />
             </button>
           </>
         )}

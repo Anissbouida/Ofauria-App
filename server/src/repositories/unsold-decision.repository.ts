@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
+import { productLotRepository } from './product-lot.repository.js';
 
 /**
  * Moteur de suggestion intelligent pour le devenir des invendus.
@@ -9,13 +10,16 @@ import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
  *   - Recyclabilite du produit et ingredient de recyclage configure
  *   - Type de vente (jour / dlv / commande)
  */
-function computeSuggestion(product: Record<string, unknown>): { destination: 'reexpose' | 'recycle' | 'waste'; reason: string } {
+function computeSuggestion(product: Record<string, unknown>): { destination: 'reexpose' | 'recycle' | 'waste' | 'retour_stock'; reason: string } {
   const now = getLocalNow();
   const saleType = (product.sale_type as string) || 'jour';
   const shelfLifeDays = parseInt(String(product.shelf_life_days)) || 0;
   const displayLifeHours = parseInt(String(product.display_life_hours)) || 0;
   const isReexposable = product.is_reexposable as boolean;
-  const maxReexpositions = parseInt(String(product.max_reexpositions)) || 0;
+  // Si is_reexposable=true mais max_reexpositions non configure (=0), on autorise
+  // 1 reexposition par defaut (J+1). L'admin peut surcharger via la fiche produit.
+  const maxReexpositionsRaw = parseInt(String(product.max_reexpositions)) || 0;
+  const maxReexpositions = isReexposable && maxReexpositionsRaw === 0 ? 1 : maxReexpositionsRaw;
   const currentReexCount = parseInt(String(product.current_reexposition_count || product.reexposition_count)) || 0;
   const isRecyclable = product.is_recyclable as boolean;
   const recycleIngredientId = product.recycle_ingredient_id as string | null;
@@ -86,17 +90,19 @@ function computeSuggestion(product: Record<string, unknown>): { destination: 're
       }
       return { destination: 'waste', reason: `Max reexpositions atteint (${currentReexCount}/${maxReexpositions}) — destruction.` };
     }
-    // Non reexposable mais DLV valide — on garde quand meme (ex: patisserie en vitrine froide)
-    if (expiresAt && expiresAt > now) {
-      const hoursLeft = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
-      if (hoursLeft > 24) {
-        return { destination: 'reexpose', reason: `DLV encore valide (${Math.round(hoursLeft / 24)}j restants) — maintien en vitrine.` };
+    // Non reexposable et DLV (display) > 1 jour : retour reserve possible (vitrine froide)
+    // Les produits dont la DLV vitrine est <= 24h ne peuvent pas faire un J+1 quel
+    // que soit le shelf_life_days, parce que l'expo cumulee depasserait la limite.
+    if (!isReexposable && displayLifeHours > 24 && expiresAt && expiresAt > now) {
+      const hoursLeftDLC = (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60);
+      if (hoursLeftDLC > 24) {
+        return { destination: 'retour_stock', reason: `DLV vitrine ${displayLifeHours}h, DLC encore valide (${Math.round(hoursLeftDLC / 24)}j) — retour reserve.` };
       }
     }
     if (isRecyclable && recycleIngredientId) {
       return { destination: 'recycle', reason: 'Produit DLV non re-exposable — recyclage possible.' };
     }
-    return { destination: 'waste', reason: 'Produit DLV non re-exposable et non recyclable — destruction.' };
+    return { destination: 'waste', reason: `Produit non re-exposable (DLV vitrine ${displayLifeHours}h) — destruction en fin de journee.` };
   }
 
   // Fallback
@@ -111,12 +117,82 @@ export const unsoldDecisionRepository = {
   /**
    * Charge les invendus avec suggestion automatique pour chaque produit.
    * Appele quand l'operateur ouvre l'ecran de decisions invendus.
+   *
+   * Fenetre de comptabilisation :
+   *   - Si une session de caisse est ouverte pour le store -> depuis opened_at jusqu'a maintenant
+   *     (gere proprement les shifts qui chevauchent minuit)
+   *   - Sinon fallback -> journee locale courante
+   *
+   * Couverture :
+   *   - Produits avec stock magasin > 0 (vitrine theorique)
+   *   - Produits approvisionnes pendant la fenetre (meme si tout vendu -> controle approv vs vendus)
+   *   - Produits vendus pendant la fenetre (controle de vente, meme si stock = 0)
    */
-  async getUnsoldWithSuggestions(storeId: string) {
+  async getUnsoldWithSuggestions(storeId: string, closeType?: string) {
     const tz = getUserTimezone();
+    // Fenetre d'analyse : TOUJOURS cloisonnee par shift.
+    //   -> depuis la derniere fermeture (peu importe son type) OU l'ouverture de la session courante.
+    //   On veut voir ce qui s'est passe DANS LE SHIFT COURANT uniquement (approvisionnement,
+    //   ventes, comptage vitrine du moment), peu importe que ce soit une passation ou une
+    //   fin de journee. Chaque shift ne compte que son propre approv et sa propre passation
+    //   recue, sans cumuler les shifts anterieurs deja cloturres.
+    void closeType;
+    const windowResult = await db.query(
+      `SELECT
+         (SELECT closed_at FROM cash_register_sessions
+           WHERE store_id = $1 AND status = 'closed' AND closed_at IS NOT NULL
+           ORDER BY closed_at DESC LIMIT 1) as last_closed_at,
+         (SELECT opened_at FROM cash_register_sessions
+           WHERE store_id = $1 AND status = 'open'
+           ORDER BY opened_at DESC LIMIT 1) as current_open_at`,
+      [storeId]
+    );
+    const lastClosedAt: Date | null = windowResult.rows[0]?.last_closed_at ?? null;
+    const currentOpenAt: Date | null = windowResult.rows[0]?.current_open_at ?? null;
+    let windowStart: Date | null = lastClosedAt ?? currentOpenAt ?? null;
+    // Garde-fou : si la session est restee ouverte depuis plus de 24h (oubli de fermeture),
+    // on ne cumule pas tout l'historique. On limite a 24h glissantes pour eviter des comptes
+    // d'approvisionnement aberrants (ex : 5 jours de stock cumule).
+    if (windowStart) {
+      const minStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      if (windowStart < minStart) windowStart = minStart;
+    }
     const result = await db.query(`
+      WITH sales_window AS (
+        SELECT si.product_id, SUM(si.quantity)::int as sold_qty
+          FROM sale_items si
+          JOIN sales s ON s.id = si.sale_id
+         WHERE s.store_id = $1
+           AND (
+             ($2::timestamptz IS NOT NULL AND s.created_at >= $2::timestamptz)
+             OR ($2::timestamptz IS NULL AND DATE(s.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}'))
+           )
+         GROUP BY si.product_id
+      ),
+      replen_window AS (
+        SELECT ri2.product_id,
+               SUM(COALESCE(ri2.qty_received, ri2.qty_to_store, ri2.requested_quantity))::int as replenished_qty
+          FROM replenishment_request_items ri2
+          JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
+         WHERE rr2.store_id = $1
+           AND (
+             ($2::timestamptz IS NOT NULL AND rr2.created_at >= $2::timestamptz)
+             OR ($2::timestamptz IS NULL AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}'))
+           )
+           AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged', 'partially_received')
+         GROUP BY ri2.product_id
+      ),
+      relevant_products AS (
+        SELECT pss.product_id, COALESCE(pss.vitrine_quantity, 0)::int as current_stock
+          FROM product_store_stock pss
+         WHERE pss.store_id = $1 AND COALESCE(pss.vitrine_quantity, 0) > 0
+        UNION
+        SELECT st.product_id, 0 FROM sales_window st
+        UNION
+        SELECT rt.product_id, 0 FROM replen_window rt
+      )
       SELECT
-        pss.product_id,
+        rp.product_id,
         p.name as product_name,
         p.image_url as product_image,
         p.cost_price,
@@ -131,45 +207,54 @@ export const unsoldDecisionRepository = {
         p.max_reexpositions,
         p.sale_type,
         ri.name as recycle_ingredient_name,
-        COALESCE(pss.stock_quantity, 0)::int as current_stock,
-        COALESCE(
-          (SELECT SUM(si.quantity)
-           FROM sale_items si
-           JOIN sales s ON s.id = si.sale_id
-           WHERE s.store_id = $1
-             AND DATE(s.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
-             AND si.product_id = pss.product_id),
-          0
-        )::int as sold_qty,
-        COALESCE(
-          (SELECT SUM(COALESCE(ri2.qty_received, ri2.qty_to_store, ri2.requested_quantity))
-           FROM replenishment_request_items ri2
-           JOIN replenishment_requests rr2 ON rr2.id = ri2.request_id
-           WHERE rr2.store_id = $1
-             AND DATE(rr2.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}')
-             AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged')
-             AND ri2.product_id = pss.product_id),
-          0
-        )::int as replenished_today_qty,
+        -- current_stock = source de verite du stock vitrine maintenant (utilise comme theorique cote UI)
+        -- initial_stock = derive algebriquement : ce qu'il y avait au debut de la fenetre
+        --               = stock_maintenant + ventes_depuis - approv_depuis
+        MAX(rp.current_stock) as current_stock,
+        COALESCE(st.sold_qty, 0)::int as sold_qty,
+        COALESCE(rt.replenished_qty, 0)::int as replenished_today_qty,
+        GREATEST(0, MAX(rp.current_stock) + COALESCE(st.sold_qty, 0) - COALESCE(rt.replenished_qty, 0))::int as initial_stock,
         COALESCE(pdt.current_reexposition_count, 0) as reexposition_count,
         pdt.display_expires_at,
         pdt.produced_at,
         pdt.expires_at,
-        pdt.status as display_status
-      FROM product_store_stock pss
-      JOIN products p ON p.id = pss.product_id
+        pdt.status as display_status,
+        rd.destinations as recycle_destinations
+      FROM relevant_products rp
+      JOIN products p ON p.id = rp.product_id
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN ingredients ri ON ri.id = p.recycle_ingredient_id
+      LEFT JOIN sales_window st ON st.product_id = rp.product_id
+      LEFT JOIN replen_window rt ON rt.product_id = rp.product_id
       LEFT JOIN LATERAL (
+        -- Priorise la ligne la plus recente AVEC produced_at + expires_at remplis
+        -- (les lignes "fantomes" creees par les reexpositions n'ont pas ces infos
+        -- et fausseraient la suggestion en se faisant passer pour la ligne courante).
         SELECT pdt2.current_reexposition_count, pdt2.display_expires_at, pdt2.produced_at, pdt2.expires_at, pdt2.status
         FROM product_display_tracking pdt2
-        WHERE pdt2.product_id = pss.product_id AND pdt2.store_id = $1 AND pdt2.status = 'active'
-        ORDER BY pdt2.produced_at DESC LIMIT 1
+        WHERE pdt2.product_id = rp.product_id AND pdt2.store_id = $1 AND pdt2.status = 'active'
+        ORDER BY (pdt2.produced_at IS NULL), pdt2.produced_at DESC, pdt2.updated_at DESC
+        LIMIT 1
       ) pdt ON true
-      WHERE pss.store_id = $1
-        AND COALESCE(pss.stock_quantity, 0) > 0
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(jsonb_build_object(
+          'ingredient_id', prd.ingredient_id,
+          'label', prd.label,
+          'ingredient_name', i.name,
+          'unit', i.unit
+        ) ORDER BY prd.display_order, i.name) as destinations
+        FROM product_recycle_destinations prd
+        JOIN ingredients i ON i.id = prd.ingredient_id
+        WHERE prd.product_id = rp.product_id AND prd.is_active = true
+      ) rd ON true
+      GROUP BY rp.product_id, p.name, p.image_url, p.cost_price, p.price,
+               c.name, c.slug, p.shelf_life_days, p.display_life_hours,
+               p.is_reexposable, p.is_recyclable, p.recycle_ingredient_id, p.max_reexpositions,
+               p.sale_type, ri.name, st.sold_qty, rt.replenished_qty,
+               pdt.current_reexposition_count, pdt.display_expires_at, pdt.produced_at,
+               pdt.expires_at, pdt.status, rd.destinations
       ORDER BY c.name, p.name
-    `, [storeId]);
+    `, [storeId, windowStart]);
 
     // Enrichir chaque produit avec la suggestion automatique
     return result.rows.map(row => {
@@ -216,6 +301,7 @@ export const unsoldDecisionRepository = {
       expiresAt?: string;
       producedAt?: string;
       unitCost?: number;
+      discrepancyMotif?: string;
     }[];
     notes?: string;
   }) {
@@ -289,72 +375,161 @@ export const unsoldDecisionRepository = {
         // 2. Appliquer les effets sur le stock (skip en mode passation — inventaire uniquement)
         const isPassation = data.closeType === 'passation';
         if (d.remainingQty > 0 && !isPassation) {
+          // Phase 1 — FEFO sur product_lots vitrine pour identifier les lots impactes
+          // (sert au mirror sur lots + tracabilite chaine).
+          // includeExpired=true car on traite ici aussi les destructions / recyclages
+          // de lots deja expires (DLV ou DDE). Pour retour_stock on filtrera les
+          // lots non-expires explicitement plus bas.
+          const fefoPlan = await productLotRepository.planFefoVitrineConsumption(
+            client, d.productId, data.storeId, d.remainingQty,
+            { includeExpired: d.finalDestination !== 'retour_stock' }
+          );
+          const primaryLotId = fefoPlan[0]?.lotId ?? null;
+
           if (d.finalDestination === 'recycle') {
-            // Reduire stock produit
+            // Vitrine -> ingredient recycle. d.recycleIngredientId peut etre overide
+            // par la caissiere via le dropdown multi-destinations (Phase recyclage).
             await client.query(
-              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [d.remainingQty, d.productId, data.storeId]
             );
-            // Incrementer stock ingredient de recyclage
+
+            // Mirror sur product_lots : recycled_qty += qty pour chaque lot consomme FEFO
+            for (const step of fefoPlan) {
+              await productLotRepository.consumeVitrineRecycle(client, step.lotId, step.qty);
+            }
+
+            let recycledIngredientLotId: string | null = null;
             if (d.recycleIngredientId) {
+              // Lock inventory row before increment
+              await client.query(
+                `SELECT id FROM inventory WHERE ingredient_id = $1 AND store_id = $2 FOR UPDATE`,
+                [d.recycleIngredientId, data.storeId]
+              );
               await client.query(
                 `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
                  WHERE ingredient_id = $2 AND store_id = $3`,
                 [d.remainingQty, d.recycleIngredientId, data.storeId]
               );
+
+              // Phase 1 — Cree un ingredient_lot dedie au lot recycle pour preserver
+              // la DLC residuelle et le lien arriere vers le product_lot source.
+              // Permet le FEFO ingredient et l'audit "ce sachet vient de telle fournee".
+              const sourceLot = primaryLotId ? await productLotRepository.findById(primaryLotId) : null;
+              const dlcResiduelle = sourceLot?.expires_at ?? null;
+              const sourceLotNumber = sourceLot?.lot_number ?? 'NOSRC';
+              const recLotNumber = `REC-${sourceLotNumber}-${Date.now().toString().slice(-6)}`.slice(0, 50);
+
+              const ingLotResult = await client.query(
+                `INSERT INTO ingredient_lots
+                   (ingredient_id, lot_number, supplier_lot_number,
+                    quantity_received, quantity_remaining, unit_cost,
+                    manufactured_date, expiration_date, received_at, store_id,
+                    status, notes, source_product_lot_id)
+                 VALUES ($1, $2, $3, $4, $4, $5, CURRENT_DATE, $6, CURRENT_DATE, $7, 'active', $8, $9)
+                 RETURNING id`,
+                [
+                  d.recycleIngredientId, recLotNumber, sourceLotNumber,
+                  d.remainingQty, unitCost,
+                  dlcResiduelle, data.storeId,
+                  `Recyclage de ${d.productName} (lot ${sourceLotNumber}) x${d.remainingQty}`,
+                  primaryLotId,
+                ]
+              );
+              recycledIngredientLotId = ingLotResult.rows[0].id;
+
               await client.query(
-                `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
-                 VALUES ($1, 'recycle', $2, $3, $4, $5)`,
+                `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
+                 VALUES ($1, 'recycle', $2, $3, $4, $5, $6)`,
                 [d.recycleIngredientId, d.remainingQty,
                  `Recyclage invendu: ${d.productName} x${d.remainingQty}`,
-                 data.decidedBy, data.storeId]
+                 data.decidedBy, data.storeId, recycledIngredientLotId]
               );
             }
+
             // Tracker: produit recycle
             await client.query(
               `UPDATE product_display_tracking SET status = 'recycled', updated_at = NOW()
                WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
               [d.productId, data.storeId]
             );
-            // Enregistrer en product_losses type recyclage
+            // Enregistrer en product_losses type recyclage avec lien chaine
             await client.query(
-              `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
-               VALUES ($1, $2, 'recyclage', 'recycle', $3, $4, $5, true, $6, $7)`,
-              [d.productId, d.remainingQty, `Recyclage fin de journee: ${d.productName}`, unitCost, totalCost, data.decidedBy, data.storeId]
+              `INSERT INTO product_losses
+                 (product_id, quantity, loss_type, reason, reason_note,
+                  unit_cost, total_cost, ingredients_consumed,
+                  declared_by, store_id, source_product_lot_id, recycled_ingredient_lot_id)
+               VALUES ($1, $2, 'recyclage', 'recycle', $3, $4, $5, true, $6, $7, $8, $9)`,
+              [d.productId, d.remainingQty, `Recyclage fin de journee: ${d.productName}`,
+               unitCost, totalCost, data.decidedBy, data.storeId,
+               primaryLotId, recycledIngredientLotId]
             );
 
           } else if (d.finalDestination === 'waste') {
-            // Reduire stock produit
+            // Les invendus sont exposes en vitrine — decrement de vitrine_quantity
             await client.query(
-              `UPDATE product_store_stock SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW()
+              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [d.remainingQty, d.productId, data.storeId]
             );
+            // Mirror sur product_lots
+            for (const step of fefoPlan) {
+              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+            }
             // Transaction stock
             await client.query(
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
                VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
               [d.productId, -d.remainingQty, `Perte fin de journee: ${d.productName} x${d.remainingQty}`, data.decidedBy, data.storeId]
             );
-            // Enregistrer en product_losses
             const lossReason = (d.expiresAt && new Date(d.expiresAt) <= getLocalNow()) ? 'perime' : 'invendu_fin_journee';
             const lossType = lossReason === 'perime' ? 'perime' : 'vitrine';
             await client.query(
-              `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)`,
+              `INSERT INTO product_losses
+                 (product_id, quantity, loss_type, reason, reason_note,
+                  unit_cost, total_cost, ingredients_consumed,
+                  declared_by, store_id, source_product_lot_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10)`,
               [d.productId, d.remainingQty, lossType, lossReason,
-               `Destruction fin de journee: ${d.productName}`, unitCost, totalCost, data.decidedBy, data.storeId]
+               `Destruction fin de journee: ${d.productName}`,
+               unitCost, totalCost, data.decidedBy, data.storeId, primaryLotId]
             );
-            // Tracker: produit gaspille
             await client.query(
               `UPDATE product_display_tracking SET status = 'wasted', updated_at = NOW()
                WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
               [d.productId, data.storeId]
             );
 
+          } else if (d.finalDestination === 'retour_stock') {
+            // Phase 2 — Retour reserve : vitrine -> backroom sans toucher la DLV
+            // (modele Cumule). Seuls les produits revendables (DLC OK + DLV restante)
+            // doivent prendre cette branche — controle cote frontend via computeSuggestion.
+            await client.query(
+              `UPDATE product_store_stock
+               SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
+                   stock_quantity   = stock_quantity + $1,
+                   updated_at = NOW()
+               WHERE product_id = $2 AND store_id = $3`,
+              [d.remainingQty, d.productId, data.storeId]
+            );
+            // Mirror sur product_lots : returnVitrineToBackroom (vitrine_qty - qty, backroom_qty + qty)
+            for (const step of fefoPlan) {
+              await productLotRepository.returnVitrineToBackroom(client, step.lotId, step.qty);
+            }
+            // Transaction stock — type 'retour_invendus' pour distinguer
+            // d'un waste ou d'un restock fournisseur.
+            await client.query(
+              `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+               VALUES ($1, 'retour_invendus', $2, (SELECT stock_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $3), $4, $5, $3)`,
+              [d.productId, d.remainingQty,
+               `Retour reserve fin de journee: ${d.productName} x${d.remainingQty}`,
+               data.decidedBy, data.storeId]
+            );
+            // PAS d'ecriture dans product_losses (le retour n'est pas une perte).
+
           } else if (d.finalDestination === 'reexpose') {
-            // Increment reexposition counter, stock reste
+            // Increment reexposition counter, stock reste en vitrine
             const reexCount = d.currentReexpositionCount ?? 0;
             await client.query(
               `INSERT INTO product_display_tracking (product_id, store_id, current_reexposition_count, first_displayed_at, last_reexposed_at, status)
@@ -365,6 +540,57 @@ export const unsoldDecisionRepository = {
               [d.productId, data.storeId, reexCount + 1]
             );
           }
+
+          // Memoriser le lot principal sur la decision pour audit
+          if (primaryLotId) {
+            await client.query(
+              `UPDATE unsold_decisions SET product_lot_id = $1 WHERE id = $2`,
+              [primaryLotId, decResult.rows[0].id]
+            );
+          }
+        }
+
+        // ─── Phase 5 — Comptage physique : ecart inventaire ─────────────────
+        // Si la qty physiquement comptee est inferieure au theorique (initial - sold),
+        // le manquant est un ecart vitrine (vol/casse/erreur). On le passe en perte
+        // type 'vitrine' avec motif 'ecart_inventaire' + note. Aucun effet en passation.
+        if (discrepancy > 0 && data.closeType === 'fin_journee') {
+          // Decrement vitrine pour les unites manquantes (sortent du systeme)
+          await client.query(
+            `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
+             WHERE product_id = $2 AND store_id = $3`,
+            [discrepancy, d.productId, data.storeId]
+          );
+
+          // Mirror sur product_lots (FEFO sur ce qui reste apres les decisions principales).
+          // includeExpired car l'ecart peut concerner des lots deja expires.
+          const ecartFefo = await productLotRepository.planFefoVitrineConsumption(
+            client, d.productId, data.storeId, discrepancy, { includeExpired: true }
+          );
+          for (const step of ecartFefo) {
+            await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+          }
+
+          await client.query(
+            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+             VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
+            [d.productId, -discrepancy,
+             `Ecart inventaire fin de journee: ${d.productName} x${discrepancy}`,
+             data.decidedBy, data.storeId]
+          );
+
+          await client.query(
+            `INSERT INTO product_losses
+               (product_id, quantity, loss_type, reason, reason_note,
+                unit_cost, total_cost, ingredients_consumed,
+                declared_by, store_id, source_product_lot_id)
+             VALUES ($1, $2, 'vitrine', 'ecart_inventaire', $3, $4, $5, true, $6, $7, $8)`,
+            [d.productId, discrepancy,
+             `Ecart inventaire: ${d.discrepancyMotif || 'Non precise'} (${d.productName} -${discrepancy})`,
+             unitCost, unitCost * discrepancy,
+             data.decidedBy, data.storeId,
+             ecartFefo[0]?.lotId ?? null]
+          );
         }
       }
 
@@ -548,6 +774,142 @@ export const unsoldDecisionRepository = {
       [sessionId]
     );
     return result.rows;
+  },
+
+  /**
+   * Recupere les destinations de recyclage configurees pour un produit.
+   * Utilise par l'UI pour proposer un choix multi-destinations a la caissiere.
+   */
+  async getRecycleDestinations(productId: string) {
+    const result = await db.query(
+      `SELECT prd.ingredient_id, prd.label, prd.display_order, i.name as ingredient_name, i.unit
+       FROM product_recycle_destinations prd
+       JOIN ingredients i ON i.id = prd.ingredient_id
+       WHERE prd.product_id = $1 AND prd.is_active = true
+       ORDER BY prd.display_order, i.name`,
+      [productId]
+    );
+    return result.rows;
+  },
+
+  /**
+   * Phase 3 — Retourne les unites en vitrine dont la DLC ou la DLV est atteinte / depassee.
+   * Sert d'alerte bloquante a la fermeture journee : la caissiere doit confirmer la
+   * destruction avant de pouvoir cloturer la caisse.
+   *
+   * Important : il peut exister PLUSIEURS lignes product_display_tracking actives pour
+   * un meme (product, store) — notamment des "fantomes" sans DLC/DLV crees lors d'une
+   * reexposition. On detecte donc l'expiration des lors qu'AU MOINS UNE ligne active
+   * indique DLC ou DLV depassee. La pire (la plus ancienne) est remontee pour affichage.
+   */
+  async getExpiredItems(storeId: string) {
+    // Source de verite : product_lots (lots actifs avec vitrine_qty > 0).
+    // On evite product_display_tracking qui peut contenir des lignes orphelines
+    // 'active' qui n'ont pas ete sync avec les lots (faux positifs).
+    const result = await db.query(`
+      SELECT
+        p.id as product_id,
+        p.name as product_name,
+        p.image_url as product_image,
+        p.cost_price,
+        p.shelf_life_days,
+        p.display_life_hours,
+        c.name as category_name,
+        pss.vitrine_quantity::numeric as vitrine_qty,
+        worst.expires_at,
+        worst.display_expires_at,
+        worst.produced_at,
+        worst.first_displayed_at,
+        CASE
+          WHEN worst.expires_at IS NOT NULL AND worst.expires_at <= CURRENT_DATE THEN 'dlc_expiree'
+          WHEN worst.display_expires_at IS NOT NULL AND worst.display_expires_at <= NOW() THEN 'dlv_expiree'
+          ELSE NULL
+        END as expiry_reason
+      FROM product_store_stock pss
+      JOIN products p ON p.id = pss.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      JOIN LATERAL (
+        -- Pire lot expire en vitrine (DLC depassee OU DLV/DDE depassee)
+        SELECT pl.expires_at, pl.display_expires_at, pl.produced_at, pl.first_displayed_at
+        FROM product_lots pl
+        WHERE pl.product_id = pss.product_id
+          AND pl.store_id = pss.store_id
+          AND pl.status = 'active'
+          AND pl.vitrine_qty > 0
+          AND (
+            (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+            OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
+          )
+        ORDER BY pl.expires_at ASC NULLS LAST,
+                 pl.display_expires_at ASC NULLS LAST
+        LIMIT 1
+      ) worst ON true
+      WHERE pss.store_id = $1
+        AND COALESCE(pss.vitrine_quantity, 0) > 0
+      ORDER BY c.name, p.name
+    `, [storeId]);
+    return result.rows;
+  },
+
+  /**
+   * Phase 3 — Detruit en bloc les unites expirees confirmees par la caissiere.
+   * Pour chaque produit :
+   *   1. Decremente vitrine_quantity (clamp a 0 si plus que prevu)
+   *   2. Insere une perte (loss_type='perime', reason='dlc_expiree' ou 'dlv_expiree')
+   *   3. Logue la transaction (product_stock_transactions type='waste')
+   *   4. Marque le tracker display comme wasted
+   */
+  async destroyExpiredItems(data: {
+    storeId: string;
+    decidedBy: string;
+    items: { productId: string; quantity: number; reason: string; unitCost?: number; productName?: string }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const destroyed: { productId: string; quantity: number; reason: string }[] = [];
+      for (const item of data.items) {
+        if (item.quantity <= 0) continue;
+        const unitCost = item.unitCost ?? 0;
+        const totalCost = unitCost * item.quantity;
+        const productName = item.productName ?? 'Produit';
+
+        await client.query(
+          `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
+           WHERE product_id = $2 AND store_id = $3`,
+          [item.quantity, item.productId, data.storeId]
+        );
+
+        await client.query(
+          `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+           VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
+          [item.productId, -item.quantity, `Destruction DLV/DLC: ${productName} x${item.quantity}`, data.decidedBy, data.storeId]
+        );
+
+        await client.query(
+          `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
+           VALUES ($1, $2, 'perime', $3, $4, $5, $6, true, $7, $8)`,
+          [item.productId, item.quantity, item.reason || 'perime',
+           `Destruction ${item.reason === 'dlc_expiree' ? 'DLC' : 'DLV'} expiree: ${productName}`,
+           unitCost, totalCost, data.decidedBy, data.storeId]
+        );
+
+        await client.query(
+          `UPDATE product_display_tracking SET status = 'wasted', updated_at = NOW()
+           WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
+          [item.productId, data.storeId]
+        );
+
+        destroyed.push({ productId: item.productId, quantity: item.quantity, reason: item.reason });
+      }
+      await client.query('COMMIT');
+      return { destroyed, count: destroyed.length };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };
 

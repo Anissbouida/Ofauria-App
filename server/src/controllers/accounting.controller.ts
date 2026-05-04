@@ -112,6 +112,9 @@ export const invoiceController = {
   async getById(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: invoice });
   },
   async create(req: AuthRequest, res: Response) {

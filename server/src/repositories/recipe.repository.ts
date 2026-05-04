@@ -25,16 +25,24 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 export const recipeRepository = {
   async findAll() {
     const result = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.image_url as product_image, p.price as product_price
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id ORDER BY r.is_base DESC, r.name`
+      `SELECT r.*, r.is_base, p.name as product_name, p.image_url as product_image, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
+       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
   },
 
   async findById(id: string) {
     const recipeResult = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id WHERE r.id = $1`,
+      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
+       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       WHERE r.id = $1`,
       [id]
     );
     if (!recipeResult.rows[0]) return null;
@@ -57,14 +65,25 @@ export const recipeRepository = {
       [id]
     );
 
+    // Fetch packaging
+    const packagingResult = await db.query(
+      `SELECT rp.id, rp.packaging_id, rp.quantity, rp.unit, rp.notes,
+              pi.name as packaging_name, pi.format, pi.unit_cost, pi.unit as base_unit, pi.category
+       FROM recipe_packaging rp
+       JOIN packaging_items pi ON pi.id = rp.packaging_id
+       WHERE rp.recipe_id = $1`,
+      [id]
+    );
+
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
       sub_recipes: subRecipesResult.rows,
+      packaging: packagingResult.rows,
     };
   },
 
-  /** Find recipe by product ID (with ingredients & sub-recipes) */
+  /** Find recipe by product ID (with ingredients & sub-recipes & packaging) */
   async findByProductId(productId: string) {
     const recipeResult = await db.query(
       `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price
@@ -89,11 +108,20 @@ export const recipeRepository = {
        WHERE rsr.recipe_id = $1`,
       [recipeId]
     );
+    const packagingResult = await db.query(
+      `SELECT rp.id, rp.packaging_id, rp.quantity, rp.unit, rp.notes,
+              pi.name as packaging_name, pi.format, pi.unit_cost, pi.unit as base_unit, pi.category
+       FROM recipe_packaging rp
+       JOIN packaging_items pi ON pi.id = rp.packaging_id
+       WHERE rp.recipe_id = $1`,
+      [recipeId]
+    );
 
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
       sub_recipes: subRecipesResult.rows,
+      packaging: packagingResult.rows,
     };
   },
 
@@ -107,8 +135,10 @@ export const recipeRepository = {
 
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
+    packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -140,10 +170,21 @@ export const recipeRepository = {
         }
       }
 
+      // Calculate packaging cost (emballages)
+      if (data.packaging && data.packaging.length > 0) {
+        for (const pk of data.packaging) {
+          const pkResult = await client.query('SELECT unit_cost FROM packaging_items WHERE id = $1', [pk.packagingId]);
+          if (pkResult.rows[0]) {
+            totalCost += parseFloat(pkResult.rows[0].unit_cost) * pk.quantity;
+          }
+        }
+      }
+
+      const margin = data.marginMultiplier && data.marginMultiplier > 0 ? data.marginMultiplier : 3;
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false]
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -158,7 +199,7 @@ export const recipeRepository = {
       // Cycle detection for sub-recipes
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
-          const hasCycle = await this.detectCycle(sr.subRecipeId, recipeId);
+          const hasCycle = await this.detectCycle(sr.subRecipeId, recipeId, client);
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
@@ -174,6 +215,18 @@ export const recipeRepository = {
         }
       }
 
+      // Insert recipe_packaging links
+      if (data.packaging && data.packaging.length > 0) {
+        for (const pk of data.packaging) {
+          await client.query(
+            `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
+            [recipeId, pk.packagingId, pk.quantity, pk.unit ?? null]
+          );
+        }
+      }
+
+      await this.syncProductPrice(client, data.productId || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
+
       await client.query('COMMIT');
       return recipeResult.rows[0];
     } catch (err) {
@@ -184,10 +237,28 @@ export const recipeRepository = {
     }
   },
 
+  /** Sync linked product cost_price + price.
+   *  If `overridePrice` is provided (manual entry), use it as-is for `products.price`.
+   *  Otherwise compute price = cost_per_unit * marginMultiplier.
+   */
+  async syncProductPrice(executor: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, productId: string | null, totalCost: number, yieldQuantity: number, marginMultiplier: number, overridePrice: number | null = null) {
+    if (!productId || yieldQuantity <= 0) return;
+    const costPerUnit = totalCost / yieldQuantity;
+    const price = overridePrice !== null && overridePrice >= 0
+      ? overridePrice
+      : costPerUnit * marginMultiplier;
+    await executor.query(
+      `UPDATE products SET cost_price = $1, price = $2, updated_at = NOW() WHERE id = $3`,
+      [costPerUnit, price, productId]
+    );
+  },
+
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
+    packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
     changedBy?: string; changeNote?: string;
   }) {
     const client = await db.getClient();
@@ -246,10 +317,23 @@ export const recipeRepository = {
         }
       }
 
+      // Cout emballages
+      if (data.packaging && data.packaging.length > 0) {
+        for (const pk of data.packaging) {
+          const pkResult = await client.query('SELECT unit_cost FROM packaging_items WHERE id = $1', [pk.packagingId]);
+          if (pkResult.rows[0]) {
+            totalCost += parseFloat(pkResult.rows[0].unit_cost) * pk.quantity;
+          }
+        }
+      }
+
+      const margin = data.marginMultiplier && data.marginMultiplier > 0
+        ? data.marginMultiplier
+        : parseFloat(currentRecipe?.margin_multiplier || '3');
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, updated_at = NOW()
-         WHERE id = $7`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, contenant_id = $7, etapes = $8, margin_multiplier = $9, updated_at = NOW()
+         WHERE id = $10`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin, id]
       );
 
       // Re-insert ingredients
@@ -264,10 +348,11 @@ export const recipeRepository = {
       // Re-insert sub-recipes
       await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
 
-      // Cycle detection for sub-recipes
+      // Cycle detection for sub-recipes — pass the transaction client so the check
+      // sees the DELETE above (old sub-recipe edges must not count against the new ones).
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
-          const hasCycle = await this.detectCycle(sr.subRecipeId, id);
+          const hasCycle = await this.detectCycle(sr.subRecipeId, id, client);
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
@@ -283,6 +368,19 @@ export const recipeRepository = {
         }
       }
 
+      // Re-insert recipe_packaging
+      await client.query('DELETE FROM recipe_packaging WHERE recipe_id = $1', [id]);
+      if (data.packaging && data.packaging.length > 0) {
+        for (const pk of data.packaging) {
+          await client.query(
+            `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
+            [id, pk.packagingId, pk.quantity, pk.unit ?? null]
+          );
+        }
+      }
+
+      await this.syncProductPrice(client, currentRecipe?.product_id || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
+
       await client.query('COMMIT');
 
       // Recalculate cost of parent recipes that use this one as sub-recipe
@@ -294,6 +392,67 @@ export const recipeRepository = {
       throw err;
     } finally {
       client.release();
+    }
+  },
+
+  /** Compute cost (ingredients + sub-recipes + packaging) for a recipe.
+   *  Centralise la formule pour eviter qu'elle drifte entre create / update / cascade. */
+  async computeFullCost(recipeId: string): Promise<number> {
+    // Ingredients cost
+    const ingResult = await db.query(
+      `SELECT ri.quantity, ri.unit, ing.unit_cost, ing.unit as base_unit
+       FROM recipe_ingredients ri
+       JOIN ingredients ing ON ing.id = ri.ingredient_id
+       WHERE ri.recipe_id = $1`,
+      [recipeId]
+    );
+    let total = 0;
+    for (const r of ingResult.rows) {
+      const factor = unitConversionFactor(r.unit || r.base_unit, r.base_unit);
+      total += parseFloat(r.quantity) * parseFloat(r.unit_cost || '0') * factor;
+    }
+    // Sub-recipes
+    const srResult = await db.query(
+      `SELECT rsr.quantity, r2.total_cost, r2.yield_quantity
+       FROM recipe_sub_recipes rsr
+       JOIN recipes r2 ON r2.id = rsr.sub_recipe_id
+       WHERE rsr.recipe_id = $1`,
+      [recipeId]
+    );
+    for (const r of srResult.rows) {
+      const costPerUnit = parseFloat(r.total_cost) / (parseFloat(r.yield_quantity) || 1);
+      total += costPerUnit * parseFloat(r.quantity);
+    }
+    // Packaging
+    const pkResult = await db.query(
+      `SELECT rp.quantity, pi.unit_cost
+       FROM recipe_packaging rp
+       JOIN packaging_items pi ON pi.id = rp.packaging_id
+       WHERE rp.recipe_id = $1`,
+      [recipeId]
+    );
+    for (const r of pkResult.rows) {
+      total += parseFloat(r.quantity) * parseFloat(r.unit_cost || '0');
+    }
+    return total;
+  },
+
+  /** When a packaging price changes, propagate to all recipes using it + their products */
+  async recalcOnPackagingChange(packagingId: string) {
+    const recipes = await db.query(
+      `SELECT DISTINCT recipe_id FROM recipe_packaging WHERE packaging_id = $1`,
+      [packagingId]
+    );
+    for (const row of recipes.rows) {
+      const totalCost = await this.computeFullCost(row.recipe_id);
+      await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+      const recipe = await this.findById(row.recipe_id);
+      if (!recipe) continue;
+      const margin = parseFloat(recipe.margin_multiplier || '3');
+      const yieldQty = parseFloat(recipe.yield_quantity || '1');
+      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+      // Cascade aux parents (si cette recette est utilisee comme sous-recette)
+      await this.recalcParents(row.recipe_id);
     }
   },
 
@@ -310,16 +469,14 @@ export const recipeRepository = {
       const recipe = await this.findById(row.recipe_id);
       if (!recipe) continue;
 
-      let totalCost = 0;
-      for (const ing of recipe.ingredients) {
-        totalCost += parseFloat(ing.quantity) * parseFloat(ing.unit_cost || '0');
-      }
-      for (const sr of recipe.sub_recipes) {
-        const costPerUnit = parseFloat(sr.sub_total_cost) / (sr.sub_yield_quantity || 1);
-        totalCost += costPerUnit * parseFloat(sr.quantity);
-      }
+      // Utilise le helper centralise (inclut packaging)
+      const totalCost = await this.computeFullCost(row.recipe_id);
 
       await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+
+      const margin = parseFloat(recipe.margin_multiplier || '3');
+      const yieldQty = parseFloat(recipe.yield_quantity || '1');
+      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
 
       // Recurse up to grandparents
       await this.recalcParents(row.recipe_id, visited);
@@ -338,10 +495,14 @@ export const recipeRepository = {
     return result.rows;
   },
 
-  async detectCycle(recipeId: string, subRecipeId: string): Promise<boolean> {
-    // Check if adding subRecipeId as a sub-recipe of recipeId would create a cycle
-    // Uses recursive CTE to walk the sub-recipe tree from subRecipeId
-    const result = await db.query(
+  async detectCycle(recipeId: string, subRecipeId: string, client?: { query: typeof db.query }): Promise<boolean> {
+    // Check if adding subRecipeId as a sub-recipe of recipeId would create a cycle.
+    // Walks the sub-recipe tree starting from subRecipeId; if recipeId appears in that
+    // descendant chain, adding the edge recipeId -> subRecipeId would close a loop.
+    // Accepts an optional transaction client so the check sees uncommitted DELETEs
+    // performed earlier in the same update transaction.
+    const runner = client ?? db;
+    const result = await runner.query(
       `WITH RECURSIVE chain AS (
          SELECT sub_recipe_id FROM recipe_sub_recipes WHERE recipe_id = $1
          UNION ALL

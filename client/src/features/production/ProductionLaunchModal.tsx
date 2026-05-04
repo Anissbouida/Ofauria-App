@@ -1,17 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { productLossesApi } from '../../api/product-losses.api';
 import { recipesApi } from '../../api/recipes.api';
+import { contenantsApi } from '../../api/contenants.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import {
   X, ChevronLeft, ChevronRight, Check, CheckCircle, AlertTriangle,
   Clock, Flame, Package, Factory, ClipboardList, Printer, Layers, Play, Hash,
-  BookOpen, ChefHat, Scale, Eye,
+  BookOpen, ChefHat, Scale, Eye, Snowflake,
 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { useProductionTimers } from '../../context/ProductionTimerContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +24,7 @@ interface ProductionLaunchModalProps {
   plan: Record<string, unknown>;
   items: Record<string, unknown>[];
   targetItemId?: string | null;
+  initialStepName?: string | null; // jump to this étape by name (from timer notification)
   needs: Record<string, unknown>[];
   fefoPreview: Record<string, unknown>[];
   onClose: () => void;
@@ -77,6 +80,7 @@ export default function ProductionLaunchModal({
   plan,
   items: allItems,
   targetItemId,
+  initialStepName,
   needs,
   fefoPreview,
   onClose,
@@ -85,6 +89,9 @@ export default function ProductionLaunchModal({
   // Dynamic loss reasons from referentiel
   const { entries: prodLossReasonEntries } = useReferentiel('production_loss_reasons');
   const LOSS_REASONS = prodLossReasonEntries.map(e => ({ value: e.code, label: e.label }));
+
+  // Production timers
+  const { timers: activeTimers, startTimer, stopTimer, getTimerRemaining } = useProductionTimers();
 
   // If a specific item is targeted, only show that item; otherwise show all pending items
   const items = targetItemId
@@ -137,18 +144,34 @@ export default function ProductionLaunchModal({
   });
   const [recipeFullscreen, setRecipeFullscreen] = useState(false);
 
+  // For base recipes (no product_id), resolve base_recipe_id directly
+  const singleItemBaseRecipeId = targetItemId
+    ? (items.find((i) => (i.id as string) === targetItemId)?.base_recipe_id as string | undefined) || null
+    : null;
+
   // Queries
   const { data: subRecipes = [], isLoading: loadingSubRecipes } = useQuery<SubRecipeAnalysis[]>({
     queryKey: ['sub-recipe-analysis', planId],
     queryFn: () => productionApi.analyzeSubRecipes(planId),
   });
 
-  // Recipe data for the selected product
-  const { data: recipeData, isLoading: loadingRecipe } = useQuery({
+  // Recipe data for the selected product (by product_id)
+  const { data: recipeByProduct, isLoading: loadingRecipeByProduct } = useQuery({
     queryKey: ['recipe-by-product', recipeProductId],
     queryFn: () => recipesApi.getByProductId(recipeProductId!),
     enabled: !!recipeProductId,
   });
+
+  // Recipe data by direct recipe ID (for base recipes with no product_id)
+  const { data: recipeByDirectId, isLoading: loadingRecipeById } = useQuery({
+    queryKey: ['recipe-by-id', singleItemBaseRecipeId],
+    queryFn: () => recipesApi.getById(singleItemBaseRecipeId!),
+    enabled: !!singleItemBaseRecipeId && !recipeProductId,
+  });
+
+  // Use whichever recipe data is available
+  const recipeData = recipeByProduct || recipeByDirectId || null;
+  const loadingRecipe = loadingRecipeByProduct || loadingRecipeById;
 
   // Derived data
   const producibleItems = useMemo(
@@ -1096,10 +1119,19 @@ export default function ProductionLaunchModal({
   // -----------------------------------------------------------------------
 
   const isSingleItem = !!targetItemId && items.length === 1;
+  const singleProductId = isSingleItem ? (items[0]?.product_id as string) : undefined;
   // If item is already in_progress (resuming), skip to step 2 (Recette)
   const initialSingleStep = isSingleItem && items[0] && (items[0].status as string) === 'in_progress' ? 2 : 1;
   const [singleStep, setSingleStep] = useState(initialSingleStep);
   const [starting, setStarting] = useState(false);
+
+  // Fetch production profile for single-item view
+  const { data: profileData } = useQuery({
+    queryKey: ['production-profile', singleProductId],
+    queryFn: () => contenantsApi.getProfile(singleProductId!),
+    enabled: !!singleProductId,
+  });
+  const productionProfile = profileData?.data || null;
 
   // Auto-start item when modal opens for a pending item
   const handleAutoStart = async () => {
@@ -1128,11 +1160,37 @@ export default function ProductionLaunchModal({
     onClose();
   };
 
-  const SINGLE_STEPS = [
-    { num: 1, label: 'Lancement', icon: <Play size={14} /> },
-    { num: 2, label: 'Recette', icon: <BookOpen size={14} /> },
-    { num: 3, label: 'Enregistrement', icon: <CheckCircle size={14} /> },
-  ];
+  // Dynamic steps: recipe étapes take priority, then profile overrides, then generic flow
+  const recipeEtapes: Record<string, unknown>[] = recipeData?.etapes || [];
+  const profileEtapesOverrides: Record<string, unknown>[] = productionProfile?.etapes || [];
+  const dynamicSteps: Record<string, unknown>[] =
+    (profileEtapesOverrides.length > 0 ? profileEtapesOverrides : recipeEtapes);
+  const hasProfileSteps = dynamicSteps.length > 0;
+
+  const SINGLE_STEPS = hasProfileSteps
+    ? [
+        ...dynamicSteps.map((s, i) => ({ num: i + 1, label: s.nom as string, icon: <ClipboardList size={14} />, profileStep: s })),
+        { num: dynamicSteps.length + 1, label: 'Enregistrement', icon: <CheckCircle size={14} />, profileStep: null },
+      ]
+    : [
+        { num: 1, label: 'Lancement', icon: <Play size={14} />, profileStep: null },
+        { num: 2, label: 'Recette', icon: <BookOpen size={14} />, profileStep: null },
+        { num: 3, label: 'Enregistrement', icon: <CheckCircle size={14} />, profileStep: null },
+      ];
+  const totalSteps = SINGLE_STEPS.length;
+  const isLastStep = singleStep === totalSteps;
+
+  // Jump to the correct step when opened from a timer notification
+  const initialStepApplied = useRef(false);
+  useEffect(() => {
+    if (initialStepName && !initialStepApplied.current && SINGLE_STEPS.length > 1) {
+      const idx = SINGLE_STEPS.findIndex(s => s.label === initialStepName);
+      if (idx >= 0) {
+        initialStepApplied.current = true;
+        setSingleStep(idx + 1);
+      }
+    }
+  }, [initialStepName, SINGLE_STEPS]);
 
   const renderSingleItemView = () => {
     const item = items[0];
@@ -1166,28 +1224,28 @@ export default function ProductionLaunchModal({
               </div>
             </div>
             <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-50 text-blue-700">
-              Etape {singleStep}/3
+              Etape {singleStep}/{totalSteps}
             </span>
           </div>
           {/* Step indicator */}
-          <div className="flex items-center justify-center gap-1 py-3 px-4">
+          <div className="flex items-center justify-center gap-1 py-3 px-4 overflow-x-auto">
             {SINGLE_STEPS.map((s, idx) => {
               const done = singleStep > s.num;
               const active = singleStep === s.num;
               return (
-                <div key={s.num} className="flex items-center">
+                <div key={s.num} className="flex items-center shrink-0">
                   <div className="flex flex-col items-center gap-1">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                       done ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-200' : 'bg-gray-200 text-gray-500'
                     }`}>
                       {done ? <Check size={14} /> : s.num}
                     </div>
-                    <span className={`text-[10px] font-medium ${active ? 'text-blue-700' : done ? 'text-gray-700' : 'text-gray-400'}`}>
+                    <span className={`text-[10px] font-medium max-w-[60px] text-center truncate ${active ? 'text-blue-700' : done ? 'text-gray-700' : 'text-gray-400'}`}>
                       {s.label}
                     </span>
                   </div>
                   {idx < SINGLE_STEPS.length - 1 && (
-                    <div className={`w-8 sm:w-14 h-0.5 mx-1 mt-[-16px] ${singleStep > s.num ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+                    <div className={`w-6 sm:w-10 h-0.5 mx-0.5 mt-[-16px] ${singleStep > s.num ? 'bg-emerald-500' : 'bg-gray-200'}`} />
                   )}
                 </div>
               );
@@ -1198,125 +1256,370 @@ export default function ProductionLaunchModal({
         {/* Content */}
         <div className="flex-1 px-4 py-5 max-w-2xl mx-auto w-full">
 
-          {/* ─── Step 1: Lancement ─── */}
-          {singleStep === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><Play size={18} /> Lancement</h2>
-              <p className="text-sm text-gray-500">Confirmez les informations de production et lancez la fabrication.</p>
+          {/* ─── Dynamic steps from profile OR generic flow ─── */}
+          {hasProfileSteps ? (
+            <>
+              {/* Profile step content */}
+              {singleStep <= dynamicSteps.length && (() => {
+                const currentProfileStep = dynamicSteps[singleStep - 1];
+                const isFirstStep = singleStep === 1;
+                return (
+                  <div className="space-y-4">
+                    {/* Step header */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 text-lg font-bold flex items-center justify-center shrink-0">
+                        {singleStep}
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900">{currentProfileStep.nom as string}</h2>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {!!currentProfileStep.est_bloquante && (
+                            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded">BLOQUANT</span>
+                          )}
+                          {currentProfileStep.timer_auto && currentProfileStep.duree_estimee_min && (() => {
+                            const runningTimer = activeTimers.find(t => t.planItemId === id && t.stepName === (currentProfileStep.nom as string));
+                            return runningTimer ? (
+                              <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded flex items-center gap-0.5 animate-pulse">
+                                <Clock size={10} /> En cours
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded flex items-center gap-0.5">
+                                <Clock size={10} /> {currentProfileStep.duree_estimee_min as number} min
+                              </span>
+                            );
+                          })()}
+                          {currentProfileStep.controle_qualite && (
+                            <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded flex items-center gap-0.5">
+                              <Check size={10} /> Controle qualite
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Product info card */}
-              <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-4 border-b border-blue-200">
-                  <div className="flex items-center gap-3">
-                    {item.product_image ? (
-                      <img src={item.product_image as string} alt="" className="w-14 h-14 rounded-xl object-cover" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center">
-                        <Package size={24} className="text-blue-600" />
+                    {/* First step: show product info + date + contenant */}
+                    {isFirstStep && (
+                      <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-blue-200">
+                          <div className="flex items-center gap-3">
+                            {item.product_image ? (
+                              <img src={item.product_image as string} alt="" className="w-12 h-12 rounded-xl object-cover" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                                <Package size={20} className="text-blue-600" />
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <h3 className="font-bold text-gray-900">{item.product_name as string}</h3>
+                              <div className="flex items-center gap-3 mt-0.5 text-sm text-gray-600">
+                                <span className="font-semibold">Qte : {planned}</span>
+                                <span className="text-xs"><Clock size={11} className="inline" /> {dlc}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="p-3 space-y-3">
+                          <div className="flex gap-3">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de lancement</label>
+                              <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
+                            </div>
+                            <div className="w-28">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Equipe</label>
+                              <div className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-center font-medium text-gray-700 flex items-center gap-1 justify-center">
+                                <Clock size={12} className="text-gray-400" /> {detectShift(producedAt)}
+                              </div>
+                            </div>
+                          </div>
+                          {isAlreadyStarted && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-sm text-blue-700 flex items-center gap-2">
+                              <CheckCircle size={14} /> Production deja lancee.
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
-                    <div className="flex-1">
-                      <h3 className="font-bold text-gray-900 text-lg">{item.product_name as string}</h3>
-                      <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
-                        <span className="font-semibold">Quantite : {planned}</span>
-                        <span className="flex items-center gap-1 text-xs"><Clock size={11} /> DLC : {dlc}</span>
+
+                    {/* Contenant info (first step only) */}
+                    {isFirstStep && productionProfile && (
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-indigo-50 rounded-xl p-3">
+                          <div className="text-xl font-bold text-indigo-700">{item.nb_contenants || Math.ceil(planned / productionProfile.quantite_nette_cible)}</div>
+                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">{productionProfile.contenant_nom}</div>
+                        </div>
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <div className="text-xl font-bold text-gray-700">{productionProfile.quantite_nette_cible}</div>
+                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Net / contenant</div>
+                        </div>
+                        <div className="bg-purple-50 rounded-xl p-3">
+                          <div className="text-xl font-bold text-purple-700">{item.quantite_brute_totale || planned}</div>
+                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Qte brute totale</div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de lancement</label>
-                      <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
-                    </div>
-                    <div className="w-32">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Equipe</label>
-                      <div className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-center font-medium text-gray-700 flex items-center gap-1.5 justify-center">
-                        <Clock size={13} className="text-gray-400" /> {detectShift(producedAt)}
-                      </div>
-                    </div>
-                  </div>
-                  {isAlreadyStarted && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 flex items-center gap-2">
-                      <CheckCircle size={14} /> Production deja lancee — vous pouvez continuer les etapes.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─── Step 2: Recette ─── */}
-          {singleStep === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><BookOpen size={18} /> Recette & Instructions</h2>
-              <p className="text-sm text-gray-500">Suivez la recette. Vous pouvez sauvegarder et quitter a tout moment.</p>
-
-              {/* Yield info */}
-              <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm">
-                <Package size={16} className="text-blue-600" />
-                <span className="text-blue-800">
-                  <strong>Quantite a produire : {planned}</strong> — {dlc !== 'Vente du jour' ? `DLC : ${dlc}` : 'Vente du jour'}
-                </span>
-              </div>
-
-              {renderRecipeContent()}
-            </div>
-          )}
-
-          {/* ─── Step 3: Enregistrement ─── */}
-          {singleStep === 3 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-emerald-700 flex items-center gap-2"><CheckCircle size={18} /> Enregistrement</h2>
-              <p className="text-sm text-gray-500">Renseignez la quantite produite et terminez la production.</p>
-
-              <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
-                <div className="flex gap-3 items-end">
-                  <div className="flex-1">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de fin</label>
-                    <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                      value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
-                  </div>
-                  <div className="w-28">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Planifie</label>
-                    <div className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-center font-bold text-gray-700">{planned}</div>
-                  </div>
-                  <div className="w-28">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
-                    <input type="number" min={0}
-                      className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
-                      value={actual} onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
-                  </div>
-                </div>
-
-                {hasLoss && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle size={14} className="text-amber-600" />
-                      <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
-                    </div>
-                    <select className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500"
-                      value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
-                      <option value="">-- Motif de perte --</option>
-                      {LOSS_REASONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
-                    </select>
-                    {lossReasons[id] === 'autre' && (
-                      <input type="text" className="w-full mt-2 border border-amber-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500"
-                        placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
                     )}
-                  </div>
-                )}
 
-                {/* Summary */}
-                <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                  {lotNumber && <span className="font-mono bg-gray-100 px-2 py-0.5 rounded"><Hash size={10} className="inline" /> {lotNumber}</span>}
-                  <span>DLC : {dlc}</span>
-                  <span>Equipe : {detectShift(producedAt)}</span>
+                    {/* Timer display for steps with timer_auto */}
+                    {currentProfileStep.timer_auto && currentProfileStep.duree_estimee_min && (() => {
+                      const timerKey = `${id}_step${singleStep}`;
+                      const existingTimer = activeTimers.find(t => t.planItemId === id && t.stepName === (currentProfileStep.nom as string));
+                      const remaining = existingTimer ? getTimerRemaining(existingTimer.id) : 0;
+                      const isRunning = !!existingTimer && remaining > 0;
+                      const mins = Math.floor(remaining / 60);
+                      const secs = remaining % 60;
+
+                      return (
+                        <div className={`border rounded-2xl p-5 text-center transition-all ${
+                          isRunning
+                            ? 'border-orange-300 bg-gradient-to-br from-orange-50 to-amber-50 animate-pulse-slow'
+                            : 'border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50'
+                        }`}>
+                          <Clock size={28} className={`mx-auto mb-2 ${isRunning ? 'text-orange-600' : 'text-blue-600'}`} />
+                          <div className={`text-4xl font-bold font-mono ${isRunning ? 'text-orange-800' : 'text-blue-800'}`}>
+                            {isRunning
+                              ? `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+                              : `${currentProfileStep.duree_estimee_min as number}:00`
+                            }
+                          </div>
+                          <p className={`text-xs mt-1 ${isRunning ? 'text-orange-600' : 'text-blue-600'}`}>
+                            {isRunning ? 'Chronometre en cours...' : 'Duree estimee pour cette etape'}
+                          </p>
+                          <div className="mt-3">
+                            {!isRunning ? (
+                              <button
+                                type="button"
+                                onClick={() => startTimer({
+                                  planId,
+                                  planItemId: id,
+                                  productName: item.product_name as string,
+                                  stepName: currentProfileStep.nom as string,
+                                  durationMin: currentProfileStep.duree_estimee_min as number,
+                                })}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:shadow-md transition-all"
+                              >
+                                <Play size={14} /> Demarrer le chrono
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => stopTimer(existingTimer!.id)}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-300 transition-all"
+                              >
+                                <X size={14} /> Arreter
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* QC checklist */}
+                    {currentProfileStep.controle_qualite && (
+                      <div className="border border-green-200 rounded-2xl p-4 bg-green-50/50">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Check size={16} className="text-green-600" />
+                          <span className="text-sm font-semibold text-green-800">Controle qualite</span>
+                        </div>
+                        <p className="text-xs text-green-700">Verifiez la qualite avant de passer a l'etape suivante.</p>
+                        {currentProfileStep.checklist_items && (currentProfileStep.checklist_items as string[]).length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {(currentProfileStep.checklist_items as string[]).map((ci, i) => (
+                              <li key={i} className="flex items-center gap-2 text-sm text-green-700">
+                                <input type="checkbox" className="rounded border-green-300 text-green-600" />
+                                <span>{ci}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Recipe access — always available */}
+                    <div className="border border-gray-200 rounded-xl p-3">
+                      <button
+                        type="button"
+                        onClick={() => setRecipeFullscreen(true)}
+                        className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        <BookOpen size={16} /> Voir la recette
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Last step: Enregistrement (same as before) */}
+              {isLastStep && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold text-emerald-700 flex items-center gap-2"><CheckCircle size={18} /> Enregistrement</h2>
+                  <p className="text-sm text-gray-500">Renseignez la quantite produite et terminez la production.</p>
+
+                  <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de fin</label>
+                        <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                          value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Planifie</label>
+                        <div className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-center font-bold text-gray-700">{planned}</div>
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
+                        <input type="number" min={0}
+                          className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
+                          value={actual} onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
+                      </div>
+                    </div>
+
+                    {hasLoss && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle size={14} className="text-amber-600" />
+                          <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
+                        </div>
+                        <select className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500"
+                          value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
+                          <option value="">-- Motif de perte --</option>
+                          {LOSS_REASONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                        </select>
+                        {lossReasons[id] === 'autre' && (
+                          <input type="text" className="w-full mt-2 border border-amber-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500"
+                            placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      {lotNumber && <span className="font-mono bg-gray-100 px-2 py-0.5 rounded"><Hash size={10} className="inline" /> {lotNumber}</span>}
+                      <span>DLC : {dlc}</span>
+                      <span>Equipe : {detectShift(producedAt)}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* ─── Generic Step 1: Lancement ─── */}
+              {singleStep === 1 && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><Play size={18} /> Lancement</h2>
+                  <p className="text-sm text-gray-500">Confirmez les informations de production et lancez la fabrication.</p>
+
+                  <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-4 border-b border-blue-200">
+                      <div className="flex items-center gap-3">
+                        {item.product_image ? (
+                          <img src={item.product_image as string} alt="" className="w-14 h-14 rounded-xl object-cover" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center">
+                            <Package size={24} className="text-blue-600" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h3 className="font-bold text-gray-900 text-lg">{item.product_name as string}</h3>
+                          <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
+                            <span className="font-semibold">Quantite : {planned}</span>
+                            <span className="flex items-center gap-1 text-xs"><Clock size={11} /> DLC : {dlc}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de lancement</label>
+                          <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
+                        </div>
+                        <div className="w-32">
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Equipe</label>
+                          <div className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-center font-medium text-gray-700 flex items-center gap-1.5 justify-center">
+                            <Clock size={13} className="text-gray-400" /> {detectShift(producedAt)}
+                          </div>
+                        </div>
+                      </div>
+                      {isAlreadyStarted && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 flex items-center gap-2">
+                          <CheckCircle size={14} /> Production deja lancee — vous pouvez continuer les etapes.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Generic Step 2: Recette ─── */}
+              {singleStep === 2 && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><BookOpen size={18} /> Recette & Instructions</h2>
+                  <p className="text-sm text-gray-500">Suivez la recette. Vous pouvez sauvegarder et quitter a tout moment.</p>
+
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm">
+                    <Package size={16} className="text-blue-600" />
+                    <span className="text-blue-800">
+                      <strong>Quantite a produire : {planned}</strong> — {dlc !== 'Vente du jour' ? `DLC : ${dlc}` : 'Vente du jour'}
+                    </span>
+                  </div>
+
+                  {renderRecipeContent()}
+                </div>
+              )}
+
+              {/* ─── Generic Step 3: Enregistrement ─── */}
+              {singleStep === 3 && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold text-emerald-700 flex items-center gap-2"><CheckCircle size={18} /> Enregistrement</h2>
+                  <p className="text-sm text-gray-500">Renseignez la quantite produite et terminez la production.</p>
+
+                  <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de fin</label>
+                        <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                          value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Planifie</label>
+                        <div className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-center font-bold text-gray-700">{planned}</div>
+                      </div>
+                      <div className="w-28">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
+                        <input type="number" min={0}
+                          className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
+                          value={actual} onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
+                      </div>
+                    </div>
+
+                    {hasLoss && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle size={14} className="text-amber-600" />
+                          <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
+                        </div>
+                        <select className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500"
+                          value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
+                          <option value="">-- Motif de perte --</option>
+                          {LOSS_REASONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                        </select>
+                        {lossReasons[id] === 'autre' && (
+                          <input type="text" className="w-full mt-2 border border-amber-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500"
+                            placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      {lotNumber && <span className="font-mono bg-gray-100 px-2 py-0.5 rounded"><Hash size={10} className="inline" /> {lotNumber}</span>}
+                      <span>DLC : {dlc}</span>
+                      <span>Equipe : {detectShift(producedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -1336,15 +1639,13 @@ export default function ProductionLaunchModal({
               )}
             </div>
             <div className="flex items-center gap-2">
-              {/* Save & quit — available on all steps */}
               <button onClick={handleSaveAndQuit} disabled={starting}
                 className="flex items-center gap-1 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50">
                 Sauvegarder et quitter
               </button>
 
-              {singleStep < 3 ? (
+              {!isLastStep ? (
                 <button onClick={async () => {
-                  // On step 1 → start the item if pending
                   if (singleStep === 1 && !isAlreadyStarted) {
                     await handleAutoStart();
                   }

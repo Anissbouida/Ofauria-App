@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productLossRepository } from '../repositories/product-loss.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { db } from '../config/database.js';
-import { adjustProductStock } from '../repositories/product-stock.helper.js';
+import { adjustProductStock, adjustVitrineStock } from '../repositories/product-stock.helper.js';
 
 export const productLossController = {
   async list(req: AuthRequest, res: Response) {
@@ -81,15 +81,19 @@ export const productLossController = {
         ]
       );
 
-      // For vitrine/perime/recyclage: decrement product stock (product was already produced)
+      // For vitrine/perime/recyclage: these losses happen on the display
+      // (the product was already transferred to the vitrine), so we decrement
+      // vitrine_quantity, not the backroom reserve.
       if (['vitrine', 'perime', 'recyclage'].includes(lossType)) {
-        const stockAfter = await adjustProductStock(client, productId, -quantity, req.user!.storeId);
+        if (!req.user!.storeId) {
+          throw new Error('storeId requis pour declarer une perte sur la vitrine');
+        }
+        const stockAfter = await adjustVitrineStock(client, productId, req.user!.storeId, -quantity);
 
-        // Log stock transaction
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
            VALUES ($1, 'loss', $2, $3, $4, $5, $6)`,
-          [productId, -quantity, stockAfter, `Perte ${lossType}: ${reason}`, req.user!.userId, req.user!.storeId || null]
+          [productId, -quantity, stockAfter, `Perte ${lossType}: ${reason}`, req.user!.userId, req.user!.storeId]
         );
       }
 

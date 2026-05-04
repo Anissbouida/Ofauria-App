@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
+import { unsoldDecisionRepository } from '../repositories/unsold-decision.repository.js';
 
 export const cashRegisterController = {
   async list(req: AuthRequest, res: Response) {
@@ -15,10 +16,31 @@ export const cashRegisterController = {
   async getById(req: AuthRequest, res: Response) {
     const session = await cashRegisterRepository.findById(req.params.id);
     if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    // Verification store (multi-tenant)
+    if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    // Verification ownership : admin/manager voient tout dans leur store,
+    // cashier/saleswoman uniquement leur propre session
+    const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
+    if (!isPrivileged && session.user_id !== req.user!.userId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse a la session d\'un autre utilisateur' } });
+      return;
+    }
     res.json({ success: true, data: session });
   },
 
   async getInventoryItems(req: AuthRequest, res: Response) {
+    const session = await cashRegisterRepository.findById(req.params.id);
+    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
+    if (!isPrivileged && session.user_id !== req.user!.userId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
     const items = await cashRegisterRepository.getInventoryItems(req.params.id);
     res.json({ success: true, data: items });
   },
@@ -55,6 +77,26 @@ export const cashRegisterController = {
     }
 
     const closeType = req.body?.closeType || 'fin_journee';
+
+    // Phase 3 — En fin de journee, on rejette si des items vitrine sont
+    // expires (DLC ou DLV depassee) et n'ont pas encore ete detruits.
+    // Le client doit appeler GET /unsold-decisions/expired puis
+    // POST /unsold-decisions/destroy-expired AVANT de pouvoir cloturer.
+    const storeId = req.user!.storeId;
+    if (closeType === 'fin_journee' && storeId) {
+      const expired = await unsoldDecisionRepository.getExpiredItems(storeId);
+      if (expired.length > 0) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'EXPIRED_ITEMS_PENDING',
+            message: `${expired.length} produit(s) avec DLC/DLV depassee doivent etre detruits avant la fermeture journee`,
+            details: { count: expired.length, items: expired },
+          },
+        });
+        return;
+      }
+    }
 
     // Calculate totals but don't close yet - wait for actual amount
     const updated = await cashRegisterRepository.close(session.id, closeType);

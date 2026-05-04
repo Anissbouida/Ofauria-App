@@ -15,6 +15,9 @@ export const receptionVoucherController = {
   async getById(req: AuthRequest, res: Response) {
     const rv = await receptionVoucherRepository.findById(req.params.id);
     if (!rv) { res.status(404).json({ success: false, error: { message: 'Bon de reception non trouve' } }); return; }
+    if (req.user!.storeId && rv.store_id && rv.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: rv });
   },
 

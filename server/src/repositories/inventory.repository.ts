@@ -1,19 +1,58 @@
 import { db } from '../config/database.js';
+import { recipeRepository } from './recipe.repository.js';
 
 export const inventoryRepository = {
   async findAll(storeId?: string) {
     const where = storeId ? 'WHERE inv.store_id = $1' : '';
-    const lotStoreFilter = storeId ? 'AND il.store_id = $1' : '';
+    const lotStoreFilter = storeId ? 'AND store_id = $1' : '';
+    const txStoreFilter = storeId ? 'AND store_id = $1' : '';
     const params = storeId ? [storeId] : [];
     const result = await db.query(
-      `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
-              -- Lot traceability summary
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 ${lotStoreFilter}) as active_lots_count,
-              (SELECT MIN(il.expiration_date) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date IS NOT NULL ${lotStoreFilter}) as nearest_dlc,
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date < CURRENT_DATE ${lotStoreFilter}) as expired_lots_count,
-              (SELECT COUNT(*) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7 ${lotStoreFilter}) as expiring_soon_count,
-              (SELECT string_agg(DISTINCT il.supplier_lot_number, ', ' ORDER BY il.supplier_lot_number) FROM ingredient_lots il WHERE il.ingredient_id = inv.ingredient_id AND il.status = 'active' AND il.quantity_remaining > 0 AND il.supplier_lot_number IS NOT NULL ${lotStoreFilter}) as active_lot_numbers
-       FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
+      `WITH lot_stats AS (
+         SELECT ingredient_id,
+                COALESCE(SUM(economat_quantity), 0) as economat_quantity,
+                COALESCE(SUM(pesage_quantity), 0) as pesage_quantity,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0) as active_lots_count,
+                COUNT(*) FILTER (WHERE economat_quantity > 0) as economat_lots_count,
+                COUNT(*) FILTER (WHERE pesage_quantity > 0) as pesage_lots_count,
+                MIN(expiration_date) FILTER (WHERE quantity_remaining > 0 AND expiration_date IS NOT NULL) as nearest_dlc,
+                MIN(expiration_date) FILTER (WHERE pesage_quantity > 0) as pesage_nearest_dlc,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0 AND expiration_date < CURRENT_DATE) as expired_lots_count,
+                COUNT(*) FILTER (WHERE quantity_remaining > 0 AND expiration_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) as expiring_soon_count,
+                string_agg(DISTINCT supplier_lot_number, ', ' ORDER BY supplier_lot_number)
+                  FILTER (WHERE quantity_remaining > 0 AND supplier_lot_number IS NOT NULL) as active_lot_numbers
+         FROM ingredient_lots
+         WHERE status = 'active' ${lotStoreFilter}
+         GROUP BY ingredient_id
+       ),
+       consumption_stats AS (
+         SELECT ingredient_id,
+                COALESCE(ABS(SUM(quantity_change)) / NULLIF(GREATEST(
+                  EXTRACT(DAY FROM (NOW() - MIN(created_at)))::int, 1
+                ), 0), 0) as avg_daily_consumption
+         FROM inventory_transactions
+         WHERE quantity_change < 0
+           AND created_at >= NOW() - INTERVAL '30 days'
+           ${txStoreFilter}
+         GROUP BY ingredient_id
+       )
+       SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
+              ing.container_size,
+              COALESCE(ls.economat_quantity, 0) as economat_quantity,
+              COALESCE(ls.pesage_quantity, 0) as pesage_quantity,
+              COALESCE(ls.active_lots_count, 0) as active_lots_count,
+              COALESCE(ls.economat_lots_count, 0) as economat_lots_count,
+              COALESCE(ls.pesage_lots_count, 0) as pesage_lots_count,
+              ls.nearest_dlc,
+              ls.pesage_nearest_dlc,
+              COALESCE(ls.expired_lots_count, 0) as expired_lots_count,
+              COALESCE(ls.expiring_soon_count, 0) as expiring_soon_count,
+              ls.active_lot_numbers,
+              COALESCE(cs.avg_daily_consumption, 0) as avg_daily_consumption
+       FROM inventory inv
+       JOIN ingredients ing ON ing.id = inv.ingredient_id
+       LEFT JOIN lot_stats ls ON ls.ingredient_id = inv.ingredient_id
+       LEFT JOIN consumption_stats cs ON cs.ingredient_id = inv.ingredient_id
        ${where}
        ORDER BY ing.category, ing.name`,
       params
@@ -69,7 +108,9 @@ export const inventoryRepository = {
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit);
     const result = await db.query(
-      `SELECT it.*, ing.name as ingredient_name, u.first_name as performed_by_name
+      `SELECT it.*, ing.name as ingredient_name, ing.unit as ingredient_unit,
+              u.first_name as performed_by_first, u.last_name as performed_by_last, u.role as performed_by_role,
+              COALESCE(u.first_name || ' ' || u.last_name, 'Système') as performed_by_name
        FROM inventory_transactions it
        JOIN ingredients ing ON ing.id = it.ingredient_id
        LEFT JOIN users u ON u.id = it.performed_by
@@ -129,6 +170,34 @@ export const ingredientRepository = {
     if (fields.length === 0) return this.findById(id);
     values.push(id);
     const result = await db.query(`UPDATE ingredients SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
+
+    // When unit cost changes, cascade to all recipes using this ingredient
+    if (data.unitCost !== undefined) {
+      const recipes = await db.query(
+        `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,
+        [id]
+      );
+      for (const row of recipes.rows) {
+        const recipe = await recipeRepository.findById(row.recipe_id);
+        if (!recipe) continue;
+        let totalCost = 0;
+        for (const ing of recipe.ingredients) {
+          totalCost += parseFloat(ing.quantity) * parseFloat(ing.unit_cost || '0');
+        }
+        for (const sr of recipe.sub_recipes) {
+          const costPerUnit = parseFloat(sr.sub_total_cost) / (sr.sub_yield_quantity || 1);
+          totalCost += costPerUnit * parseFloat(sr.quantity);
+        }
+        await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
+        // Sync linked product price (cost_price + price = cost/unit * marginMultiplier)
+        const margin = parseFloat(recipe.margin_multiplier || '3');
+        const yieldQty = parseFloat(recipe.yield_quantity || '1');
+        await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+        // Cascade up to parent recipes (also syncs their product price via recalcParents)
+        await recipeRepository.recalcParents(row.recipe_id);
+      }
+    }
+
     return result.rows[0];
   },
 

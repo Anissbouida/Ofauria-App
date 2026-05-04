@@ -112,10 +112,29 @@ export const caisseRepository = {
     // (for months without cash register sessions, cash caissière = cash système)
     const prevCash = prevSessionCash > 0 ? prevSessionCash : prevSalesCash;
 
+    // Detect discrepancies between session-reported cash and system cash sales
+    const DISCREPANCY_THRESHOLD = 5; // DH — ignore rounding differences
+    const reconciliationAlerts: { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[] = [];
+
+    for (const session of sessions.rows) {
+      const cashCaissiere = parseFloat(session.cash_caissiere);
+      const cashSysteme = parseFloat(session.cash_systeme);
+      const ecart = cashCaissiere - cashSysteme;
+      if (Math.abs(ecart) > DISCREPANCY_THRESHOLD) {
+        reconciliationAlerts.push({
+          date: session.session_date,
+          cashCaissiere,
+          cashSysteme,
+          ecart,
+        });
+      }
+    }
+
     return {
       payments: payments.rows,
       sessions: sessions.rows,
       sales: sales.rows,
+      reconciliationAlerts,
       previousBalance: {
         cashNet: cashEntries + prevCash - cashExits,
         cardCumul: prevCardSales + bankEntries - bankExits,
@@ -386,14 +405,17 @@ export const invoiceRepository = {
     return { ...result.rows[0], items: itemsResult.rows, payments: paymentsResult.rows };
   },
 
-  async generateInvoiceNumber(type: 'received' | 'emitted'): Promise<string> {
+  async generateInvoiceNumber(type: 'received' | 'emitted', client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
+    const runner = client ?? db;
+    // Advisory lock prevents concurrent invoices from generating the same number
+    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('invoice_number_' || $1))`, [type]);
     const prefix = type === 'received' ? 'FR' : 'FE';
     const year = getLocalYear();
-    const result = await db.query(
+    const result = await runner.query(
       `SELECT COUNT(*) FROM invoices WHERE invoice_type = $1 AND EXTRACT(YEAR FROM invoice_date) = $2`,
       [type, year]
     );
-    const seq = parseInt(result.rows[0].count) + 1;
+    const seq = parseInt((result.rows[0] as Record<string, string>).count) + 1;
     return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
   },
 
@@ -498,21 +520,37 @@ export const invoiceRepository = {
   },
 
   async updatePaidAmount(id: string) {
-    const paymentsResult = await db.query(
-      `SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = $1`, [id]
-    );
-    const totalPaid = parseFloat(paymentsResult.rows[0].total_paid);
-    const inv = await db.query('SELECT total_amount FROM invoices WHERE id = $1', [id]);
-    const totalAmount = parseFloat(inv.rows[0].total_amount);
-    let status = 'pending';
-    if (totalPaid >= totalAmount) status = 'paid';
-    else if (totalPaid > 0) status = 'partial';
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    const result = await db.query(
-      `UPDATE invoices SET paid_amount = $1, status = $2 WHERE id = $3 RETURNING *`,
-      [totalPaid, status, id]
-    );
-    return result.rows[0];
+      // Lock invoice row to prevent concurrent payment race conditions
+      const inv = await client.query('SELECT total_amount FROM invoices WHERE id = $1 FOR UPDATE', [id]);
+      if (!inv.rows[0]) { await client.query('ROLLBACK'); return null; }
+      const totalAmount = parseFloat(inv.rows[0].total_amount);
+
+      const paymentsResult = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = $1`, [id]
+      );
+      const totalPaid = parseFloat(paymentsResult.rows[0].total_paid);
+
+      let status = 'pending';
+      if (totalPaid >= totalAmount) status = 'paid';
+      else if (totalPaid > 0) status = 'partial';
+
+      const result = await client.query(
+        `UPDATE invoices SET paid_amount = $1, status = $2 WHERE id = $3 RETURNING *`,
+        [totalPaid, status, id]
+      );
+
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async updateStatus(id: string, status: string) {

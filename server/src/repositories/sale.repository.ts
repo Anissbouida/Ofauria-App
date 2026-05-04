@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
-import { adjustProductStock } from './product-stock.helper.js';
+import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
+import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const saleRepository = {
@@ -15,8 +16,11 @@ export const saleRepository = {
     let needItemJoin = false;
 
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
-    if (params.dateFrom) { conditions.push(`s.created_at >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`s.created_at < ($${i++}::date + 1)`); values.push(params.dateTo); }
+    // Filtrer les dates dans le fuseau de l'utilisateur (sinon une vente Montreal le 22 avril a 21h46
+    // = 01h46 UTC le 23 avril tombe a tort dans le filtre "23 avril").
+    const tzFind = getUserTimezone();
+    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date <= $${i++}`); values.push(params.dateTo); }
     if (params.customerId) { conditions.push(`s.customer_id = $${i++}`); values.push(params.customerId); }
     if (params.paymentMethod) { conditions.push(`s.payment_method = $${i++}`); values.push(params.paymentMethod); }
     if (params.userId) { conditions.push(`s.user_id = $${i++}`); values.push(params.userId); }
@@ -154,15 +158,56 @@ export const saleRepository = {
           [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Decrement product stock — skip for advance sales (stock deducted at delivery)
-        if (!data.skipStockDeduction) {
-          const stockAfter = await adjustProductStock(client, item.productId, -item.quantity, data.storeId);
+        // Decrement vitrine (display) stock for regular POS sales only.
+        // - 'standard'  (vente directe POS) : decremente la vitrine.
+        // - 'advance'   (avance sur commande client) : produit pas encore
+        //               fabrique, pas de stock a decrementer.
+        // - 'delivery'  (livraison commande client deja payee partiellement) :
+        //               le produit a ete fabrique specifiquement pour la
+        //               commande via un plan de production + BSI, il n'a
+        //               jamais transite par la vitrine commune — on ne touche
+        //               pas au stock vitrine.
+        const shouldSkipStock =
+          data.saleType === 'advance' ||
+          data.saleType === 'delivery' ||
+          data.skipStockDeduction === true;
+        if (!shouldSkipStock) {
+          if (!data.storeId) {
+            throw new Error('storeId requis pour une vente POS (vitrine strictement par magasin)');
+          }
+          // Phase A — Securite alimentaire : rejet si DLV ou DDE atteinte sur tous
+          // les lots disponibles. Le check est defensif (en plus du masquage UI).
+          const saleabilityIssue = await productLotRepository.checkSaleability(item.productId, data.storeId);
+          if (saleabilityIssue) {
+            const reasonLabel = saleabilityIssue.reason === 'DDE_EXPIREE'
+              ? 'duree d\'exposition vitrine (DDE)'
+              : 'date limite de vente (DLV)';
+            const err = new Error(
+              `Vente refusee : ${reasonLabel} atteinte pour le produit ${item.productId}`
+            ) as Error & { code?: string; statusCode?: number };
+            err.code = saleabilityIssue.reason;
+            err.statusCode = 409;
+            throw err;
+          }
+
+          const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, -item.quantity);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7)`,
             [item.productId, -item.quantity, stockAfter,
-             `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId || null]
+             `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId]
           );
+
+          // Phase 1 — Mirror sur product_lots FEFO : decremente vitrine_qty
+          // des lots les plus proches de leur DLC. Le decompte par lot est
+          // ce qui rendra la tracabilite sortie possible (audit HACCP).
+          // FEFO exclut deja les lots expires par defaut (Phase A).
+          const fefoPlan = await productLotRepository.planFefoVitrineConsumption(
+            client, item.productId, data.storeId, item.quantity
+          );
+          for (const step of fefoPlan) {
+            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty);
+          }
         }
       }
 
@@ -232,8 +277,10 @@ export const saleRepository = {
     let i = 1;
 
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
-    if (params.dateFrom) { conditions.push(`s.created_at >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`s.created_at < ($${i++}::date + 1)`); values.push(params.dateTo); }
+    // Meme remise en fuseau utilisateur que findAll (evite les decalages de date aux heures limites).
+    const tzSum = getUserTimezone();
+    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date <= $${i++}`); values.push(params.dateTo); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -241,8 +288,8 @@ export const saleRepository = {
     const retConditions: string[] = [];
     const retValues: unknown[] = [];
     let ri = 1;
-    if (params.dateFrom) { retConditions.push(`sr.created_at >= $${ri++}`); retValues.push(params.dateFrom); }
-    if (params.dateTo) { retConditions.push(`sr.created_at < ($${ri++}::date + 1)`); retValues.push(params.dateTo); }
+    if (params.dateFrom) { retConditions.push(`(sr.created_at AT TIME ZONE '${tzSum}')::date >= $${ri++}`); retValues.push(params.dateFrom); }
+    if (params.dateTo) { retConditions.push(`(sr.created_at AT TIME ZONE '${tzSum}')::date <= $${ri++}`); retValues.push(params.dateTo); }
     const retWhere = retConditions.length ? `WHERE sr.type = 'return' AND ${retConditions.join(' AND ')}` : `WHERE sr.type = 'return'`;
 
     if (params.groupBy === 'category') {
@@ -359,12 +406,29 @@ export const saleRepository = {
     storeId?: string;
     items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[];
   }) {
+    // Validate CSV items before any DB work
+    const invalidItems: string[] = [];
+    for (const item of data.items) {
+      if (!item.quantity || item.quantity <= 0) {
+        invalidItems.push(`${item.productName}: quantité invalide (${item.quantity})`);
+      }
+      if (item.unitPrice < 0) {
+        invalidItems.push(`${item.productName}: prix unitaire négatif (${item.unitPrice})`);
+      }
+      if (item.netSales < 0) {
+        invalidItems.push(`${item.productName}: ventes nettes négatives (${item.netSales})`);
+      }
+    }
+    if (invalidItems.length > 0) {
+      return { created: false, unmatchedItems: [], invalidItems, saleNumber: null };
+    }
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
       // Match products by SKU or name
-      const matchedItems: { productId: string; quantity: number; unitPrice: number; subtotal: number }[] = [];
+      const matchedItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; costOfGoods: number }[] = [];
       const unmatchedItems: string[] = [];
 
       for (const item of data.items) {
@@ -385,6 +449,7 @@ export const saleRepository = {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             subtotal: item.netSales,
+            costOfGoods: item.costOfGoods || 0,
           });
           // Update SKU if not set
           if (item.sku) {
@@ -400,13 +465,14 @@ export const saleRepository = {
 
       if (matchedItems.length === 0) {
         await client.query('ROLLBACK');
-        return { created: false, unmatchedItems, saleNumber: null };
+        return { created: false, unmatchedItems, invalidItems: [], saleNumber: null };
       }
 
       const subtotal = matchedItems.reduce((sum, i) => sum + i.subtotal, 0);
       const total = subtotal;
 
-      // Generate sale number for the import date
+      // Generate sale number for the import date (advisory lock prevents race)
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
       const prefix = `IMP-${data.date}-`;
       const seqResult = await client.query(
         `SELECT sale_number FROM sales WHERE sale_number LIKE $1 ORDER BY sale_number DESC LIMIT 1`,
@@ -452,6 +518,8 @@ export const saleRepository = {
 };
 
 async function generateSaleNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
+  // Advisory lock prevents concurrent transactions from reading the same max sequence
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
   const today = getLocalDateString();
   const prefix = `VNT-${today}-`;
   const result = await client.query(

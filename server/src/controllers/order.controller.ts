@@ -39,6 +39,9 @@ export const orderController = {
   async getById(req: AuthRequest, res: Response) {
     const order = await orderRepository.findById(req.params.id);
     if (!order) { res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } }); return; }
+    if (req.user!.storeId && order.store_id && order.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
     res.json({ success: true, data: order });
   },
 

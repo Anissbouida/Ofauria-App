@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 
 export const productRepository = {
-  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string }) {
+  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -20,9 +20,40 @@ export const productRepository = {
       : '';
     if (params.storeId) values.push(params.storeId);
 
+    // useVitrine: POS mode — return vitrine_quantity in the stock_quantity
+    // column so all client filters (e.g. stock > 0) operate on what is
+    // actually sellable, not on the backroom reserve.
     const stockColumns = params.storeId
-      ? `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+      ? (params.useVitrine
+          ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+          : `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.vitrine_quantity, 0) as vitrine_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`)
       : `p.stock_quantity, p.stock_min_threshold,`;
+
+    // Phase D — pour chaque produit en vitrine, calcule la deadline effective
+    // (MIN entre DLV des lots et DDE des lots) + un flag is_expired si plus
+    // aucun lot vendable. Sert au POS pour griser les produits non vendables.
+    const lotMetricsJoin = params.storeId
+      ? `LEFT JOIN LATERAL (
+           SELECT
+             MIN(LEAST(
+               COALESCE(pl.expires_at::timestamptz, 'infinity'::timestamptz),
+               COALESCE(pl.display_expires_at, 'infinity'::timestamptz)
+             )) as effective_deadline,
+             MIN(pl.expires_at) FILTER (WHERE pl.expires_at IS NOT NULL) as nearest_dlv,
+             MIN(pl.display_expires_at) FILTER (WHERE pl.display_expires_at IS NOT NULL) as nearest_dde,
+             BOOL_OR(
+               (pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE)
+               AND (pl.display_expires_at IS NULL OR pl.display_expires_at > NOW())
+             ) as has_valid_lot
+           FROM product_lots pl
+           WHERE pl.product_id = p.id AND pl.store_id = pss.store_id
+             AND pl.status = 'active' AND pl.vitrine_qty > 0
+         ) lot_metrics ON true`
+      : '';
+    const lotMetricsCols = params.storeId
+      ? `lot_metrics.effective_deadline, lot_metrics.nearest_dlv, lot_metrics.nearest_dde,
+         (lot_metrics.has_valid_lot IS NOT NULL AND lot_metrics.has_valid_lot = false) as is_expired,`
+      : '';
 
     values.push(params.limit, params.offset);
     const result = await db.query(
@@ -33,10 +64,12 @@ export const productRepository = {
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.created_at, p.updated_at,
               ${stockColumns}
+              ${lotMetricsCols}
               c.name as category_name, c.slug as category_slug,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
        FROM products p
        ${storeStockJoin}
+       ${lotMetricsJoin}
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN users u ON u.id = p.responsible_user_id
        ${where}
@@ -46,6 +79,57 @@ export const productRepository = {
     );
 
     return { rows: result.rows, total };
+  },
+
+  async findTopSelling(params: { storeId?: string; limit: number; days: number }) {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+
+    // Only count sales from the last N days
+    conditions.push(`s.created_at >= NOW() - INTERVAL '1 day' * $${i++}`);
+    values.push(params.days);
+
+    if (params.storeId) {
+      conditions.push(`s.store_id = $${i++}`);
+      values.push(params.storeId);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const storeStockJoin = params.storeId
+      ? `LEFT JOIN product_store_stock pss ON pss.product_id = p.id AND pss.store_id = $${i++}`
+      : '';
+    if (params.storeId) values.push(params.storeId);
+
+    const stockColumns = params.storeId
+      ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
+      : `p.stock_quantity, p.stock_min_threshold,`;
+
+    values.push(params.limit);
+    const result = await db.query(
+      `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
+              p.image_url, p.is_available, p.sale_type,
+              ${stockColumns}
+              c.name as category_name,
+              SUM(si.quantity) as total_sold
+       FROM sale_items si
+       JOIN sales s ON s.id = si.sale_id
+       JOIN products p ON p.id = si.product_id
+       ${storeStockJoin}
+       LEFT JOIN categories c ON c.id = p.category_id
+       ${where}
+       AND p.is_available = true
+       GROUP BY p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
+                p.image_url, p.is_available, p.sale_type, p.stock_quantity, p.stock_min_threshold,
+                ${params.storeId ? 'pss.vitrine_quantity, pss.stock_quantity, pss.stock_min_threshold,' : ''}
+                c.name
+       ORDER BY total_sold DESC
+       LIMIT $${i}`,
+      values
+    );
+
+    return result.rows;
   },
 
   async findById(id: string) {

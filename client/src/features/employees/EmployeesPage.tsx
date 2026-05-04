@@ -47,7 +47,7 @@ export default function EmployeesPage() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-1.5 flex gap-1">
+      <div className="bg-gray-100 rounded-xl p-1 flex gap-1">
         {tabs.map(t => {
           const Icon = t.icon;
           const isActive = tab === t.key;
@@ -55,8 +55,8 @@ export default function EmployeesPage() {
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex-1 justify-center ${
                 isActive
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}>
               <Icon size={16} /> {t.label}
             </button>

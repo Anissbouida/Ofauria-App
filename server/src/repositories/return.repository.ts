@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { adjustProductStock } from './product-stock.helper.js';
+import { adjustVitrineStock } from './product-stock.helper.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 
 export const returnRepository = {
@@ -129,7 +129,8 @@ export const returnRepository = {
 
         exchangeTotal = exchangeItems.reduce((sum, it) => sum + it.subtotal, 0);
 
-        // Generate a sale number for the exchange sale
+        // Generate a sale number for the exchange sale (advisory lock prevents race)
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
         const tz = getUserTimezone();
         const today = getLocalDateString();
         const saleCountResult = await client.query(
@@ -167,6 +168,25 @@ export const returnRepository = {
         }
       }
 
+      // For exchanges, validate exchange product stock BEFORE any stock changes
+      // to avoid asymmetry if an exchange product is out of stock.
+      if (data.type === 'exchange' && data.exchangeProducts?.length) {
+        if (!data.storeId) {
+          throw new Error('storeId requis pour un echange (vitrine strictement par magasin)');
+        }
+        for (const ep of data.exchangeProducts) {
+          const stockCheck = await client.query(
+            `SELECT vitrine_quantity FROM product_store_stock
+             WHERE product_id = $1 AND store_id = $2 FOR UPDATE`,
+            [ep.newProductId, data.storeId]
+          );
+          const available = stockCheck.rows[0] ? parseFloat(stockCheck.rows[0].vitrine_quantity) : 0;
+          if (available < ep.quantity) {
+            throw new Error(`Stock vitrine insuffisant pour le produit d'échange ${ep.newProductId}: disponible ${available}, demandé ${ep.quantity}`);
+          }
+        }
+      }
+
       const returnResult = await client.query(
         `INSERT INTO sale_returns (return_number, original_sale_id, user_id, session_id, type, reason, refund_amount, exchange_sale_id, store_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
@@ -181,26 +201,29 @@ export const returnRepository = {
           [returnResult.rows[0].id, item.saleItemId, item.productId, item.quantity, item.unitPrice, item.subtotal]
         );
 
-        // Restore product stock on return (store-isolated)
-        const stockAfter = await adjustProductStock(client, item.productId, item.quantity, data.storeId);
+        // Restore vitrine stock on return — the returned item goes back on display.
+        if (!data.storeId) {
+          throw new Error('storeId requis pour un retour (vitrine strictement par magasin)');
+        }
+        const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, item.quantity);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
            VALUES ($1, 'return', $2, $3, $4, $5, $6, $7)`,
           [item.productId, item.quantity, stockAfter,
-           `Retour ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId || null]
+           `Retour ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId]
         );
       }
 
-      // For exchanges, decrement stock for new products given
+      // For exchanges, decrement vitrine stock for the new product given to the customer.
+      // Stock availability was already validated above (with FOR UPDATE lock held).
       if (data.type === 'exchange' && data.exchangeProducts?.length) {
         for (const ep of data.exchangeProducts) {
-          // Decrement stock for exchanged product (store-isolated)
-          const stockAfter = await adjustProductStock(client, ep.newProductId, -ep.quantity, data.storeId);
+          const stockAfter = await adjustVitrineStock(client, ep.newProductId, data.storeId!, -ep.quantity);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, 'exchange', $2, $3, $4, $5, $6, $7)`,
             [ep.newProductId, -ep.quantity, stockAfter,
-             `Echange ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId || null]
+             `Echange ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId]
           );
         }
       }
@@ -224,6 +247,8 @@ export const returnRepository = {
 };
 
 async function generateReturnNumber(client: { query: (text: string) => Promise<{ rows: { count: string }[] }> }) {
+  // Advisory lock prevents concurrent returns from generating the same number
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('return_number'))`);
   const tz = getUserTimezone();
   const today = getLocalDateString();
   const result = await client.query(

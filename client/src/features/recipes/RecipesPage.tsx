@@ -1,9 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter } from 'lucide-react';
+import { packagingApi } from '../../api/packaging.api';
+import { contenantsApi } from '../../api/contenants.api';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, Weight, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat } from 'lucide-react';
+import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
+import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
@@ -26,6 +31,19 @@ interface SubRecipeRef {
   quantity: number;
 }
 
+interface RecipeEtape {
+  ordre: number;
+  nom: string;
+  duree_estimee_min: number | null;
+  est_bloquante: boolean;
+  timer_auto: boolean;
+  controle_qualite: boolean;
+  checklist_items: string[];
+  est_repetable: boolean;
+  nb_repetitions: number;
+  responsable_role: string | null;
+}
+
 interface RecipeDetail {
   id: string;
   name: string;
@@ -37,6 +55,14 @@ interface RecipeDetail {
   yield_unit: string;
   total_cost: string;
   is_base: boolean;
+  contenant_id: string | null;
+  contenant_nom: string | null;
+  contenant_type: number | null;
+  contenant_quantite_theorique: string | null;
+  contenant_pertes_fixes: string | null;
+  contenant_unite_lancement: string | null;
+  contenant_poids_kg: string | null;
+  etapes: RecipeEtape[];
   ingredients: RecipeIngredient[];
   sub_recipes: SubRecipeRef[];
 }
@@ -61,8 +87,29 @@ const COMPATIBLE_UNITS: Record<string, string[]> = {
   unit: ['unit'],
 };
 
-type RecipeFilter = 'all' | 'base' | 'product';
+type ActiveTab = 'product' | 'base' | 'contenants';
 type ViewMode = 'grid' | 'list';
+
+function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
+  label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
+  onSort: (key: string) => void; align?: 'left' | 'right' | 'center';
+}) {
+  const active = currentKey === sk;
+  return (
+    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition-colors`}
+      onClick={() => onSort(sk)}>
+      <span className="inline-flex items-center gap-1">
+        {align === 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+        {label}
+        {align !== 'right' && (active
+          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
+          : <ArrowUpDown size={11} className="opacity-30" />)}
+      </span>
+    </th>
+  );
+}
 
 export default function RecipesPage() {
   const queryClient = useQueryClient();
@@ -71,8 +118,15 @@ export default function RecipesPage() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<RecipeFilter>('all');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('contenants');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sortKey, setSortKey] = useState<string>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'total_cost' || key === 'cost_per_unit' || key === 'margin' || key === 'yield_quantity' ? 'desc' : 'asc'); }
+  };
 
   const deleteMutation = useMutation({
     mutationFn: recipesApi.remove,
@@ -82,15 +136,43 @@ export default function RecipesPage() {
   const filtered = recipes.filter((r: Record<string, unknown>) => {
     const s = search.toLowerCase();
     const matchSearch = !s || (r.name as string).toLowerCase().includes(s) || (r.product_name as string || '').toLowerCase().includes(s);
-    const matchFilter = filter === 'all' ||
-      (filter === 'base' && r.is_base === true) ||
-      (filter === 'product' && !r.is_base);
-    return matchSearch && matchFilter;
+    const matchTab = activeTab === 'base' ? r.is_base === true : !r.is_base;
+    return matchSearch && matchTab;
   });
+
+  const sortedFiltered = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'name': cmp = ((a.name as string) || '').localeCompare((b.name as string) || ''); break;
+        case 'is_base': cmp = (a.is_base === b.is_base ? 0 : a.is_base ? -1 : 1); break;
+        case 'contenant_nom': cmp = ((a.contenant_nom as string) || '').localeCompare((b.contenant_nom as string) || ''); break;
+        case 'yield_quantity': cmp = ((a.yield_quantity as number) || 0) - ((b.yield_quantity as number) || 0); break;
+        case 'total_cost': cmp = parseFloat((a.total_cost as string) || '0') - parseFloat((b.total_cost as string) || '0'); break;
+        case 'cost_per_unit': {
+          const cA = parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
+          const cB = parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
+          cmp = cA - cB; break;
+        }
+        case 'margin': {
+          const prA = parseFloat((a.product_price as string) || '0');
+          const cpuA = parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
+          const mA = prA > 0 ? (prA - cpuA) / prA * 100 : 0;
+          const prB = parseFloat((b.product_price as string) || '0');
+          const cpuB = parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
+          const mB = prB > 0 ? (prB - cpuB) / prB * 100 : 0;
+          cmp = mA - mB; break;
+        }
+        default: cmp = 0;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir]);
 
   const baseCount = recipes.filter((r: Record<string, unknown>) => r.is_base === true).length;
   const productCount = recipes.filter((r: Record<string, unknown>) => !r.is_base).length;
-  const avgCost = recipes.length > 0 ? recipes.reduce((s: number, r: Record<string, unknown>) => s + parseFloat(r.total_cost as string || '0'), 0) / recipes.length : 0;
 
   const openEdit = (id: string) => {
     setEditingRecipeId(id);
@@ -108,90 +190,61 @@ export default function RecipesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Recettes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {filter !== 'all' ? `${filtered.length} sur ${recipes.length} recettes` : `${recipes.length} recettes au catalogue`}
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Contenant et Recettes</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{recipes.length} recettes au catalogue</p>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
-          <Plus size={18} /> Nouvelle recette
+        {activeTab !== 'contenants' && (
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
+            <Plus size={18} /> {activeTab === 'base' ? 'Nouvelle preparation' : 'Nouvelle recette'}
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2">
+        <button onClick={() => { setActiveTab('contenants'); setSearch(''); }}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+            activeTab === 'contenants'
+              ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
+          }`}>
+          <Package size={18} /> Contenants
+        </button>
+        <button onClick={() => { setActiveTab('base'); setSearch(''); }}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+            activeTab === 'base'
+              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'
+          }`}>
+          <Layers size={18} /> Preparations de base
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+            activeTab === 'base' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
+          }`}>{baseCount}</span>
+        </button>
+        <button onClick={() => { setActiveTab('product'); setSearch(''); }}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
+            activeTab === 'product'
+              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-green-300 hover:bg-green-50'
+          }`}>
+          <ChefHat size={18} /> Recettes produits finis
+          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+            activeTab === 'product' ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
+          }`}>{productCount}</span>
         </button>
       </div>
 
-      {/* Stats cards — clickable filters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div onClick={() => setFilter(filter === 'all' ? 'all' : 'all')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            filter === 'all' ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200' : 'bg-white border-gray-100 hover:border-blue-200 hover:bg-blue-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-              <BookOpen size={20} className="text-blue-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900">{recipes.length}</div>
-              <div className="text-xs text-gray-500">Total</div>
-            </div>
-          </div>
-        </div>
-        <div onClick={() => setFilter(filter === 'base' ? 'all' : 'base')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            filter === 'base' ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200' : 'bg-white border-gray-100 hover:border-amber-200 hover:bg-amber-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <Layers size={20} className="text-amber-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-amber-700">{baseCount}</div>
-              <div className="text-xs text-gray-500">Prep. de base</div>
-            </div>
-          </div>
-        </div>
-        <div onClick={() => setFilter(filter === 'product' ? 'all' : 'product')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            filter === 'product' ? 'bg-green-50 border-green-300 ring-2 ring-green-200' : 'bg-white border-gray-100 hover:border-green-200 hover:bg-green-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-              <ChefHat size={20} className="text-green-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-700">{productCount}</div>
-              <div className="text-xs text-gray-500">Produits finis</div>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-              <TrendingUp size={20} className="text-purple-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-purple-700">{avgCost.toFixed(1)}</div>
-              <div className="text-xs text-gray-500">Cout moy. (DH)</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters bar */}
+      {activeTab === 'contenants' ? <ContenantsPage /> : <>
+      {/* Search + view toggle */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Rechercher une recette ou un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
+            <input type="text"
+              placeholder={activeTab === 'base' ? 'Rechercher une preparation de base...' : 'Rechercher une recette ou un produit...'}
+              value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-colors" />
           </div>
-          {filter !== 'all' && (
-            <button onClick={() => setFilter('all')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
-                filter === 'base' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'
-              }`}>
-              {filter === 'base' ? 'Prep. de base' : 'Produits finis'}
-              <X size={14} />
-            </button>
-          )}
           <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button onClick={() => setViewMode('grid')}
               className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -213,7 +266,7 @@ export default function RecipesPage() {
       ) : viewMode === 'grid' ? (
         /* ═══ Grid View ═══ */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
-          {filtered.map((r: Record<string, unknown>) => {
+          {sortedFiltered.map((r: Record<string, unknown>) => {
             const totalCost = parseFloat(r.total_cost as string || '0');
             const yieldQty = r.yield_quantity as number || 1;
             const costPerUnit = totalCost / yieldQty;
@@ -255,6 +308,12 @@ export default function RecipesPage() {
                       <div className="text-sm font-bold text-amber-700">{totalCost.toFixed(2)} DH</div>
                     </div>
                   </div>
+                  {r.contenant_nom && (
+                    <div className="flex items-center gap-1.5 px-1">
+                      <Box size={12} className="text-blue-400" />
+                      <span className="text-xs text-blue-600 font-medium truncate">{r.contenant_nom as string}</span>
+                    </div>
+                  )}
                   {!r.is_base && price > 0 && (
                     <div className="flex items-center justify-between px-1">
                       <span className="text-xs text-gray-400">Marge</span>
@@ -291,18 +350,18 @@ export default function RecipesPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Recette</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Produit</th>
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rendement</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cout total</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cout/u.</th>
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Marge</th>
+                <SortHeader label="Recette" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Contenant" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                <SortHeader label="Cout total" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Cout/u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Marge" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((r: Record<string, unknown>) => {
+              {sortedFiltered.map((r: Record<string, unknown>) => {
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 const costPerUnit = totalCost / yieldQty;
@@ -327,7 +386,9 @@ export default function RecipesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-600">
-                      {r.is_base ? <span className="text-gray-300">—</span> : (r.product_name as string || '—')}
+                      {r.contenant_nom ? (
+                        <span className="flex items-center gap-1.5"><Box size={13} className="text-blue-400" /> {r.contenant_nom as string}</span>
+                      ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-5 py-3 text-center text-sm font-semibold text-gray-700">{yieldQty} {r.yield_unit as string || 'u.'}</td>
                     <td className="px-5 py-3 text-right">
@@ -385,6 +446,7 @@ export default function RecipesPage() {
       {showForm && (
         <RecipeFormModal
           recipeId={editingRecipeId}
+          defaultIsBase={activeTab === 'base'}
           onClose={() => { setShowForm(false); setEditingRecipeId(null); }}
           onSaved={() => {
             setShowForm(false);
@@ -393,6 +455,7 @@ export default function RecipesPage() {
           }}
         />
       )}
+      </>}
     </div>
   );
 }
@@ -491,7 +554,11 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               </div>
               <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
                 <DollarSign size={16} className="mx-auto text-blue-600 mb-1" />
-                <p className="text-[11px] text-gray-400 uppercase tracking-wider">Cout/unite</p>
+                <p className="text-[11px] text-gray-400 uppercase tracking-wider">
+                  {recipe.contenant_unite_lancement
+                    ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire
+                    : 'Cout/unite'}
+                </p>
                 <p className="font-bold text-lg text-gray-900">{costPerUnit.toFixed(2)} <span className="text-xs font-normal">DH</span></p>
               </div>
               {!recipe.is_base && (
@@ -503,6 +570,44 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               )}
             </div>
           )}
+
+          {/* Contenant info */}
+          {recipe?.contenant_nom && (() => {
+            const cMode = getModeCalcul(recipe.contenant_unite_lancement || 'unit');
+            const cLabels = MODE_LABELS[cMode];
+            const qteTheo = parseFloat(recipe.contenant_quantite_theorique || '0');
+            const pertes = parseFloat(recipe.contenant_pertes_fixes || '0');
+            const net = qteTheo - pertes;
+            return (
+              <div className="mt-4 bg-white/80 backdrop-blur rounded-xl p-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Box size={16} className="text-blue-500" />
+                  <span className="font-semibold text-gray-900 text-sm">{recipe.contenant_nom}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    cMode === 'poids' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                  }`}>{cMode === 'poids' ? 'POIDS' : 'PIECES'}</span>
+                </div>
+                <div className="flex items-center gap-4 mt-2 text-xs ml-7">
+                  <div>
+                    <span className="text-gray-400">{cLabels.quantiteTheorique}: </span>
+                    <span className="font-bold text-blue-700">{qteTheo}</span>
+                  </div>
+                  {pertes > 0 && <div>
+                    <span className="text-gray-400">{cLabels.pertesFixes}: </span>
+                    <span className="font-bold text-red-500">-{pertes}</span>
+                  </div>}
+                  <div>
+                    <span className="text-gray-400">{cLabels.netCible}: </span>
+                    <span className="font-bold text-green-600">{net}</span>
+                  </div>
+                  {cMode === 'pieces' && recipe.contenant_poids_kg && <div>
+                    <span className="text-gray-400">Poids: </span>
+                    <span className="font-bold text-blue-600">{recipe.contenant_poids_kg} kg</span>
+                  </div>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Body */}
@@ -650,6 +755,66 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 </div>
               )}
 
+              {/* Étapes de production */}
+              {recipe.etapes && recipe.etapes.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
+                    <ListChecks size={18} className="text-indigo-600" /> Etapes de production
+                    <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{recipe.etapes.length}</span>
+                  </h3>
+                  <div className="space-y-2">
+                    {recipe.etapes.sort((a, b) => a.ordre - b.ordre).map((etape, idx) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-4">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">
+                          {etape.ordre}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-gray-900">{etape.nom}</span>
+                            {etape.est_bloquante && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">BLOQUANTE</span>
+                            )}
+                            {etape.timer_auto && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-0.5">
+                                <Timer size={10} /> AUTO
+                              </span>
+                            )}
+                            {etape.controle_qualite && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 flex items-center gap-0.5">
+                                <ShieldCheck size={10} /> QC
+                              </span>
+                            )}
+                            {etape.est_repetable && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 flex items-center gap-0.5">
+                                <Repeat size={10} /> x{etape.nb_repetitions}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                            {etape.duree_estimee_min && (
+                              <span className="flex items-center gap-1"><Clock size={12} /> {etape.duree_estimee_min} min</span>
+                            )}
+                            {etape.responsable_role && (
+                              <span>Role: {etape.responsable_role}</span>
+                            )}
+                          </div>
+                          {etape.checklist_items && etape.checklist_items.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {etape.checklist_items.map((item, ci) => (
+                                <div key={ci} className="flex items-center gap-2 text-xs text-gray-500">
+                                  <div className="w-3.5 h-3.5 rounded border border-gray-300 flex-shrink-0" />
+                                  {item}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Production summary */}
               <div className="bg-green-50 border border-green-200 rounded-xl p-5">
                 <h3 className="font-semibold text-sm text-green-800 mb-3">Resume de production</h3>
@@ -733,12 +898,187 @@ interface FormSubRecipe {
   quantity: string;
 }
 
-type FormTab = 'info' | 'composition' | 'instructions';
+interface FormEtape {
+  ordre: number;
+  nom: string;
+  duree_estimee_min: string;
+  est_bloquante: boolean;
+  timer_auto: boolean;
+  controle_qualite: boolean;
+  checklist_items: string[];
+  est_repetable: boolean;
+  nb_repetitions: string;
+  responsable_role: string;
+}
 
-function RecipeFormModal({ recipeId, onClose, onSaved }: {
+type FormTab = 'info' | 'composition' | 'etapes' | 'instructions';
+
+/**
+ * Champ de selection avec recherche automatique.
+ * Remplace les <select> natifs pour faciliter la saisie quand la liste est longue.
+ * - Clic/focus : ouvre le menu avec input de recherche auto-focus
+ * - Tape pour filtrer (insensible a la casse et aux accents)
+ * - Fleches haut/bas : navigation ; Entree : selection ; Echap : fermeture
+ * - Clic exterieur : fermeture
+ */
+function SearchableSelect({
+  items, value, onChange, placeholder = '-- Choisir --', renderHint, className = '',
+}: {
+  items: Record<string, unknown>[];
+  value: string;
+  onChange: (id: string, item?: Record<string, unknown>) => void;
+  placeholder?: string;
+  renderHint?: (item: Record<string, unknown>) => string | null;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const selected = items.find(i => i.id === value);
+
+  const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const filtered = useMemo(() => {
+    if (!query.trim()) return items;
+    const q = normalize(query);
+    return items.filter(i => normalize(String(i.name || '')).includes(q));
+  }, [items, query]);
+
+  // Compute popup position relative to button, with flip-up when near bottom.
+  const recomputePosition = () => {
+    const btn = buttonRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const popupHeight = 320; // max popup height (approx)
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const flipUp = spaceBelow < popupHeight && rect.top > popupHeight;
+    const width = Math.max(rect.width, 320);
+    setPopupStyle({
+      position: 'fixed',
+      left: rect.left,
+      width,
+      top: flipUp ? undefined : rect.bottom + 4,
+      bottom: flipUp ? window.innerHeight - rect.top + 4 : undefined,
+      maxHeight: popupHeight,
+      zIndex: 100,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePosition();
+    const onResize = () => recomputePosition();
+    const onScroll = () => recomputePosition();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, true); // capture: catch modal scroll too
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setHighlight(0);
+      setTimeout(() => inputRef.current?.focus(), 10);
+    }
+  }, [open]);
+
+  useEffect(() => { setHighlight(0); }, [query]);
+
+  // Keep highlighted item in view when navigating with keyboard
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.children[highlight] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlight, open]);
+
+  const pick = (item: Record<string, unknown>) => {
+    onChange(item.id as string, item);
+    setOpen(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => Math.min(h + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[highlight]) pick(filtered[highlight]); }
+    else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); }
+    else if (e.key === 'Tab') { setOpen(false); }
+  };
+
+  const popup = open ? (
+    <div ref={popupRef} style={popupStyle}
+      className="bg-white border border-gray-200 rounded-lg shadow-xl flex flex-col overflow-hidden">
+      <div className="p-2 border-b border-gray-100 bg-gray-50 shrink-0">
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
+            placeholder="Rechercher..." autoComplete="off"
+            className="w-full pl-8 pr-2 py-1.5 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+      </div>
+      <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
+        {filtered.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-gray-400">Aucun resultat</div>
+        ) : filtered.map((item, i) => {
+          const hint = renderHint ? renderHint(item) : null;
+          const isActive = i === highlight;
+          const isSelected = item.id === value;
+          return (
+            <button key={item.id as string} type="button"
+              onMouseEnter={() => setHighlight(i)}
+              onClick={() => pick(item)}
+              className={`w-full px-3 py-2 text-left flex items-center justify-between gap-3 text-sm transition-colors ${
+                isActive ? 'bg-amber-50' : 'bg-white'
+              } ${isSelected ? 'font-semibold text-amber-700' : 'text-gray-800'}`}>
+              <span className="truncate flex-1">{item.name as string}</span>
+              {hint && <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">{hint}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div className={`relative ${className}`}>
+      <button ref={buttonRef} type="button" onClick={() => setOpen(o => !o)}
+        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-amber-500 flex items-center justify-between gap-2 ${
+          open ? 'border-amber-400 ring-2 ring-amber-500' : 'border-gray-200 hover:border-gray-300'
+        }`}>
+        <span className={`truncate ${selected ? 'text-gray-900' : 'text-gray-400'}`}>
+          {selected ? (selected.name as string) : placeholder}
+        </span>
+        <ChevronRight size={14} className={`text-gray-400 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {popup && createPortal(popup, document.body)}
+    </div>
+  );
+}
+
+function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: {
   recipeId: string | null;
   onClose: () => void;
   onSaved: () => void;
+  defaultIsBase?: boolean;
 }) {
   const isEdit = !!recipeId;
   const [activeTab, setActiveTab] = useState<FormTab>('info');
@@ -759,9 +1099,20 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
     queryFn: ingredientsApi.list,
   });
 
+  // Catalogue emballages — modele dedie, separe des ingredients (pas de DLC, pas de FEFO).
+  const { data: allPackaging = [] } = useQuery({
+    queryKey: ['packaging-items-list'],
+    queryFn: () => packagingApi.list(),
+  });
+
   const { data: baseRecipes = [] } = useQuery({
     queryKey: ['base-recipes'],
     queryFn: recipesApi.listBase,
+  });
+
+  const { data: allContenants = [] } = useQuery({
+    queryKey: ['contenants-active'],
+    queryFn: () => contenantsApi.list().then((r: Record<string, unknown>) => (r.data || r) as Record<string, unknown>[]),
   });
 
   const { entries: yieldUnits } = useReferentiel('yield_units');
@@ -769,18 +1120,27 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
   const [initialized, setInitialized] = useState(false);
   const [name, setName] = useState('');
   const [productId, setProductId] = useState('');
+  const [contenantId, setContenantId] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('1');
   const [yieldUnit, setYieldUnit] = useState('unit');
+  const [marginMultiplier, setMarginMultiplier] = useState('3');
+  const [salePrice, setSalePrice] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [isBase, setIsBase] = useState(false);
+  const [isBase, setIsBase] = useState(defaultIsBase);
   const [formIngredients, setFormIngredients] = useState<FormIngredient[]>([{ ingredientId: '', quantity: '', unit: '' }]);
+  // Phase Emballages : state separe pointant vers packaging_items
+  const [formPackaging, setFormPackaging] = useState<{ packagingId: string; quantity: string; unit: string }[]>([]);
   const [formSubRecipes, setFormSubRecipes] = useState<FormSubRecipe[]>([]);
+  const [formEtapes, setFormEtapes] = useState<FormEtape[]>([]);
 
   if (isEdit && existingRecipe && !initialized) {
     setName(existingRecipe.name);
     setProductId(existingRecipe.product_id || '');
+    setContenantId(existingRecipe.contenant_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
     setYieldUnit(existingRecipe.yield_unit || 'unit');
+    setMarginMultiplier(String(existingRecipe.margin_multiplier ?? 3));
+    setSalePrice(existingRecipe.product_price ? String(existingRecipe.product_price) : '');
     setInstructions(existingRecipe.instructions || '');
     setIsBase(existingRecipe.is_base || false);
     setFormIngredients(
@@ -793,19 +1153,48 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
         ? existingRecipe.sub_recipes.map(sr => ({ subRecipeId: sr.sub_recipe_id, quantity: String(sr.quantity) }))
         : []
     );
+    setFormPackaging(
+      Array.isArray((existingRecipe as Record<string, unknown>).packaging) && ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).length > 0
+        ? ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).map(p => ({
+            packagingId: p.packaging_id as string,
+            quantity: String(p.quantity),
+            unit: (p.unit as string) || (p.base_unit as string) || 'piece',
+          }))
+        : []
+    );
+    setFormEtapes(
+      existingRecipe.etapes && existingRecipe.etapes.length > 0
+        ? existingRecipe.etapes.map(e => ({
+            ordre: e.ordre, nom: e.nom, duree_estimee_min: e.duree_estimee_min ? String(e.duree_estimee_min) : '',
+            est_bloquante: e.est_bloquante, timer_auto: e.timer_auto, controle_qualite: e.controle_qualite,
+            checklist_items: e.checklist_items || [], est_repetable: e.est_repetable,
+            nb_repetitions: String(e.nb_repetitions || 1), responsable_role: e.responsable_role || '',
+          }))
+        : []
+    );
     setInitialized(true);
   }
+
+  const extractError = (err: unknown): string => {
+    const e = err as { response?: { data?: { error?: { message?: string; details?: Record<string, string[]> } } }; message?: string };
+    const details = e?.response?.data?.error?.details;
+    if (details) {
+      const first = Object.entries(details)[0];
+      if (first) return `${first[0]}: ${first[1].join(', ')}`;
+    }
+    return e?.response?.data?.error?.message || e?.message || 'Erreur inconnue';
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => recipesApi.create(data),
     onSuccess: () => { notify.success('Recette creee'); onSaved(); },
-    onError: () => notify.error('Erreur lors de la creation'),
+    onError: (err) => notify.error(`Erreur lors de la creation : ${extractError(err)}`),
   });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => recipesApi.update(recipeId!, data),
     onSuccess: () => { notify.success('Recette mise a jour'); onSaved(); },
-    onError: () => notify.error('Erreur lors de la mise a jour'),
+    onError: (err) => notify.error(`Erreur lors de la mise a jour : ${extractError(err)}`),
   });
 
   const addIngredientRow = () => setFormIngredients([...formIngredients, { ingredientId: '', quantity: '', unit: '' }]);
@@ -816,17 +1205,47 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
   const removeSubRecipeRow = (idx: number) => setFormSubRecipes(formSubRecipes.filter((_, i) => i !== idx));
   const updateSubRecipeRow = (idx: number, field: keyof FormSubRecipe, value: string) => setFormSubRecipes(formSubRecipes.map((row, i) => i === idx ? { ...row, [field]: value } : row));
 
+  const addEtapeRow = () => setFormEtapes([...formEtapes, {
+    ordre: formEtapes.length + 1, nom: '', duree_estimee_min: '', est_bloquante: true,
+    timer_auto: false, controle_qualite: false, checklist_items: [], est_repetable: false,
+    nb_repetitions: '1', responsable_role: '',
+  }]);
+  const removeEtapeRow = (idx: number) => {
+    const updated = formEtapes.filter((_, i) => i !== idx).map((e, i) => ({ ...e, ordre: i + 1 }));
+    setFormEtapes(updated);
+  };
+  const updateEtapeRow = (idx: number, field: string, value: unknown) => setFormEtapes(formEtapes.map((row, i) => i === idx ? { ...row, [field]: value } : row));
+  const moveEtape = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= formEtapes.length) return;
+    const arr = [...formEtapes];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    setFormEtapes(arr.map((e, i) => ({ ...e, ordre: i + 1 })));
+  };
+
   const availableBaseRecipes = baseRecipes.filter((br: Record<string, unknown>) => br.id !== recipeId);
 
-  const ingredientCost = formIngredients.reduce((sum, row) => {
-    if (!row.ingredientId || !row.quantity) return sum;
+  // Cout des ingredients alimentaires (formIngredients pointe sur ingredients table)
+  const computeIngRowCost = (row: FormIngredient): number => {
+    if (!row.ingredientId || !row.quantity) return 0;
     const ing = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId);
-    if (!ing) return sum;
+    if (!ing) return 0;
     const ingBaseUnit = ing.unit as string || 'unit';
     const recipeUnit = row.unit || ingBaseUnit;
     const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
-    return sum + parseFloat(row.quantity) * parseFloat(ing.unit_cost as string || '0') * factor;
-  }, 0);
+    return parseFloat(row.quantity) * parseFloat(ing.unit_cost as string || '0') * factor;
+  };
+  const ingredientCost = formIngredients.reduce((sum, row) => sum + computeIngRowCost(row), 0);
+  const foodCost = ingredientCost;  // Tous les ingredients sont alimentaires maintenant (les emballages sont separes)
+
+  // Cout emballages (formPackaging pointe sur packaging_items table)
+  const computePkgRowCost = (row: { packagingId: string; quantity: string }): number => {
+    if (!row.packagingId || !row.quantity) return 0;
+    const pkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+    if (!pkg) return 0;
+    return parseFloat(row.quantity) * parseFloat(pkg.unit_cost as string || '0');
+  };
+  const packagingCost = formPackaging.reduce((sum, row) => sum + computePkgRowCost(row), 0);
 
   const subRecipeCost = formSubRecipes.reduce((sum, row) => {
     if (!row.subRecipeId || !row.quantity) return sum;
@@ -836,7 +1255,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
     return sum + costPerUnit * parseFloat(row.quantity);
   }, 0);
 
-  const liveCost = ingredientCost + subRecipeCost;
+  const liveCost = ingredientCost + subRecipeCost + packagingCost;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -853,15 +1272,39 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
       return;
     }
 
+    const validEtapes = formEtapes
+      .filter(e => e.nom.trim())
+      .map(e => ({
+        ordre: e.ordre,
+        nom: e.nom.trim(),
+        duree_estimee_min: e.duree_estimee_min ? parseFloat(e.duree_estimee_min) : null,
+        est_bloquante: e.est_bloquante,
+        timer_auto: e.timer_auto,
+        controle_qualite: e.controle_qualite,
+        checklist_items: e.checklist_items.filter(c => c.trim()),
+        est_repetable: e.est_repetable,
+        nb_repetitions: parseInt(e.nb_repetitions) || 1,
+        responsable_role: e.responsable_role || null,
+      }));
+
+    // Packaging valides : on filtre les lignes vides
+    const validPackaging = formPackaging
+      .filter(row => row.packagingId && row.quantity && parseFloat(row.quantity) > 0)
+      .map(row => ({ packagingId: row.packagingId, quantity: parseFloat(row.quantity), unit: row.unit || 'piece' }));
+
     const data: Record<string, unknown> = {
       name,
-      productId: isBase ? null : productId,
+      productId: isBase ? null : (productId || null),
+      contenantId: contenantId || null,
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
+      marginMultiplier: parseFloat(marginMultiplier) || 3,
       instructions,
       isBase,
+      etapes: validEtapes,
       ingredients: validIngredients,
       subRecipes: validSubRecipes,
+      packaging: validPackaging,
     };
 
     if (isEdit) updateMutation.mutate(data);
@@ -873,6 +1316,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
   const tabs: { key: FormTab; label: string; icon: React.ReactNode }[] = [
     { key: 'info', label: 'Informations', icon: <ChefHat size={16} /> },
     { key: 'composition', label: 'Composition', icon: <Scale size={16} /> },
+    { key: 'etapes', label: `Etapes${formEtapes.length > 0 ? ` (${formEtapes.length})` : ''}`, icon: <ListChecks size={16} /> },
     { key: 'instructions', label: 'Instructions', icon: <BookOpen size={16} /> },
   ];
 
@@ -886,7 +1330,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
               {isBase ? <Layers size={22} className="text-amber-600" /> : <ChefHat size={22} className="text-amber-700" />}
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-900">{isEdit ? 'Modifier la recette' : 'Nouvelle recette'}</h2>
+              <h2 className="text-lg font-bold text-gray-900">{isEdit ? (isBase ? 'Modifier la preparation' : 'Modifier la recette') : (defaultIsBase ? 'Nouvelle preparation de base' : 'Nouvelle recette')}</h2>
               {name && <p className="text-xs text-gray-400 mt-0.5">{name}</p>}
             </div>
           </div>
@@ -917,45 +1361,127 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
             {/* ═══ Tab: Info ═══ */}
             {activeTab === 'info' && (
               <>
-                {/* Base toggle */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
+                {/* Base toggle — hidden when defaultIsBase forces base mode */}
+                {defaultIsBase ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
                         <Layers size={18} className="text-amber-600" />
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-gray-900">Preparation de base</span>
-                        <p className="text-xs text-gray-400">Reutilisable dans d'autres recettes (pate, creme...)</p>
+                        <span className="text-sm font-semibold text-amber-800">Preparation de base</span>
+                        <p className="text-xs text-amber-600">Reutilisable dans d'autres recettes (pate, creme...)</p>
                       </div>
                     </div>
-                    <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${isBase ? 'bg-amber-500' : 'bg-gray-300'}`}
-                      onClick={() => setIsBase(!isBase)}>
-                      <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
-                        style={{ transform: isBase ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                  </div>
+                ) : (
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                          <Layers size={18} className="text-amber-600" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-semibold text-gray-900">Preparation de base</span>
+                          <p className="text-xs text-gray-400">Reutilisable dans d'autres recettes (pate, creme...)</p>
+                        </div>
+                      </div>
+                      <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${isBase ? 'bg-amber-500' : 'bg-gray-300'}`}
+                        onClick={() => setIsBase(!isBase)}>
+                        <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                          style={{ transform: isBase ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nom de la recette</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">{isBase ? 'Nom de la preparation' : 'Nom de la recette'}</label>
                   <input className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white font-medium"
                     value={name} onChange={(e) => setName(e.target.value)}
                     placeholder={isBase ? 'ex: Pate a croissant' : 'ex: Recette Croissant'} required />
                 </div>
 
-                {!isBase && (
+                {/* Produit associe — visible uniquement en edition */}
+                {isEdit && !isBase && productId && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Produit associe</label>
-                    <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={productId} onChange={(e) => setProductId(e.target.value)} required={!isBase}>
-                      <option value="">-- Choisir un produit --</option>
-                      {allProducts.map((p: Record<string, unknown>) => (
-                        <option key={p.id as string} value={p.id as string}>{p.name as string}</option>
-                      ))}
-                    </select>
+                    <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
+                      {allProducts.find((p: Record<string, unknown>) => p.id === productId)?.name as string || productId}
+                    </div>
                   </div>
                 )}
+
+                {/* Contenant — obligatoire */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    <span className="flex items-center gap-2"><Box size={15} className="text-blue-500" /> Contenant</span>
+                  </label>
+                  <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                    value={contenantId} onChange={(e) => {
+                      const cId = e.target.value;
+                      setContenantId(cId);
+                      if (cId) {
+                        const ct = allContenants.find((c: Record<string, unknown>) => c.id === cId) as Record<string, unknown> | undefined;
+                        if (ct) {
+                          const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
+                          const pertes = parseFloat(ct.pertes_fixes as string || '0');
+                          const net = qteTheo - pertes;
+                          setYieldQuantity(String(net > 0 ? net : qteTheo));
+                          setYieldUnit(ct.unite_lancement as string || 'unit');
+                        }
+                      }
+                    }} required>
+                    <option value="">-- Choisir un contenant --</option>
+                    {allContenants.map((c: Record<string, unknown>) => {
+                      const cMode = getModeCalcul(c.unite_lancement as string || 'unit');
+                      const cLabels = MODE_LABELS[cMode];
+                      return (
+                        <option key={c.id as string} value={c.id as string}>
+                          [{cMode === 'poids' ? 'KG' : 'PCS'}] {c.nom as string} — {c.quantite_theorique as string} {cLabels.uniteRendement}{cMode === 'pieces' && c.poids_kg ? ` (${c.poids_kg} kg)` : ''} (pertes: {c.pertes_fixes as string})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {contenantId && (() => {
+                    const ct = allContenants.find((c: Record<string, unknown>) => c.id === contenantId) as Record<string, unknown> | undefined;
+                    if (!ct) return null;
+                    const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
+                    const pertes = parseFloat(ct.pertes_fixes as string || '0');
+                    const net = qteTheo - pertes;
+                    const ctMode = getModeCalcul(ct.unite_lancement as string || 'unit');
+                    const ctLabels = MODE_LABELS[ctMode];
+                    return (
+                      <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                ctMode === 'poids' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                              }`}>{ctMode === 'poids' ? 'POIDS' : 'PIECES'}</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs">
+                              <div className="text-center">
+                                <span className="block text-blue-400">{ctLabels.quantiteTheorique}</span>
+                                <span className="font-bold text-blue-700">{qteTheo}</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="block text-blue-400">{ctLabels.pertesFixes}</span>
+                                <span className="font-bold text-red-500">-{pertes}</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="block text-blue-400">{ctLabels.netCible}</span>
+                                <span className="font-bold text-green-600">{net} {ctLabels.uniteRendement}</span>
+                              </div>
+                              {ctMode === 'pieces' && ct.poids_kg && (
+                                <div className="text-center">
+                                  <span className="block text-blue-400">Poids matiere</span>
+                                  <span className="font-bold text-blue-700">{ct.poids_kg as string} kg</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                  })()}
+                </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement</label>
@@ -971,8 +1497,62 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                       ))}
                     </select>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Ex: 5 kg pour une pate, 3 moules pour une genoise</p>
+                  <p className="text-xs text-gray-400 mt-1">{contenantId ? 'Pre-rempli depuis le contenant — ajustable si besoin' : 'Ex: 5 kg pour une pate, 3 moules pour une genoise'}</p>
                 </div>
+
+                {!isBase && (() => {
+                  const yieldQ = parseFloat(yieldQuantity) || 1;
+                  const costPerUnit = yieldQ > 0 ? liveCost / yieldQ : 0;
+                  const handleMultiplierChange = (val: string) => {
+                    setMarginMultiplier(val);
+                    const m = parseFloat(val);
+                    if (!isNaN(m) && costPerUnit > 0) setSalePrice((costPerUnit * m).toFixed(2));
+                  };
+                  const handlePriceChange = (val: string) => {
+                    setSalePrice(val);
+                    const p = parseFloat(val);
+                    if (!isNaN(p) && costPerUnit > 0) setMarginMultiplier((p / costPerUnit).toFixed(2));
+                  };
+                  return (
+                    <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-3">
+                      <div className="text-sm font-semibold text-gray-700">Tarification</div>
+
+                      <div className="bg-white rounded-lg px-3 py-2 border border-amber-100">
+                        <div className="text-xs text-gray-500">Coût / pièce (calculé)</div>
+                        <div className="font-bold text-gray-800">{costPerUnit.toFixed(2)} DH</div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Multiplicateur de marge</label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400">×</span>
+                            <input
+                              type="number" min={0.01} step="0.01"
+                              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                              value={marginMultiplier}
+                              onChange={(e) => handleMultiplierChange(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente (DH)</label>
+                          <input
+                            type="number" min={0} step="0.01"
+                            className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold text-amber-900"
+                            value={salePrice}
+                            onChange={(e) => handlePriceChange(e.target.value)}
+                            placeholder={(costPerUnit * (parseFloat(marginMultiplier) || 0)).toFixed(2)}
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-gray-500">
+                        Saisis l'un OU l'autre — l'autre se recalcule. Le prix du produit lié sera mis à jour à l'enregistrement.
+                      </p>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
@@ -1009,13 +1589,13 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                               : 0;
                             return (
                               <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
-                                <select className="w-full px-3 py-2 bg-gray-50 border border-amber-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                                  value={row.subRecipeId} onChange={(e) => updateSubRecipeRow(idx, 'subRecipeId', e.target.value)}>
-                                  <option value="">-- Preparation --</option>
-                                  {availableBaseRecipes.map((r: Record<string, unknown>) => (
-                                    <option key={r.id as string} value={r.id as string}>{r.name as string}</option>
-                                  ))}
-                                </select>
+                                <SearchableSelect
+                                  items={availableBaseRecipes as Record<string, unknown>[]}
+                                  value={row.subRecipeId}
+                                  onChange={(id) => updateSubRecipeRow(idx, 'subRecipeId', id)}
+                                  placeholder="-- Preparation --"
+                                  renderHint={(r) => r.yield_quantity ? `${r.yield_quantity} ${r.yield_unit || 'u.'}` : null}
+                                />
                                 <input type="number" step="0.01" min="0"
                                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                                   value={row.quantity} onChange={(e) => updateSubRecipeRow(idx, 'quantity', e.target.value)} placeholder="0" />
@@ -1035,18 +1615,18 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                   </div>
                 )}
 
-                {/* Ingredients */}
+                {/* Section : Ingredients alimentaires (table ingredients) */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Scale size={16} className="text-amber-700" /> Ingredients
+                      <Scale size={16} className="text-amber-700" /> Ingredients alimentaires
+                      {foodCost > 0 && <span className="text-xs text-gray-400 font-normal ml-1">{foodCost.toFixed(2)} DH</span>}
                     </h3>
                     <button type="button" onClick={addIngredientRow}
                       className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 font-medium px-3 py-1.5 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors">
                       <PlusCircle size={14} /> Ajouter
                     </button>
                   </div>
-
                   <div className="border border-gray-200 rounded-xl overflow-hidden">
                     <div className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 text-xs font-semibold text-gray-500 px-4 py-2.5 bg-gray-50 uppercase tracking-wider">
                       <span>Ingredient</span>
@@ -1065,19 +1645,24 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                         const rowCost = selectedIng && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedIng.unit_cost as string || '0') * factor : 0;
                         return (
                           <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
-                            <select className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-                              value={row.ingredientId} onChange={(e) => {
-                                const newIng = allIngredients.find((i: Record<string, unknown>) => i.id === e.target.value) as Record<string, unknown> | undefined;
+                            <SearchableSelect
+                              items={allIngredients as Record<string, unknown>[]}
+                              value={row.ingredientId}
+                              onChange={(id, item) => {
                                 const updated = [...formIngredients];
-                                updated[idx] = { ...updated[idx], ingredientId: e.target.value, unit: newIng ? newIng.unit as string : '' };
+                                updated[idx] = { ...updated[idx], ingredientId: id, unit: item ? (item.unit as string) : '' };
                                 setFormIngredients(updated);
-                              }}>
-                              <option value="">-- Ingredient --</option>
-                              {allIngredients.map((i: Record<string, unknown>) => (
-                                <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
-                              ))}
-                            </select>
-                            <input type="number" step="0.01" min="0"
+                              }}
+                              placeholder="-- Ingredient --"
+                              renderHint={(i) => {
+                                const cost = parseFloat(i.unit_cost as string || '0');
+                                const parts: string[] = [];
+                                if (i.unit) parts.push(i.unit as string);
+                                if (cost > 0) parts.push(`${cost.toFixed(2)} DH/${i.unit as string}`);
+                                return parts.length ? parts.join(' · ') : null;
+                              }}
+                            />
+                            <input type="number" step="any" min="0"
                               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-semibold"
                               value={row.quantity} onChange={(e) => updateIngredientRow(idx, 'quantity', e.target.value)} placeholder="0" />
                             <select className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 font-medium"
@@ -1098,7 +1683,79 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                   </div>
                 </div>
 
-                {/* Live cost */}
+                {/* Section : Emballages (table packaging_items dediee, sans DLC ni FEFO) */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <Package size={16} className="text-blue-700" /> Emballages
+                      {packagingCost > 0 && <span className="text-xs text-gray-400 font-normal ml-1">{packagingCost.toFixed(2)} DH</span>}
+                    </h3>
+                    <button type="button" onClick={() => setFormPackaging([...formPackaging, { packagingId: '', quantity: '', unit: 'piece' }])}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium px-3 py-1.5 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                      <PlusCircle size={14} /> Ajouter
+                    </button>
+                  </div>
+                  <div className="border border-blue-100 rounded-xl overflow-hidden">
+                    <div className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 text-xs font-semibold text-blue-700 px-4 py-2.5 bg-blue-50/50 uppercase tracking-wider">
+                      <span>Emballage</span>
+                      <span>Quantite</span>
+                      <span>Unite</span>
+                      <span>Cout</span>
+                      <span></span>
+                    </div>
+                    <div className="divide-y divide-blue-50">
+                      {formPackaging.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-gray-400 italic">
+                          Aucun emballage — clique sur Ajouter (caissette, boite, etiquette, film...)
+                        </div>
+                      ) : (
+                        formPackaging.map((row, idx) => {
+                          const selectedPkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+                          const baseUnit = (selectedPkg?.unit as string) || 'piece';
+                          const rowCost = selectedPkg && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedPkg.unit_cost as string || '0') : 0;
+                          return (
+                            <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
+                              <SearchableSelect
+                                items={allPackaging as Record<string, unknown>[]}
+                                value={row.packagingId}
+                                onChange={(id, item) => {
+                                  const updated = [...formPackaging];
+                                  updated[idx] = { ...updated[idx], packagingId: id, unit: item ? (item.unit as string) : 'piece' };
+                                  setFormPackaging(updated);
+                                }}
+                                placeholder="-- Emballage --"
+                                renderHint={(p) => {
+                                  const cost = parseFloat(p.unit_cost as string || '0');
+                                  const parts: string[] = [];
+                                  if (p.format) parts.push(p.format as string);
+                                  if (cost > 0) parts.push(`${cost.toFixed(2)} DH/${p.unit as string}`);
+                                  return parts.length ? parts.join(' · ') : null;
+                                }}
+                              />
+                              <input type="number" step="any" min="0"
+                                className="w-full px-3 py-2 bg-blue-50/30 border border-blue-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 font-semibold"
+                                value={row.quantity}
+                                onChange={(e) => {
+                                  const updated = [...formPackaging];
+                                  updated[idx] = { ...updated[idx], quantity: e.target.value };
+                                  setFormPackaging(updated);
+                                }}
+                                placeholder="0" />
+                              <span className="text-xs text-gray-500 text-center font-medium">{baseUnit}</span>
+                              <span className="text-xs font-bold text-blue-700 text-center">{rowCost > 0 ? `${rowCost.toFixed(2)}` : '—'}</span>
+                              <button type="button" onClick={() => setFormPackaging(formPackaging.filter((_, i) => i !== idx))}
+                                className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 size={14} className="text-red-400" />
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live cost — split alimentaires / emballages / preparations de base */}
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-2">
                   {subRecipeCost > 0 && (
                     <div className="flex justify-between items-center text-sm">
@@ -1106,10 +1763,20 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                       <span className="font-semibold text-amber-700">{subRecipeCost.toFixed(2)} DH</span>
                     </div>
                   )}
-                  {ingredientCost > 0 && (
+                  {foodCost > 0 && (
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">Ingredients</span>
-                      <span className="font-semibold text-gray-700">{ingredientCost.toFixed(2)} DH</span>
+                      <span className="text-gray-600 flex items-center gap-1.5">
+                        <Scale size={12} className="text-amber-500" /> Ingredients alimentaires
+                      </span>
+                      <span className="font-semibold text-gray-700">{foodCost.toFixed(2)} DH</span>
+                    </div>
+                  )}
+                  {packagingCost > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600 flex items-center gap-1.5">
+                        <Package size={12} className="text-blue-500" /> Emballages
+                      </span>
+                      <span className="font-semibold text-blue-700">{packagingCost.toFixed(2)} DH</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-1 border-t border-amber-200">
@@ -1117,6 +1784,138 @@ function RecipeFormModal({ recipeId, onClose, onSaved }: {
                     <span className="font-bold text-amber-700 text-xl">{liveCost.toFixed(2)} DH</span>
                   </div>
                 </div>
+              </>
+            )}
+
+            {/* ═══ Tab: Etapes ═══ */}
+            {activeTab === 'etapes' && (
+              <>
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <ListChecks size={20} className="text-indigo-600 mt-0.5 shrink-0" />
+                    <div>
+                      <h3 className="text-sm font-semibold text-indigo-800">Etapes de production</h3>
+                      <p className="text-xs text-indigo-600 mt-0.5">Definissez les etapes a suivre lors de la production. Les etapes bloquantes empechent de passer a la suite tant qu'elles ne sont pas validees.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm text-gray-700">{formEtapes.length} etape{formEtapes.length !== 1 ? 's' : ''}</h3>
+                  <button type="button" onClick={addEtapeRow}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium px-3 py-1.5 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors">
+                    <PlusCircle size={14} /> Ajouter une etape
+                  </button>
+                </div>
+
+                {formEtapes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                    <ListChecks size={36} className="mb-2 text-gray-300" />
+                    <p className="text-sm font-medium">Aucune etape definie</p>
+                    <p className="text-xs mt-1">Cliquez sur "Ajouter une etape" pour commencer</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {formEtapes.map((etape, idx) => (
+                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+                        {/* Header row */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col gap-0.5">
+                            <button type="button" onClick={() => moveEtape(idx, -1)} disabled={idx === 0}
+                              className="p-0.5 hover:bg-gray-100 rounded disabled:opacity-20 transition-colors">
+                              <ArrowUp size={12} />
+                            </button>
+                            <button type="button" onClick={() => moveEtape(idx, 1)} disabled={idx === formEtapes.length - 1}
+                              className="p-0.5 hover:bg-gray-100 rounded disabled:opacity-20 transition-colors">
+                              <ArrowDown size={12} />
+                            </button>
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {etape.ordre}
+                          </div>
+                          <input type="text" placeholder="Nom de l'etape (ex: Petrissage, Repos frigo...)"
+                            className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            value={etape.nom} onChange={(e) => updateEtapeRow(idx, 'nom', e.target.value)} />
+                          <button type="button" onClick={() => removeEtapeRow(idx)}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors">
+                            <Trash2 size={14} className="text-red-400" />
+                          </button>
+                        </div>
+
+                        {/* Options row */}
+                        <div className="flex items-center gap-4 flex-wrap ml-14">
+                          <div className="flex items-center gap-2">
+                            <Timer size={14} className="text-gray-400" />
+                            <input type="number" min="0" step="1" placeholder="min"
+                              className="w-20 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                              value={etape.duree_estimee_min} onChange={(e) => updateEtapeRow(idx, 'duree_estimee_min', e.target.value)} />
+                            <span className="text-xs text-gray-400">min</span>
+                          </div>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" className="rounded border-gray-300 text-red-500 focus:ring-red-500"
+                              checked={etape.est_bloquante} onChange={(e) => updateEtapeRow(idx, 'est_bloquante', e.target.checked)} />
+                            <span className="text-xs text-gray-600">Bloquante</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                              checked={etape.timer_auto} onChange={(e) => updateEtapeRow(idx, 'timer_auto', e.target.checked)} />
+                            <span className="text-xs text-gray-600">Timer auto</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" className="rounded border-gray-300 text-green-500 focus:ring-green-500"
+                              checked={etape.controle_qualite} onChange={(e) => updateEtapeRow(idx, 'controle_qualite', e.target.checked)} />
+                            <span className="text-xs text-gray-600">Controle qualite</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" className="rounded border-gray-300 text-purple-500 focus:ring-purple-500"
+                              checked={etape.est_repetable} onChange={(e) => updateEtapeRow(idx, 'est_repetable', e.target.checked)} />
+                            <span className="text-xs text-gray-600">Repetable</span>
+                          </label>
+
+                          {etape.est_repetable && (
+                            <div className="flex items-center gap-1">
+                              <Repeat size={12} className="text-purple-400" />
+                              <input type="number" min="1" step="1"
+                                className="w-14 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                                value={etape.nb_repetitions} onChange={(e) => updateEtapeRow(idx, 'nb_repetitions', e.target.value)} />
+                              <span className="text-xs text-gray-400">fois</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Checklist (visible if controle_qualite) */}
+                        {etape.controle_qualite && (
+                          <div className="ml-14 bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-green-700">Checklist qualite</span>
+                              <button type="button" onClick={() => updateEtapeRow(idx, 'checklist_items', [...etape.checklist_items, ''])}
+                                className="text-[10px] text-green-600 hover:text-green-700 font-medium">+ Ajouter</button>
+                            </div>
+                            {etape.checklist_items.map((item, ci) => (
+                              <div key={ci} className="flex items-center gap-2">
+                                <div className="w-3.5 h-3.5 rounded border border-green-300 flex-shrink-0" />
+                                <input type="text" placeholder="Point de controle..."
+                                  className="flex-1 px-2 py-1 bg-white border border-green-200 rounded text-xs focus:ring-1 focus:ring-green-500"
+                                  value={item} onChange={(e) => {
+                                    const items = [...etape.checklist_items];
+                                    items[ci] = e.target.value;
+                                    updateEtapeRow(idx, 'checklist_items', items);
+                                  }} />
+                                <button type="button" onClick={() => {
+                                  updateEtapeRow(idx, 'checklist_items', etape.checklist_items.filter((_, j) => j !== ci));
+                                }} className="p-1 hover:bg-red-50 rounded"><X size={12} className="text-red-400" /></button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 

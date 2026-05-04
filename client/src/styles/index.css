@@ -101,6 +101,14 @@
   .input::placeholder {
     color: var(--theme-text-muted);
   }
+  /* Override browser autofill background to match theme */
+  .input:-webkit-autofill,
+  .input:-webkit-autofill:hover,
+  .input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--theme-bg-card) inset !important;
+    -webkit-text-fill-color: var(--theme-text-strong) !important;
+    caret-color: var(--theme-text-strong);
+  }
   .card {
     @apply rounded-xl shadow-sm p-6;
     background-color: var(--theme-bg-card);

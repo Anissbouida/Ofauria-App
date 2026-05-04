@@ -25,6 +25,16 @@ const INGREDIENT_CATEGORIES = [
   { value: 'epices', label: 'Épices & Arômes' },
   { value: 'levures', label: 'Levures & Agents levants' },
   { value: 'emballages', label: 'Emballages' },
+  { value: 'conserves', label: 'Conserves' },
+  { value: 'legumes', label: 'Légumes' },
+  { value: 'sauces', label: 'Sauces & Condiments' },
+  { value: 'decors', label: 'Décors & Garnitures' },
+  { value: 'gelifiants', label: 'Gélifiants' },
+  { value: 'preparations', label: 'Préparations' },
+  { value: 'viandes', label: 'Viandes & Volailles' },
+  { value: 'pates_riz', label: 'Pâtes & Riz' },
+  { value: 'sel_vinaigre', label: 'Sel & Vinaigre' },
+  { value: 'colorants', label: 'Colorants' },
   { value: 'autre', label: 'Autre' },
 ];
 
@@ -40,6 +50,16 @@ const CATEGORY_COLORS: Record<string, string> = {
   epices: 'bg-red-100 text-red-700',
   levures: 'bg-violet-100 text-violet-700',
   emballages: 'bg-gray-100 text-gray-600',
+  conserves: 'bg-teal-100 text-teal-700',
+  legumes: 'bg-emerald-100 text-emerald-700',
+  sauces: 'bg-rose-100 text-rose-700',
+  decors: 'bg-purple-100 text-purple-700',
+  gelifiants: 'bg-cyan-100 text-cyan-700',
+  preparations: 'bg-indigo-100 text-indigo-700',
+  viandes: 'bg-red-200 text-red-800',
+  pates_riz: 'bg-yellow-200 text-yellow-800',
+  sel_vinaigre: 'bg-slate-100 text-slate-700',
+  colorants: 'bg-fuchsia-100 text-fuchsia-700',
   autre: 'bg-gray-100 text-gray-500',
 };
 
@@ -71,6 +91,7 @@ interface Lot {
   supplier_name: string | null;
   quantity_received: string;
   quantity_remaining: string;
+  unit_cost: string | null;
   expiration_date: string | null;
   manufactured_date: string | null;
   received_at: string;
@@ -83,10 +104,14 @@ interface Lot {
 interface Transaction {
   id: string;
   ingredient_name: string;
+  ingredient_unit: string;
   type: string;
   quantity_change: string;
   note: string | null;
   performed_by_name: string;
+  performed_by_first: string | null;
+  performed_by_last: string | null;
+  performed_by_role: string | null;
   created_at: string;
 }
 
@@ -483,6 +508,13 @@ export default function IngredientDetailPage() {
             <div className="divide-y divide-gray-50">
               {(transactions as Transaction[]).map((tx) => {
                 const isPositive = parseFloat(tx.quantity_change) > 0;
+                const initials = tx.performed_by_first
+                  ? `${tx.performed_by_first[0]}${(tx.performed_by_last || '')[0] || ''}`.toUpperCase()
+                  : 'SY';
+                const roleLabel = tx.performed_by_role === 'admin' ? 'Admin' :
+                  tx.performed_by_role === 'manager' ? 'Manager' :
+                  tx.performed_by_role === 'baker' ? 'Boulanger' :
+                  tx.performed_by_role === 'cashier' ? 'Caissier' : '';
                 return (
                   <div key={tx.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50/50 transition-colors">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -497,7 +529,7 @@ export default function IngredientDetailPage() {
                        <Beaker size={14} className="text-gray-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 capitalize">
+                      <p className="text-sm font-medium text-gray-800">
                         {tx.type === 'restock' ? 'Réapprovisionnement' :
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
@@ -505,10 +537,15 @@ export default function IngredientDetailPage() {
                          tx.type === 'waste' ? 'Perte / Déchet' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
                       </p>
-                      <p className="text-xs text-gray-400">
-                        {tx.performed_by_name || 'Système'} — {format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}
-                        {tx.note ? ` — ${tx.note}` : ''}
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">
+                          <span className="w-3.5 h-3.5 rounded-full bg-violet-200 text-violet-800 flex items-center justify-center text-[7px] font-bold">{initials}</span>
+                          {tx.performed_by_name || 'Système'}
+                        </span>
+                        {roleLabel && <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">{roleLabel}</span>}
+                        <span className="text-[10px] text-gray-400">{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                      </div>
+                      {tx.note && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{tx.note}</p>}
                     </div>
                     <span className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
@@ -745,6 +782,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
           <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
             {lot.supplier_name ? <span>{lot.supplier_name}</span> : null}
+            {lot.unit_cost && parseFloat(lot.unit_cost) > 0 ? (
+              <span className="font-semibold text-gray-600">
+                {parseFloat(lot.unit_cost).toFixed(2)} DH/{lot.ingredient_unit}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -753,6 +795,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           <p className="text-sm font-bold text-gray-800">
             {remaining.toFixed(1)} / {received.toFixed(1)} {lot.ingredient_unit}
           </p>
+          {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 ? (
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Valeur: {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
+            </p>
+          ) : null}
           <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1 ml-auto">
             <div className={`h-full rounded-full ${pct > 50 ? 'bg-emerald-400' : pct > 20 ? 'bg-amber-400' : 'bg-red-400'}`}
               style={{ width: `${pct}%` }} />
@@ -970,7 +1017,10 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   onSave: (data: { quantity: number; type: string; note?: string }) => void;
   isLoading: boolean;
 }) {
-  const [form, setForm] = useState({ quantity: '', type: 'loss', note: '' });
+  // Valeurs alignees avec la contrainte DB inventory_transactions_type_check :
+  // 'waste' = perte/casse (decremente), 'adjustment' = correction (decremente),
+  // 'restock' = reapprovisionnement manuel (incremente).
+  const [form, setForm] = useState({ quantity: '', type: 'waste', note: '' });
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -993,12 +1043,14 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
           e.preventDefault();
           const qty = parseFloat(form.quantity);
           if (isNaN(qty) || qty <= 0) return;
-          onSave({ quantity: qty, type: form.type, note: form.note || undefined });
+          // Signe : decrement pour perte/correction, increment pour restock.
+          const signedQty = form.type === 'restock' ? qty : -qty;
+          onSave({ quantity: signedQty, type: form.type, note: form.note || undefined });
         }} className="p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Type d'ajustement</label>
             <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-              <option value="loss">Perte / Casse</option>
+              <option value="waste">Perte / Casse</option>
               <option value="adjustment">Correction d'inventaire</option>
               <option value="restock">Réapprovisionnement manuel</option>
             </select>

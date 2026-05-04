@@ -1,9 +1,12 @@
 import api from './client';
 
 export const unsoldDecisionApi = {
-  /** Produits invendus avec suggestions automatiques */
-  suggestions: () =>
-    api.get('/unsold-decisions/suggestions').then(r => r.data.data),
+  /** Produits invendus avec suggestions automatiques.
+   *  closeType adapte la fenetre d'analyse : 'fin_journee' ignore les passations intermediaires
+   *  pour inclure toutes les ventes et approvisionnements depuis la derniere fin de journee. */
+  suggestions: (closeType?: 'passation' | 'fin_journee') =>
+    api.get('/unsold-decisions/suggestions', { params: closeType ? { closeType } : undefined })
+       .then(r => r.data.data),
 
   /** Enregistrer les decisions */
   save: (data: {
@@ -32,6 +35,7 @@ export const unsoldDecisionApi = {
       expiresAt?: string;
       producedAt?: string;
       unitCost?: number;
+      discrepancyMotif?: string;
     }[];
     notes?: string;
   }) => api.post('/unsold-decisions', data).then(r => r.data.data),
@@ -47,4 +51,12 @@ export const unsoldDecisionApi = {
   /** Decisions d'une session */
   bySession: (sessionId: string) =>
     api.get(`/unsold-decisions/session/${sessionId}`).then(r => r.data.data),
+
+  /** Phase 3 — Items en vitrine avec DLC ou DLV depassee. Modal bloquant fermeture journee. */
+  expired: () =>
+    api.get('/unsold-decisions/expired').then(r => r.data.data),
+
+  /** Phase 3 — Confirmer la destruction des items expires */
+  destroyExpired: (items: { productId: string; quantity: number; reason: string; unitCost?: number; productName?: string }[]) =>
+    api.post('/unsold-decisions/destroy-expired', { items }).then(r => r.data.data),
 };

@@ -9,12 +9,16 @@ const baseURL = import.meta.env.VITE_API_URL
 const api = axios.create({
   baseURL,
   headers: { 'Content-Type': 'application/json' },
+  // OWASP A02-5 : envoyer le cookie HttpOnly d'auth avec chaque requete.
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('ofauria_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Legacy fallback : si un token traine dans localStorage (vieille session),
+  // on l'envoie en Bearer. Retire apres migration complete.
+  const legacyToken = localStorage.getItem('ofauria_token');
+  if (legacyToken) {
+    config.headers.Authorization = `Bearer ${legacyToken}`;
   }
   // Send user's local timezone to the server
   config.headers['X-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -25,6 +29,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Plus de tokens en localStorage, mais on nettoie les legacy au cas ou.
       localStorage.removeItem('ofauria_token');
       localStorage.removeItem('ofauria_user');
       // Don't redirect if already on login page (prevents infinite reload loop)
