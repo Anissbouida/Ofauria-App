@@ -259,7 +259,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
   });
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => isEdit
+    mutationFn: (data: Record<string, any>) => isEdit
       ? packagingApi.update(item!.id, data)
       : packagingApi.create(data),
     onSuccess: () => {

@@ -85,7 +85,7 @@ export default function SemiFinisTab() {
     queryFn: storesApi.list,
   });
 
-  const storeId = selectedStoreId || (stores.length > 0 ? (stores[0] as Record<string, unknown>).id as string : '');
+  const storeId = selectedStoreId || (stores.length > 0 ? (stores[0] as Record<string, any>).id as string : '');
 
   const { data: allRecipes = [], isLoading } = useQuery({
     queryKey: ['recipes'],
@@ -195,7 +195,7 @@ export default function SemiFinisTab() {
             onChange={e => setSelectedStoreId(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
           >
-            {(stores as Record<string, unknown>[]).map(s => (
+            {(stores as Record<string, any>[]).map(s => (
               <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
             ))}
           </select>
@@ -471,12 +471,12 @@ function SemiFiniRow({
                   <p className="text-xs text-gray-400">Chargement...</p>
                 ) : (
                   <div className="space-y-1">
-                    {((fullRecipe as Record<string, unknown>).ingredients as Record<string, unknown>[] ?? []).length === 0 &&
-                     ((fullRecipe as Record<string, unknown>).sub_recipes as Record<string, unknown>[] ?? []).length === 0 ? (
+                    {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).length === 0 &&
+                     ((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).length === 0 ? (
                       <p className="text-xs text-gray-400">Aucun ingredient defini</p>
                     ) : (
                       <>
-                        {((fullRecipe as Record<string, unknown>).ingredients as Record<string, unknown>[] ?? []).map((ing, i) => (
+                        {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).map((ing, i) => (
                           <div key={`ing-${i}`} className="flex justify-between text-sm bg-white rounded px-2 py-1 border border-gray-100">
                             <span className="text-gray-700">{ing.ingredient_name as string}</span>
                             <span className="text-gray-500 font-mono text-xs">
@@ -484,7 +484,7 @@ function SemiFiniRow({
                             </span>
                           </div>
                         ))}
-                        {((fullRecipe as Record<string, unknown>).sub_recipes as Record<string, unknown>[] ?? []).map((sr, i) => (
+                        {((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).map((sr, i) => (
                           <div key={`sr-${i}`} className="flex justify-between text-sm bg-amber-50 rounded px-2 py-1 border border-amber-100">
                             <span className="text-amber-800 flex items-center gap-1">
                               <Layers size={10} />

@@ -10,7 +10,7 @@ export interface RefEntry {
   description?: string;
   display_order: number;
   is_active: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }
 
 /**
@@ -26,7 +26,7 @@ export function useReferentiel(tableId: string, enabled = true) {
   });
 
   // API returns either { table, entries } or a plain array depending on endpoint
-  const raw = Array.isArray(data) ? data : (data as Record<string, unknown>)?.entries ?? [];
+  const raw = Array.isArray(data) ? data : (data as Record<string, any>)?.entries ?? [];
   const entries = (raw as RefEntry[]).filter(e => e.is_active !== false);
   const map = Object.fromEntries(entries.map(e => [e.code, e]));
 

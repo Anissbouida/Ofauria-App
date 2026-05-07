@@ -75,12 +75,12 @@ export default function PurchasingPage() {
 function SuppliersTab() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [editing, setEditing] = useState<Record<string, any> | null>(null);
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: Record<string, any>) =>
       editing ? suppliersApi.update(editing.id as string, data) : suppliersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
@@ -97,7 +97,7 @@ function SuppliersTab() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
             <Truck size={14} className="text-white" />
           </div>
-          <p className="text-sm font-medium text-gray-600">{(suppliers as Record<string, unknown>[]).length} fournisseur{(suppliers as Record<string, unknown>[]).length > 1 ? 's' : ''}</p>
+          <p className="text-sm font-medium text-gray-600">{(suppliers as Record<string, any>[]).length} fournisseur{(suppliers as Record<string, any>[]).length > 1 ? 's' : ''}</p>
         </div>
         <button onClick={() => { setEditing(null); setShowForm(true); }}
           className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
@@ -110,7 +110,7 @@ function SuppliersTab() {
           <Loader2 className="animate-spin text-blue-400 mb-3" size={32} />
           <p className="text-sm text-gray-400">Chargement des fournisseurs...</p>
         </div>
-      ) : (suppliers as Record<string, unknown>[]).length === 0 ? (
+      ) : (suppliers as Record<string, any>[]).length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
             <Truck size={28} className="text-blue-300" />
@@ -119,7 +119,7 @@ function SuppliersTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {(suppliers as Record<string, unknown>[]).map(s => (
+          {(suppliers as Record<string, any>[]).map(s => (
             <div key={s.id as string} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -215,7 +215,7 @@ function InvoicesTab() {
 function ReceivedInvoicesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [showPayForm, setShowPayForm] = useState<Record<string, unknown> | null>(null);
+  const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
@@ -225,10 +225,10 @@ function ReceivedInvoicesSection() {
     queryFn: () => invoicesApi.list({ invoiceType: 'received', ...(statusFilter ? { status: statusFilter } : {}) }),
   });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: expenseCategoriesApi.list });
+  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => invoicesApi.create({ ...data, invoiceType: 'received' }),
+    mutationFn: (data: Record<string, any>) => invoicesApi.create({ ...data, invoiceType: 'received' }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture ajoutée'); setShowForm(false); },
     onError: () => notify.error('Erreur'),
   });
@@ -239,7 +239,7 @@ function ReceivedInvoicesSection() {
   });
 
   const payMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => paymentsApi.create(data),
+    mutationFn: (data: Record<string, any>) => paymentsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
@@ -272,7 +272,7 @@ function ReceivedInvoicesSection() {
     input.click();
   };
 
-  const totalPending = (invoices as Record<string, unknown>[])
+  const totalPending = (invoices as Record<string, any>[])
     .filter(inv => inv.status !== 'paid' && inv.status !== 'cancelled')
     .reduce((sum, inv) => sum + parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string), 0);
 
@@ -308,7 +308,7 @@ function ReceivedInvoicesSection() {
           <Loader2 className="animate-spin text-amber-400 mb-3" size={32} />
           <p className="text-sm text-gray-400">Chargement des factures...</p>
         </div>
-      ) : (invoices as Record<string, unknown>[]).length === 0 ? (
+      ) : (invoices as Record<string, any>[]).length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
             <FileText size={28} className="text-amber-300" />
@@ -317,7 +317,7 @@ function ReceivedInvoicesSection() {
         </div>
       ) : (
         <div className="space-y-2">
-          {(invoices as Record<string, unknown>[]).map(inv => {
+          {(invoices as Record<string, any>[]).map(inv => {
             const total = parseFloat(inv.total_amount as string);
             const paid = parseFloat(inv.paid_amount as string);
             const remaining = total - paid;
@@ -409,7 +409,7 @@ function ReceivedInvoicesSection() {
             </div>
             <form onSubmit={e => {
               e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
+              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string) || 0;
               fd.taxAmount = parseFloat(fd.taxAmount as string) || 0;
               fd.totalAmount = (fd.amount as number) + (fd.taxAmount as number);
@@ -425,14 +425,14 @@ function ReceivedInvoicesSection() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur *</label>
                   <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required>
                     <option value="">Choisir...</option>
-                    {(suppliers as Record<string, unknown>[]).filter(s => s.is_active).map(s => (
+                    {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
                       <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
                     ))}
                   </select></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie</label>
                   <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
                     <option value="">Choisir...</option>
-                    {(categories as Record<string, unknown>[]).filter(c => c.type === 'expense').map(c => (
+                    {(categories as Record<string, any>[]).filter(c => c.type === 'expense').map(c => (
                       <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
                     ))}
                   </select></div>
@@ -477,7 +477,7 @@ function ReceivedInvoicesSection() {
             </div>
             <form onSubmit={e => {
               e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
+              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string);
               fd.type = 'invoice';
               fd.invoiceId = showPayForm.id;

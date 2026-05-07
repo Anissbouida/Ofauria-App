@@ -50,8 +50,8 @@ export function BonSortiePanel({
     enabled: !!planId,
   });
 
-  const bon = (bons as Record<string, unknown>[]).find((b: Record<string, unknown>) => b.status !== 'annule') as Record<string, unknown> | undefined;
-  const lines = (bon?.lines || []) as Record<string, unknown>[];
+  const bon = (bons as Record<string, any>[]).find((b: Record<string, any>) => b.status !== 'annule') as Record<string, any> | undefined;
+  const lines = (bon?.lines || []) as Record<string, any>[];
 
   // Auto-start prelevement ; ref anti-double-appel (StrictMode dev).
   const autoStartedForBonId = useRef<string | null>(null);
@@ -120,7 +120,7 @@ export function BonSortiePanel({
   // Ouvrir contenant economat -> pesage + marquer la ligne preleve en 1 clic.
   // Pour les lignes 'rupture' ou allocated >= needed (cas "a ouvrir depuis economat").
   const openAndPickMutation = useMutation({
-    mutationFn: async ({ line }: { line: Record<string, unknown> }) => {
+    mutationFn: async ({ line }: { line: Record<string, any> }) => {
       const lotId = line.ingredient_lot_id as string;
       const qty = parseFloat(line.allocated_quantity as string || '0');
       if (!lotId || qty <= 0) throw new Error('Lot ou quantite invalide');
@@ -221,7 +221,7 @@ export function BonSortiePanel({
   // la ligne dans commandedLineIds pour bloquer le re-clic + retour visuel.
   const [commandedLineIds, setCommandedLineIds] = useState<Set<string>>(new Set());
   const commanderRuptureMutation = useMutation({
-    mutationFn: ({ line }: { line: Record<string, unknown> }) =>
+    mutationFn: ({ line }: { line: Record<string, any> }) =>
       purchaseRequestsApi.create({
         ingredientId: line.ingredient_id as string,
         quantity: parseFloat(line.needed_quantity as string || '0'),
@@ -300,7 +300,7 @@ export function BonSortiePanel({
   const isPartial = bon?.status === 'preparation_partielle';
   const canCommitPartial = bon?.status === 'preparation' && hasRupture && prelevees > 0;
 
-  const confirmLine = (line: Record<string, unknown>) => {
+  const confirmLine = (line: Record<string, any>) => {
     const allocated = parseFloat(line.allocated_quantity as string || '0');
     ligneMutation.mutate({ ligneId: line.id as string, actualQuantity: allocated });
   };

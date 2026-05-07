@@ -431,7 +431,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Losses: Top products + Top reasons */}
-      {lossStats && (lossStats.topProducts as Record<string, unknown>[])?.length > 0 && (
+      {lossStats && (lossStats.topProducts as Record<string, any>[])?.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center gap-2 mb-4">
@@ -442,9 +442,9 @@ export default function ReportsPage() {
               <span className="text-xs text-gray-400 ml-auto">Ce mois</span>
             </div>
             <div className="space-y-3">
-              {(lossStats.topProducts as Record<string, unknown>[]).slice(0, 5).map((p: Record<string, unknown>, i: number) => {
+              {(lossStats.topProducts as Record<string, any>[]).slice(0, 5).map((p: Record<string, any>, i: number) => {
                 const cost = parseFloat(p.total_cost as string) || 0;
-                const maxCost = parseFloat((lossStats.topProducts as Record<string, unknown>[])[0]?.total_cost as string) || 1;
+                const maxCost = parseFloat((lossStats.topProducts as Record<string, any>[])[0]?.total_cost as string) || 1;
                 return (
                   <div key={p.id as string} className="flex items-center gap-3">
                     <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
@@ -470,7 +470,7 @@ export default function ReportsPage() {
               <span className="text-xs text-gray-400 ml-auto">Ce mois</span>
             </div>
             <div className="space-y-2.5">
-              {(lossStats.topReasons as Record<string, unknown>[]).slice(0, 6).map((r: Record<string, unknown>, i: number) => (
+              {(lossStats.topReasons as Record<string, any>[]).slice(0, 6).map((r: Record<string, any>, i: number) => (
                 <div key={i} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600">

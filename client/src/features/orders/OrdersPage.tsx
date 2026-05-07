@@ -67,9 +67,9 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Record<string, unknown> | null>(null);
-  const [viewingOrder, setViewingOrder] = useState<Record<string, unknown> | null>(null);
-  const [deliverOrder, setDeliverOrder] = useState<Record<string, unknown> | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Record<string, any> | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<Record<string, any> | null>(null);
+  const [deliverOrder, setDeliverOrder] = useState<Record<string, any> | null>(null);
   const [deliverAmount, setDeliverAmount] = useState('');
   const [deliverPayment, setDeliverPayment] = useState<'cash' | 'card'>('cash');
 
@@ -111,7 +111,7 @@ export default function OrdersPage() {
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) return orders;
     const q = searchQuery.toLowerCase();
-    return orders.filter((o: Record<string, unknown>) =>
+    return orders.filter((o: Record<string, any>) =>
       (o.order_number as string)?.toLowerCase().includes(q) ||
       `${o.customer_first_name || ''} ${o.customer_last_name || ''}`.toLowerCase().includes(q) ||
       (o.customer_phone as string)?.toLowerCase().includes(q)
@@ -122,11 +122,11 @@ export default function OrdersPage() {
   const allOrders = data?.data || [];
   const stats = useMemo(() => ({
     total: allOrders.length,
-    pending: allOrders.filter((o: Record<string, unknown>) => o.status === 'pending').length,
-    confirmed: allOrders.filter((o: Record<string, unknown>) => o.status === 'confirmed').length,
-    in_production: allOrders.filter((o: Record<string, unknown>) => o.status === 'in_production').length,
-    ready: allOrders.filter((o: Record<string, unknown>) => o.status === 'ready').length,
-    completed: allOrders.filter((o: Record<string, unknown>) => o.status === 'completed').length,
+    pending: allOrders.filter((o: Record<string, any>) => o.status === 'pending').length,
+    confirmed: allOrders.filter((o: Record<string, any>) => o.status === 'confirmed').length,
+    in_production: allOrders.filter((o: Record<string, any>) => o.status === 'in_production').length,
+    ready: allOrders.filter((o: Record<string, any>) => o.status === 'ready').length,
+    completed: allOrders.filter((o: Record<string, any>) => o.status === 'completed').length,
   }), [allOrders]);
 
   const tabs = [
@@ -228,7 +228,7 @@ export default function OrdersPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredOrders.map((o: Record<string, unknown>) => {
+          {filteredOrders.map((o: Record<string, any>) => {
             const advanceAmt = parseFloat((o.advance_amount as string) || '0');
             const totalAmt = parseFloat(o.total as string);
             const remaining = totalAmt - advanceAmt;
@@ -471,7 +471,7 @@ export default function OrdersPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Articles commandés</p>
                   {orderDetail?.items && orderDetail.items.length > 0 ? (
                     <div className="border border-gray-100 rounded-xl overflow-hidden">
-                      {orderDetail.items.map((item: Record<string, unknown>, idx: number) => (
+                      {orderDetail.items.map((item: Record<string, any>, idx: number) => (
                         <div key={idx} className={`flex items-center justify-between px-4 py-3 ${idx > 0 ? 'border-t border-gray-50' : ''}`}>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-orange-500">

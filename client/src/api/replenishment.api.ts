@@ -6,7 +6,7 @@ export const replenishmentApi = {
   checkToday: () => api.get('/replenishment/check-today').then(r => r.data.data),
   checkItems: (productIds: string[]) => api.post('/replenishment/check-items', { productIds }).then(r => r.data.data),
   closingInventory: () => api.get('/replenishment/closing-inventory').then(r => r.data.data),
-  create: (data: Record<string, unknown>) => api.post('/replenishment', data).then(r => r.data.data),
+  create: (data: Record<string, any>) => api.post('/replenishment', data).then(r => r.data.data),
   // Step 2: Acknowledge
   acknowledge: (id: string) => api.post(`/replenishment/${id}/acknowledge`).then(r => r.data.data),
   // Step 3: Start preparing

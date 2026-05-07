@@ -26,11 +26,11 @@ function toMessage(input: unknown): string {
   if (typeof input === 'string') return input;
   if (typeof input === 'number' || typeof input === 'boolean') return String(input);
   // Common API error shapes: { message }, { error }, Error instance
-  const obj = input as Record<string, unknown>;
+  const obj = input as Record<string, any>;
   if (typeof obj.message === 'string') return obj.message;
   if (typeof obj.error === 'string') return obj.error;
-  if (obj.error && typeof (obj.error as Record<string, unknown>).message === 'string') {
-    return (obj.error as Record<string, unknown>).message as string;
+  if (obj.error && typeof (obj.error as Record<string, any>).message === 'string') {
+    return (obj.error as Record<string, any>).message as string;
   }
   try { return JSON.stringify(input); } catch { return 'Erreur inconnue'; }
 }
@@ -39,6 +39,7 @@ interface NotifyOpts {
   icon?: string;
   onClick?: () => void;
   onDismissAction?: () => void;
+  duration?: number;
 }
 
 function emit(type: NotificationType, message: unknown, opts?: NotifyOpts) {

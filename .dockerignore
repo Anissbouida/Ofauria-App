@@ -1,0 +1,43 @@
+# Dependances (re-installees dans l'image)
+**/node_modules
+
+# Build artifacts (re-generes dans l'image)
+**/dist
+**/.tsbuildinfo
+
+# Workspaces inutiles pour le build serveur+client
+mobile/
+maquette-pos-refonte.html
+maquette-pos-variante-B.html
+PROPOSITION_REFONTE_VISUELLE.md
+
+# Uploads (montes via volume GCS)
+uploads/
+
+# Git & IDE
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Env locaux (les secrets passent par Secret Manager)
+.env
+.env.*
+!.env.example
+
+# Logs et temp
+*.log
+npm-debug.log*
+.npm
+.cache
+
+# Tests
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore

@@ -10,14 +10,14 @@ import type { AppModule, UserPermission } from '@ofauria/shared';
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [permUserId, setPermUserId] = useState<string | null>(null);
 
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
   const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: Record<string, any>) =>
       editing ? usersApi.update(editing.id as string, data) : usersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -62,7 +62,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {users.map((u: Record<string, unknown>) => (
+              {users.map((u: Record<string, any>) => (
                 <tr key={u.id as string} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <span className="font-medium">{u.firstName as string} {u.lastName as string}</span>
@@ -82,7 +82,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4">
                     {(() => {
-                      const store = stores.find((s: Record<string, unknown>) => s.id === u.storeId);
+                      const store = stores.find((s: Record<string, any>) => s.id === u.storeId);
                       return store ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
                           <MapPin size={12} /> {store.name as string}
@@ -128,7 +128,7 @@ export default function UsersPage() {
             <form onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const data: Record<string, unknown> = Object.fromEntries(fd);
+              const data: Record<string, any> = Object.fromEntries(fd);
               if (!data.password) delete data.password;
               if (!data.pinCode) data.pinCode = editing ? null : undefined;
               if (data.pinCode === undefined) delete data.pinCode;
@@ -189,7 +189,7 @@ export default function UsersPage() {
                   </label>
                   <select name="storeId" defaultValue={editing?.storeId as string || ''} className="input">
                     <option value="">-- Aucun --</option>
-                    {stores.map((s: Record<string, unknown>) => (
+                    {stores.map((s: Record<string, any>) => (
                       <option key={s.id as string} value={s.id as string}>{s.name as string}{s.city ? ` (${s.city})` : ''}</option>
                     ))}
                   </select>
@@ -210,11 +210,11 @@ export default function UsersPage() {
         <PermissionsModal
           userId={permUserId}
           userName={(() => {
-            const u = users.find((u: Record<string, unknown>) => u.id === permUserId);
+            const u = users.find((u: Record<string, any>) => u.id === permUserId);
             return u ? `${u.firstName} ${u.lastName}` : '';
           })()}
           userRole={(() => {
-            const u = users.find((u: Record<string, unknown>) => u.id === permUserId);
+            const u = users.find((u: Record<string, any>) => u.id === permUserId);
             return (u?.role as string) || '';
           })()}
           onClose={() => setPermUserId(null)}
@@ -231,7 +231,7 @@ interface PermState {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  config: Record<string, unknown>;
+  config: Record<string, any>;
 }
 
 const ALL_MODULES = Object.values(APP_MODULES) as AppModule[];
@@ -261,7 +261,7 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
       const prodsRes = await api.get('/products', { params: { limit: '500' } });
       const prods = prodsRes.data.data || [];
       const catMap = new Map<string, string>();
-      prods.forEach((p: Record<string, unknown>) => {
+      prods.forEach((p: Record<string, any>) => {
         if (p.category_slug && p.category_name) {
           catMap.set(p.category_slug as string, p.category_name as string);
         }

@@ -62,6 +62,8 @@ interface RecipeDetail {
   contenant_pertes_fixes: string | null;
   contenant_unite_lancement: string | null;
   contenant_poids_kg: string | null;
+  margin_multiplier?: number | string | null;
+  packaging?: Record<string, unknown>[];
   etapes: RecipeEtape[];
   ingredients: RecipeIngredient[];
   sub_recipes: SubRecipeRef[];
@@ -133,7 +135,7 @@ export default function RecipesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Recette supprimee'); },
   });
 
-  const filtered = recipes.filter((r: Record<string, unknown>) => {
+  const filtered = recipes.filter((r: Record<string, any>) => {
     const s = search.toLowerCase();
     const matchSearch = !s || (r.name as string).toLowerCase().includes(s) || (r.product_name as string || '').toLowerCase().includes(s);
     const matchTab = activeTab === 'base' ? r.is_base === true : !r.is_base;
@@ -142,7 +144,7 @@ export default function RecipesPage() {
 
   const sortedFiltered = useMemo(() => {
     const arr = [...filtered];
-    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let cmp = 0;
       switch (sortKey) {
         case 'name': cmp = ((a.name as string) || '').localeCompare((b.name as string) || ''); break;
@@ -171,8 +173,8 @@ export default function RecipesPage() {
     return arr;
   }, [filtered, sortKey, sortDir]);
 
-  const baseCount = recipes.filter((r: Record<string, unknown>) => r.is_base === true).length;
-  const productCount = recipes.filter((r: Record<string, unknown>) => !r.is_base).length;
+  const baseCount = recipes.filter((r: Record<string, any>) => r.is_base === true).length;
+  const productCount = recipes.filter((r: Record<string, any>) => !r.is_base).length;
 
   const openEdit = (id: string) => {
     setEditingRecipeId(id);
@@ -266,7 +268,7 @@ export default function RecipesPage() {
       ) : viewMode === 'grid' ? (
         /* ═══ Grid View ═══ */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
-          {sortedFiltered.map((r: Record<string, unknown>) => {
+          {sortedFiltered.map((r: Record<string, any>) => {
             const totalCost = parseFloat(r.total_cost as string || '0');
             const yieldQty = r.yield_quantity as number || 1;
             const costPerUnit = totalCost / yieldQty;
@@ -361,7 +363,7 @@ export default function RecipesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {sortedFiltered.map((r: Record<string, unknown>) => {
+              {sortedFiltered.map((r: Record<string, any>) => {
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 const costPerUnit = totalCost / yieldQty;
@@ -924,11 +926,11 @@ type FormTab = 'info' | 'composition' | 'etapes' | 'instructions';
 function SearchableSelect({
   items, value, onChange, placeholder = '-- Choisir --', renderHint, className = '',
 }: {
-  items: Record<string, unknown>[];
+  items: Record<string, any>[];
   value: string;
-  onChange: (id: string, item?: Record<string, unknown>) => void;
+  onChange: (id: string, item?: Record<string, any>) => void;
   placeholder?: string;
-  renderHint?: (item: Record<string, unknown>) => string | null;
+  renderHint?: (item: Record<string, any>) => string | null;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -1011,7 +1013,7 @@ function SearchableSelect({
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlight, open]);
 
-  const pick = (item: Record<string, unknown>) => {
+  const pick = (item: Record<string, any>) => {
     onChange(item.id as string, item);
     setOpen(false);
   };
@@ -1112,7 +1114,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const { data: allContenants = [] } = useQuery({
     queryKey: ['contenants-active'],
-    queryFn: () => contenantsApi.list().then((r: Record<string, unknown>) => (r.data || r) as Record<string, unknown>[]),
+    queryFn: () => contenantsApi.list().then((r: Record<string, any>) => (r.data || r) as Record<string, any>[]),
   });
 
   const { entries: yieldUnits } = useReferentiel('yield_units');
@@ -1154,8 +1156,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         : []
     );
     setFormPackaging(
-      Array.isArray((existingRecipe as Record<string, unknown>).packaging) && ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).length > 0
-        ? ((existingRecipe as Record<string, unknown>).packaging as Record<string, unknown>[]).map(p => ({
+      Array.isArray((existingRecipe as Record<string, any>).packaging) && ((existingRecipe as Record<string, any>).packaging as Record<string, any>[]).length > 0
+        ? ((existingRecipe as Record<string, any>).packaging as Record<string, any>[]).map(p => ({
             packagingId: p.packaging_id as string,
             quantity: String(p.quantity),
             unit: (p.unit as string) || (p.base_unit as string) || 'piece',
@@ -1186,13 +1188,13 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => recipesApi.create(data),
+    mutationFn: (data: Record<string, any>) => recipesApi.create(data),
     onSuccess: () => { notify.success('Recette creee'); onSaved(); },
     onError: (err) => notify.error(`Erreur lors de la creation : ${extractError(err)}`),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => recipesApi.update(recipeId!, data),
+    mutationFn: (data: Record<string, any>) => recipesApi.update(recipeId!, data),
     onSuccess: () => { notify.success('Recette mise a jour'); onSaved(); },
     onError: (err) => notify.error(`Erreur lors de la mise a jour : ${extractError(err)}`),
   });
@@ -1223,12 +1225,12 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setFormEtapes(arr.map((e, i) => ({ ...e, ordre: i + 1 })));
   };
 
-  const availableBaseRecipes = baseRecipes.filter((br: Record<string, unknown>) => br.id !== recipeId);
+  const availableBaseRecipes = baseRecipes.filter((br: Record<string, any>) => br.id !== recipeId);
 
   // Cout des ingredients alimentaires (formIngredients pointe sur ingredients table)
   const computeIngRowCost = (row: FormIngredient): number => {
     if (!row.ingredientId || !row.quantity) return 0;
-    const ing = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId);
+    const ing = allIngredients.find((i: Record<string, any>) => i.id === row.ingredientId);
     if (!ing) return 0;
     const ingBaseUnit = ing.unit as string || 'unit';
     const recipeUnit = row.unit || ingBaseUnit;
@@ -1241,7 +1243,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   // Cout emballages (formPackaging pointe sur packaging_items table)
   const computePkgRowCost = (row: { packagingId: string; quantity: string }): number => {
     if (!row.packagingId || !row.quantity) return 0;
-    const pkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+    const pkg = (allPackaging as Record<string, any>[]).find(p => p.id === row.packagingId);
     if (!pkg) return 0;
     return parseFloat(row.quantity) * parseFloat(pkg.unit_cost as string || '0');
   };
@@ -1249,7 +1251,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const subRecipeCost = formSubRecipes.reduce((sum, row) => {
     if (!row.subRecipeId || !row.quantity) return sum;
-    const sr = baseRecipes.find((r: Record<string, unknown>) => r.id === row.subRecipeId);
+    const sr = baseRecipes.find((r: Record<string, any>) => r.id === row.subRecipeId);
     if (!sr) return sum;
     const costPerUnit = parseFloat(sr.total_cost || '0') / (parseFloat(sr.yield_quantity as string) || 1);
     return sum + costPerUnit * parseFloat(row.quantity);
@@ -1292,7 +1294,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       .filter(row => row.packagingId && row.quantity && parseFloat(row.quantity) > 0)
       .map(row => ({ packagingId: row.packagingId, quantity: parseFloat(row.quantity), unit: row.unit || 'piece' }));
 
-    const data: Record<string, unknown> = {
+    const data: Record<string, any> = {
       name,
       productId: isBase ? null : (productId || null),
       contenantId: contenantId || null,
@@ -1407,7 +1409,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Produit associe</label>
                     <div className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
-                      {allProducts.find((p: Record<string, unknown>) => p.id === productId)?.name as string || productId}
+                      {allProducts.find((p: Record<string, any>) => p.id === productId)?.name as string || productId}
                     </div>
                   </div>
                 )}
@@ -1422,7 +1424,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                       const cId = e.target.value;
                       setContenantId(cId);
                       if (cId) {
-                        const ct = allContenants.find((c: Record<string, unknown>) => c.id === cId) as Record<string, unknown> | undefined;
+                        const ct = allContenants.find((c: Record<string, any>) => c.id === cId) as Record<string, any> | undefined;
                         if (ct) {
                           const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
                           const pertes = parseFloat(ct.pertes_fixes as string || '0');
@@ -1433,7 +1435,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                       }
                     }} required>
                     <option value="">-- Choisir un contenant --</option>
-                    {allContenants.map((c: Record<string, unknown>) => {
+                    {allContenants.map((c: Record<string, any>) => {
                       const cMode = getModeCalcul(c.unite_lancement as string || 'unit');
                       const cLabels = MODE_LABELS[cMode];
                       return (
@@ -1444,7 +1446,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                     })}
                   </select>
                   {contenantId && (() => {
-                    const ct = allContenants.find((c: Record<string, unknown>) => c.id === contenantId) as Record<string, unknown> | undefined;
+                    const ct = allContenants.find((c: Record<string, any>) => c.id === contenantId) as Record<string, any> | undefined;
                     if (!ct) return null;
                     const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
                     const pertes = parseFloat(ct.pertes_fixes as string || '0');
@@ -1583,14 +1585,14 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                         </div>
                         <div className="divide-y divide-amber-50">
                           {formSubRecipes.map((row, idx) => {
-                            const selectedSr = availableBaseRecipes.find((r: Record<string, unknown>) => r.id === row.subRecipeId) as Record<string, unknown> | undefined;
+                            const selectedSr = availableBaseRecipes.find((r: Record<string, any>) => r.id === row.subRecipeId) as Record<string, any> | undefined;
                             const srCost = selectedSr && row.quantity
                               ? (parseFloat(selectedSr.total_cost as string || '0') / (parseFloat(selectedSr.yield_quantity as string) || 1)) * parseFloat(row.quantity)
                               : 0;
                             return (
                               <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
                                 <SearchableSelect
-                                  items={availableBaseRecipes as Record<string, unknown>[]}
+                                  items={availableBaseRecipes as Record<string, any>[]}
                                   value={row.subRecipeId}
                                   onChange={(id) => updateSubRecipeRow(idx, 'subRecipeId', id)}
                                   placeholder="-- Preparation --"
@@ -1637,7 +1639,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                     </div>
                     <div className="divide-y divide-gray-50">
                       {formIngredients.map((row, idx) => {
-                        const selectedIng = allIngredients.find((i: Record<string, unknown>) => i.id === row.ingredientId) as Record<string, unknown> | undefined;
+                        const selectedIng = allIngredients.find((i: Record<string, any>) => i.id === row.ingredientId) as Record<string, any> | undefined;
                         const ingBaseUnit = selectedIng ? selectedIng.unit as string : 'unit';
                         const currentUnit = row.unit || ingBaseUnit;
                         const compatibleUnits = COMPATIBLE_UNITS[ingBaseUnit] || [ingBaseUnit];
@@ -1646,7 +1648,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                         return (
                           <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
                             <SearchableSelect
-                              items={allIngredients as Record<string, unknown>[]}
+                              items={allIngredients as Record<string, any>[]}
                               value={row.ingredientId}
                               onChange={(id, item) => {
                                 const updated = [...formIngredients];
@@ -1710,13 +1712,13 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                         </div>
                       ) : (
                         formPackaging.map((row, idx) => {
-                          const selectedPkg = (allPackaging as Record<string, unknown>[]).find(p => p.id === row.packagingId);
+                          const selectedPkg = (allPackaging as Record<string, any>[]).find(p => p.id === row.packagingId);
                           const baseUnit = (selectedPkg?.unit as string) || 'piece';
                           const rowCost = selectedPkg && row.quantity ? parseFloat(row.quantity) * parseFloat(selectedPkg.unit_cost as string || '0') : 0;
                           return (
                             <div key={idx} className="grid grid-cols-[1fr_100px_90px_80px_40px] gap-2 items-center px-4 py-2">
                               <SearchableSelect
-                                items={allPackaging as Record<string, unknown>[]}
+                                items={allPackaging as Record<string, any>[]}
                                 value={row.packagingId}
                                 onChange={(id, item) => {
                                   const updated = [...formPackaging];

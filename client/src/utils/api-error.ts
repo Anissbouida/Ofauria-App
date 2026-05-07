@@ -3,8 +3,8 @@
  * Falls back to the provided default message if nothing is found.
  */
 export function getApiErrorMessage(error: unknown, fallback: string): string {
-  const resp = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
-  const data = resp?.data as Record<string, unknown> | undefined;
-  const err = data?.error as Record<string, unknown> | undefined;
+  const resp = (error as Record<string, any>)?.response as Record<string, any> | undefined;
+  const data = resp?.data as Record<string, any> | undefined;
+  const err = data?.error as Record<string, any> | undefined;
   return (err?.message as string) || fallback;
 }

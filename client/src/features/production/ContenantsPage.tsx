@@ -408,7 +408,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const netCible = (parseFloat(quantiteTheorique) || 0) - (parseFloat(pertesFixes) || 0);
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: Record<string, any>) =>
       isEdit ? contenantsApi.update(contenant!.id, data) : contenantsApi.create(data),
     onSuccess: () => {
       notify.success(isEdit ? 'Contenant mis a jour' : 'Contenant cree');

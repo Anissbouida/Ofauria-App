@@ -11,7 +11,7 @@ interface PermissionsContextType {
   canCreate: (module: AppModule) => boolean;
   canEdit: (module: AppModule) => boolean;
   canDelete: (module: AppModule) => boolean;
-  getModuleConfig: (module: AppModule) => Record<string, unknown>;
+  getModuleConfig: (module: AppModule) => Record<string, any>;
   isLoading: boolean;
   reload: () => void;
 }
@@ -99,7 +99,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  const getModuleConfig = (module: AppModule): Record<string, unknown> => {
+  const getModuleConfig = (module: AppModule): Record<string, any> => {
     if (isAdmin) return {};
     // Use custom permissions config if available
     if (hasCustomPermissions) {

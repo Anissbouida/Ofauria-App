@@ -29,7 +29,7 @@ export const ingredientLotsApi = {
     api.post(`/ingredient-lots/${id}/mark-depleted`, { note }).then(r => r.data.data),
   sendToLosses: (id: string, reason: string, note?: string) =>
     api.post(`/ingredient-lots/${id}/send-to-losses`, { reason, note }).then(r => r.data.data),
-  saveQualityCheck: (rvId: string, data: Record<string, unknown>) => api.post(`/ingredient-lots/quality-check/${rvId}`, data).then(r => r.data.data),
+  saveQualityCheck: (rvId: string, data: Record<string, any>) => api.post(`/ingredient-lots/quality-check/${rvId}`, data).then(r => r.data.data),
   getQualityCheck: (rvId: string) => api.get(`/ingredient-lots/quality-check/${rvId}`).then(r => r.data.data),
   fefoPreview: (planId: string) => api.get(`/ingredient-lots/production/${planId}/fefo-preview`).then(r => r.data.data),
 };
@@ -37,7 +37,7 @@ export const ingredientLotsApi = {
 export const ingredientsApi = {
   list: () => api.get('/ingredients').then(r => r.data.data),
   getById: (id: string) => api.get(`/ingredients/${id}`).then(r => r.data.data),
-  create: (data: Record<string, unknown>) => api.post('/ingredients', data).then(r => r.data.data),
-  update: (id: string, data: Record<string, unknown>) => api.put(`/ingredients/${id}`, data).then(r => r.data.data),
+  create: (data: Record<string, any>) => api.post('/ingredients', data).then(r => r.data.data),
+  update: (id: string, data: Record<string, any>) => api.put(`/ingredients/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/ingredients/${id}`),
 };

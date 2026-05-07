@@ -147,6 +147,17 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', name: 'Ofauria API' });
 });
 
+// ─── Servir le client React (SPA) en production ──────────
+// Le bundle Vite est copie dans /app/client/dist par le Dockerfile.
+// Toute route non-API tombe sur index.html (routing cote client).
+if (IS_PROD) {
+  const clientDist = path.resolve(__dirname, '../../client/dist');
+  app.use(express.static(clientDist, { index: false }));
+  app.get(/^\/(?!api\/|uploads\/|health$).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 // Error handler
 app.use(errorHandler);
 

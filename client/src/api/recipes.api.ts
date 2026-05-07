@@ -5,8 +5,8 @@ export const recipesApi = {
   listBase: () => api.get('/recipes/base').then(r => r.data.data),
   getById: (id: string) => api.get(`/recipes/${id}`).then(r => r.data.data),
   getByProductId: (productId: string) => api.get(`/recipes/by-product/${productId}`).then(r => r.data.data),
-  create: (data: Record<string, unknown>) => api.post('/recipes', data).then(r => r.data.data),
-  update: (id: string, data: Record<string, unknown>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
+  create: (data: Record<string, any>) => api.post('/recipes', data).then(r => r.data.data),
+  update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/recipes/${id}`),
   versions: (id: string) => api.get(`/recipes/${id}/versions`).then(r => r.data.data),
 };

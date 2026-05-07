@@ -1011,7 +1011,7 @@ function ToggleSwitch({ label, checked, onChange }: {
 function StoresSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editStore, setEditStore] = useState<Record<string, unknown> | null>(null);
+  const [editStore, setEditStore] = useState<Record<string, any> | null>(null);
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
@@ -1023,7 +1023,7 @@ function StoresSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => storesApi.create(data),
+    mutationFn: (data: Record<string, any>) => storesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       resetForm();
@@ -1031,7 +1031,7 @@ function StoresSection() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => storesApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) => storesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       resetForm();
@@ -1052,7 +1052,7 @@ function StoresSection() {
     setPhone('');
   };
 
-  const openEdit = (store: Record<string, unknown>) => {
+  const openEdit = (store: Record<string, any>) => {
     setEditStore(store);
     setName(store.name as string);
     setCity((store.city as string) || '');
@@ -1091,7 +1091,7 @@ function StoresSection() {
 
       {/* Store list */}
       <div className="space-y-3">
-        {stores.map((store: Record<string, unknown>) => (
+        {stores.map((store: Record<string, any>) => (
           <div key={store.id as string}
             className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
             <div className="flex items-center gap-3">
@@ -1209,10 +1209,10 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
     );
   }
 
-  const tables = (data?.tables || []) as Record<string, unknown>[];
-  const recentChanges = (data?.recentChanges || []) as Record<string, unknown>[];
-  const totalActive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.active_count as number) || 0), 0);
-  const totalInactive = tables.reduce((s: number, t: Record<string, unknown>) => s + ((t.inactive_count as number) || 0), 0);
+  const tables = (data?.tables || []) as Record<string, any>[];
+  const recentChanges = (data?.recentChanges || []) as Record<string, any>[];
+  const totalActive = tables.reduce((s: number, t: Record<string, any>) => s + ((t.active_count as number) || 0), 0);
+  const totalInactive = tables.reduce((s: number, t: Record<string, any>) => s + ((t.inactive_count as number) || 0), 0);
 
   const TABLE_ICONS: Record<string, { icon: typeof Database; color: string; bg: string }> = {
     expense_categories:     { icon: Layers,    color: 'text-red-600',    bg: 'bg-red-50' },
@@ -1360,7 +1360,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [editItem, setEditItem] = useState<Record<string, any> | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [search, setSearch] = useState('');
   const [showAudit, setShowAudit] = useState(false);
@@ -1370,7 +1370,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   const [fCode, setFCode] = useState('');
   const [fDescription, setFDescription] = useState('');
   const [fColor, setFColor] = useState('');
-  const [fMetadata, setFMetadata] = useState<Record<string, unknown>>({});
+  const [fMetadata, setFMetadata] = useState<Record<string, any>>({});
 
   const { data, isLoading } = useQuery({
     queryKey: ['ref-entries', tableId, showInactive],
@@ -1383,13 +1383,13 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
     enabled: showAudit,
   });
 
-  const table = data?.table as Record<string, unknown> | undefined;
-  const entries = (data?.entries || []) as Record<string, unknown>[];
+  const table = data?.table as Record<string, any> | undefined;
+  const entries = (data?.entries || []) as Record<string, any>[];
   const isNative = table?.source === 'native';
   const isHierarchical = tableId === 'expense_categories' || tableId === 'revenue_categories';
 
   const createMutation = useMutation({
-    mutationFn: (d: Record<string, unknown>) => referentielApi.create(tableId, d),
+    mutationFn: (d: Record<string, any>) => referentielApi.create(tableId, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
       queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
@@ -1404,7 +1404,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, d }: { id: string; d: Record<string, unknown> }) => referentielApi.update(tableId, id, d),
+    mutationFn: ({ id, d }: { id: string; d: Record<string, any> }) => referentielApi.update(tableId, id, d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ref-entries', tableId] });
       queryClient.invalidateQueries({ queryKey: ['ref-dashboard'] });
@@ -1448,19 +1448,19 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
     setFMetadata({});
   };
 
-  const openEdit = (entry: Record<string, unknown>) => {
+  const openEdit = (entry: Record<string, any>) => {
     setEditItem(entry);
     setFLabel(String(entry.label || ''));
     setFCode(String(entry.code || ''));
     setFDescription(String(entry.description || ''));
     setFColor(String(entry.color || ''));
-    setFMetadata((entry.metadata as Record<string, unknown>) || {});
+    setFMetadata((entry.metadata as Record<string, any>) || {});
     setShowForm(true);
   };
 
   const handleSubmit = () => {
     if (!fLabel.trim()) return;
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, any> = {
       label: fLabel.trim(),
       code: fCode.trim() || undefined,
       description: fDescription.trim() || undefined,
@@ -1558,10 +1558,10 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
             <h3 className="font-semibold text-gray-700 text-sm">Historique des modifications</h3>
           </div>
           <div className="divide-y divide-gray-50 max-h-56 overflow-y-auto">
-            {(auditData as Record<string, unknown>[] || []).length === 0 && (
+            {(auditData as Record<string, any>[] || []).length === 0 && (
               <p className="text-sm text-gray-400 text-center py-6">Aucune modification enregistree</p>
             )}
-            {(auditData as Record<string, unknown>[] || []).slice(0, 30).map((log: Record<string, unknown>) => {
+            {(auditData as Record<string, any>[] || []).slice(0, 30).map((log: Record<string, any>) => {
               const actionLabels: Record<string, string> = {
                 create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
               };
@@ -1600,7 +1600,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
               onReactivate={(id) => reactivateMutation.mutate(id)}
               onAddChild={(parent) => {
                 resetForm();
-                const parentLevel = (parent._level as number) || (parent.metadata as Record<string, unknown>)?.level as number || 1;
+                const parentLevel = (parent._level as number) || (parent.metadata as Record<string, any>)?.level as number || 1;
                 setFMetadata({
                   ...fMetadata,
                   parent_id: String(parent.id),
@@ -1719,11 +1719,11 @@ function HierarchicalEntryList({
   onAddChild,
   isNative,
 }: {
-  entries: Record<string, unknown>[];
-  onEdit: (e: Record<string, unknown>) => void;
+  entries: Record<string, any>[];
+  onEdit: (e: Record<string, any>) => void;
   onDelete: (id: string) => void;
   onReactivate: (id: string) => void;
-  onAddChild: (parent: Record<string, unknown>) => void;
+  onAddChild: (parent: Record<string, any>) => void;
   isNative: boolean;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -1734,7 +1734,7 @@ function HierarchicalEntryList({
   const level2 = entries.filter(e => (e._level as number) === 2);
   const level3 = entries.filter(e => (e._level as number) === 3);
 
-  const getChildren = (parentId: string, fromLevel: Record<string, unknown>[]) =>
+  const getChildren = (parentId: string, fromLevel: Record<string, any>[]) =>
     fromLevel.filter(e => String(e._parent_id) === parentId);
 
   if (level1.length === 0 && entries.length > 0) {
@@ -1866,8 +1866,8 @@ function HierarchicalEntryList({
 function EntryRow({
   entry, onEdit, onDelete, onReactivate, isNative, indent,
 }: {
-  entry: Record<string, unknown>;
-  onEdit: (e: Record<string, unknown>) => void;
+  entry: Record<string, any>;
+  onEdit: (e: Record<string, any>) => void;
   onDelete: (id: string) => void;
   onReactivate: (id: string) => void;
   isNative: boolean;

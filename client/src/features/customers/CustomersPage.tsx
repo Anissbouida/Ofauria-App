@@ -38,7 +38,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('total_spent');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -64,7 +64,7 @@ export default function CustomersPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: Record<string, any>) =>
       editing ? customersApi.update(editing.id as string, data) : customersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -77,7 +77,7 @@ export default function CustomersPage() {
   const customers = data?.data || [];
 
   const sorted = useMemo(() => {
-    return [...customers].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    return [...customers].sort((a: Record<string, any>, b: Record<string, any>) => {
       let cmp = 0;
       switch (sortKey) {
         case 'name': cmp = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`); break;
@@ -195,7 +195,7 @@ export default function CustomersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map((c: Record<string, unknown>) => {
+          {sorted.map((c: Record<string, any>) => {
             const fullName = `${c.first_name} ${c.last_name}`;
             const initials = `${(c.first_name as string).charAt(0)}${(c.last_name as string).charAt(0)}`.toUpperCase();
             const avatarColor = getAvatarColor(fullName);
@@ -308,7 +308,7 @@ export default function CustomersPage() {
 function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
   customerId: string;
   onClose: () => void;
-  onEdit: (c: Record<string, unknown>) => void;
+  onEdit: (c: Record<string, any>) => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['customer-stats', customerId],
@@ -430,7 +430,7 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
                   (sales?.history || []).length === 0 ? (
                     <p className="text-center text-sm text-gray-400 py-6">Aucune vente</p>
                   ) : (
-                    (sales.history as Record<string, unknown>[]).map((s: Record<string, unknown>) => (
+                    (sales.history as Record<string, any>[]).map((s: Record<string, any>) => (
                       <div key={s.id as string} className="bg-gray-50 rounded-xl p-3">
                         <div className="flex items-center justify-between">
                           <div>
@@ -446,11 +446,11 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
                         </div>
                         {s.items && Array.isArray(s.items) && s.items[0]?.name && (
                           <div className="mt-2 pt-2 border-t border-gray-200">
-                            {(s.items as Record<string, unknown>[]).slice(0, 3).map((item, i) => (
+                            {(s.items as Record<string, any>[]).slice(0, 3).map((item, i) => (
                               <p key={i} className="text-xs text-gray-500">{item.quantity}x {item.name} — {n(parseFloat(item.unit_price as string))} DH</p>
                             ))}
-                            {(s.items as Record<string, unknown>[]).length > 3 && (
-                              <p className="text-xs text-gray-400 mt-0.5">+{(s.items as Record<string, unknown>[]).length - 3} autres articles</p>
+                            {(s.items as Record<string, any>[]).length > 3 && (
+                              <p className="text-xs text-gray-400 mt-0.5">+{(s.items as Record<string, any>[]).length - 3} autres articles</p>
                             )}
                           </div>
                         )}
@@ -461,7 +461,7 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
                   (orders?.history || []).length === 0 ? (
                     <p className="text-center text-sm text-gray-400 py-6">Aucune commande</p>
                   ) : (
-                    (orders.history as Record<string, unknown>[]).map((o: Record<string, unknown>) => {
+                    (orders.history as Record<string, any>[]).map((o: Record<string, any>) => {
                       const statusMap: Record<string, { label: string; bg: string }> = {
                         pending: { label: 'En attente', bg: 'bg-yellow-100 text-yellow-700' },
                         confirmed: { label: 'Confirmee', bg: 'bg-blue-100 text-blue-700' },
@@ -499,9 +499,9 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
 
 /* ═══════════════════════ CUSTOMER FORM MODAL ═══════════════════════ */
 function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
-  editing: Record<string, unknown> | null;
+  editing: Record<string, any> | null;
   onClose: () => void;
-  onSubmit: (data: Record<string, unknown>) => void;
+  onSubmit: (data: Record<string, any>) => void;
   isPending: boolean;
 }) {
   const [customerType, setCustomerType] = useState(editing?.customer_type as string || 'particulier');

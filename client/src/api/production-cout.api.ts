@@ -6,9 +6,9 @@ export const productionCoutApi = {
     api.get('/production-cout/equipements', { params: { storeId } }).then(r => r.data.data),
   getEquipement: (id: string) =>
     api.get(`/production-cout/equipements/${id}`).then(r => r.data.data),
-  createEquipement: (data: Record<string, unknown>) =>
+  createEquipement: (data: Record<string, any>) =>
     api.post('/production-cout/equipements', data).then(r => r.data.data),
-  updateEquipement: (id: string, data: Record<string, unknown>) =>
+  updateEquipement: (id: string, data: Record<string, any>) =>
     api.put(`/production-cout/equipements/${id}`, data).then(r => r.data.data),
 
   // Temps de travail

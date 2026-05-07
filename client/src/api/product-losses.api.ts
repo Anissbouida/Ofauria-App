@@ -7,7 +7,7 @@ export const productLossesApi = {
   stats: (month: number, year: number) =>
     api.get('/product-losses/stats', { params: { month, year } }).then(r => r.data.data),
 
-  create: (data: Record<string, unknown>) =>
+  create: (data: Record<string, any>) =>
     api.post('/product-losses', data).then(r => r.data.data),
 
   remove: (id: string) =>

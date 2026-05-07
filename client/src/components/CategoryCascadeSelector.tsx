@@ -35,7 +35,7 @@ export default function CategoryCascadeSelector({
     queryFn: () => expenseCategoriesApi.list(),
   });
 
-  const categories = allCategories as Record<string, unknown>[];
+  const categories = allCategories as Record<string, any>[];
 
   // Organize by level
   const level1 = useMemo(() => categories.filter(c => (c.level as number) === 1), [categories]);

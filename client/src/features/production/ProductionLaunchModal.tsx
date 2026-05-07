@@ -21,12 +21,12 @@ import { useProductionTimers } from '../../context/ProductionTimerContext';
 
 interface ProductionLaunchModalProps {
   planId: string;
-  plan: Record<string, unknown>;
-  items: Record<string, unknown>[];
+  plan: Record<string, any>;
+  items: Record<string, any>[];
   targetItemId?: string | null;
   initialStepName?: string | null; // jump to this étape by name (from timer notification)
-  needs: Record<string, unknown>[];
-  fefoPreview: Record<string, unknown>[];
+  needs: Record<string, any>[];
+  fefoPreview: Record<string, any>[];
   onClose: () => void;
   onCompleted: () => void;
 }
@@ -37,7 +37,7 @@ interface SubRecipeAnalysis {
   yieldQuantity: number;
   totalNeeded: number;
   usedBy: { planItemId: string; productName: string; quantityNeeded: number }[];
-  ingredients: Record<string, unknown>[];
+  ingredients: Record<string, any>[];
 }
 
 // LOSS_REASONS is now loaded dynamically via useReferentiel('production_loss_reasons') inside the component
@@ -198,7 +198,7 @@ export default function ProductionLaunchModal({
         const lost = planned - actual;
         return lost > 0 ? { ...item, planned, actual, lost } : null;
       })
-      .filter(Boolean) as (Record<string, unknown> & { planned: number; actual: number; lost: number })[];
+      .filter(Boolean) as (Record<string, any> & { planned: number; actual: number; lost: number })[];
   }, [selectedItems, actuals, items]);
 
   // Auto-enable losses when discrepancies first appear going to step 3
@@ -506,7 +506,7 @@ export default function ProductionLaunchModal({
   // -----------------------------------------------------------------------
 
   const renderStep2 = () => {
-    const renderItemRow = (item: Record<string, unknown>, disabled = false) => {
+    const renderItemRow = (item: Record<string, any>, disabled = false) => {
       const id = item.id as string;
       const isSelected = selectedItems.has(id);
       const planned = (item.planned_quantity as number) || 0;
@@ -902,8 +902,8 @@ export default function ProductionLaunchModal({
     if (!recipeProductId || !recipeFullscreen) return null;
 
     const productName = items.find((i) => (i.product_id as string) === recipeProductId)?.product_name as string || '';
-    const ingredients = ((recipeData?.ingredients || []) as Record<string, unknown>[]);
-    const subRecipesData = ((recipeData?.sub_recipes || []) as Record<string, unknown>[]);
+    const ingredients = ((recipeData?.ingredients || []) as Record<string, any>[]);
+    const subRecipesData = ((recipeData?.sub_recipes || []) as Record<string, any>[]);
     const instructions = ((recipeData?.instructions as string) || '');
 
     return (
@@ -970,7 +970,7 @@ export default function ProductionLaunchModal({
                       <div key={idx} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
                         <span className="text-base font-medium text-gray-900">{sr.sub_recipe_name as string}</span>
                         <span className="text-base text-gray-700 font-mono">
-                          {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, unknown>).sub_yield_unit as string || 'u.'})
+                          {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, any>).sub_yield_unit as string || 'u.'})
                         </span>
                       </div>
                     ))}
@@ -1022,8 +1022,8 @@ export default function ProductionLaunchModal({
       );
     }
 
-    const ingredients = (recipeData.ingredients || []) as Record<string, unknown>[];
-    const subRecipesData = (recipeData.sub_recipes || []) as Record<string, unknown>[];
+    const ingredients = (recipeData.ingredients || []) as Record<string, any>[];
+    const subRecipesData = (recipeData.sub_recipes || []) as Record<string, any>[];
     const instructions = (recipeData.instructions as string) || '';
 
     return (
@@ -1087,7 +1087,7 @@ export default function ProductionLaunchModal({
                   <div key={idx} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50/50">
                     <span className="text-sm font-medium text-gray-800">{sr.sub_recipe_name as string}</span>
                     <span className="text-sm text-gray-600 font-mono">
-                      {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, unknown>).sub_yield_unit as string || 'u.'})
+                      {parseFloat(sr.quantity as string).toFixed(2)} (rendement: {sr.sub_yield_quantity as number} {(sr as Record<string, any>).sub_yield_unit as string || 'u.'})
                     </span>
                   </div>
                 ))}
@@ -1161,9 +1161,9 @@ export default function ProductionLaunchModal({
   };
 
   // Dynamic steps: recipe étapes take priority, then profile overrides, then generic flow
-  const recipeEtapes: Record<string, unknown>[] = recipeData?.etapes || [];
-  const profileEtapesOverrides: Record<string, unknown>[] = productionProfile?.etapes || [];
-  const dynamicSteps: Record<string, unknown>[] =
+  const recipeEtapes: Record<string, any>[] = recipeData?.etapes || [];
+  const profileEtapesOverrides: Record<string, any>[] = productionProfile?.etapes || [];
+  const dynamicSteps: Record<string, any>[] =
     (profileEtapesOverrides.length > 0 ? profileEtapesOverrides : recipeEtapes);
   const hasProfileSteps = dynamicSteps.length > 0;
 

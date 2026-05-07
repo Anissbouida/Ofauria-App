@@ -76,8 +76,8 @@ export default function EmployeesPage() {
 /* ═══════════════════════ EMPLOYEES TAB ═══════════════════════ */
 function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
-  const [viewDetail, setViewDetail] = useState<Record<string, unknown> | null>(null);
+  const [editing, setEditing] = useState<Record<string, any> | null>(null);
+  const [viewDetail, setViewDetail] = useState<Record<string, any> | null>(null);
   const [searchEmp, setSearchEmp] = useState('');
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -87,7 +87,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const { entries: contractTypes, getLabel: getContractLabel } = useReferentiel('contract_types');
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: Record<string, any>) =>
       editing ? employeesApi.update(editing.id as string, data) : employeesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -97,7 +97,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
     onError: () => notify.error('Erreur'),
   });
 
-  const activeCount = employees.filter((e: Record<string, unknown>) => e.is_active).length;
+  const activeCount = employees.filter((e: Record<string, any>) => e.is_active).length;
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -110,13 +110,13 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       : <ArrowDown size={13} className="text-teal-600 ml-1 inline" />;
   };
 
-  const filteredEmp = employees.filter((e: Record<string, unknown>) => {
+  const filteredEmp = employees.filter((e: Record<string, any>) => {
     if (!searchEmp) return true;
     const s = searchEmp.toLowerCase();
     return (e.first_name as string).toLowerCase().includes(s) || (e.last_name as string).toLowerCase().includes(s) || (e.cin as string || '').toLowerCase().includes(s);
   });
 
-  const sortedEmp = [...filteredEmp].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const sortedEmp = [...filteredEmp].sort((a: Record<string, any>, b: Record<string, any>) => {
     let va: string | number = '';
     let vb: string | number = '';
     switch (sortKey) {
@@ -199,7 +199,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {sortedEmp.map((e: Record<string, unknown>) => (
+              {sortedEmp.map((e: Record<string, any>) => (
                 <tr key={e.id as string} className="hover:bg-teal-50/30 transition-colors cursor-pointer" onClick={() => setViewDetail(e)}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
@@ -330,7 +330,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
             <form onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const data: Record<string, unknown> = Object.fromEntries(fd);
+              const data: Record<string, any> = Object.fromEntries(fd);
               if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
               if (data.seniorityYears) data.seniorityYears = parseInt(data.seniorityYears as string);
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
@@ -410,7 +410,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
   const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
 
   const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
-  const activeEmployees = (employees as Record<string, unknown>[]).filter(e => e.is_active);
+  const activeEmployees = (employees as Record<string, any>[]).filter(e => e.is_active);
 
   // Daily records
   const { data: records = [], isLoading } = useQuery({
@@ -431,7 +431,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
   });
 
   const upsertMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => attendanceApi.upsert(data),
+    mutationFn: (data: Record<string, any>) => attendanceApi.upsert(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       notify.success('Pointage enregistré');
@@ -439,11 +439,11 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
     onError: () => notify.error('Erreur'),
   });
 
-  const getRecord = (empId: string) => (records as Record<string, unknown>[]).find(r => r.employee_id === empId);
+  const getRecord = (empId: string) => (records as Record<string, any>[]).find(r => r.employee_id === empId);
 
   // Calculate monthly summary per employee
   const getEmployeeMonthlySummary = (empId: string) => {
-    const empRecords = (monthlyRecords as Record<string, unknown>[]).filter(r => r.employee_id === empId);
+    const empRecords = (monthlyRecords as Record<string, any>[]).filter(r => r.employee_id === empId);
     const present = empRecords.filter(r => r.status === 'present').length;
     const late = empRecords.filter(r => r.status === 'late').length;
     const absent = empRecords.filter(r => r.status === 'absent').length;
@@ -514,7 +514,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {activeEmployees.map((emp: Record<string, unknown>) => {
+                {activeEmployees.map((emp: Record<string, any>) => {
                   const s = getEmployeeMonthlySummary(emp.id as string);
                   const baseSalary = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
                   const dailyRate = baseSalary / 26;
@@ -609,7 +609,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {activeEmployees.map((emp: Record<string, unknown>) => {
+              {activeEmployees.map((emp: Record<string, any>) => {
                 const rec = getRecord(emp.id as string);
                 return (
                   <tr key={emp.id as string} className="hover:bg-gray-50">
@@ -630,11 +630,11 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                           <button key={s.value}
                             onClick={() => upsertMutation.mutate({
                               employeeId: emp.id, date: selectedDate, status: s.value,
-                              checkIn: (rec as Record<string, unknown>)?.check_in || undefined,
-                              checkOut: (rec as Record<string, unknown>)?.check_out || undefined,
+                              checkIn: (rec as Record<string, any>)?.check_in || undefined,
+                              checkOut: (rec as Record<string, any>)?.check_out || undefined,
                             })}
                             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                              (rec as Record<string, unknown>)?.status === s.value ? s.color : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                              (rec as Record<string, any>)?.status === s.value ? s.color : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
                             }`}>
                             {s.label}
                           </button>
@@ -643,37 +643,37 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                     </td>
                     <td className="px-4 py-2 text-center">
                       <input type="time" className="input text-center text-sm w-28 mx-auto"
-                        defaultValue={(rec as Record<string, unknown>)?.check_in as string || ''}
+                        defaultValue={(rec as Record<string, any>)?.check_in as string || ''}
                         onBlur={e => {
                           if (e.target.value) upsertMutation.mutate({
                             employeeId: emp.id, date: selectedDate,
-                            status: (rec as Record<string, unknown>)?.status || 'present',
+                            status: (rec as Record<string, any>)?.status || 'present',
                             checkIn: e.target.value,
-                            checkOut: (rec as Record<string, unknown>)?.check_out || undefined,
+                            checkOut: (rec as Record<string, any>)?.check_out || undefined,
                           });
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
                       <input type="time" className="input text-center text-sm w-28 mx-auto"
-                        defaultValue={(rec as Record<string, unknown>)?.check_out as string || ''}
+                        defaultValue={(rec as Record<string, any>)?.check_out as string || ''}
                         onBlur={e => {
                           if (e.target.value) upsertMutation.mutate({
                             employeeId: emp.id, date: selectedDate,
-                            status: (rec as Record<string, unknown>)?.status || 'present',
-                            checkIn: (rec as Record<string, unknown>)?.check_in || undefined,
+                            status: (rec as Record<string, any>)?.status || 'present',
+                            checkIn: (rec as Record<string, any>)?.check_in || undefined,
                             checkOut: e.target.value,
                           });
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
                       <input type="number" className="input text-center text-sm w-20 mx-auto" min="0"
-                        defaultValue={(rec as Record<string, unknown>)?.overtime_minutes as number || 0}
+                        defaultValue={(rec as Record<string, any>)?.overtime_minutes as number || 0}
                         onBlur={e => {
                           upsertMutation.mutate({
                             employeeId: emp.id, date: selectedDate,
-                            status: (rec as Record<string, unknown>)?.status || 'present',
-                            checkIn: (rec as Record<string, unknown>)?.check_in || undefined,
-                            checkOut: (rec as Record<string, unknown>)?.check_out || undefined,
+                            status: (rec as Record<string, any>)?.status || 'present',
+                            checkIn: (rec as Record<string, any>)?.check_in || undefined,
+                            checkOut: (rec as Record<string, any>)?.check_out || undefined,
                             overtimeMinutes: parseInt(e.target.value) || 0,
                           });
                         }} />
@@ -704,7 +704,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => leavesApi.create(data),
+    mutationFn: (data: Record<string, any>) => leavesApi.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé ajouté'); setShowForm(false); },
     onError: () => notify.error('Erreur'),
   });
@@ -740,7 +740,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(leaves as Record<string, unknown>[]).map(l => (
+              {(leaves as Record<string, any>[]).map(l => (
                 <tr key={l.id as string} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium">{l.first_name as string} {l.last_name as string}</td>
                   <td className="px-4 py-3 text-sm">{getLeaveLabel(l.type as string)}</td>
@@ -772,7 +772,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               ))}
             </tbody>
           </table>
-          {(leaves as Record<string, unknown>[]).length === 0 && <p className="text-center py-8 text-gray-400">Aucun congé pour cette année</p>}
+          {(leaves as Record<string, any>[]).length === 0 && <p className="text-center py-8 text-gray-400">Aucun congé pour cette année</p>}
         </div>
       )}
 
@@ -783,7 +783,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
             <form onSubmit={e => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const data = Object.fromEntries(fd) as Record<string, unknown>;
+              const data = Object.fromEntries(fd) as Record<string, any>;
               const start = new Date(data.startDate as string);
               const end = new Date(data.endDate as string);
               const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -793,7 +793,7 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               <div><label className="block text-sm font-medium mb-1">Employé *</label>
                 <select name="employeeId" className="input" required>
                   <option value="">Choisir...</option>
-                  {(employees as Record<string, unknown>[]).filter(e => e.is_active).map(e => (
+                  {(employees as Record<string, any>[]).filter(e => e.is_active).map(e => (
                     <option key={e.id as string} value={e.id as string}>{e.first_name as string} {e.last_name as string}</option>
                   ))}
                 </select></div>
@@ -823,7 +823,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [detailPayroll, setDetailPayroll] = useState<Record<string, unknown> | null>(null);
+  const [detailPayroll, setDetailPayroll] = useState<Record<string, any> | null>(null);
   const [paySortKey, setPaySortKey] = useState<string>('name');
   const [paySortDir, setPaySortDir] = useState<'asc' | 'desc'>('asc');
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
@@ -856,18 +856,18 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
   const pf = (v: unknown) => parseFloat(v as string || '0').toFixed(2);
   const pn = (v: unknown) => parseFloat(v as string || '0');
 
-  const totalNet = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.net_salary), 0);
-  const totalGross = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.gross_salary), 0);
-  const totalIR = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.ir_net), 0);
-  const totalCNSS = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.cnss_employee), 0);
-  const totalAMO = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.amo_employee), 0);
-  const totalChargesPatron = (payrolls as Record<string, unknown>[]).reduce((s, p) => s + pn(p.total_charges_patron), 0);
-  const totalPaid = (payrolls as Record<string, unknown>[]).filter(p => p.paid).length;
+  const totalNet = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.net_salary), 0);
+  const totalGross = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.gross_salary), 0);
+  const totalIR = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.ir_net), 0);
+  const totalCNSS = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.cnss_employee), 0);
+  const totalAMO = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.amo_employee), 0);
+  const totalChargesPatron = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.total_charges_patron), 0);
+  const totalPaid = (payrolls as Record<string, any>[]).filter(p => p.paid).length;
 
   const exportPayroll = () => {
     const BOM = '\uFEFF';
     const headers = ['Employe', 'Fonction', 'Salaire Base', 'Brut', 'CNSS Sal.', 'AMO Sal.', 'IR', 'Net a payer', 'Charges Patron', 'Paye'];
-    const rows = (payrolls as Record<string, unknown>[]).map(p => [
+    const rows = (payrolls as Record<string, any>[]).map(p => [
       `${p.first_name} ${p.last_name}`,
       getRoleLabel(p.employee_role as string),
       pf(p.base_salary), pf(p.gross_salary), pf(p.cnss_employee), pf(p.amo_employee),
@@ -883,7 +883,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
   };
 
   // ─── Sort payrolls ───
-  const sortedPayrolls = [...(payrolls as Record<string, unknown>[])].sort((a, b) => {
+  const sortedPayrolls = [...(payrolls as Record<string, any>[])].sort((a, b) => {
     let cmp = 0;
     switch (paySortKey) {
       case 'name': cmp = (`${a.first_name} ${a.last_name}` as string).localeCompare(`${b.first_name} ${b.last_name}` as string); break;
@@ -900,7 +900,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
   });
 
   // ─── PDF bulletin generation ───
-  const generatePDF = (p: Record<string, unknown>) => {
+  const generatePDF = (p: Record<string, any>) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const W = 210;
     const mg = 15; // margin
@@ -1056,7 +1056,7 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
         </div>
       </div>
 
-      {(payrolls as Record<string, unknown>[]).length > 0 && (
+      {(payrolls as Record<string, any>[]).length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-white rounded-xl border p-4 text-center">
             <p className="text-xs text-gray-500 mb-1">Masse salariale brute</p>
@@ -1251,7 +1251,7 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
-  const activeEmployees = (employees as Record<string, unknown>[]).filter(e => e.is_active);
+  const activeEmployees = (employees as Record<string, any>[]).filter(e => e.is_active);
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['schedules', format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
@@ -1259,7 +1259,7 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => schedulesApi.create(data),
+    mutationFn: (data: Record<string, any>) => schedulesApi.create(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); notify.success('Planning ajoute'); setShowForm(false); },
     onError: () => notify.error('Erreur'),
   });
@@ -1270,7 +1270,7 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   });
 
   const getSchedule = (empId: string, date: string) =>
-    (schedules as Record<string, unknown>[]).find(s => s.employee_id === empId && s.date && (s.date as string).startsWith(date));
+    (schedules as Record<string, any>[]).find(s => s.employee_id === empId && s.date && (s.date as string).startsWith(date));
 
   return (
     <>
@@ -1301,7 +1301,7 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {activeEmployees.map((emp: Record<string, unknown>) => (
+            {activeEmployees.map((emp: Record<string, any>) => (
               <tr key={emp.id as string}>
                 <td className="px-4 py-2 sticky left-0 bg-white font-medium">
                   {emp.first_name as string} {(emp.last_name as string).charAt(0)}.

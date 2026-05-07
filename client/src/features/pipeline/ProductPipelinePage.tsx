@@ -31,7 +31,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   cancelled: { label: 'Annulé', color: 'gray', icon: Ban },
 };
 
-type Pipeline = Record<string, unknown>;
+type Pipeline = Record<string, any>;
 
 /** Extract error message from Axios error or plain Error */
 function getErrorMsg(err: unknown): string {
@@ -578,7 +578,7 @@ function PropositionStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipe
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.updateStageData(String(p.id), { stage: 'proposition', ...data });
     },
@@ -643,7 +643,7 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
   const recipes = recipesData as Pipeline[];
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.updateStageData(String(p.id), { stage: 'recipe_development', ...data });
     },
@@ -709,7 +709,7 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
   const calculatedMargin = price > 0 ? ((price - cost) / price * 100) : 0;
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.updateStageData(String(p.id), { stage: 'cost_calculation', ...data });
     },
@@ -799,7 +799,7 @@ function TestStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.updateStageData(String(p.id), { stage: 'production_test', ...data });
     },
@@ -883,7 +883,7 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
   const overall = (visual + taste + texture + originality) / 4;
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.updateStageData(String(p.id), { stage: 'tasting_evaluation', ...data });
     },
@@ -1111,7 +1111,7 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => {
+    mutationFn: (data: Record<string, any>) => {
       setMsg(null);
       return productPipelineApi.create(data);
     },

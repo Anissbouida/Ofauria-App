@@ -98,7 +98,7 @@ function CatalogueTab() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Record<string, unknown> | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Record<string, any> | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'low' | 'out'>('all');
   const [sortKey, setSortKey] = useState<string>('name');
@@ -127,24 +127,24 @@ function CatalogueTab() {
 
   const toggleMutation = useMutation({
     mutationFn: productsApi.toggleAvailability,
-    onSuccess: (product: Record<string, unknown>) => {
+    onSuccess: (product: Record<string, any>) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       notify.success(product.is_available ? 'Produit activé' : 'Produit désactivé');
     },
   });
 
   const saveMutation = useMutation({
-    mutationFn: async ({ data, imageFile, pendingProfile }: { data: Record<string, unknown>; imageFile?: File | null; pendingProfile?: ProfileFormData | null }) => {
+    mutationFn: async ({ data, imageFile, pendingProfile }: { data: Record<string, any>; imageFile?: File | null; pendingProfile?: ProfileFormData | null }) => {
       const result = editingProduct
         ? await productsApi.update(editingProduct.id as string, data)
         : await productsApi.create(data);
-      const productId = editingProduct ? (editingProduct.id as string) : (result as Record<string, unknown>).id as string;
+      const productId = editingProduct ? (editingProduct.id as string) : (result as Record<string, any>).id as string;
       if (imageFile && productId) {
         await productsApi.uploadImage(productId, imageFile);
       }
       // Save pending production profile after product creation/update
       if (pendingProfile && productId) {
-        await contenantsApi.upsertProfile(productId, pendingProfile as unknown as Record<string, unknown>);
+        await contenantsApi.upsertProfile(productId, pendingProfile as unknown as Record<string, any>);
       }
       return result;
     },
@@ -163,16 +163,16 @@ function CatalogueTab() {
 
   // Stats
   const totalProducts = products.length;
-  const availableCount = products.filter((p: Record<string, unknown>) => p.is_available).length;
-  const lowStockCount = products.filter((p: Record<string, unknown>) => {
+  const availableCount = products.filter((p: Record<string, any>) => p.is_available).length;
+  const lowStockCount = products.filter((p: Record<string, any>) => {
     const stock = parseFloat((p.stock_quantity as string) || '0');
     const threshold = parseFloat((p.stock_min_threshold as string) || '0');
     return threshold > 0 && stock <= threshold && stock > 0;
   }).length;
-  const outOfStockCount = products.filter((p: Record<string, unknown>) => parseFloat((p.stock_quantity as string) || '0') <= 0).length;
+  const outOfStockCount = products.filter((p: Record<string, any>) => parseFloat((p.stock_quantity as string) || '0') <= 0).length;
 
   // Apply stock filter
-  const filteredProducts = products.filter((p: Record<string, unknown>) => {
+  const filteredProducts = products.filter((p: Record<string, any>) => {
     if (stockFilter === 'all') return true;
     const stock = parseFloat((p.stock_quantity as string) || '0');
     const threshold = parseFloat((p.stock_min_threshold as string) || '0');
@@ -185,7 +185,7 @@ function CatalogueTab() {
   // Sort products
   const sortedProducts = useMemo(() => {
     const arr = [...filteredProducts];
-    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let va: string | number, vb: string | number;
       switch (sortKey) {
         case 'name': va = ((a.name as string) || '').toLowerCase(); vb = ((b.name as string) || '').toLowerCase(); break;
@@ -328,7 +328,7 @@ function CatalogueTab() {
       ) : viewMode === 'grid' ? (
         /* ═══ Grid View ═══ */
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
-          {filteredProducts.map((p: Record<string, unknown>) => {
+          {filteredProducts.map((p: Record<string, any>) => {
             const stock = parseFloat((p.stock_quantity as string) || '0');
             const threshold = parseFloat((p.stock_min_threshold as string) || '0');
             const isLow = threshold > 0 && stock <= threshold && stock > 0;
@@ -435,7 +435,7 @@ function CatalogueTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {sortedProducts.map((p: Record<string, unknown>) => {
+              {sortedProducts.map((p: Record<string, any>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
@@ -580,10 +580,10 @@ function CatalogueTab() {
 type FormTab = 'general' | 'production' | 'lifecycle' | 'profil_production';
 
 function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
-  product: Record<string, unknown> | null;
+  product: Record<string, any> | null;
   categories: { id: number; name: string }[];
   onClose: () => void;
-  onSave: (data: Record<string, unknown>, imageFile?: File | null, pendingProfile?: ProfileFormData | null) => void;
+  onSave: (data: Record<string, any>, imageFile?: File | null, pendingProfile?: ProfileFormData | null) => void;
   isLoading: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<FormTab>('general');
@@ -609,7 +609,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   // Fetch all recipes
   const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
-  const allRecipesList = allRecipes as Record<string, unknown>[];
+  const allRecipesList = allRecipes as Record<string, any>[];
   // Available = no product linked OR linked to the current product being edited
   const availableRecipes = allRecipesList.filter(r => {
     if (!r.product_id) return true;
@@ -648,12 +648,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   // Selected recipe object
   const selectedRecipe = form.recipeId
-    ? (allRecipes as Record<string, unknown>[]).find(r => r.id === form.recipeId) || null
+    ? (allRecipes as Record<string, any>[]).find(r => r.id === form.recipeId) || null
     : null;
 
   // Smart search: fuzzy match on recipe name, normalize accents
   const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const searchFilter = (r: Record<string, unknown>) => {
+  const searchFilter = (r: Record<string, any>) => {
     if (!recipeSearch.trim()) return true;
     const q = normalizeStr(recipeSearch);
     const name = normalizeStr(r.name as string);
@@ -699,7 +699,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   const { data: allUsers = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
   const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
-  const chefUsers = allUsers.filter((u: Record<string, unknown>) => chefRoles.includes(u.role as string) && u.isActive !== false);
+  const chefUsers = allUsers.filter((u: Record<string, any>) => chefRoles.includes(u.role as string) && u.isActive !== false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>((product?.image_url as string) || null);
   const [showCamera, setShowCamera] = useState(false);
@@ -1086,7 +1086,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
                       <option value="">Aucun responsable</option>
-                      {chefUsers.map((u: Record<string, unknown>) => (
+                      {chefUsers.map((u: Record<string, any>) => (
                         <option key={u.id as string} value={u.id as string}>
                           {u.firstName as string} {u.lastName as string} — {ROLE_LABELS[(u.role as Role)] || u.role}
                         </option>

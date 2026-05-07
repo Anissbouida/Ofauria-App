@@ -53,7 +53,7 @@ export default function LossDeclarationModal({
 
   const [step, setStep] = useState<'product' | 'details' | 'done'>('product');
   const [search, setSearch] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<Record<string, unknown> | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Record<string, any> | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState('');
   const [reasonNote, setReasonNote] = useState('');
@@ -68,7 +68,7 @@ export default function LossDeclarationModal({
     queryFn: () => productsApi.list({ limit: '500' }),
   });
 
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const products = (productsData?.data || []) as Record<string, any>[];
   const filtered = products.filter((p) => {
     // Filtre par liste de produits autorises (ex: produits du plan en cours)
     if (productIdFilter && productIdFilter.length > 0 && !productIdFilter.includes(p.id as string)) {

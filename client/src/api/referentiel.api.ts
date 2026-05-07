@@ -14,11 +14,11 @@ export const referentielApi = {
     api.get(`/params/${tableName}`, { params: includeInactive ? { includeInactive: 'true' } : {} }).then(r => r.data.data),
 
   /** Create a new entry */
-  create: (tableName: string, data: Record<string, unknown>) =>
+  create: (tableName: string, data: Record<string, any>) =>
     api.post(`/params/${tableName}`, data).then(r => r.data.data),
 
   /** Update an entry */
-  update: (tableName: string, id: string, data: Record<string, unknown>) =>
+  update: (tableName: string, id: string, data: Record<string, any>) =>
     api.put(`/params/${tableName}/${id}`, data).then(r => r.data.data),
 
   /** Delete / deactivate an entry */
@@ -38,9 +38,9 @@ export const referentielApi = {
     api.get(`/params/${tableName}/audit`, { params: { limit } }).then(r => r.data.data),
 
   /** Export entries as CSV */
-  exportCsv: (tableName: string, entries: Record<string, unknown>[], tableLabel: string) => {
+  exportCsv: (tableName: string, entries: Record<string, any>[], tableLabel: string) => {
     const headers = ['Code', 'Libelle', 'Description', 'Couleur', 'Ordre', 'Actif'];
-    const rows = entries.map((e: Record<string, unknown>) => [
+    const rows = entries.map((e: Record<string, any>) => [
       e.code || '',
       e.label || '',
       e.description || '',

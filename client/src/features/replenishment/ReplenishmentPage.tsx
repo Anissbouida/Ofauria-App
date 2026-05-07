@@ -88,7 +88,7 @@ export default function ReplenishmentPage() {
     },
   });
 
-  const requests = (data?.data || []) as Record<string, unknown>[];
+  const requests = (data?.data || []) as Record<string, any>[];
 
   // Stats
   const allRequests = requests;
@@ -353,11 +353,11 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const products = (productsData?.data || []) as Record<string, any>[];
 
   useEffect(() => {
     if (suggestionsLoaded) return;
-    const recos = (recommendations || []) as Record<string, unknown>[];
+    const recos = (recommendations || []) as Record<string, any>[];
     if (!recos.length && !products.length) return;
 
     const auto: Record<string, number> = {};
@@ -383,10 +383,10 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     }
   }, [recommendations, products, suggestionsLoaded]);
 
-  const hasHistory = ((recommendations || []) as Record<string, unknown>[]).length > 0;
+  const hasHistory = ((recommendations || []) as Record<string, any>[]).length > 0;
 
-  const recosByCategory: Record<string, Record<string, unknown>[]> = {};
-  for (const r of ((recommendations || []) as Record<string, unknown>[])) {
+  const recosByCategory: Record<string, Record<string, any>[]> = {};
+  for (const r of ((recommendations || []) as Record<string, any>[])) {
     const cat = (r.category_name as string) || 'Autre';
     if (!recosByCategory[cat]) recosByCategory[cat] = [];
     recosByCategory[cat].push(r);
@@ -415,7 +415,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
   const totalQty = Object.values(selected).reduce((s, q) => s + q, 0);
 
   const toggleCat = (cat: string) => setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
-  const selectAllCat = (items: Record<string, unknown>[]) => {
+  const selectAllCat = (items: Record<string, any>[]) => {
     const next = { ...selected };
     for (const item of items) {
       const pid = (item.product_id || item.id) as string;
@@ -426,7 +426,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     }
     setSelected(next);
   };
-  const deselectAllCat = (items: Record<string, unknown>[]) => {
+  const deselectAllCat = (items: Record<string, any>[]) => {
     const next = { ...selected };
     for (const item of items) delete next[(item.product_id || item.id) as string];
     setSelected(next);
@@ -436,9 +436,9 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     mutationFn: replenishmentApi.create,
     onSuccess: () => { notify.success('Demande envoyée avec succès'); onCreated(); },
     onError: (error: unknown) => {
-      const errData = (error as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
-      const data = errData?.data as Record<string, unknown> | undefined;
-      const err = data?.error as Record<string, unknown> | undefined;
+      const errData = (error as Record<string, any>)?.response as Record<string, any> | undefined;
+      const data = errData?.data as Record<string, any> | undefined;
+      const err = data?.error as Record<string, any> | undefined;
       if (err?.code === 'ALL_PRODUCTS_ALREADY_REQUESTED') {
         notify.error(err.message as string);
       } else {
@@ -481,7 +481,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
     });
   };
 
-  const filterBySearch = (items: Record<string, unknown>[]) => {
+  const filterBySearch = (items: Record<string, any>[]) => {
     if (!search) return items;
     const q = search.toLowerCase();
     return items.filter(i => ((i.product_name || i.name) as string).toLowerCase().includes(q));

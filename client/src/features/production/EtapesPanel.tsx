@@ -65,7 +65,7 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ etapeId, status, data }: { etapeId: string; status: string; data?: Record<string, unknown> }) =>
+    mutationFn: ({ etapeId, status, data }: { etapeId: string; status: string; data?: Record<string, any> }) =>
       productionEtapesApi.updateStatus(etapeId, { status, ...data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] });
@@ -112,7 +112,7 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
   };
 
   const handleCompleteEtape = (etape: Etape) => {
-    const data: Record<string, unknown> = {};
+    const data: Record<string, any> = {};
     if (etape.controle_qualite && checklistState[etape.id]) {
       data.checklist_resultats = checklistState[etape.id];
     }

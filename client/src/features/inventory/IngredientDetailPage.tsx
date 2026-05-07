@@ -178,7 +178,7 @@ export default function IngredientDetailPage() {
 
   // Mutations
   const updateIngredientMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => ingredientsApi.update(id!, data),
+    mutationFn: (data: Record<string, any>) => ingredientsApi.update(id!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ingredient', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
@@ -750,7 +750,7 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   // Try to auto-match supplier by name
   const matchedSupplier = supplierHint
-    ? (suppliers as Record<string, unknown>[]).find(s => (s.name as string)?.toLowerCase() === supplierHint.toLowerCase())
+    ? (suppliers as Record<string, any>[]).find(s => (s.name as string)?.toLowerCase() === supplierHint.toLowerCase())
     : null;
 
   const [form, setForm] = useState({
@@ -798,7 +798,7 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
             <label className="block text-sm font-medium mb-1">Fournisseur</label>
             <select className="input" value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })}>
               <option value="">-- Aucun fournisseur --</option>
-              {(suppliers as Record<string, unknown>[]).filter(s => s.is_active !== false).map(s => (
+              {(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => (
                 <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
               ))}
             </select>
@@ -1056,10 +1056,10 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
 /* ─── Edit Ingredient Modal ─── */
 function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading }: {
-  ingredient: Record<string, unknown>;
+  ingredient: Record<string, any>;
   threshold: number;
   onClose: () => void;
-  onSave: (data: Record<string, unknown>) => void;
+  onSave: (data: Record<string, any>) => void;
   isLoading: boolean;
 }) {
   const [form, setForm] = useState({

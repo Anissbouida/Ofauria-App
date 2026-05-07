@@ -81,7 +81,7 @@ export default function LossesTab() {
     },
   });
 
-  const lossList = losses as Record<string, unknown>[];
+  const lossList = losses as Record<string, any>[];
 
   // Totals from stats
   const totalsByType = useMemo(() => {
@@ -90,7 +90,7 @@ export default function LossesTab() {
     let totalQty = 0;
     let totalCount = 0;
     if (stats?.byType) {
-      for (const row of stats.byType as Record<string, unknown>[]) {
+      for (const row of stats.byType as Record<string, any>[]) {
         const t = row.loss_type as string;
         const cost = parseFloat(row.total_cost as string) || 0;
         const qty = parseFloat(row.total_quantity as string) || 0;
@@ -360,7 +360,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
     queryFn: () => productsApi.list({ limit: '500' }),
   });
 
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const products = (productsData?.data || []) as Record<string, any>[];
 
   const selectedProduct = productId ? products.find(p => p.id === productId) : null;
 

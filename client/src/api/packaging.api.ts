@@ -7,10 +7,10 @@ export const packagingApi = {
   getById: (id: string) =>
     api.get(`/packaging-items/${id}`).then(r => r.data.data),
 
-  create: (data: Record<string, unknown>) =>
+  create: (data: Record<string, any>) =>
     api.post('/packaging-items', data).then(r => r.data.data),
 
-  update: (id: string, data: Record<string, unknown>) =>
+  update: (id: string, data: Record<string, any>) =>
     api.put(`/packaging-items/${id}`, data).then(r => r.data.data),
 
   remove: (id: string) =>

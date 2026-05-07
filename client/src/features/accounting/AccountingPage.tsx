@@ -48,7 +48,7 @@ function parseLocalDate(s: string) {
 interface DayData {
   date: string;
   dayNum: number;
-  payments: Record<string, unknown>[];
+  payments: Record<string, any>[];
   entries: number;
   exits: number;
   cashCaissiere: number;
@@ -64,9 +64,9 @@ interface DayData {
 }
 
 function buildDailyData(
-  rawPayments: Record<string, unknown>[],
-  rawSessions: Record<string, unknown>[],
-  rawSales: Record<string, unknown>[],
+  rawPayments: Record<string, any>[],
+  rawSessions: Record<string, any>[],
+  rawSales: Record<string, any>[],
   previousBalance: { cashNet: number; cardCumul: number },
   year: number,
   month: number,
@@ -93,7 +93,7 @@ function buildDailyData(
     });
   }
 
-  const paymentsByDay = new Map<string, Record<string, unknown>[]>();
+  const paymentsByDay = new Map<string, Record<string, any>[]>();
   for (const p of rawPayments) {
     const d = (p.payment_date as string).slice(0, 10);
     if (!paymentsByDay.has(d)) paymentsByDay.set(d, []);
@@ -382,14 +382,14 @@ function CaisseTab() {
       )}
 
       {/* Reconciliation alerts — significant daily discrepancies */}
-      {(data as Record<string, unknown>)?.reconciliationAlerts && ((data as Record<string, unknown>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
+      {(data as Record<string, any>)?.reconciliationAlerts && ((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
           <div className="flex items-center gap-2 text-red-800 font-semibold text-sm">
             <AlertTriangle size={16} />
-            {((data as Record<string, unknown>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 DH)
+            {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 DH)
           </div>
           <div className="space-y-1">
-            {((data as Record<string, unknown>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
+            {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
               <div key={a.date} className="flex items-center justify-between text-xs text-red-700 bg-red-100/50 rounded-lg px-3 py-1.5">
                 <span>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</span>
                 <span>Caissière: {n(a.cashCaissiere)} — Système: {n(a.cashSysteme)} — <span className="font-bold">Écart: {a.ecart > 0 ? '+' : ''}{n(a.ecart)} DH</span></span>
@@ -585,7 +585,7 @@ function ChargesTab() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [showForm, setShowForm] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<Record<string, unknown> | null>(null);
+  const [editingPayment, setEditingPayment] = useState<Record<string, any> | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
@@ -606,12 +606,12 @@ function ChargesTab() {
   const [formPOId, setFormPOId] = useState<string>('');
 
   // Check if selected category requires a PO (look up the leaf category)
-  const selectedCategory = (categories as Record<string, unknown>[]).find(c => String(c.id) === formCategoryId);
+  const selectedCategory = (categories as Record<string, any>[]).find(c => String(c.id) === formCategoryId);
   const requiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
 
   // Build full path label for display: "Categorie > Sous-cat > Type"
   const getCategoryPath = (catId: string) => {
-    const all = categories as Record<string, unknown>[];
+    const all = categories as Record<string, any>[];
     const cat = all.find(c => String(c.id) === catId);
     if (!cat) return '';
     const parts: string[] = [String(cat.name)];
@@ -625,10 +625,10 @@ function ChargesTab() {
   };
 
   // Auto-fill from selected PO
-  const selectedPO = (eligiblePOs as Record<string, unknown>[]).find(po => po.id === formPOId);
+  const selectedPO = (eligiblePOs as Record<string, any>[]).find(po => po.id === formPOId);
 
   const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => paymentsApi.create(data),
+    mutationFn: (data: Record<string, any>) => paymentsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
@@ -641,7 +641,7 @@ function ChargesTab() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => paymentsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) => paymentsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
@@ -661,7 +661,7 @@ function ChargesTab() {
   });
 
   // Only outgoing payments (not income)
-  const outgoing = (payments as Record<string, unknown>[]).filter(p => p.type !== 'income');
+  const outgoing = (payments as Record<string, any>[]).filter(p => p.type !== 'income');
 
   // Group by type
   const invoicePayments = outgoing.filter(p => p.type === 'invoice');
@@ -902,7 +902,7 @@ function ChargesTab() {
             </div>
             <form onSubmit={e => {
               e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
+              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string);
               fd.type = 'expense';
               fd.categoryId = formCategoryId || undefined;
@@ -918,7 +918,7 @@ function ChargesTab() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie *</label>
                 <CascadeCategorySelect
-                  categories={categories as Record<string, unknown>[]}
+                  categories={categories as Record<string, any>[]}
                   value={formCategoryId}
                   onChange={(id) => { setFormCategoryId(id); setFormPOId(''); }}
                 />
@@ -932,7 +932,7 @@ function ChargesTab() {
                   <select value={formPOId} onChange={e => setFormPOId(e.target.value)}
                     className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" required>
                     <option value="">Sélectionner un BC...</option>
-                    {(eligiblePOs as Record<string, unknown>[]).map(po => (
+                    {(eligiblePOs as Record<string, any>[]).map(po => (
                       <option key={po.id as string} value={po.id as string}>
                         {po.order_number as string} — {po.supplier_name as string} — {n(parseFloat(po.total_amount as string) || 0)} DH
                       </option>
@@ -943,7 +943,7 @@ function ChargesTab() {
                       Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{n(parseFloat(selectedPO.total_amount as string) || 0)} DH</strong>
                     </p>
                   )}
-                  {(eligiblePOs as Record<string, unknown>[]).length === 0 && (
+                  {(eligiblePOs as Record<string, any>[]).length === 0 && (
                     <p className="text-xs text-red-600 mt-2">
                       Aucun bon de commande disponible. Créez d'abord un BC dans l'onglet Bons de commande.
                     </p>
@@ -968,7 +968,7 @@ function ChargesTab() {
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
                     <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                       <option value="">Aucun</option>
-                      {(suppliers as Record<string, unknown>[]).filter(s => s.is_active).map(s => (
+                      {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
                         <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
                       ))}
                     </select></div>
@@ -1009,7 +1009,7 @@ function ChargesTab() {
             </div>
             <form onSubmit={e => {
               e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, unknown>;
+              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string);
               if (!fd.categoryId) fd.categoryId = null;
               updateMutation.mutate({ id: editingPayment.id as string, data: fd });
@@ -1031,8 +1031,8 @@ function ChargesTab() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
                   <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.category_id as string || ''}>
                     <option value="">Choisir...</option>
-                    {(categories as Record<string, unknown>[])
-                      .filter(c => (c.level as number) === 3 || (!(categories as Record<string, unknown>[]).some(ch => String(ch.parent_id) === String(c.id))))
+                    {(categories as Record<string, any>[])
+                      .filter(c => (c.level as number) === 3 || (!(categories as Record<string, any>[]).some(ch => String(ch.parent_id) === String(c.id))))
                       .map(c => <option key={String(c.id)} value={String(c.id)}>{getCategoryPath(String(c.id))}</option>)}
                   </select></div>
               </div>
@@ -1272,7 +1272,7 @@ function ResumeTab() {
 function CascadeCategorySelect({
   categories, value, onChange,
 }: {
-  categories: Record<string, unknown>[];
+  categories: Record<string, any>[];
   value: string;
   onChange: (id: string) => void;
 }) {

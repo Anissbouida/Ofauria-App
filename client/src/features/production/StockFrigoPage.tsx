@@ -103,7 +103,7 @@ export default function StockFrigoPage() {
   });
 
   // Auto-select first store if user has no store
-  const storeId = selectedStoreId || (stores.length > 0 ? (stores[0] as Record<string, unknown>).id as string : '');
+  const storeId = selectedStoreId || (stores.length > 0 ? (stores[0] as Record<string, any>).id as string : '');
 
   const { data: stockItems = [], isLoading } = useQuery({
     queryKey: ['stock-frigo', storeId, includeExpired],
@@ -203,7 +203,7 @@ export default function StockFrigoPage() {
             onChange={e => setSelectedStoreId(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
           >
-            {(stores as Record<string, unknown>[]).map(s => (
+            {(stores as Record<string, any>[]).map(s => (
               <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
             ))}
           </select>

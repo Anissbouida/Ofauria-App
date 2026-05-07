@@ -146,7 +146,7 @@ function ProductionPlansView() {
   const filteredPlans = useMemo(() => {
     if (!searchQuery.trim()) return plans;
     const q = searchQuery.toLowerCase();
-    return plans.filter((p: Record<string, unknown>) =>
+    return plans.filter((p: Record<string, any>) =>
       (p.order_number as string)?.toLowerCase().includes(q) ||
       (p.order_customer_name as string)?.toLowerCase().includes(q) ||
       (p.created_by_name as string)?.toLowerCase().includes(q) ||
@@ -158,7 +158,7 @@ function ProductionPlansView() {
   const sortedPlans = useMemo(() => {
     const arr = [...filteredPlans];
     const STATUS_ORDER: Record<string, number> = { draft: 0, confirmed: 1, in_progress: 2, completed: 3 };
-    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let cmp = 0;
       switch (sortKey) {
         case 'plan_date': cmp = new Date(a.plan_date as string).getTime() - new Date(b.plan_date as string).getTime(); break;
@@ -178,10 +178,10 @@ function ProductionPlansView() {
   // Stats
   const stats = useMemo(() => ({
     total: plans.length,
-    draft: plans.filter((p: Record<string, unknown>) => p.status === 'draft').length,
-    confirmed: plans.filter((p: Record<string, unknown>) => p.status === 'confirmed').length,
-    in_progress: plans.filter((p: Record<string, unknown>) => p.status === 'in_progress').length,
-    completed: plans.filter((p: Record<string, unknown>) => p.status === 'completed').length,
+    draft: plans.filter((p: Record<string, any>) => p.status === 'draft').length,
+    confirmed: plans.filter((p: Record<string, any>) => p.status === 'confirmed').length,
+    in_progress: plans.filter((p: Record<string, any>) => p.status === 'in_progress').length,
+    completed: plans.filter((p: Record<string, any>) => p.status === 'completed').length,
   }), [plans]);
 
   const tabs = [
@@ -321,7 +321,7 @@ function ProductionPlansView() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPlans.map((p: Record<string, unknown>, idx: number) => {
+                {sortedPlans.map((p: Record<string, any>, idx: number) => {
                   const status = p.status as string;
                   const sCfg = statusConfig[status] || statusConfig.draft;
                   const rCfg = roleConfig[p.target_role as string] || roleConfig.baker;
@@ -462,7 +462,7 @@ function ProductionPlansView() {
             </div>
             <div className="p-4 max-h-80 overflow-y-auto">
               {(() => {
-                const yesterdayPlans = (yesterdayData?.data || []) as Record<string, unknown>[];
+                const yesterdayPlans = (yesterdayData?.data || []) as Record<string, any>[];
                 if (yesterdayPlans.length === 0) {
                   return (
                     <div className="text-center py-8 text-gray-400">
@@ -485,7 +485,7 @@ function ProductionPlansView() {
                             // Fetch plan details to get items
                             const detail = await productionApi.getById(plan.id as string);
                             const items: Record<string, number> = {};
-                            for (const item of (detail.items || []) as Record<string, unknown>[]) {
+                            for (const item of (detail.items || []) as Record<string, any>[]) {
                               if (item.product_id) {
                                 items[item.product_id as string] = item.planned_quantity as number;
                               }
@@ -508,7 +508,7 @@ function ProductionPlansView() {
                             <div className="flex items-center gap-2">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${sc.bg} ${sc.color}`}>
                                 <StatusIcon size={10} />
-                                {PRODUCTION_STATUS_LABELS[plan.status as string] || plan.status as string}
+                                {PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS] || plan.status as string}
                               </span>
                               <RotateCcw size={14} className="text-gray-300 group-hover:text-violet-500 transition-colors" />
                             </div>
@@ -556,7 +556,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
-  const allProducts = (productsData?.data || []) as Record<string, unknown>[];
+  const allProducts = (productsData?.data || []) as Record<string, any>[];
   const products = allowedSlugs
     ? allProducts.filter(p => allowedSlugs.includes(p.category_slug as string))
     : allProducts;
@@ -567,13 +567,13 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
     enabled: !!planDate,
   });
 
-  const orders = (ordersForDate || []) as Record<string, unknown>[];
+  const orders = (ordersForDate || []) as Record<string, any>[];
   const orderCount = orders.length;
 
   const computeOrderQtys = () => {
     const qtys: Record<string, number> = {};
     orders.forEach((order) => {
-      const items = (order.items || []) as Record<string, unknown>[];
+      const items = (order.items || []) as Record<string, any>[];
       items.forEach((item) => {
         const pid = item.product_id as string;
         qtys[pid] = (qtys[pid] || 0) + (item.quantity as number);
@@ -628,7 +628,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
 
   const createMutation = useMutation({
     mutationFn: productionApi.create,
-    onSuccess: (plan: Record<string, unknown>) => {
+    onSuccess: (plan: Record<string, any>) => {
       queryClient.invalidateQueries({ queryKey: ['production'] });
       notify.success('Plan de production créé');
       onCreated(plan.id as string);

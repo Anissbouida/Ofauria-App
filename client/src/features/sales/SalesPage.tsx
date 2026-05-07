@@ -111,7 +111,7 @@ export default function SalesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [importResults, setImportResults] = useState<Record<string, unknown>[] | null>(null);
+  const [importResults, setImportResults] = useState<Record<string, any>[] | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
@@ -134,7 +134,7 @@ export default function SalesPage() {
       date: sale.created_at,
       cashierName: `${sale.cashier_first_name} ${sale.cashier_last_name}`,
       customerName: sale.customer_first_name ? `${sale.customer_first_name} ${sale.customer_last_name}` : undefined,
-      items: (sale.items || []).map((item: Record<string, unknown>) => ({
+      items: (sale.items || []).map((item: Record<string, any>) => ({
         name: item.product_name as string,
         quantity: parseInt(String(item.quantity)) || 0,
         unitPrice: parseFloat(item.unit_price as string),
@@ -192,8 +192,8 @@ export default function SalesPage() {
   });
   const salesReturns = salesReturnsData?.data || [];
   const totalRefunds = salesReturns
-    .filter((r: Record<string, unknown>) => r.type === 'return')
-    .reduce((sum: number, r: Record<string, unknown>) => sum + parseFloat(r.refund_amount as string), 0);
+    .filter((r: Record<string, any>) => r.type === 'return')
+    .reduce((sum: number, r: Record<string, any>) => sum + parseFloat(r.refund_amount as string), 0);
 
   // Sort toggle
   const toggleSort = (key: string) => {
@@ -205,7 +205,7 @@ export default function SalesPage() {
   const filteredSales = useMemo(() => {
     if (!searchQuery.trim()) return sales;
     const q = searchQuery.toLowerCase();
-    return sales.filter((s: Record<string, unknown>) =>
+    return sales.filter((s: Record<string, any>) =>
       (s.sale_number as string)?.toLowerCase().includes(q) ||
       `${s.customer_first_name || ''} ${s.customer_last_name || ''}`.toLowerCase().includes(q) ||
       `${s.cashier_first_name || ''} ${s.cashier_last_name || ''}`.toLowerCase().includes(q)
@@ -215,7 +215,7 @@ export default function SalesPage() {
   // Sorted sales
   const sortedSales = useMemo(() => {
     const arr = [...filteredSales];
-    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let va: string | number, vb: string | number;
       switch (sortKey) {
         case 'sale_number': va = (a.sale_number as string) || ''; vb = (b.sale_number as string) || ''; break;
@@ -235,7 +235,7 @@ export default function SalesPage() {
   // Sorted summary
   const sortedSummary = useMemo(() => {
     const arr = [...summary];
-    arr.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let va: string | number, vb: string | number;
       switch (sortKey) {
         case 'label': va = ((a.label as string) || '').toLowerCase(); vb = ((b.label as string) || '').toLowerCase(); break;
@@ -256,7 +256,7 @@ export default function SalesPage() {
     if (mainTab === 'sessions') {
       exportCSV(`sessions_${date}.csv`,
         ['Employé', 'Ouverture', 'Fermeture', 'Fond de caisse', 'CA ventes', 'Avances', 'Montant attendu', 'Montant saisi', 'Écart', 'Statut'],
-        sessions.map((s: Record<string, unknown>) => [
+        sessions.map((s: Record<string, any>) => [
           `${s.first_name} ${s.last_name}`,
           format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm'),
           s.closed_at ? format(new Date(s.closed_at as string), 'dd/MM/yyyy HH:mm') : '',
@@ -274,7 +274,7 @@ export default function SalesPage() {
     if (mainTab === 'returns') {
       exportCSV(`retours_${date}.csv`,
         ['N° Retour', 'Vente originale', 'Type', 'Montant', 'Caissier', 'Date', 'Motif'],
-        returns.map((r: Record<string, unknown>) => [
+        returns.map((r: Record<string, any>) => [
           r.return_number as string,
           r.original_sale_number as string,
           r.type === 'return' ? 'Retour' : 'Échange',
@@ -289,7 +289,7 @@ export default function SalesPage() {
     if (view === 'receipt') {
       exportCSV(`ventes_recus_${date}.csv`,
         ['N° Vente', 'Client', 'Caissier', 'Paiement', 'Total (DH)', 'Date/Heure'],
-        sales.map((s: Record<string, unknown>) => [
+        sales.map((s: Record<string, any>) => [
           s.sale_number as string,
           s.customer_first_name ? `${s.customer_first_name} ${s.customer_last_name}` : 'Client de passage',
           `${s.cashier_first_name} ${s.cashier_last_name}`,
@@ -301,7 +301,7 @@ export default function SalesPage() {
     } else if (view === 'category') {
       exportCSV(`ventes_categories_${date}.csv`,
         ['Catégorie', 'Articles vendus', 'Nb ventes', 'CA (DH)', '% du CA'],
-        summary.map((r: Record<string, unknown>) => {
+        summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
         })
@@ -309,7 +309,7 @@ export default function SalesPage() {
     } else if (view === 'product') {
       exportCSV(`ventes_articles_${date}.csv`,
         ['Article', 'Catégorie', 'Qté vendue', 'Nb ventes', 'CA (DH)', '% du CA'],
-        summary.map((r: Record<string, unknown>) => {
+        summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, (r.category_name as string) || '', r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
         })
@@ -317,7 +317,7 @@ export default function SalesPage() {
     } else if (view === 'cashier') {
       exportCSV(`ventes_vendeuses_${date}.csv`,
         ['Vendeuse / Caissier', 'Rôle', 'Nb ventes', 'CA (DH)', '% du CA'],
-        summary.map((r: Record<string, unknown>) => {
+        summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, ROLE_LABELS[r.role as string] || (r.role as string), r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
         })
@@ -325,7 +325,7 @@ export default function SalesPage() {
     } else if (view === 'payment') {
       exportCSV(`ventes_paiement_${date}.csv`,
         ['Mode de paiement', 'Nb ventes', 'CA (DH)', '% du CA'],
-        summary.map((r: Record<string, unknown>) => {
+        summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [PAYMENT_LABELS[r.label as string] || (r.label as string), r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
         })
@@ -352,13 +352,13 @@ export default function SalesPage() {
   };
 
   const grossRevenue = view === 'receipt'
-    ? sales.reduce((sum: number, s: Record<string, unknown>) => sum + parseFloat(s.total as string), 0)
-    : summary.reduce((sum: number, s: Record<string, unknown>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
+    ? sales.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total as string), 0)
+    : summary.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
   const totalRevenue = view === 'receipt' ? grossRevenue - totalRefunds : grossRevenue;
   const totalCount = view === 'receipt'
     ? sales.length
-    : summary.reduce((sum: number, s: Record<string, unknown>) => sum + parseInt(s.sale_count as string || '0'), 0);
-  const returnsCount = salesReturns.filter((r: Record<string, unknown>) => r.type === 'return').length;
+    : summary.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0);
+  const returnsCount = salesReturns.filter((r: Record<string, any>) => r.type === 'return').length;
 
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
@@ -591,7 +591,7 @@ export default function SalesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {sortedSales.map((s: Record<string, unknown>) => (
+                    {sortedSales.map((s: Record<string, any>) => (
                       <tr key={s.id as string} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
@@ -662,7 +662,7 @@ export default function SalesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {sortedSummary.map((row: Record<string, unknown>, idx: number) => {
+                    {sortedSummary.map((row: Record<string, any>, idx: number) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                       return (
@@ -712,7 +712,7 @@ export default function SalesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {sortedSummary.map((row: Record<string, unknown>, idx: number) => {
+                    {sortedSummary.map((row: Record<string, any>, idx: number) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                       return (
@@ -755,7 +755,7 @@ export default function SalesPage() {
           {view === 'cashier' && (
             summaryLoading ? <LoadingState /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {summary.map((row: Record<string, unknown>) => {
+                {summary.map((row: Record<string, any>) => {
                   const rev = parseFloat(row.total_revenue as string);
                   const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                   return (
@@ -799,7 +799,7 @@ export default function SalesPage() {
           {view === 'payment' && (
             summaryLoading ? <LoadingState /> : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {summary.map((row: Record<string, unknown>) => {
+                {summary.map((row: Record<string, any>) => {
                   const rev = parseFloat(row.total_revenue as string);
                   const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
                   const label = PAYMENT_LABELS[row.label as string] || row.label;
@@ -839,11 +839,11 @@ export default function SalesPage() {
           <>
             {/* Returns summary */}
             {(() => {
-              const totalReturns = returns.filter((r: Record<string, unknown>) => r.type === 'return').length;
-              const totalExchanges = returns.filter((r: Record<string, unknown>) => r.type === 'exchange').length;
+              const totalReturns = returns.filter((r: Record<string, any>) => r.type === 'return').length;
+              const totalExchanges = returns.filter((r: Record<string, any>) => r.type === 'exchange').length;
               const totalRefund = returns
-                .filter((r: Record<string, unknown>) => r.type === 'return')
-                .reduce((sum: number, r: Record<string, unknown>) => sum + parseFloat(r.refund_amount as string), 0);
+                .filter((r: Record<string, any>) => r.type === 'return')
+                .reduce((sum: number, r: Record<string, any>) => sum + parseFloat(r.refund_amount as string), 0);
               return (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white rounded-xl border border-gray-100 p-4">
@@ -893,8 +893,8 @@ export default function SalesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {returns.map((r: Record<string, unknown>) => {
-                    const items = (r.items || []) as Record<string, unknown>[];
+                  {returns.map((r: Record<string, any>) => {
+                    const items = (r.items || []) as Record<string, any>[];
                     const isReturn = r.type === 'return';
                     return (
                       <tr key={r.id as string} className="hover:bg-gray-50/50 transition-colors">
@@ -943,7 +943,7 @@ export default function SalesPage() {
         sessionsLoading ? <LoadingState /> : (
           <div className="space-y-4">
             {sessions.length === 0 && <EmptyState text="Aucune période de travail pour cette période" />}
-            {sessions.map((s: Record<string, unknown>) => {
+            {sessions.map((s: Record<string, any>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
               const isClosed = s.status === 'closed';
               return (
@@ -1102,7 +1102,7 @@ function EmptyState({ text }: { text: string }) {
 }
 
 // ═══ Inventory Bilan per session ═══
-function InventoryBilan({ session }: { session: Record<string, unknown> }) {
+function InventoryBilan({ session }: { session: Record<string, any> }) {
   const [expanded, setExpanded] = useState(false);
   const totalRep = parseInt(session.inv_total_replenished as string) || 0;
   const totalSold = parseInt(session.inv_total_sold as string) || 0;
@@ -1173,7 +1173,7 @@ function InventoryBilan({ session }: { session: Record<string, unknown> }) {
                 <span className="text-center">Ecart</span>
               </div>
               <div className="max-h-60 overflow-y-auto divide-y divide-gray-50">
-                {(items as Record<string, unknown>[]).map((it, idx) => {
+                {(items as Record<string, any>[]).map((it, idx) => {
                   const rep = parseInt(it.replenished_qty as string) || 0;
                   const sold = parseInt(it.sold_qty as string) || 0;
                   const rem = parseInt(it.remaining_qty as string) || 0;

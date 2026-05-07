@@ -34,14 +34,14 @@ export default function WarehousePage() {
   const [historyOffset, setHistoryOffset] = useState(0);
   const historyLimit = 30;
 
-  const { data: bons = [], isLoading, refetch, isRefetching } = useQuery<Record<string, unknown>[]>({
+  const { data: bons = [], isLoading, refetch, isRefetching } = useQuery<Record<string, any>[]>({
     queryKey: ['warehouse-queue'],
     queryFn: bonSortieApi.warehouseQueue,
     refetchInterval: tab === 'active' ? 15000 : false, // polling uniquement sur l'onglet actif
   });
 
   const { data: history, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery<{
-    data: Record<string, unknown>[]; total: number;
+    data: Record<string, any>[]; total: number;
   }>({
     queryKey: ['warehouse-history', historyLimit, historyOffset],
     queryFn: () => bonSortieApi.warehouseHistory({ limit: historyLimit, offset: historyOffset }),
@@ -50,7 +50,7 @@ export default function WarehousePage() {
 
   // Onglet "Stock pesage" : ingredients actuellement ouverts (pesage_quantity > 0).
   // Source de verite = lots actifs avec pesage_quantity > 0, agrege par ingredient.
-  const { data: pesageStock = [], isLoading: isLoadingPesage, refetch: refetchPesage } = useQuery<Record<string, unknown>[]>({
+  const { data: pesageStock = [], isLoading: isLoadingPesage, refetch: refetchPesage } = useQuery<Record<string, any>[]>({
     queryKey: ['warehouse-pesage-stock'],
     queryFn: ingredientLotsApi.pesageStock,
     enabled: tab === 'pesage',
@@ -99,7 +99,7 @@ export default function WarehousePage() {
     title, bons: items, emptyLabel, color, icon: Icon,
   }: {
     title: string;
-    bons: Record<string, unknown>[];
+    bons: Record<string, any>[];
     emptyLabel: string;
     color: 'blue' | 'amber' | 'emerald';
     icon: typeof Truck;
@@ -344,14 +344,14 @@ export default function WarehousePage() {
 // ─── Onglet "Stock pesage" : ingredients actuellement ouverts au pesage ───
 // Aggregation par ingredient (1 ligne) avec details des lots ouverts (expansion).
 type PesageSort = 'dlc_asc' | 'name_asc' | 'qty_desc' | 'qty_asc';
-function PesageStockList({ rows, isLoading }: { rows: Record<string, unknown>[]; isLoading: boolean }) {
+function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isLoading: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<PesageSort>('dlc_asc');
   const [filterExpiringSoon, setFilterExpiringSoon] = useState(false);
 
   // Calcule daysUntil une fois pour tri/filtre, evite Date.now() dans chaque comparaison.
-  type EnrichedRow = Record<string, unknown> & { _daysUntil: number | null };
+  type EnrichedRow = Record<string, any> & { _daysUntil: number | null };
   const enriched: EnrichedRow[] = rows.map(r => {
     const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
     const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
@@ -477,7 +477,7 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, unknown>[];
           const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
           const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
           const dlcClass = daysUntil === null ? 'text-gray-400' : daysUntil < 0 ? 'text-red-600 font-bold' : daysUntil <= 3 ? 'text-orange-600 font-bold' : daysUntil <= 7 ? 'text-amber-600' : 'text-gray-500';
-          const lots = (r.lots as Record<string, unknown>[]) || [];
+          const lots = (r.lots as Record<string, any>[]) || [];
           return (
             <div key={ingredientId}>
               <div onClick={() => setExpanded(isOpen ? null : ingredientId)}
@@ -574,7 +574,7 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, unknown>[];
 function HistoryList({
   rows, total, isLoading, limit, offset, onOffsetChange, onOpen,
 }: {
-  rows: Record<string, unknown>[];
+  rows: Record<string, any>[];
   total: number;
   isLoading: boolean;
   limit: number;

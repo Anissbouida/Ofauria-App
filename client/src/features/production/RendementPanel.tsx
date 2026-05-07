@@ -10,7 +10,7 @@ import {
 interface RendementPanelProps {
   planId: string;
   planStatus: string;
-  items: Record<string, unknown>[];
+  items: Record<string, any>[];
   isChef: boolean;
 }
 
@@ -65,7 +65,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
   });
 
   const recordMutation = useMutation({
-    mutationFn: ({ itemId, data }: { itemId: string; data: Record<string, unknown> }) =>
+    mutationFn: ({ itemId, data }: { itemId: string; data: Record<string, any> }) =>
       productionEtapesApi.recordRendement(itemId, data as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-rendement', planId] });
@@ -79,7 +79,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
   const producedItems = items.filter(it => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
   if (producedItems.length === 0 && rendements.length === 0) return null;
 
-  const openRecordForm = (itemId: string, item: Record<string, unknown>) => {
+  const openRecordForm = (itemId: string, item: Record<string, any>) => {
     setRecordingItem(itemId);
     setFormData({
       quantite_brute: (item.quantite_brute_totale as number) || (item.actual_quantity as number) || 0,

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 /* ─── Types ─── */
-type Product = Record<string, unknown>;
+type Product = Record<string, any>;
 type Decision = {
   productId: string;
   finalDestination: 'reexpose' | 'recycle' | 'waste';
@@ -125,7 +125,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
 
   const { data: products = [], isLoading, refetch } = useQuery({
     queryKey: ['unsold-suggestions'],
-    queryFn: unsoldDecisionApi.suggestions,
+    queryFn: () => unsoldDecisionApi.suggestions(),
   });
 
   // Recuperer la session de caisse ouverte — necessaire pour rattacher les decisions
@@ -652,7 +652,7 @@ function HistoryPanel() {
             <span className="col-span-1 text-center">Par</span>
           </div>
           <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
-            {rows.map((r: Record<string, unknown>) => {
+            {rows.map((r: Record<string, any>) => {
               const sugConf = DEST_CONFIG[(r.suggested_destination as string) as keyof typeof DEST_CONFIG];
               const finalConf = DEST_CONFIG[(r.final_destination as string) as keyof typeof DEST_CONFIG];
               return (
@@ -855,7 +855,7 @@ function DashboardPanel() {
             Top produits detruits (par cout)
           </h3>
           <div className="border border-gray-200 rounded-xl overflow-hidden">
-            {topWaste.map((p: Record<string, unknown>, i: number) => (
+            {topWaste.map((p: Record<string, any>, i: number) => (
               <div key={p.product_id as string} className="flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0">
                 <div className="flex items-center gap-3">
                   <span className="w-6 h-6 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold">{i + 1}</span>
@@ -882,7 +882,7 @@ function DashboardPanel() {
             Alertes surproduction (destruction recurrente)
           </h3>
           <div className="space-y-2">
-            {recurringWaste.map((p: Record<string, unknown>) => (
+            {recurringWaste.map((p: Record<string, any>) => (
               <div key={p.product_id as string} className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
                 <div>
                   <span className="text-sm font-semibold text-red-800">{p.product_name as string}</span>
@@ -912,7 +912,7 @@ function DashboardPanel() {
               <span className="text-center">Cout</span>
               <span className="text-center">Decisions</span>
             </div>
-            {dailyData.map((d: Record<string, unknown>, i: number) => {
+            {dailyData.map((d: Record<string, any>, i: number) => {
               const dc = DEST_CONFIG[(d.final_destination as string) as keyof typeof DEST_CONFIG];
               return (
                 <div key={i} className="grid grid-cols-5 gap-2 px-4 py-2 border-b border-gray-100 text-sm">

@@ -20,8 +20,8 @@ function n(val: number): string {
 
 /* ═══ Composant recherche produit intelligent ═══ */
 function ProductSearchInput({ products, value, onSelect, onChange }: {
-  products: Record<string, unknown>[]; value: string;
-  onSelect: (product: Record<string, unknown>) => void; onChange: (val: string) => void;
+  products: Record<string, any>[]; value: string;
+  onSelect: (product: Record<string, any>) => void; onChange: (val: string) => void;
 }) {
   const [query, setQuery] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -46,7 +46,7 @@ function ProductSearchInput({ products, value, onSelect, onChange }: {
     }).slice(0, 10);
   }, [query, products]);
 
-  const handleSelect = (product: Record<string, unknown>) => { setQuery(product.name as string); setIsOpen(false); onSelect(product); };
+  const handleSelect = (product: Record<string, any>) => { setQuery(product.name as string); setIsOpen(false); onSelect(product); };
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setHighlightIdx(i => Math.min(i + 1, filtered.length - 1)); }
@@ -92,7 +92,7 @@ export default function EmittedInvoicesTab() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createMode, setCreateMode] = useState<'order' | 'manual'>('order');
   const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [showPayModal, setShowPayModal] = useState<Record<string, unknown> | null>(null);
+  const [showPayModal, setShowPayModal] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [manualCustomerId, setManualCustomerId] = useState('');
   const [manualNotes, setManualNotes] = useState('');
@@ -106,14 +106,14 @@ export default function EmittedInvoicesTab() {
   });
 
   const { data: customersData } = useQuery({ queryKey: ['customers'], queryFn: () => customersApi.list() });
-  const customers = ((customersData as Record<string, unknown>)?.data || customersData || []) as Record<string, unknown>[];
+  const customers = ((customersData as Record<string, any>)?.data || customersData || []) as Record<string, any>[];
 
   const { data: ordersData } = useQuery({
     queryKey: ['orders-for-invoice'],
     queryFn: () => ordersApi.list(),
     enabled: showCreateModal,
   });
-  const orders = ((ordersData as Record<string, unknown>)?.data || ordersData || []) as Record<string, unknown>[];
+  const orders = ((ordersData as Record<string, any>)?.data || ordersData || []) as Record<string, any>[];
 
   const createFromOrderMutation = useMutation({
     mutationFn: (orderId: string) => invoicesApi.createFromOrder(orderId),
@@ -127,7 +127,7 @@ export default function EmittedInvoicesTab() {
   });
 
   const createManualMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => invoicesApi.create(data),
+    mutationFn: (data: Record<string, any>) => invoicesApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       notify.success('Facture émise créée');
@@ -143,7 +143,7 @@ export default function EmittedInvoicesTab() {
   });
 
   const payMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => paymentsApi.create(data),
+    mutationFn: (data: Record<string, any>) => paymentsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
@@ -158,7 +158,7 @@ export default function EmittedInvoicesTab() {
     queryFn: () => productsApi.list({ limit: '500' }),
     enabled: showCreateModal && createMode === 'manual',
   });
-  const products = ((productsData as Record<string, unknown>)?.data || productsData || []) as Record<string, unknown>[];
+  const products = ((productsData as Record<string, any>)?.data || productsData || []) as Record<string, any>[];
 
   const resetManualForm = () => {
     setManualCustomerId('');
@@ -170,7 +170,7 @@ export default function EmittedInvoicesTab() {
   const removeManualItem = (idx: number) => setManualItems(manualItems.filter((_, i) => i !== idx));
   const updateManualItem = (idx: number, field: string, value: string | number) => {
     const updated = [...manualItems];
-    (updated[idx] as Record<string, unknown>)[field] = value;
+    (updated[idx] as Record<string, any>)[field] = value;
     setManualItems(updated);
   };
 
@@ -197,7 +197,7 @@ export default function EmittedInvoicesTab() {
     });
   };
 
-  const allInvoices = invoices as Record<string, unknown>[];
+  const allInvoices = invoices as Record<string, any>[];
   const totalFacture = allInvoices.reduce((s, inv) => s + parseFloat(inv.total_amount as string), 0);
   const totalEncaisse = allInvoices.reduce((s, inv) => s + parseFloat(inv.paid_amount as string), 0);
   const totalToCollect = allInvoices
@@ -222,7 +222,7 @@ export default function EmittedInvoicesTab() {
     });
   }, [allInvoices, searchQuery]);
 
-  const handleDownloadPdf = async (inv: Record<string, unknown>) => {
+  const handleDownloadPdf = async (inv: Record<string, any>) => {
     try {
       const response = await invoicesApi.downloadDocx(inv.id as string);
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -482,7 +482,7 @@ export default function EmittedInvoicesTab() {
                     <select value={selectedOrderId} onChange={e => setSelectedOrderId(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
                       <option value="">-- Choisir une commande --</option>
-                      {(orders as Record<string, unknown>[]).filter(o => o.status === 'completed' || o.status === 'delivered' || o.status === 'confirmed' || o.status === 'ready').map(o => (
+                      {(orders as Record<string, any>[]).filter(o => o.status === 'completed' || o.status === 'delivered' || o.status === 'confirmed' || o.status === 'ready').map(o => (
                         <option key={o.id as string} value={o.id as string}>
                           {o.order_number as string} — {o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}` : 'Client direct'} — {n(parseFloat(o.total as string))} DH
                         </option>
@@ -490,7 +490,7 @@ export default function EmittedInvoicesTab() {
                     </select>
                   </div>
                   {selectedOrderId && (() => {
-                    const sel = (orders as Record<string, unknown>[]).find(o => o.id === selectedOrderId);
+                    const sel = (orders as Record<string, any>[]).find(o => o.id === selectedOrderId);
                     return sel ? (
                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/50 rounded-xl p-4">
                         <div className="flex items-center justify-between">

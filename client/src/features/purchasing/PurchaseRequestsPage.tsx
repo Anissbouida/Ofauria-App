@@ -335,9 +335,9 @@ export default function PurchaseRequestsPage() {
                 <tbody className="divide-y divide-gray-50">
                   {allLoading ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
-                  ) : (allRequests as Record<string, unknown>[]).length === 0 ? (
+                  ) : (allRequests as Record<string, any>[]).length === 0 ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Aucune demande</td></tr>
-                  ) : (allRequests as Record<string, unknown>[]).map((req) => {
+                  ) : (allRequests as Record<string, any>[]).map((req) => {
                     const reasonInfo = REASON_LABELS[req.reason as string] || REASON_LABELS.manual;
                     const statusColors: Record<string, string> = {
                       pending: 'bg-amber-100 text-amber-700',

@@ -95,7 +95,7 @@ export default function PurchaseOrdersTab() {
   });
 
   // Stats
-  const handleDownloadPoPdf = async (po: Record<string, unknown>) => {
+  const handleDownloadPoPdf = async (po: Record<string, any>) => {
     try {
       const response = await purchaseOrdersApi.downloadPdf(po.id as string);
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -108,7 +108,7 @@ export default function PurchaseOrdersTab() {
     }
   };
 
-  const allOrders = orders as Record<string, unknown>[];
+  const allOrders = orders as Record<string, any>[];
   const stats = useMemo(() => {
     const byStatus: Record<string, { count: number; total: number }> = {};
     for (const po of allOrders) {
@@ -167,7 +167,7 @@ export default function PurchaseOrdersTab() {
             {overdue.length} bon{overdue.length > 1 ? 's' : ''} en retard de livraison
           </div>
           <div className="grid gap-2">
-            {(overdue as Record<string, unknown>[]).map((po) => (
+            {(overdue as Record<string, any>[]).map((po) => (
               <div key={po.id as string}
                 className="flex items-center justify-between bg-white/60 rounded-lg px-3 py-2 text-sm">
                 <div className="flex items-center gap-3">
@@ -551,6 +551,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
+  const { entries: ingredientCats } = useReferentiel('ingredient_categories');
+  const { entries: unitEntries } = useReferentiel('units');
 
   const createMutation = useMutation({
     mutationFn: purchaseOrdersApi.create,
@@ -564,7 +566,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   const createIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
-    onSuccess: (created: Record<string, unknown>) => {
+    onSuccess: (created: Record<string, any>) => {
       queryClient.invalidateQueries({ queryKey: ['ingredients'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       const cost = parseFloat(created.unit_cost as string) || 0;
@@ -595,13 +597,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   // Filtered ingredients (not already added)
   const addedIds = new Set(items.map(it => it.ingredientId));
-  const filteredIngredients = (ingredients as Record<string, unknown>[]).filter(ing => {
+  const filteredIngredients = (ingredients as Record<string, any>[]).filter(ing => {
     if (addedIds.has(ing.id as string)) return false;
     if (!searchIngredient) return true;
     return (ing.name as string).toLowerCase().includes(searchIngredient.toLowerCase());
   });
 
-  const addIngredient = (ing: Record<string, unknown>) => {
+  const addIngredient = (ing: Record<string, any>) => {
     const cost = parseFloat(ing.unit_cost as string) || 0;
     setItems([...items, {
       ingredientId: ing.id as string,
@@ -662,7 +664,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
                 <option value="">Choisir un fournisseur</option>
-                {(suppliers as Record<string, unknown>[]).filter((s) => s.is_active !== false).map((s) => (
+                {(suppliers as Record<string, any>[]).filter((s) => s.is_active !== false).map((s) => (
                   <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
                 ))}
               </select>

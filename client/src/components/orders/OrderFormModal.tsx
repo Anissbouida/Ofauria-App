@@ -50,9 +50,9 @@ type ClientMode = 'known' | 'walkin' | null;
 
 /* ─── Order form modal (multi-step) ─── */
 export default function OrderFormModal({ order, onClose, onSaved }: {
-  order?: Record<string, unknown>;
+  order?: Record<string, any>;
   onClose: () => void;
-  onSaved: (createdOrder?: Record<string, unknown>) => void;
+  onSaved: (createdOrder?: Record<string, any>) => void;
 }) {
   const { user } = useAuth();
   const { entries: paymentMethods } = useReferentiel('payment_methods');
@@ -117,7 +117,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       setCustomerPhone(o.customer_phone);
     }
     if (o.items && o.items.length > 0) {
-      setItems(o.items.map((it: Record<string, unknown>) => ({
+      setItems(o.items.map((it: Record<string, any>) => ({
         productId: it.product_id as string,
         quantity: it.quantity as number,
         notes: (it.notes as string) || '',
@@ -132,7 +132,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     queryFn: () => customersApi.list({ limit: '500' }),
     enabled: clientMode === 'known',
   });
-  const customers = (customersData?.data || []) as Record<string, unknown>[];
+  const customers = (customersData?.data || []) as Record<string, any>[];
 
   const filteredCustomers = customers.filter(c => {
     if (!customerSearch) return true;
@@ -150,7 +150,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     queryFn: employeesApi.list,
     enabled: type === 'staff',
   });
-  const employees = (employeesData?.data || employeesData || []) as Record<string, unknown>[];
+  const employees = (employeesData?.data || employeesData || []) as Record<string, any>[];
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const filteredEmployees = employees.filter(e => {
@@ -165,22 +165,22 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const products = (productsData?.data || []) as Record<string, any>[];
 
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
     queryFn: () => categoriesApi.list(),
   });
-  const categories = (categoriesData || []) as Record<string, unknown>[];
+  const categories = (categoriesData || []) as Record<string, any>[];
 
   const createMutation = useMutation({
     mutationFn: ordersApi.create,
-    onSuccess: (data: Record<string, unknown>) => { notify.success('Commande creee avec succes'); onSaved(data); },
+    onSuccess: (data: Record<string, any>) => { notify.success('Commande creee avec succes'); onSaved(data); },
     onError: () => { notify.error('Erreur lors de la creation'); },
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => ordersApi.update(order!.id as string, data),
+    mutationFn: (data: Record<string, any>) => ordersApi.update(order!.id as string, data),
     onSuccess: () => { notify.success('Commande modifiee avec succes'); onSaved(); },
     onError: () => { notify.error('Erreur lors de la modification'); },
   });
@@ -253,7 +253,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const saving = createMutation.isPending || updateMutation.isPending;
 
   const handleSubmit = () => {
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, any> = {
       type, pickupDate,
       paymentMethod: deferPayment ? 'deferred' : paymentMethod,
       notes: notes || undefined,

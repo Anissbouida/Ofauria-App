@@ -53,7 +53,7 @@ export default function PlanDetailPage() {
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
   const [timerStepName, setTimerStepName] = useState<string | null>(null);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
-  const [printChoiceItem, setPrintChoiceItem] = useState<Record<string, unknown> | null>(null);
+  const [printChoiceItem, setPrintChoiceItem] = useState<Record<string, any> | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
   // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
@@ -65,9 +65,9 @@ export default function PlanDetailPage() {
     enabled: !!id,
     // Auto-refresh every 30s when plan has pending semi-finished dependencies
     refetchInterval: (query) => {
-      const p = query.state.data as Record<string, unknown> | undefined;
+      const p = query.state.data as Record<string, any> | undefined;
       if (!p?.dependencies) return false;
-      const deps = p.dependencies as Record<string, unknown>[];
+      const deps = p.dependencies as Record<string, any>[];
       const hasPending = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
       return hasPending ? 30000 : false;
     },
@@ -122,10 +122,10 @@ export default function PlanDetailPage() {
     queryFn: () => bonSortieApi.getByPlan(id!),
     enabled: !!id && !!plan,
   });
-  const activeBon = (bonsSortie as Record<string, unknown>[]).find((b: Record<string, unknown>) => b.status !== 'annule') as Record<string, unknown> | undefined;
+  const activeBon = (bonsSortie as Record<string, any>[]).find((b: Record<string, any>) => b.status !== 'annule') as Record<string, any> | undefined;
 
   // Semi-fini plans don't need their own bon de sortie — ingredients are in the parent plan's BSI
-  const isSemiFini = plan?.dependency_of && (plan.dependency_of as Record<string, unknown>[]).length > 0;
+  const isSemiFini = plan?.dependency_of && (plan.dependency_of as Record<string, any>[]).length > 0;
 
   // Preparation BSI explicite (wizard etape 2) — l'utilisateur clique "Preparer le bon de sortie".
   // Le backend ne genere plus automatiquement lors de la confirmation, pour forcer la revue
@@ -136,7 +136,7 @@ export default function PlanDetailPage() {
   const [bonNotNeededReason, setBonNotNeededReason] = useState<string | null>(null);
   // Modal de declaration de perte (rebut de production : brule, rate, machine en panne, etc.)
   const [showLossModal, setShowLossModal] = useState(false);
-  const [restockNeed, setRestockNeed] = useState<Record<string, unknown> | null>(null);
+  const [restockNeed, setRestockNeed] = useState<Record<string, any> | null>(null);
 
   // Onglets de la page : 'preparation' (BSI + ingredients) | 'production' (items + execution).
   // L'onglet Production n'apparait qu'une fois le BSI cloture (ou inutile, ou deja en cours).
@@ -199,12 +199,12 @@ export default function PlanDetailPage() {
     },
   });
 
-  const getPlanLotPrefix = (planData?: Record<string, unknown>) => {
+  const getPlanLotPrefix = (planData?: Record<string, any>) => {
     const p = planData || plan;
     if (!p) return '';
     const d = new Date(p.plan_date as string);
     const dateStr = `${String(d.getFullYear() % 100).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    const firstLot = ((p.items || items || []) as Record<string, unknown>[]).find(it => it.lot_number);
+    const firstLot = ((p.items || items || []) as Record<string, any>[]).find(it => it.lot_number);
     if (firstLot) {
       const ln = firstLot.lot_number as string;
       return ln.substring(0, ln.lastIndexOf('-'));
@@ -212,7 +212,7 @@ export default function PlanDetailPage() {
     return `LOT-${dateStr}`;
   };
 
-  const buildLotLabelData = (item: Record<string, unknown>): LotLabelData | null => {
+  const buildLotLabelData = (item: Record<string, any>): LotLabelData | null => {
     if (!plan) return null;
     const prodTs = item.production_timestamp || item.produced_at;
     const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date as string);
@@ -234,7 +234,7 @@ export default function PlanDetailPage() {
     };
   };
 
-  const printProductionTicket = (item: Record<string, unknown>) => {
+  const printProductionTicket = (item: Record<string, any>) => {
     if (!plan) return;
     const prodTs = item.production_timestamp || item.produced_at;
     const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
@@ -295,8 +295,8 @@ export default function PlanDetailPage() {
   </div>
   <div class="row">
     <span class="label">N° Plan</span>
-    <span class="value">${plan.is_semi_finished_plan && (plan.dependency_of as Record<string, unknown>[])?.length > 0
-      ? ((plan.dependency_of as Record<string, unknown>[])[0].parent_short_id as string || '').toUpperCase()
+    <span class="value">${plan.is_semi_finished_plan && (plan.dependency_of as Record<string, any>[])?.length > 0
+      ? ((plan.dependency_of as Record<string, any>[])[0].parent_short_id as string || '').toUpperCase()
       : (plan.id as string).slice(0, 8).toUpperCase()}</span>
   </div>
   <div class="row">
@@ -329,7 +329,7 @@ export default function PlanDetailPage() {
     const shift = hour < 14 ? 'Matin' : 'Apres-midi';
 
     // Build ingredient rows from fefoPreview data (FEFO lot allocation)
-    const fefoItems = (fefoPreview as Record<string, unknown>[]) || [];
+    const fefoItems = (fefoPreview as Record<string, any>[]) || [];
 
     // Aggregate needs (same as the needs variable) for ingredients without FEFO lots
     const needsForPrint = needs;
@@ -355,7 +355,7 @@ export default function PlanDetailPage() {
 
       // Find matching FEFO preview entry
       const fefoEntry = fefoItems.find((f) => (f.ingredientId as string) === ingredientId);
-      const lots = fefoEntry ? (fefoEntry.lots as Record<string, unknown>[]) || [] : [];
+      const lots = fefoEntry ? (fefoEntry.lots as Record<string, any>[]) || [] : [];
 
       if (lots.length > 0) {
         // One row per lot used for this ingredient
@@ -524,14 +524,14 @@ export default function PlanDetailPage() {
 </body></html>`);
   };
 
-  const printFicheProduction = (planData?: Record<string, unknown>) => {
+  const printFicheProduction = (planData?: Record<string, any>) => {
     const p = planData || plan;
     if (!p) return;
-    const allPlanNeeds = (p.ingredient_needs || []) as Record<string, unknown>[];
+    const allPlanNeeds = (p.ingredient_needs || []) as Record<string, any>[];
     const filteredPrintNeeds = allowedSlugs
       ? allPlanNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
       : allPlanNeeds;
-    const printNeedsMap = new Map<string, Record<string, unknown>>();
+    const printNeedsMap = new Map<string, Record<string, any>>();
     for (const n of filteredPrintNeeds) {
       const ingId = n.ingredient_id as string;
       const existing = printNeedsMap.get(ingId);
@@ -542,7 +542,7 @@ export default function PlanDetailPage() {
       }
     }
     const ingredientNeeds = [...printNeedsMap.values()];
-    const allPrintItems = (p.items || []) as Record<string, unknown>[];
+    const allPrintItems = (p.items || []) as Record<string, any>[];
     const planItems = allowedSlugs
       ? allPrintItems.filter((it) => allowedSlugs.includes(it.category_slug as string))
       : allPrintItems;
@@ -645,7 +645,7 @@ export default function PlanDetailPage() {
       <th class="text-center">Statut</th>
     </tr></thead>
     <tbody>
-      ${planItems.map((it: Record<string, unknown>) => {
+      ${planItems.map((it: Record<string, any>) => {
         const planned = (it.planned_quantity as number) || 0;
         const actual = (it.actual_quantity as number) || 0;
         const diff = actual - planned;
@@ -713,9 +713,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       notify.success('Production demarree');
     },
     onError: (e: unknown) => {
-      const resp = (e as Record<string, unknown>)?.response as Record<string, unknown> | undefined;
-      const data = resp?.data as Record<string, unknown> | undefined;
-      const err = data?.error as Record<string, unknown> | undefined;
+      const resp = (e as Record<string, any>)?.response as Record<string, any> | undefined;
+      const data = resp?.data as Record<string, any> | undefined;
+      const err = data?.error as Record<string, any> | undefined;
       notify.error((err?.message as string) || 'Impossible de demarrer la production');
     },
   });
@@ -799,7 +799,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           : (prodConfig.category_slugs as string[] | undefined) || null;
 
   // Auto-open modal from timer notification URL params (?launchItem=xxx&step=yyy)
-  const planItems = (plan?.items || []) as Record<string, unknown>[];
+  const planItems = (plan?.items || []) as Record<string, any>[];
   useEffect(() => {
     const itemParam = searchParams.get('launchItem');
     const stepParam = searchParams.get('step');
@@ -836,13 +836,13 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
   const allItems = plan.items || [];
   const items = allowedSlugs
-    ? allItems.filter((it: Record<string, unknown>) => allowedSlugs.includes(it.category_slug as string))
+    ? allItems.filter((it: Record<string, any>) => allowedSlugs.includes(it.category_slug as string))
     : allItems;
-  const allNeeds = (plan.ingredient_needs || []) as Record<string, unknown>[];
+  const allNeeds = (plan.ingredient_needs || []) as Record<string, any>[];
   const filteredNeeds = allowedSlugs
     ? allNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
     : allNeeds;
-  const needsMap = new Map<string, Record<string, unknown>>();
+  const needsMap = new Map<string, Record<string, any>>();
   for (const n of filteredNeeds) {
     const ingId = n.ingredient_id as string;
     const existing = needsMap.get(ingId);
@@ -863,19 +863,19 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const rc = roleConfig[plan.target_role as string];
 
   // Progress stats
-  const producedCount = items.filter((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
-  const inProgressCount = items.filter((it: Record<string, unknown>) => it.status === 'in_progress').length;
-  const cancelledCount = items.filter((it: Record<string, unknown>) => it.status === 'cancelled').length;
-  const waitingCount = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting').length;
-  const pendingCount = items.filter((it: Record<string, unknown>) => it.status === 'pending' && it.waiting_status !== 'waiting').length;
+  const producedCount = items.filter((it: Record<string, any>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
+  const inProgressCount = items.filter((it: Record<string, any>) => it.status === 'in_progress').length;
+  const cancelledCount = items.filter((it: Record<string, any>) => it.status === 'cancelled').length;
+  const waitingCount = items.filter((it: Record<string, any>) => it.waiting_status === 'waiting').length;
+  const pendingCount = items.filter((it: Record<string, any>) => it.status === 'pending' && it.waiting_status !== 'waiting').length;
   const totalActive = items.length - cancelledCount;
   const progressPct = totalActive > 0 ? Math.round((producedCount / totalActive) * 100) : 0;
 
   // Calcul inverse / frigo stats
-  const frigoItems = items.filter((it: Record<string, unknown>) => it.nb_contenants);
-  const totalFrigoIn = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.qty_from_frigo as number) || 0), 0);
-  const totalSurplus = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.surplus_frigo as number) || 0), 0);
-  const totalContenants = frigoItems.reduce((s: number, it: Record<string, unknown>) => s + ((it.nb_contenants as number) || 0), 0);
+  const frigoItems = items.filter((it: Record<string, any>) => it.nb_contenants);
+  const totalFrigoIn = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.qty_from_frigo as number) || 0), 0);
+  const totalSurplus = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.surplus_frigo as number) || 0), 0);
+  const totalContenants = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.nb_contenants as number) || 0), 0);
 
   // Gating des onglets :
   //   - Plan semi-fini : tout est affiche (UI dediee, pas de tabs)
@@ -914,7 +914,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </span>
             )}
             {(() => {
-              const waiting = (plan.items as Record<string, unknown>[] || [])
+              const waiting = (plan.items as Record<string, any>[] || [])
                 .filter(it => it.waiting_status === 'waiting');
               if (waiting.length === 0) return null;
               return (
@@ -932,7 +932,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         )}
       </div>
       <div className="divide-y divide-gray-50">
-        {needs.map((need: Record<string, unknown>) => {
+        {needs.map((need: Record<string, any>) => {
           const needed = parseFloat(need.needed_quantity as string);
           const available = parseFloat(need.available_quantity as string);
           const sufficient = need.is_sufficient as boolean;
@@ -1011,8 +1011,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   ) : null;
 
   // Bloc "Semi-finis requis" (etape pre-production) — rendu dans l'onglet Production.
-  const semiFinishedDepsBlock = (showProd && plan.dependencies && (plan.dependencies as Record<string, unknown>[]).length > 0) ? (() => {
-    const deps = plan.dependencies as Record<string, unknown>[];
+  const semiFinishedDepsBlock = (showProd && plan.dependencies && (plan.dependencies as Record<string, any>[]).length > 0) ? (() => {
+    const deps = plan.dependencies as Record<string, any>[];
     const fulfilledCount = deps.filter((d) => d.status === 'fulfilled').length;
     const totalDeps = deps.length;
     const allFulfilled = fulfilledCount === totalDeps;
@@ -1038,7 +1038,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             style={{ width: `${progressPct}%` }} />
         </div>
         <div className="space-y-2">
-          {deps.map((dep: Record<string, unknown>) => {
+          {deps.map((dep: Record<string, any>) => {
             const status = dep.status as string;
             const isFulfilled = status === 'fulfilled';
             const depPlanId = dep.dependency_plan_id as string | null;
@@ -1136,7 +1136,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               <div className="flex items-center gap-3 mt-2 text-white/80 text-sm flex-wrap">
                 <span className="flex items-center gap-1.5">
                   <User size={14} /> {isSemiFini
-                    ? (plan.dependency_of as Record<string, unknown>[])[0]?.parent_created_by_name as string || plan.created_by_name
+                    ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
                     : plan.created_by_name}
                 </span>
                 {rc && (
@@ -1146,7 +1146,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 )}
                 <span className="flex items-center gap-1.5">
                   <Hash size={14} /> {isSemiFini
-                    ? ((plan.dependency_of as Record<string, unknown>[])[0]?.parent_short_id as string || '').toUpperCase()
+                    ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
                     : (plan.id as string).slice(0, 8).toUpperCase()}
                 </span>
                 {plan.type && (
@@ -1205,7 +1205,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ SEMI-FINI DEDICATED INTERFACE ══════════════ */}
       {isSemiFini && (() => {
-        const deps = plan.dependency_of as Record<string, unknown>[];
+        const deps = plan.dependency_of as Record<string, any>[];
         const dep = deps[0]; // Primary dependency
         const recipeName = dep.sub_recipe_name as string;
         const qtyNeeded = parseFloat(dep.quantity_needed as string || dep.quantity_to_produce as string || '0');
@@ -1215,12 +1215,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         const parentPlanId = dep.parent_plan_id as string;
         const parentShortId = dep.parent_short_id as string || parentPlanId.slice(0, 8);
         const parentNotes = dep.parent_notes as string || '';
-        const recipeIngredients = (plan.recipe_ingredients || []) as Record<string, unknown>[];
+        const recipeIngredients = (plan.recipe_ingredients || []) as Record<string, any>[];
         const multiplier = yieldQty > 0 ? qtyNeeded / yieldQty : 1;
 
         // Find the corresponding item for this semi-fini
-        const sfItem = (plan.items as Record<string, unknown>[] || []).find(
-          (it: Record<string, unknown>) => it.status === 'pending' || it.status === 'in_progress' || it.status === 'completed'
+        const sfItem = (plan.items as Record<string, any>[] || []).find(
+          (it: Record<string, any>) => it.status === 'pending' || it.status === 'in_progress' || it.status === 'completed'
         );
         const actualQty = sfItem ? parseFloat(sfItem.actual_quantity as string || '0') : 0;
         const itemStatus = sfItem?.status as string || 'pending';
@@ -1426,7 +1426,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </button>
         )}
         {showProd && plan.status === 'confirmed' && (() => {
-          const deps = (plan.dependencies || []) as Record<string, unknown>[];
+          const deps = (plan.dependencies || []) as Record<string, any>[];
           const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
           // Wizard etape 3 : production bloquee tant que le BSI n'est pas cloture.
           // Les plans semi-finis sont exemptes (leur BSI est celui du plan parent).
@@ -1465,14 +1465,14 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           );
         })()}
         {showProd && plan.status === 'in_progress' && isChef && (() => {
-          const pendingItems = items.filter((it: Record<string, unknown>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
-          const inProgressItems = items.filter((it: Record<string, unknown>) => it.status === 'in_progress');
-          const allProduced = pendingItems.length === 0 && inProgressItems.length === 0 && items.some((it: Record<string, unknown>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
+          const pendingItems = items.filter((it: Record<string, any>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
+          const inProgressItems = items.filter((it: Record<string, any>) => it.status === 'in_progress');
+          const allProduced = pendingItems.length === 0 && inProgressItems.length === 0 && items.some((it: Record<string, any>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
           return (
             <>
               {pendingItems.length > 0 && (
                 <button onClick={async () => {
-                  const ids = pendingItems.map((it: Record<string, unknown>) => it.id as string);
+                  const ids = pendingItems.map((it: Record<string, any>) => it.id as string);
                   try {
                     await productionApi.startItems(id!, ids);
                     await queryClient.invalidateQueries({ queryKey: ['production', id] });
@@ -1733,8 +1733,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             </span>
           </div>
           <div className="space-y-3">
-            {(fefoPreview as Record<string, unknown>[]).map((item: Record<string, unknown>) => {
-              const lots = (item.lots || []) as Record<string, unknown>[];
+            {(fefoPreview as Record<string, any>[]).map((item: Record<string, any>) => {
+              const lots = (item.lots || []) as Record<string, any>[];
               const shortfall = parseFloat(item.shortfall as string) || 0;
               return (
                 <div key={item.ingredientId as string} className="border border-gray-100 rounded-lg overflow-hidden">
@@ -1753,7 +1753,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   </div>
                   {lots.length > 0 && (
                     <div className="divide-y divide-gray-50">
-                      {lots.map((lot: Record<string, unknown>, idx: number) => {
+                      {lots.map((lot: Record<string, any>, idx: number) => {
                         const daysLeft = lot.daysUntilExpiry as number | null;
                         const isExpiringSoon = lot.isExpiringSoon as boolean;
                         const isExpired = daysLeft !== null && daysLeft < 0;
@@ -1799,9 +1799,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare size={18} className="text-indigo-600" />
           <h3 className="font-bold text-gray-800 text-sm">Notes de production</h3>
-          {(activities as Record<string, unknown>[]).length > 0 && (
+          {(activities as Record<string, any>[]).length > 0 && (
             <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
-              {(activities as Record<string, unknown>[]).length}
+              {(activities as Record<string, any>[]).length}
             </span>
           )}
         </div>
@@ -1818,9 +1818,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </button>
         </div>
         {/* Activity list */}
-        {(activities as Record<string, unknown>[]).length > 0 ? (
+        {(activities as Record<string, any>[]).length > 0 ? (
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {(activities as Record<string, unknown>[]).map((act: Record<string, unknown>) => (
+            {(activities as Record<string, any>[]).map((act: Record<string, any>) => (
               <div key={act.id as string} className="flex gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
                   {act.activity_type === 'note_added'
@@ -1891,7 +1891,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ ITEMS SECTION (onglet Production) ══════════════ */}
       {showProd && <>{linkedReplenishment ? (() => {
-        const repItems = (linkedReplenishment.items || []) as Record<string, unknown>[];
+        const repItems = (linkedReplenishment.items || []) as Record<string, any>[];
         const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
         const effectiveSlugs = allowedSlugs || planRoleSlugs;
         const filteredRepItems = effectiveSlugs
@@ -1973,7 +1973,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item: Record<string, unknown>, idx: number) => {
+                    {items.map((item: Record<string, any>, idx: number) => {
                       const itemStatus = (item.status as string) || 'pending';
                       const isPending = itemStatus === 'pending';
                       const isInProgress = itemStatus === 'in_progress';
@@ -2128,7 +2128,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
               </tr>
             </thead>
             <tbody>
-              {items.map((item: Record<string, unknown>, idx: number) => {
+              {items.map((item: Record<string, any>, idx: number) => {
                 const itemStatus = (item.status as string) || 'pending';
                 const isInProgress = itemStatus === 'in_progress';
                 const isWaiting = item.waiting_status === 'waiting';
@@ -2252,8 +2252,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ WAITING LIST (onglet Production) ══════════════ */}
       {showProd && plan.status !== 'draft' && (() => {
-        const waitingItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'waiting');
-        const restoredItems = items.filter((it: Record<string, unknown>) => it.waiting_status === 'restored');
+        const waitingItems = items.filter((it: Record<string, any>) => it.waiting_status === 'waiting');
+        const restoredItems = items.filter((it: Record<string, any>) => it.waiting_status === 'restored');
         if (waitingItems.length === 0 && restoredItems.length === 0) return null;
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
@@ -2278,7 +2278,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             )}
 
             <div className="p-5 space-y-2">
-              {waitingItems.map((item: Record<string, unknown>) => (
+              {waitingItems.map((item: Record<string, any>) => (
                 <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-amber-50/50 rounded-xl border border-amber-100 hover:bg-amber-50 transition-colors">
                   {item.product_image ? (
                     <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
@@ -2314,7 +2314,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   )}
                 </div>
               ))}
-              {restoredItems.map((item: Record<string, unknown>) => (
+              {restoredItems.map((item: Record<string, any>) => (
                 <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-100">
                   {item.product_image ? (
                     <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
@@ -2337,7 +2337,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {waitingItems.length > 1 && isChef && (
               <div className="px-5 pb-4 flex justify-end">
                 <button
-                  onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, unknown>) => it.id as string))}
+                  onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
                   disabled={restoreMutation.isPending}
                   className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 rounded-xl flex items-center gap-2 transition-all shadow-md"
                 >
@@ -2370,7 +2370,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           </div>
 
           <div className="divide-y divide-gray-50">
-            {needs.map((need: Record<string, unknown>) => {
+            {needs.map((need: Record<string, any>) => {
               const needed = parseFloat(need.needed_quantity as string);
               const available = parseFloat(need.available_quantity as string);
               const sufficient = need.is_sufficient as boolean;
@@ -2421,7 +2421,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       )}
 
       {/* ══════════════ LOT TRACEABILITY ══════════════ */}
-      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, unknown>[]).length > 0 && (
+      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, any>[]).length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
@@ -2429,12 +2429,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             </div>
             <div>
               <h2 className="font-semibold text-gray-900">Tracabilite des lots</h2>
-              <span className="text-xs text-gray-500">{(productionLotUsage as Record<string, unknown>[]).length} lot(s) d'ingredients utilise(s)</span>
+              <span className="text-xs text-gray-500">{(productionLotUsage as Record<string, any>[]).length} lot(s) d'ingredients utilise(s)</span>
             </div>
           </div>
 
           <div className="divide-y divide-gray-50">
-            {(productionLotUsage as Record<string, unknown>[]).map((usage, idx) => {
+            {(productionLotUsage as Record<string, any>[]).map((usage, idx) => {
               const expDate = usage.expiration_date ? new Date(usage.expiration_date as string) : null;
               const isExpired = expDate && expDate < new Date();
 
@@ -2485,7 +2485,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <ProductionLaunchModal
           planId={id!}
           plan={plan}
-          items={items.filter((it: Record<string, unknown>) => it.status === 'in_progress' || it.status === 'pending')}
+          items={items.filter((it: Record<string, any>) => it.status === 'in_progress' || it.status === 'pending')}
           targetItemId={launchTargetItemId}
           initialStepName={timerStepName}
           needs={needs}
@@ -2500,7 +2500,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <LossDeclarationModal
           context="production"
           productionPlanId={id!}
-          productIdFilter={items.map((it: Record<string, unknown>) => it.product_id as string)}
+          productIdFilter={items.map((it: Record<string, any>) => it.product_id as string)}
           onClose={() => { setShowLossModal(false); queryClient.invalidateQueries({ queryKey: ['production', id] }); }}
         />
       )}
@@ -2538,7 +2538,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
 /* ═══════════════════════ REQUEST STOCK VERIFICATION MODAL ═══════════════════════ */
 function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: {
-  need: Record<string, unknown>;
+  need: Record<string, any>;
   isPending: boolean;
   onClose: () => void;
   onConfirm: (data: { ingredientId: string; note?: string }) => void;

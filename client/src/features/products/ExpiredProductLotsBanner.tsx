@@ -4,7 +4,7 @@ import { AlertTriangle, Trash2, X, HelpCircle } from 'lucide-react';
 import { productLotApi } from '../../api/product-lot.api';
 import { notify } from '../../components/ui/InlineNotification';
 
-type Item = Record<string, unknown> & { kind?: 'lot' | 'orphan' };
+type Item = Record<string, any> & { kind?: 'lot' | 'orphan' };
 
 export default function ExpiredProductLotsBanner() {
   const qc = useQueryClient();

@@ -116,7 +116,7 @@ export default function InventoryPage() {
   const { data: alerts = [] } = useQuery({ queryKey: ['inventory-alerts'], queryFn: inventoryApi.alerts });
 
   // Phase pertes : dialog d'envoi aux pertes
-  const [lossDialogLot, setLossDialogLot] = useState<Record<string, unknown> | null>(null);
+  const [lossDialogLot, setLossDialogLot] = useState<Record<string, any> | null>(null);
   const sendToLossesMutation = useMutation({
     mutationFn: ({ lotId, reason, note }: { lotId: string; reason: string; note?: string }) =>
       ingredientLotsApi.sendToLosses(lotId, reason, note),
@@ -240,8 +240,8 @@ export default function InventoryPage() {
       </div>
 
       {/* ══════ NEW : LOTS EXPIRES A TRAITER (DLC ou DLV depassee) ══════ */}
-      {(expiredActiveLots as Record<string, unknown>[]).length > 0 && (() => {
-        const lots = expiredActiveLots as Record<string, unknown>[];
+      {(expiredActiveLots as Record<string, any>[]).length > 0 && (() => {
+        const lots = expiredActiveLots as Record<string, any>[];
         return (
           <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm">
             <div className="flex items-start gap-3 mb-3">
@@ -312,8 +312,8 @@ export default function InventoryPage() {
       )}
 
       {/* ══════ DLC ALERTS — anciens lots expires sans stock (legacy display) ══════ */}
-      {(expiredLots as Record<string, unknown>[]).length > 0 && (() => {
-        const allExpired = expiredLots as Record<string, unknown>[];
+      {(expiredLots as Record<string, any>[]).length > 0 && (() => {
+        const allExpired = expiredLots as Record<string, any>[];
         const visibleExpired = showAllExpired ? allExpired : allExpired.slice(0, 3);
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
@@ -337,8 +337,8 @@ export default function InventoryPage() {
           </div>
         );
       })()}
-      {(expiringLots as Record<string, unknown>[]).length > 0 && (() => {
-        const allExpiring = expiringLots as Record<string, unknown>[];
+      {(expiringLots as Record<string, any>[]).length > 0 && (() => {
+        const allExpiring = expiringLots as Record<string, any>[];
         const visibleExpiring = showAllExpiring ? allExpiring : allExpiring.slice(0, 3);
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
@@ -540,7 +540,7 @@ export default function InventoryPage() {
 
 /* ─── Add Ingredient Modal ─── */
 function AddIngredientModal({ onClose, onSave, isLoading }: {
-  onClose: () => void; onSave: (data: Record<string, unknown>) => void; isLoading: boolean;
+  onClose: () => void; onSave: (data: Record<string, any>) => void; isLoading: boolean;
 }) {
   const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', category: 'autre' });
   return (
@@ -578,7 +578,7 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
 // Dialog confirmation : envoie un lot expire aux pertes (DLC ou DLV depassee).
 // Demande un motif (pre-selectionne selon expiry_reason) + note optionnelle.
 function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
-  lot: Record<string, unknown>;
+  lot: Record<string, any>;
   isPending: boolean;
   onClose: () => void;
   onConfirm: (reason: string, note?: string) => void;

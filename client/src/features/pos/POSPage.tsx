@@ -130,7 +130,7 @@ export default function POSPage() {
   const [closeStep, setCloseStep] = useState<'choose-type' | 'expired' | 'inventory' | 'input' | 'result'>('choose-type');
   const [closeType, setCloseType] = useState<'passation' | 'fin_journee'>('fin_journee');
   // Phase 3 — items vitrine avec DLC ou DLV depassee, bloquent la fermeture journee
-  const [expiredItems, setExpiredItems] = useState<Record<string, unknown>[]>([]);
+  const [expiredItems, setExpiredItems] = useState<Record<string, any>[]>([]);
   const DENOMINATIONS = [
     { value: 0.5, label: '0.50', type: 'coin', img: '/images/money/coin-050.svg' },
     { value: 1, label: '1', type: 'coin', img: '/images/money/coin-1.svg' },
@@ -151,8 +151,8 @@ export default function POSPage() {
   useEffect(() => {
     if (closeStep === 'input' && closeInputMode === 'counting') setActualAmount(denomTotal.toString());
   }, [denomTotal, closeStep, closeInputMode]);
-  const [closeResult, setCloseResult] = useState<Record<string, unknown> | null>(null);
-  const [inventoryItems, setInventoryItems] = useState<Record<string, unknown>[]>([]);
+  const [closeResult, setCloseResult] = useState<Record<string, any> | null>(null);
+  const [inventoryItems, setInventoryItems] = useState<Record<string, any>[]>([]);
   const [inventoryQtys, setInventoryQtys] = useState<Record<string, number>>({});
   const [inventoryDestinations, setInventoryDestinations] = useState<Record<string, string>>({});
   // Phase recyclage multi-destinations : ingredient_id choisi par produit (override le defaut)
@@ -186,7 +186,7 @@ export default function POSPage() {
 
   // Return/Exchange state
   const [returnSearch, setReturnSearch] = useState('');
-  const [returnSale, setReturnSale] = useState<Record<string, unknown> | null>(null);
+  const [returnSale, setReturnSale] = useState<Record<string, any> | null>(null);
   const [returnItems, setReturnItems] = useState<Record<string, number>>({});
   const [returnType, setReturnType] = useState<'return' | 'exchange'>('return');
   const [returnReason, setReturnReason] = useState('');
@@ -196,7 +196,7 @@ export default function POSPage() {
   const [exchangeSearch, setExchangeSearch] = useState('');
 
   // Deliver state
-  const [deliverOrder, setDeliverOrder] = useState<Record<string, unknown> | null>(null);
+  const [deliverOrder, setDeliverOrder] = useState<Record<string, any> | null>(null);
   const [deliverAmount, setDeliverAmount] = useState('');
   const [deliverPayment, setDeliverPayment] = useState<'cash' | 'card'>('cash');
 
@@ -317,7 +317,7 @@ export default function POSPage() {
     mutationFn: async (type: 'passation' | 'fin_journee') => {
       const data = await cashRegisterApi.close(type);
       // Load unsold items with intelligent suggestions
-      let invItems: Record<string, unknown>[] = [];
+      let invItems: Record<string, any>[] = [];
       // Propage closeType pour que le backend ajuste la fenetre : en fin_journee on veut
       // toutes les ventes/approvs depuis la derniere fin_journee (ignorer les passations
       // intermediaires), pas juste depuis la derniere fermeture de shift.
@@ -362,7 +362,7 @@ export default function POSPage() {
     onError: (e: unknown) => {
       // Phase 3 — backend renvoie 409 EXPIRED_ITEMS_PENDING quand des items vitrine
       // (DLC/DLV depassee) doivent etre detruits avant la fermeture journee.
-      const err = e as { response?: { status?: number; data?: { error?: { code?: string; details?: { items?: Record<string, unknown>[] } } } } };
+      const err = e as { response?: { status?: number; data?: { error?: { code?: string; details?: { items?: Record<string, any>[] } } } } };
       if (err?.response?.status === 409 && err.response.data?.error?.code === 'EXPIRED_ITEMS_PENDING') {
         const items = err.response.data?.error?.details?.items || [];
         setExpiredItems(items);
@@ -411,7 +411,7 @@ export default function POSPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: salesApi.checkout,
-    onSuccess: (sale: Record<string, unknown>) => {
+    onSuccess: (sale: Record<string, any>) => {
       const receipt: ReceiptData = {
         saleNumber: sale.sale_number as string,
         date: sale.created_at as string,
@@ -442,14 +442,14 @@ export default function POSPage() {
       const fullOrder = await ordersApi.getById(id);
       return { ...res, _order: fullOrder, _paymentMethod: paymentMethod };
     },
-    onSuccess: (data: Record<string, unknown>) => {
+    onSuccess: (data: Record<string, any>) => {
       queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['sales'] });
 
       // Show delivery receipt with full order data (including items)
-      const order = data._order as Record<string, unknown>;
-      const orderItems = (order.items || []) as Record<string, unknown>[];
+      const order = data._order as Record<string, any>;
+      const orderItems = (order.items || []) as Record<string, any>[];
       const orderSubtotal = parseFloat(order.subtotal as string) || 0;
       const discount = parseFloat(order.discount_amount as string) || 0;
       const orderTotal = parseFloat(order.total as string) || (orderSubtotal - discount);
@@ -460,7 +460,7 @@ export default function POSPage() {
         date: new Date().toISOString(),
         cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
         customerName: (order.customer_first_name as string) || (order.customer_name as string) || undefined,
-        items: orderItems.map((it: Record<string, unknown>) => ({
+        items: orderItems.map((it: Record<string, any>) => ({
           name: (it.product_name as string) || 'Produit',
           quantity: parseInt(String(it.quantity)) || 1,
           unitPrice: parseFloat(it.unit_price as string),
@@ -494,16 +494,16 @@ export default function POSPage() {
 
   const searchSaleMutation = useMutation({
     mutationFn: (saleNumber: string) => returnsApi.searchSale(saleNumber),
-    onSuccess: (sale: Record<string, unknown>) => {
+    onSuccess: (sale: Record<string, any>) => {
       setReturnSale(sale);
       setReturnItems({});
       setReturnStep('select');
     },
   });
 
-  const [returnResult, setReturnResult] = useState<Record<string, unknown> | null>(null);
+  const [returnResult, setReturnResult] = useState<Record<string, any> | null>(null);
   const createReturnMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => returnsApi.create(data),
+    mutationFn: (data: Record<string, any>) => returnsApi.create(data),
     onSuccess: (data) => {
       setReturnResult(data);
       setReturnStep('confirm');
@@ -514,21 +514,21 @@ export default function POSPage() {
   });
 
   const products = (() => {
-    if (search) return (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
-    if (isTopCategory) return (topSellingData || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+    if (search) return (productsData?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
+    if (isTopCategory) return (topSellingData || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
     if (isRecentCategory) {
-      const all = (allProductsForRecent?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+      const all = (allProductsForRecent?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
       // Sort by recent order (preserve localStorage order)
       return recentProductIds
-        .map(id => all.find((p: Record<string, unknown>) => p.id === id))
-        .filter(Boolean) as Record<string, unknown>[];
+        .map(id => all.find((p: Record<string, any>) => p.id === id))
+        .filter(Boolean) as Record<string, any>[];
     }
-    return (productsData?.data || []).filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0);
+    return (productsData?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
   })();
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal;
 
-  const orders = (ordersData?.data || []).filter((o: Record<string, unknown>) => {
+  const orders = (ordersData?.data || []).filter((o: Record<string, any>) => {
     if (!orderSearch) return o.status !== 'completed' && o.status !== 'cancelled';
     const q = orderSearch.toLowerCase();
     const name = `${o.customer_first_name || ''} ${o.customer_last_name || ''}`.toLowerCase();
@@ -551,11 +551,11 @@ export default function POSPage() {
   };
 
   const getProductStock = (productId: string) => {
-    const p = products.find((p: Record<string, unknown>) => p.id === productId);
+    const p = products.find((p: Record<string, any>) => p.id === productId);
     return p ? parseFloat(p.stock_quantity as string) || 0 : 0;
   };
 
-  const addToCart = (product: Record<string, unknown>) => {
+  const addToCart = (product: Record<string, any>) => {
     const stock = parseFloat(product.stock_quantity as string) || 0;
     if (stock <= 0) return;
     const existing = cart.find(i => i.productId === product.id);
@@ -751,8 +751,8 @@ export default function POSPage() {
         {/* Right actions */}
         <div className="flex items-center gap-1">
           {(() => {
-            const repCount = (pendingTransfers as Record<string, unknown>[]).length;
-            const prodCount = (pendingProductionTransfers as Record<string, unknown>[]).length;
+            const repCount = (pendingTransfers as Record<string, any>[]).length;
+            const prodCount = (pendingProductionTransfers as Record<string, any>[]).length;
             const totalCount = repCount + prodCount;
             return (
               <button onClick={() => setShowTransfers(true)}
@@ -860,7 +860,7 @@ export default function POSPage() {
             {/* Product Grid */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
               <div className="grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-                {products.filter((p: Record<string, unknown>) => Number(p.stock_quantity || 0) > 0).map((p: Record<string, unknown>) => {
+                {products.filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0).map((p: Record<string, any>) => {
                   const stock = parseFloat(p.stock_quantity as string) || 0;
                   const outOfStock = stock <= 0;
                   const isAlerted = stockAlert?.productId === p.id;
@@ -1017,7 +1017,7 @@ export default function POSPage() {
                   </div>
                   {customersData?.data?.length > 0 && customerSearch.length >= 2 && (
                     <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                      {customersData.data.map((c: Record<string, unknown>) => (
+                      {customersData.data.map((c: Record<string, any>) => (
                         <button key={c.id as string} onClick={() => { setCustomerId(c.id as string); setCustomerSearch(`${c.first_name} ${c.last_name}`); setShowCustomerSearch(false); }}
                           className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">{c.first_name as string} {c.last_name as string}</button>
                       ))}
@@ -1199,7 +1199,7 @@ export default function POSPage() {
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {orders.length === 0 && <p className="text-center py-12 text-gray-400">Aucune commande en cours</p>}
-            {orders.map((o: Record<string, unknown>) => {
+            {orders.map((o: Record<string, any>) => {
               const totalAmt = parseFloat(o.total as string);
               const advanceAmt = parseFloat(o.advance_amount as string || '0');
               const remaining = totalAmt - advanceAmt;
@@ -1346,7 +1346,7 @@ export default function POSPage() {
           )}
 
           {returnStep === 'select' && returnSale && (() => {
-            const saleItems = (returnSale.items || []) as Record<string, unknown>[];
+            const saleItems = (returnSale.items || []) as Record<string, any>[];
             const returnableItems = saleItems.filter(it => (it.returnable_quantity as number) > 0);
             const allReturned = returnableItems.length === 0;
             const selectedCount = Object.values(returnItems).filter(q => q > 0).length;
@@ -1356,7 +1356,7 @@ export default function POSPage() {
             }, 0);
 
             // Exchange: calculate new product total
-            const allProducts = (productsData?.data || []) as Record<string, unknown>[];
+            const allProducts = (productsData?.data || []) as Record<string, any>[];
             let exchangeNewTotal = 0;
             const selectedExchangeItems = Object.entries(returnItems).filter(([, q]) => q > 0);
             for (const [itemId] of selectedExchangeItems) {
@@ -1549,7 +1549,7 @@ export default function POSPage() {
                                 unitPrice: parseFloat(it.unit_price as string),
                                 subtotal: returnItems[it.id as string] * parseFloat(it.unit_price as string),
                               }));
-                            const exchangeData: Record<string, unknown> = {
+                            const exchangeData: Record<string, any> = {
                               originalSaleId: returnSale.id,
                               type: returnType,
                               reason: returnReason || undefined,
@@ -1594,16 +1594,16 @@ export default function POSPage() {
       {showOrderForm && (
         <OrderFormModal
           onClose={() => setShowOrderForm(false)}
-          onSaved={(createdOrder?: Record<string, unknown>) => {
+          onSaved={(createdOrder?: Record<string, any>) => {
             setShowOrderForm(false);
             queryClient.invalidateQueries({ queryKey: ['pos-orders'] });
             queryClient.invalidateQueries({ queryKey: ['orders'] });
             queryClient.invalidateQueries({ queryKey: ['sales'] });
             // Show advance receipt if an advance was paid
             if (createdOrder?.advanceReceipt) {
-              const adv = createdOrder.advanceReceipt as Record<string, unknown>;
+              const adv = createdOrder.advanceReceipt as Record<string, any>;
               const orderItems = (createdOrder.items as { productId: string; quantity: number; unitPrice: number; subtotal: number }[]) || [];
-              const allProds = (productsData?.data || []) as Record<string, unknown>[];
+              const allProds = (productsData?.data || []) as Record<string, any>[];
               const orderSubtotal = parseFloat(createdOrder.subtotal as string) || 0;
               const orderDiscount = parseFloat(createdOrder.discount_amount as string) || 0;
               const orderTotal = parseFloat(adv.total as string) || (orderSubtotal - orderDiscount);
@@ -1615,7 +1615,7 @@ export default function POSPage() {
                 cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
                 customerName: (createdOrder.customer_name as string) || (createdOrder.customerName as string) || undefined,
                 items: orderItems.map(it => {
-                  const prod = allProds.find((p: Record<string, unknown>) => String(p.id) === String(it.productId));
+                  const prod = allProds.find((p: Record<string, any>) => String(p.id) === String(it.productId));
                   return { name: (prod?.name as string) || 'Produit', quantity: it.quantity, unitPrice: it.unitPrice, subtotal: it.quantity * it.unitPrice };
                 }),
                 subtotal: orderSubtotal,
@@ -1843,7 +1843,7 @@ export default function POSPage() {
 
                 {/* Panneau d'ajout manuel (pour produits en vitrine non tracks dans product_store_stock) */}
                 {showAddInvProduct && (() => {
-                  const allCatalogProducts = (allCatalogForClose?.data as Record<string, unknown>[] | undefined) || [];
+                  const allCatalogProducts = (allCatalogForClose?.data as Record<string, any>[] | undefined) || [];
                   const alreadyAddedIds = new Set(inventoryItems.map(i => i.product_id as string));
                   const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
                   const q = normalize(addInvSearch.trim());
@@ -1867,7 +1867,7 @@ export default function POSPage() {
                         ) : candidates.map(p => (
                           <button key={p.id as string} type="button"
                             onClick={() => {
-                              const newItem: Record<string, unknown> = {
+                              const newItem: Record<string, any> = {
                                 product_id: p.id,
                                 product_name: p.name,
                                 product_image: p.image_url,
@@ -2217,7 +2217,7 @@ export default function POSPage() {
                                         <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
                                       )}
                                       {/* Dropdown multi-destinations quand recyclage choisi et plusieurs options configurees */}
-                                      {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, unknown>[]).length > 1 && (
+                                      {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, any>[]).length > 1 && (
                                         <div className="mt-1.5 flex justify-center">
                                           <select
                                             value={inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || ''}
@@ -2557,40 +2557,40 @@ export default function POSPage() {
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Fond de caisse</span>
-                      <span className="font-medium">{parseFloat(closeResult.opening_amount as string).toFixed(2)} DH</span>
+                      <span className="font-medium">{parseFloat(closeResult!.opening_amount as string).toFixed(2)} DH</span>
                     </div>
 
                     {/* Breakdown by sale type */}
-                    {(closeResult.standard_count as number) > 0 && (
+                    {(closeResult!.standard_count as number) > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Ventes directes ({closeResult.standard_count as number})</span>
-                        <span className="font-medium">{parseFloat(String(closeResult.standard_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="text-gray-500">Ventes directes ({closeResult!.standard_count as number})</span>
+                        <span className="font-medium">{parseFloat(String(closeResult!.standard_revenue || 0)).toFixed(2)} DH</span>
                       </div>
                     )}
-                    {(closeResult.advance_count as number) > 0 && (
+                    {(closeResult!.advance_count as number) > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Avances commandes ({closeResult.advance_count as number})</span>
-                        <span className="font-medium text-orange-600">+{parseFloat(String(closeResult.advance_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="text-gray-500">Avances commandes ({closeResult!.advance_count as number})</span>
+                        <span className="font-medium text-orange-600">+{parseFloat(String(closeResult!.advance_revenue || 0)).toFixed(2)} DH</span>
                       </div>
                     )}
-                    {(closeResult.delivery_count as number) > 0 && (
+                    {(closeResult!.delivery_count as number) > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Soldes livraisons ({closeResult.delivery_count as number})</span>
-                        <span className="font-medium text-blue-600">+{parseFloat(String(closeResult.delivery_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="text-gray-500">Soldes livraisons ({closeResult!.delivery_count as number})</span>
+                        <span className="font-medium text-blue-600">+{parseFloat(String(closeResult!.delivery_revenue || 0)).toFixed(2)} DH</span>
                       </div>
                     )}
 
                     <div className="flex justify-between font-semibold border-t pt-2">
                       <span>Montant attendu</span>
-                      <span>{parseFloat(closeResult.expected_cash as string).toFixed(2)} DH</span>
+                      <span>{parseFloat(closeResult!.expected_cash as string).toFixed(2)} DH</span>
                     </div>
                     <div className="flex justify-between font-semibold">
                       <span>Montant trouve</span>
-                      <span>{parseFloat(closeResult.actual_amount as string).toFixed(2)} DH</span>
+                      <span>{parseFloat(closeResult!.actual_amount as string).toFixed(2)} DH</span>
                     </div>
                   </div>
                   {(() => {
-                    const diff = parseFloat(closeResult.difference as string);
+                    const diff = parseFloat(closeResult!.difference as string);
                     if (diff === 0) {
                       return (
                         <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
@@ -2626,11 +2626,11 @@ export default function POSPage() {
                   <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Total ventes</span>
-                      <span className="font-medium">{closeResult.total_sales as number}</span>
+                      <span className="font-medium">{closeResult!.total_sales as number}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">CA total (tous moyens)</span>
-                      <span className="font-semibold text-green-600">{parseFloat(closeResult.total_revenue as string).toFixed(2)} DH</span>
+                      <span className="font-semibold text-green-600">{parseFloat(closeResult!.total_revenue as string).toFixed(2)} DH</span>
                     </div>
                   </div>
 
@@ -2764,7 +2764,7 @@ export default function POSPage() {
                 <Truck size={22} className="text-purple-600" />
                 <div>
                   <h2 className="text-lg font-bold text-gray-800">Transferts en attente de confirmation</h2>
-                  <p className="text-xs text-gray-500">{(pendingTransfers as Record<string, unknown>[]).length + (pendingProductionTransfers as Record<string, unknown>[]).length} transfert(s) a confirmer</p>
+                  <p className="text-xs text-gray-500">{(pendingTransfers as Record<string, any>[]).length + (pendingProductionTransfers as Record<string, any>[]).length} transfert(s) a confirmer</p>
                 </div>
               </div>
               <button onClick={() => { setShowTransfers(false); setConfirmingTransferId(null); }}
@@ -2773,9 +2773,9 @@ export default function POSPage() {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {(pendingTransfers as Record<string, unknown>[]).map((transfer) => {
+              {(pendingTransfers as Record<string, any>[]).map((transfer) => {
                 const tId = transfer.id as string;
-                const allItems = (transfer.items || []) as Record<string, unknown>[];
+                const allItems = (transfer.items || []) as Record<string, any>[];
                 const items = allItems.filter(i => i.status === 'ready');
                 const isConfirming = confirmingTransferId === tId;
                 const roleSuffix = (transfer.assigned_role as string) || '';
@@ -2909,17 +2909,17 @@ export default function POSPage() {
               })}
 
               {/* ═══ Production transfers ═══ */}
-              {(pendingProductionTransfers as Record<string, unknown>[]).length > 0 && (
+              {(pendingProductionTransfers as Record<string, any>[]).length > 0 && (
                 <div className="mt-2">
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
                     <Factory size={14} /> Transferts de production
                   </h3>
                 </div>
               )}
-              {(pendingProductionTransfers as Record<string, unknown>[]).map((transfer) => {
+              {(pendingProductionTransfers as Record<string, any>[]).map((transfer) => {
                 const tId = `prod_${transfer.id as string}`;
                 const transferId = transfer.id as string;
-                const prodItems = (transfer.items || []) as Record<string, unknown>[];
+                const prodItems = (transfer.items || []) as Record<string, any>[];
                 const isConfirming = confirmingTransferId === tId;
                 const ROLE_LABELS_MAP: Record<string, string> = { baker: 'Boulanger', pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale' };
                 const ROLE_COLORS_MAP: Record<string, string> = { baker: 'border-amber-300 bg-amber-50', pastry_chef: 'border-pink-300 bg-pink-50', viennoiserie: 'border-orange-300 bg-orange-50', beldi_sale: 'border-green-300 bg-green-50' };
@@ -3046,7 +3046,7 @@ export default function POSPage() {
                 );
               })}
 
-              {(pendingTransfers as Record<string, unknown>[]).length === 0 && (pendingProductionTransfers as Record<string, unknown>[]).length === 0 && (
+              {(pendingTransfers as Record<string, any>[]).length === 0 && (pendingProductionTransfers as Record<string, any>[]).length === 0 && (
                 <div className="text-center py-12 text-gray-400">
                   <Truck size={48} className="mx-auto mb-3 opacity-30" />
                   <p className="font-medium">Aucun transfert en attente</p>
@@ -3109,12 +3109,12 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     queryKey: ['products-all'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
-  const products = (productsData?.data || []) as Record<string, unknown>[];
+  const products = (productsData?.data || []) as Record<string, any>[];
 
   // Auto-populate from recommendations on first load
   useEffect(() => {
     if (suggestionsLoaded) return;
-    const recos = recommendations as Record<string, unknown>[] | undefined;
+    const recos = recommendations as Record<string, any>[] | undefined;
     if (!recos) return;
 
     const auto: Record<string, number> = {};
@@ -3143,14 +3143,14 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
       setSuggestionsLoaded(true);
       // Expand all categories by default
       const cats: Record<string, boolean> = {};
-      const recos = recommendations as Record<string, unknown>[] | undefined;
+      const recos = recommendations as Record<string, any>[] | undefined;
       if (recos) for (const r of recos) cats[(r.category_name as string) || 'Autre'] = true;
       setExpandedCats(cats);
     }
   }, [recommendations, products, suggestionsLoaded]);
 
   const toggleCat = (cat: string) => setExpandedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
-  const selectAllCat = (items: Record<string, unknown>[]) => {
+  const selectAllCat = (items: Record<string, any>[]) => {
     const next = { ...selected };
     for (const item of items) {
       const pid = (item.product_id || item.id) as string;
@@ -3161,7 +3161,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     }
     setSelected(next);
   };
-  const deselectAllCat = (items: Record<string, unknown>[]) => {
+  const deselectAllCat = (items: Record<string, any>[]) => {
     const next = { ...selected };
     for (const item of items) delete next[(item.product_id || item.id) as string];
     setSelected(next);
@@ -3233,7 +3233,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
   };
 
   // Group recommendations by category
-  const recosByCategory = ((recommendations || []) as Record<string, unknown>[]).reduce((groups: Record<string, Record<string, unknown>[]>, item) => {
+  const recosByCategory = ((recommendations || []) as Record<string, any>[]).reduce((groups: Record<string, Record<string, any>[]>, item) => {
     const cat = (item.category_name as string) || 'Autre';
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(item);
@@ -3241,8 +3241,8 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
   }, {});
 
   // For random suggestions when no history
-  const hasHistory = ((recommendations || []) as Record<string, unknown>[]).length > 0;
-  const randomByCategory = !hasHistory ? products.reduce((groups: Record<string, Record<string, unknown>[]>, p) => {
+  const hasHistory = ((recommendations || []) as Record<string, any>[]).length > 0;
+  const randomByCategory = !hasHistory ? products.reduce((groups: Record<string, Record<string, any>[]>, p) => {
     const cat = (p.category_name as string) || 'Autre';
     if (!groups[cat]) groups[cat] = [];
     if (selected[p.id as string]) groups[cat].push(p);
@@ -3332,7 +3332,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
               </div>
             ) : Object.keys(displayCategories).length > 0 ? (
               Object.entries(displayCategories).map(([catName, items]) => {
-                const filtered = search ? (items as Record<string, unknown>[]).filter(i => ((i.product_name || i.name) as string).toLowerCase().includes(search.toLowerCase())) : (items as Record<string, unknown>[]);
+                const filtered = search ? (items as Record<string, any>[]).filter(i => ((i.product_name || i.name) as string).toLowerCase().includes(search.toLowerCase())) : (items as Record<string, any>[]);
                 if (!filtered.length) return null;
                 const isExpanded = expandedCats[catName] !== false;
                 const catSelectedCount = filtered.filter(i => selected[((i.product_id || i.id) as string)]).length;

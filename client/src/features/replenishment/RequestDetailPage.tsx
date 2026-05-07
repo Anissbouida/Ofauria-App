@@ -208,9 +208,9 @@ function SubRequestDetailView({
   acknowledgeMutation, prepareMutation, transferMutation, receptionMutation, cancelMutation,
   prepItems, setPrepItems, receptionItems, setReceptionItems,
 }: {
-  request: Record<string, unknown>;
+  request: Record<string, any>;
   navigate: ReturnType<typeof useNavigate>;
-  user: Record<string, unknown> | null;
+  user: Record<string, any> | null;
   isAdmin: boolean;
   isResponsable: boolean;
   isStoreStaff: boolean;
@@ -224,12 +224,12 @@ function SubRequestDetailView({
   receptionItems: Record<string, { qtyReceived: number; notes: string }>;
   setReceptionItems: React.Dispatch<React.SetStateAction<Record<string, { qtyReceived: number; notes: string }>>>;
 }) {
-  const items = (request.items || []) as Record<string, unknown>[];
+  const items = (request.items || []) as Record<string, any>[];
   const displayStatus = (request.display_status as string) || (request.status as string);
   const currentStep = stepIndex(displayStatus);
   const status = request.status as string;
   const assignedRole = request.assigned_role as string;
-  const productionPlans = (request.production_plans || []) as Record<string, unknown>[];
+  const productionPlans = (request.production_plans || []) as Record<string, any>[];
 
   const isMyRequest = !assignedRole || assignedRole === user?.role || isAdmin;
 

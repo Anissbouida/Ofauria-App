@@ -13,10 +13,10 @@ export const productPipelineApi = {
   history: (id: string) =>
     api.get(`/product-pipeline/${id}/history`).then(r => r.data.data),
 
-  create: (data: Record<string, unknown>) =>
+  create: (data: Record<string, any>) =>
     api.post('/product-pipeline', data).then(r => r.data.data),
 
-  updateStageData: (id: string, data: Record<string, unknown>) =>
+  updateStageData: (id: string, data: Record<string, any>) =>
     api.put(`/product-pipeline/${id}/stage-data`, data).then(r => r.data.data),
 
   advance: (id: string) =>
