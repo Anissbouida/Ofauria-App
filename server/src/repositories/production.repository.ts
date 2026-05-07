@@ -1317,6 +1317,14 @@ export const productionRepository = {
         throw new Error('Le plan doit etre confirme ou en cours pour restaurer des articles');
       }
 
+      // Si un bon de sortie a été clôturé par le magasinier pour ce plan, on
+      // considère que les ingrédients sont validés et on bypass le check de stock.
+      const closedBsiResult = await client.query(
+        `SELECT 1 FROM production_bons_sortie WHERE plan_id = $1 AND status = 'cloture' LIMIT 1`,
+        [planId]
+      );
+      const bsiValidated = closedBsiResult.rows.length > 0;
+
       for (const itemId of itemIds) {
         // Get the item and its product
         const itemResult = await client.query(
@@ -1341,7 +1349,7 @@ export const productionRepository = {
           (n: Record<string, unknown>) => parseFloat(n.current_available as string) < parseFloat(n.needed_quantity as string)
         );
 
-        if (stillInsufficient) {
+        if (stillInsufficient && !bsiValidated) {
           warnings.push(`"${item.product_name}" ne peut pas etre restaure — ingredients toujours insuffisants.`);
           continue;
         }

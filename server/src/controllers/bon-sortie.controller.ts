@@ -17,8 +17,13 @@ async function notifySafe(data: Parameters<typeof notificationRepository.create>
 }
 
 function safeErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && (err.message.startsWith('Stock') || err.message.startsWith('Bon') || err.message.startsWith('Ce bon') || err.message.startsWith('Aucun'))) {
-    return err.message;
+  if (err instanceof Error) {
+    const msg = err.message;
+    const businessPrefixes = [
+      'Stock', 'Bon', 'Ce bon', 'Aucun', 'Impossible', 'Ligne BSI', 'Cette ligne',
+      'Le lot', 'Lot ', 'Quantite',
+    ];
+    if (businessPrefixes.some(p => msg.startsWith(p))) return msg;
   }
   console.error(`[bon-sortie] ${fallback}:`, err);
   return fallback;
@@ -309,6 +314,25 @@ export const bonSortieController = {
       res.json({ data });
     } catch (err: any) {
       const msg = safeErrorMessage(err, 'Erreur lors du refus de reception');
+      res.status(400).json({ error: msg });
+    }
+  },
+
+  // ─── Magasinier : transferer une ligne BSI Economat -> Pesage ───
+  // Body : { overrideLotId?: string; reason?: string; containerCount?: number }
+  async transferLineFromEconomat(req: Request, res: Response) {
+    try {
+      const ligneId = req.params.ligneId as string;
+      const userId = (req as any).user?.userId;
+      const { overrideLotId, reason, containerCount } = req.body || {};
+      const data = await bonSortieRepository.transferLineFromEconomat(ligneId, userId, {
+        overrideLotId: typeof overrideLotId === 'string' ? overrideLotId : undefined,
+        reason: typeof reason === 'string' ? reason : undefined,
+        containerCount: Number.isFinite(containerCount) ? Number(containerCount) : undefined,
+      });
+      res.json({ data });
+    } catch (err: any) {
+      const msg = safeErrorMessage(err, 'Erreur lors du transfert Economat -> Pesage');
       res.status(400).json({ error: msg });
     }
   },

@@ -105,6 +105,47 @@ export const ingredientLotRepository = {
     return result.rows;
   },
 
+  /** Stock actuellement au Pesage (sacs ouverts en cours d'utilisation).
+   *  Retourne agrege par ingredient avec details des lots ouverts.
+   *  Sert pour la vue magasinier "Stock pesage". */
+  async findPesageStock(storeId?: string) {
+    const conditions = [`il.status = 'active'`, `il.pesage_quantity > 0`];
+    const values: unknown[] = [];
+    if (storeId) { conditions.push(`il.store_id = $1`); values.push(storeId); }
+
+    const result = await db.query(
+      `SELECT
+         ing.id as ingredient_id,
+         ing.name as ingredient_name,
+         ing.unit as ingredient_unit,
+         ing.category as ingredient_category,
+         SUM(il.pesage_quantity) as total_pesage,
+         COUNT(*) as lots_count,
+         MIN(COALESCE(il.effective_expiry_after_opening, il.expiration_date)) as nearest_dlc_effective,
+         json_agg(
+           json_build_object(
+             'lot_id', il.id,
+             'lot_number', il.lot_number,
+             'supplier_lot_number', il.supplier_lot_number,
+             'pesage_quantity', il.pesage_quantity,
+             'economat_quantity', il.economat_quantity,
+             'first_opened_at', il.first_opened_at,
+             'expiration_date', il.expiration_date,
+             'effective_expiry_after_opening', il.effective_expiry_after_opening,
+             'supplier_name', s.name
+           ) ORDER BY COALESCE(il.effective_expiry_after_opening, il.expiration_date) ASC NULLS LAST
+         ) as lots
+       FROM ingredient_lots il
+       JOIN ingredients ing ON ing.id = il.ingredient_id
+       LEFT JOIN suppliers s ON s.id = il.supplier_id
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY ing.id, ing.name, ing.unit, ing.category
+       ORDER BY ing.name`,
+      values
+    );
+    return result.rows;
+  },
+
   /** Expired lots still active */
   async findExpired(storeId?: string) {
     const conditions = [`il.expiration_date < CURRENT_DATE`, `il.status = 'active'`, `il.quantity_remaining > 0`];

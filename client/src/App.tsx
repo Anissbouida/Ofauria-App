@@ -63,8 +63,11 @@ export default function App() {
               <Route path="/production" element={<ProductionPage />} />
               <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
+              {/* Route legacy conservee pour compat notifications/bookmarks. La page se redirige
+                  vers /warehouse/bsi/:planId en interne pour eviter le breadcrumb "Production". */}
               <Route path="/production/:id/bon-sortie" element={<BonSortiePrelevementPage />} />
               <Route path="/warehouse" element={<WarehousePage />} />
+              <Route path="/warehouse/bsi/:id" element={<BonSortiePrelevementPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />

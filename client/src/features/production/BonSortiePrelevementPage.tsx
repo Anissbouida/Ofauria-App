@@ -1,26 +1,36 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ArrowLeft } from 'lucide-react';
 import { BonSortiePanel } from './BonSortiePanel';
 
 /**
- * Page autonome pour la gestion du bon de sortie (route /production/:id/bon-sortie).
+ * Page autonome pour la gestion du bon de sortie. Routes :
+ *   - /warehouse/bsi/:id (route principale, flux magasinier)
+ *   - /production/:id/bon-sortie (legacy, conservee pour compat notifications)
  * La logique reelle est dans BonSortiePanel (reutilise aussi inline dans PlanDetailPage).
  */
 export default function BonSortiePrelevementPage() {
   const { id: planId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
   // Admin et manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation)
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
+  // Retour : la cible depend de l'URL d'origine.
+  //  - /warehouse/bsi/:id  → retour /warehouse (flux magasinier)
+  //  - /production/:id/bon-sortie → retour /production/:id (flux chef, ancien chemin)
+  // Le pure magasinier finit toujours sur /warehouse car il n'a pas acces a /production.
+  const isPureMagasinier = user?.role === 'magasinier';
+  const isWarehouseRoute = location.pathname.startsWith('/warehouse/');
+  const backHref = (isPureMagasinier || isWarehouseRoute) ? '/warehouse' : `/production/${planId}`;
 
   if (!planId) return null;
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto pb-32">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(`/production/${planId}`)}
+        <button onClick={() => navigate(backHref)}
           className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
           <ArrowLeft size={20} className="text-gray-600" />
         </button>

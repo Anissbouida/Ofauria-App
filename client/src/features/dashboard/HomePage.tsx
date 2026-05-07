@@ -82,7 +82,7 @@ export default function HomePage() {
   const quickActions = [
     { label: 'Nouvelle vente', icon: ShoppingCart, href: '/pos', color: 'bg-green-500 hover:bg-green-600', module: 'pos' as AppModule },
     { label: 'Production', icon: Factory, href: '/production', color: 'bg-indigo-500 hover:bg-indigo-600', module: 'production' as AppModule },
-    { label: 'Inventaire', icon: Warehouse, href: '/inventory', color: 'bg-amber-500 hover:bg-amber-600', module: 'inventory' as AppModule },
+    { label: 'Économat', icon: Warehouse, href: '/inventory', color: 'bg-amber-500 hover:bg-amber-600', module: 'inventory' as AppModule },
   ].filter(a => hasModule(a.module));
 
   return (

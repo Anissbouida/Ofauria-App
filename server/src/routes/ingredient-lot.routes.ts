@@ -10,6 +10,8 @@ router.get('/', authenticate, ingredientLotController.list);
 router.get('/expiring', authenticate, ingredientLotController.expiring);
 router.get('/expired', authenticate, ingredientLotController.expired);
 router.get('/expired-active', authenticate, ingredientLotController.expiredActive);
+// Stock actuel au Pesage (sacs ouverts) — agrege par ingredient pour vue magasinier
+router.get('/pesage-stock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier'), ingredientLotController.pesageStock);
 router.get('/stats', authenticate, ingredientLotController.stats);
 router.get('/quality-check/:id', authenticate, ingredientLotController.getQualityCheck);
 router.get('/production/:planId/fefo-preview', authenticate, ingredientLotController.fefoPreview);
@@ -19,9 +21,11 @@ router.get('/:id/traceability', authenticate, ingredientLotController.traceabili
 router.post('/:id/quarantine', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.quarantine);
 router.post('/:id/waste', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.markAsWaste);
 router.post('/quality-check/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.saveQualityCheck);
-// Phase Économat / Pesage : ouverture contenant + fin de sac
-router.post('/:id/open-container', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'), ingredientLotController.openContainer);
-router.post('/:id/mark-depleted', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'), ingredientLotController.markDepleted);
+// Phase Économat / Pesage : ouverture contenant + fin de sac.
+// Restreint au magasinier (et admin/manager). Le chef ne gere pas la zone economat
+// → il passe par le BSI et le magasinier transfere les ingredients requis.
+router.post('/:id/open-container', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier'), ingredientLotController.openContainer);
+router.post('/:id/mark-depleted', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier'), ingredientLotController.markDepleted);
 router.post('/:id/send-to-losses', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER, 'magasinier'), ingredientLotController.sendToLosses);
 
 export default router;

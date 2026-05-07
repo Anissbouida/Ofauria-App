@@ -115,20 +115,29 @@ export const productionController = {
     }
 
     // Auto-generate bon de sortie ingredients
+    // L'erreur est tracee dans les warnings retournees au client (au lieu d'etre
+    // silencieusement avalee dans les logs) — sinon le chef confirme le plan
+    // et la magasinier ne voit aucune demande, sans aucun feedback.
+    let bsiError: string | null = null;
     try {
       if (!req.user!.storeId) {
         throw new Error('Magasin requis pour generer un bon de sortie');
       }
       await bonSortieRepository.generate(req.params.id, req.user!.storeId, req.user!.userId);
     } catch (err) {
+      bsiError = err instanceof Error ? err.message : String(err);
       console.error('Auto-generation bon de sortie echouee:', err);
     }
 
     const updated = await productionRepository.findById(req.params.id);
+    const finalWarnings = [...(warnings || [])];
+    if (bsiError && !bsiError.startsWith('Bon deja')) {
+      finalWarnings.push(`Bon de sortie ingredients non genere : ${bsiError}. Le magasinier ne verra pas la demande tant que ce probleme n'est pas corrige.`);
+    }
     res.json({
       success: true,
       data: updated,
-      warnings,
+      warnings: finalWarnings,
       semiFinished: {
         dependencies: semiFinished.dependencies,
         dependencyPlanIds: semiFinished.dependencyPlanIds,

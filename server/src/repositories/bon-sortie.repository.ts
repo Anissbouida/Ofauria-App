@@ -64,10 +64,12 @@ export const bonSortieRepository = {
       );
       const bon = bonResult.rows[0];
 
-      // 4. For each ingredient need, allocate via 2-stage FEFO :
-      //    - Étape 1 : Pesage (lots déjà ouverts) - prioritaire
-      //    - Étape 2 : Économat (lots scellés) - lignes "à ouvrir" si Pesage insuffisant
-      //    - Étape 3 : Rupture si total insuffisant
+      // 4. For each ingredient need, allocate via STRICT Pesage workflow (Option B) :
+      //    - Étape 1 : Pesage (lots déjà ouverts) → ligne PESAGE, alloue directement
+      //    - Étape 2 : Pesage insuffisant → ligne ECONOMAT_REQUIRES_TRANSFER avec lot
+      //                Economat suggere (FEFO sur DLC). Le magasinier devra transferer
+      //                avant de marquer le BSI pret.
+      //    - Étape 3 : Pesage + Economat insuffisants → ligne RUPTURE.
       const lines = [];
       for (const need of needsResult.rows) {
         const neededQty = parseFloat(need.needed_quantity);
@@ -93,8 +95,9 @@ export const bonSortieRepository = {
 
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
-               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', $7)
+               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                unit, status, source_location, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', 'PESAGE', $7)
              RETURNING *`,
             [bon.id, need.ingredient_id, lot.id, neededQty, take, need.ingredient_unit || 'kg',
              `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee' : ''}`]
@@ -114,32 +117,45 @@ export const bonSortieRepository = {
           remaining -= take;
         }
 
-        // Étape 2 : si Pesage insuffisant, allouer depuis Économat ("lignes à ouvrir")
+        // Étape 2 : Pesage insuffisant → ligne "transfert requis" avec lot Economat suggere.
+        // Une seule ligne par ingredient, meme si plusieurs lots Economat necessaires :
+        // le magasinier transferera depuis le lot suggere et pourra ouvrir un autre lot
+        // si besoin (geste manuel). On suggere le meilleur lot FEFO actif.
         if (remaining > 0) {
-          const economatLotsResult = await client.query(
+          const suggestedLotResult = await client.query(
             `SELECT id, lot_number, supplier_lot_number, economat_quantity, expiration_date,
                     received_at, status
              FROM ingredient_lots
              WHERE ingredient_id = $1 AND store_id = $2
-               AND status IN ('active', 'expired') AND economat_quantity > 0
-             ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-                      expiration_date ASC NULLS LAST, received_at ASC`,
+               AND status = 'active' AND economat_quantity > 0
+             ORDER BY expiration_date ASC NULLS LAST, received_at ASC
+             LIMIT 1`,
             [need.ingredient_id, storeId]
           );
 
-          for (const lot of economatLotsResult.rows) {
-            if (remaining <= 0) break;
-            const available = parseFloat(lot.economat_quantity);
-            const take = Math.min(available, remaining);
-            const isExpired = lot.status === 'expired';
+          // Total Economat dispo (tous lots actifs confondus) : sert a savoir si le besoin
+          // est couvrable par transfert ou s'il y a une rupture residuelle.
+          const totalEconomatResult = await client.query(
+            `SELECT COALESCE(SUM(economat_quantity), 0)::numeric AS total
+             FROM ingredient_lots
+             WHERE ingredient_id = $1 AND store_id = $2
+               AND status = 'active' AND economat_quantity > 0`,
+            [need.ingredient_id, storeId]
+          );
+          const totalEconomat = parseFloat(totalEconomatResult.rows[0]?.total || '0');
+          const transferable = Math.min(totalEconomat, remaining);
 
+          if (transferable > 0 && suggestedLotResult.rows.length > 0) {
+            const lot = suggestedLotResult.rows[0];
             const lineResult = await client.query(
               `INSERT INTO production_bons_sortie_lignes
-                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
-               VALUES ($1, $2, $3, $4, $5, $6, 'rupture', $7)
+                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                  unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
+               VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', 'ECONOMAT_REQUIRES_TRANSFER', $5, $6, $7)
                RETURNING *`,
-              [bon.id, need.ingredient_id, lot.id, neededQty, take, need.ingredient_unit || 'kg',
-               `[À ouvrir depuis Économat] lot ${lot.lot_number}${isExpired ? ' — ⚠ Lot expire' : ''}`]
+              [bon.id, need.ingredient_id, transferable, need.ingredient_unit || 'kg',
+               lot.id, transferable,
+               `Transfert requis : ${transferable.toFixed(2)} ${need.ingredient_unit || 'kg'} depuis Economat (lot ${lot.lot_number})`]
             );
 
             lines.push({
@@ -149,22 +165,26 @@ export const bonSortieRepository = {
               lot_number: lot.lot_number,
               supplier_lot_number: lot.supplier_lot_number,
               expiration_date: lot.expiration_date,
-              stock_source: 'economat_to_open',
-              lot_expired: isExpired,
+              stock_source: 'economat_transfer_required',
             });
 
-            remaining -= take;
+            remaining -= transferable;
           }
         }
 
-        // Étape 3 : Rupture vraie (Pesage + Économat insuffisants)
+        // Étape 3 : Rupture vraie (Pesage + Economat insuffisants).
+        // allocated_quantity=0 (rien n'a pu etre alloue) — le besoin reel est needed_quantity.
+        // Affichage UI : dispo=0, manque=needed. completePending : stillNeeded=needed-0=needed.
+        // (Ancien code mettait allocated=remaining ce qui faisait afficher "manque 0" et
+        //  bloquait completePending — incorrect semantiquement.)
         if (remaining > 0) {
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
-               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
-             VALUES ($1, $2, NULL, $3, $4, $5, 'rupture', $6)
+               (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                unit, status, source_location, notes)
+             VALUES ($1, $2, NULL, $3, 0, $4, 'rupture', 'RUPTURE', $5)
              RETURNING *`,
-            [bon.id, need.ingredient_id, neededQty, remaining, need.ingredient_unit || 'kg',
+            [bon.id, need.ingredient_id, neededQty, need.ingredient_unit || 'kg',
              `🚨 Rupture totale — manque ${remaining.toFixed(2)} ${need.ingredient_unit || 'kg'}`]
           );
 
@@ -445,7 +465,21 @@ export const bonSortieRepository = {
   // ─── Magasinier : marquer comme pret a remettre ───
   // Transition 'preparation' -> 'pret'. Le magasinier a fini la preparation,
   // les ingredients sont prets a etre remis au chef (qui sera notifie).
+  // Refuse si une ligne a encore source_location='ECONOMAT_REQUIRES_TRANSFER' :
+  // le magasinier doit d'abord transferer (ouvrir le contenant) tous les ingredients
+  // economat necessaires avant de marquer pret.
   async markAsReady(bonId: string, userId: string) {
+    const pendingTransfersResult = await db.query(
+      `SELECT COUNT(*)::int AS pending
+       FROM production_bons_sortie_lignes
+       WHERE bon_id = $1 AND source_location = 'ECONOMAT_REQUIRES_TRANSFER'`,
+      [bonId]
+    );
+    const pending = pendingTransfersResult.rows[0]?.pending ?? 0;
+    if (pending > 0) {
+      throw new Error(`Impossible de marquer pret : ${pending} ligne(s) necessitent encore un transfert depuis l'economat.`);
+    }
+
     const result = await db.query(
       `UPDATE production_bons_sortie
        SET status = 'pret', ready_by = $1, ready_at = NOW(),
@@ -459,6 +493,147 @@ export const bonSortieRepository = {
       throw new Error('Bon de sortie introuvable ou statut invalide pour marquer comme pret');
     }
     return result.rows[0];
+  },
+
+  // ─── Magasinier : transferer une ligne BSI Economat -> Pesage ───
+  // Action declenchee depuis la WarehousePage sur une ligne ECONOMAT_REQUIRES_TRANSFER.
+  // Effectue dans une transaction :
+  //   1. Insert ingredient_stock_zone_transfers (audit + tracabilite)
+  //   2. Decremente economat_quantity / incremente pesage_quantity du lot
+  //      (le trigger sync_quantity_remaining maintient quantity_remaining)
+  //   3. Met a jour la ligne BSI : ingredient_lot_id <- lot transfere,
+  //      allocated_quantity <- qty, source_location <- 'PESAGE',
+  //      transferred_at/by remplis. Le statut reste 'en_attente' (pret a etre preleve).
+  // Le magasinier peut substituer le lot suggere via le param overrideLotId.
+  async transferLineFromEconomat(
+    ligneId: string,
+    userId: string,
+    options: { overrideLotId?: string; reason?: string; containerCount?: number } = {},
+  ) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Verrouiller la ligne BSI + recuperer contexte
+      const lineResult = await client.query(
+        `SELECT bsl.id, bsl.bon_id, bsl.ingredient_id, bsl.suggested_economat_lot_id,
+                bsl.transfer_required_qty, bsl.source_location, bsl.unit, bsl.needed_quantity,
+                bs.store_id, bs.numero AS bon_numero
+         FROM production_bons_sortie_lignes bsl
+         JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
+         WHERE bsl.id = $1
+         FOR UPDATE OF bsl`,
+        [ligneId]
+      );
+      if (lineResult.rows.length === 0) {
+        throw new Error('Ligne BSI introuvable');
+      }
+      const line = lineResult.rows[0];
+      if (line.source_location !== 'ECONOMAT_REQUIRES_TRANSFER') {
+        throw new Error(`Cette ligne n'attend pas de transfert (source actuelle : ${line.source_location})`);
+      }
+
+      const lotId = options.overrideLotId || line.suggested_economat_lot_id;
+      if (!lotId) {
+        throw new Error('Aucun lot Economat a transferer (lot suggere absent)');
+      }
+
+      const transferQty = parseFloat(line.transfer_required_qty);
+      if (!Number.isFinite(transferQty) || transferQty <= 0) {
+        throw new Error('Quantite de transfert invalide');
+      }
+
+      // 2. Verrouiller + verifier le lot Economat
+      const lotResult = await client.query(
+        `SELECT id, ingredient_id, store_id, lot_number, economat_quantity, status,
+                first_opened_at, opening_history
+         FROM ingredient_lots
+         WHERE id = $1
+         FOR UPDATE`,
+        [lotId]
+      );
+      if (lotResult.rows.length === 0) {
+        throw new Error('Lot Economat introuvable');
+      }
+      const lot = lotResult.rows[0];
+      if (lot.ingredient_id !== line.ingredient_id) {
+        throw new Error('Le lot ne correspond pas a l\'ingredient de la ligne BSI');
+      }
+      if (lot.store_id !== line.store_id) {
+        throw new Error('Le lot n\'appartient pas au store du BSI');
+      }
+      if (lot.status !== 'active') {
+        throw new Error(`Lot non actif (statut: ${lot.status}), transfert interdit`);
+      }
+      const economatAvailable = parseFloat(lot.economat_quantity);
+      if (economatAvailable < transferQty) {
+        throw new Error(`Quantite insuffisante en Economat (${economatAvailable} dispo / ${transferQty} requis)`);
+      }
+
+      // 3. Insert audit transfer
+      await client.query(
+        `INSERT INTO ingredient_stock_zone_transfers
+           (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count,
+            bon_sortie_id, bon_sortie_ligne_id, reason, transferred_by)
+         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8)`,
+        [lotId, line.store_id, transferQty, options.containerCount || null,
+         line.bon_id, ligneId, options.reason || `BSI ${line.bon_numero}`, userId]
+      );
+
+      // 4. Update lot quantities + opening history
+      const isFirstOpening = !lot.first_opened_at;
+      const openingEntry = {
+        qty: transferQty,
+        opened_at: new Date().toISOString(),
+        opened_by: userId,
+        container_count: options.containerCount || null,
+        bon_sortie_id: line.bon_id,
+      };
+      await client.query(
+        `UPDATE ingredient_lots
+         SET economat_quantity = economat_quantity - $1,
+             pesage_quantity = pesage_quantity + $1,
+             first_opened_at = COALESCE(first_opened_at, NOW()),
+             opening_history = opening_history || $2::jsonb,
+             effective_expiry_after_opening = CASE
+               WHEN $3::boolean THEN
+                 LEAST(
+                   COALESCE(expiration_date, NOW()::date + INTERVAL '99 years'),
+                   (NOW()::date + (
+                     COALESCE((SELECT shelf_life_after_opening_days FROM ingredients WHERE id = $4), 365)
+                     || ' days')::interval)::date
+                 )
+               ELSE effective_expiry_after_opening
+             END
+         WHERE id = $5`,
+        [transferQty, JSON.stringify(openingEntry), isFirstOpening, line.ingredient_id, lotId]
+      );
+
+      // 5. Update BSI line : attache le lot, bascule en PESAGE, prepare pour prelevement
+      const updatedLine = await client.query(
+        `UPDATE production_bons_sortie_lignes
+         SET ingredient_lot_id = $1,
+             allocated_quantity = $2,
+             source_location = 'PESAGE',
+             transferred_at = NOW(),
+             transferred_by = $3,
+             notes = $4,
+             updated_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [lotId, transferQty, userId,
+         `Transfere depuis Economat (lot ${lot.lot_number}) le ${new Date().toLocaleDateString('fr-FR')}`,
+         ligneId]
+      );
+
+      await client.query('COMMIT');
+      return updatedLine.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   // ─── Chef : refuser la reception (non-conformite) ───
@@ -637,11 +812,14 @@ export const bonSortieRepository = {
       const current = await client.query(
         `SELECT bs.*, p.id as plan_id_check FROM production_bons_sortie bs
          LEFT JOIN production_plans p ON p.id = bs.plan_id
-         WHERE bs.id = $1 FOR UPDATE`,
+         WHERE bs.id = $1 FOR UPDATE OF bs`,
         [bonId]
       );
       if (current.rows.length === 0) throw new Error('Bon de sortie introuvable');
-      if (current.rows[0].status !== 'preparation_partielle') {
+      // Autorise depuis preparation OU preparation_partielle. Le magasinier peut
+      // re-verifier la dispo des qu'il a transferé/reapprovisionné, sans devoir
+      // d'abord prelever et commit_partial.
+      if (!['preparation', 'preparation_partielle'].includes(current.rows[0].status)) {
         throw new Error(`Statut invalide pour complete-pending : ${current.rows[0].status}`);
       }
       const storeId = current.rows[0].store_id;
@@ -689,10 +867,13 @@ export const bonSortieRepository = {
           const take = Math.min(parseFloat(lot.quantity_remaining), remaining);
 
           if (!firstUpdateDone && line.status === 'rupture') {
-            // Attache au lot trouve, met a jour le statut en 'en_attente'
+            // Attache au lot trouve, met a jour le statut en 'en_attente'.
+            // source_location='PESAGE' : la ligne est prete a etre prelevee directement
+            // (re-allocation post-reappro/transfert, plus besoin de transfert intermediaire).
             await client.query(
               `UPDATE production_bons_sortie_lignes
                SET ingredient_lot_id = $1, allocated_quantity = $2, status = 'en_attente',
+                   source_location = 'PESAGE',
                    notes = COALESCE(notes, '') || ' | Reapprov: lot attache',
                    updated_at = NOW()
                WHERE id = $3`,
@@ -778,17 +959,40 @@ export const bonSortieRepository = {
       return current.rows[0];
     }
 
-    const result = await db.query(
-      `UPDATE production_bons_sortie
-       SET status = 'cloture', closed_by = $1, closed_at = NOW(), updated_at = NOW()
-       WHERE id = $2 AND status = 'verifie'
-       RETURNING *`,
-      [userId, bonId]
-    );
-    if (result.rows.length === 0) {
-      throw new Error('Bon de sortie introuvable ou statut invalide pour cloture');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(
+        `UPDATE production_bons_sortie
+         SET status = 'cloture', closed_by = $1, closed_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND status = 'verifie'
+         RETURNING *`,
+        [userId, bonId]
+      );
+      if (result.rows.length === 0) {
+        throw new Error('Bon de sortie introuvable ou statut invalide pour cloture');
+      }
+
+      const bon = result.rows[0];
+
+      // Auto-restore waiting items: le magasinier a validé le transfert,
+      // donc les articles en attente peuvent être produits.
+      await client.query(
+        `UPDATE production_plan_items
+         SET waiting_status = 'restored'
+         WHERE plan_id = $1 AND waiting_status = 'waiting'`,
+        [bon.plan_id]
+      );
+
+      await client.query('COMMIT');
+      return bon;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-    return result.rows[0];
   },
 
   // ─── Cancel the bon ───

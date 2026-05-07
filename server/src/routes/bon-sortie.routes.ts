@@ -36,6 +36,9 @@ router.put('/:id/ready', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyn
 // Le chef refuse la reception avec motif (pret -> preparation)
 router.put('/:id/chef-reject', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(bonSortieController.chefReject));
 
+// Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant)
+router.post('/ligne/:ligneId/transfer-from-economat', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.transferLineFromEconomat));
+
 // BSI partiel : commit ce qui est preleve, garde le reste en attente d'approvisionnement
 router.put('/:id/commit-partial', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.commitPartial));
 // Apres reapprovisionnement : refait le FEFO sur les lignes en attente

@@ -14,6 +14,8 @@ export const ingredientLotsApi = {
   getById: (id: string) => api.get(`/ingredient-lots/${id}`).then(r => r.data.data),
   expiring: (days: number = 7) => api.get('/ingredient-lots/expiring', { params: { days } }).then(r => r.data.data),
   expired: () => api.get('/ingredient-lots/expired').then(r => r.data.data),
+  /** Stock actuel au Pesage (sacs ouverts), agrege par ingredient. Magasinier-only. */
+  pesageStock: () => api.get('/ingredient-lots/pesage-stock').then(r => r.data.data),
   expiredActive: () => api.get('/ingredient-lots/expired-active').then(r => r.data.data),
   stats: () => api.get('/ingredient-lots/stats').then(r => r.data.data),
   traceability: (lotId: string) => api.get(`/ingredient-lots/${lotId}/traceability`).then(r => r.data.data),

@@ -38,6 +38,12 @@ export const ingredientLotController = {
     res.json({ success: true, data: lots });
   },
 
+  /** GET /ingredient-lots/pesage-stock — Stock actuel au Pesage agrege par ingredient */
+  async pesageStock(req: AuthRequest, res: Response) {
+    const data = await ingredientLotRepository.findPesageStock(req.user!.storeId);
+    res.json({ success: true, data });
+  },
+
   async traceability(req: AuthRequest, res: Response) {
     const productions = await ingredientLotRepository.findProductionsByLot(req.params.id);
     res.json({ success: true, data: productions });

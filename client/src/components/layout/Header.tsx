@@ -30,10 +30,10 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     '/orders': 'Commandes',
     '/products': 'Produits',
     '/customers': 'Clients',
-    '/inventory': 'Inventaire',
+    '/inventory': 'Économat',
     '/recipes': 'Recettes',
     '/production': 'Production',
-    '/warehouse': 'Economat',
+    '/warehouse': 'Pesage',
     '/employees': 'Employes',
     '/users': 'Utilisateurs',
     '/reports': 'Rapports',
@@ -41,7 +41,10 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   };
 
   const currentPath = '/' + location.pathname.split('/')[1];
-  const currentModule = moduleNames[currentPath] || '';
+  // Cas particulier : la page autonome /production/:id/bon-sortie est le flux magasinier
+  // (acces depuis la page Pesage), pas le flux chef. Le breadcrumb doit refleter ca.
+  const isBsiStandalone = /^\/production\/[^/]+\/bon-sortie\/?$/.test(location.pathname);
+  const currentModule = isBsiStandalone ? 'Pesage' : (moduleNames[currentPath] || '');
 
   return (
     <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>

@@ -38,7 +38,11 @@ CREATE INDEX IF NOT EXISTS idx_lots_economat_active
 -- ─── Vue agrégée remplaçant la table inventory ──────────────────────────
 -- Sert pour les dashboards/UI qui ont besoin du total par ingredient/store
 -- sans descendre au niveau lot.
-CREATE OR REPLACE VIEW v_ingredient_stock AS
+-- DROP/CREATE plutot que CREATE OR REPLACE : les types de colonnes peuvent
+-- avoir change depuis une version anterieure de la vue (Postgres refuse le
+-- changement de type avec CREATE OR REPLACE).
+DROP VIEW IF EXISTS v_ingredient_stock;
+CREATE VIEW v_ingredient_stock AS
 SELECT
   i.id as ingredient_id,
   l.store_id,

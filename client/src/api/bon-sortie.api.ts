@@ -63,6 +63,14 @@ export const bonSortieApi = {
   regenerate: (planId: string, storeId?: string) =>
     api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId }).then(r => r.data.data),
 
+  // Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant)
+  // Le lot suggere par le BSI peut etre substitue via overrideLotId.
+  transferLineFromEconomat: (
+    ligneId: string,
+    payload: { overrideLotId?: string; reason?: string; containerCount?: number } = {},
+  ) =>
+    api.post(`/bons-sortie/ligne/${ligneId}/transfer-from-economat`, payload).then(r => r.data.data),
+
   // BSI partiel : valide ce qui est preleve, garde le reste en attente d'approvisionnement
   commitPartial: (bonId: string) =>
     api.put(`/bons-sortie/${bonId}/commit-partial`).then(r => r.data.data),

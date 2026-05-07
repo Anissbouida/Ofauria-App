@@ -2,16 +2,18 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { bonSortieApi } from '../../api/bon-sortie.api';
+import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Truck, Loader2, Package, ClipboardList, CheckCircle, Eye, Clock, AlertTriangle,
-  Archive, XCircle, Lock,
+  Archive, XCircle, Lock, Beaker, ChevronDown, ChevronRight, CalendarClock,
+  Search, ArrowUpDown,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type Tab = 'active' | 'history';
+type Tab = 'active' | 'history' | 'pesage';
 
 /**
  * Tableau de bord du magasinier : file d'attente des bons de sortie a preparer
@@ -44,6 +46,15 @@ export default function WarehousePage() {
     queryKey: ['warehouse-history', historyLimit, historyOffset],
     queryFn: () => bonSortieApi.warehouseHistory({ limit: historyLimit, offset: historyOffset }),
     enabled: tab === 'history',
+  });
+
+  // Onglet "Stock pesage" : ingredients actuellement ouverts (pesage_quantity > 0).
+  // Source de verite = lots actifs avec pesage_quantity > 0, agrege par ingredient.
+  const { data: pesageStock = [], isLoading: isLoadingPesage, refetch: refetchPesage } = useQuery<Record<string, unknown>[]>({
+    queryKey: ['warehouse-pesage-stock'],
+    queryFn: ingredientLotsApi.pesageStock,
+    enabled: tab === 'pesage',
+    refetchInterval: tab === 'pesage' ? 30000 : false,
   });
 
   // Actions rapides sur les cartes : le magasinier peut prendre en charge ou marquer pret
@@ -184,7 +195,7 @@ export default function WarehousePage() {
                     </button>
                   )}
                   <button
-                    onClick={() => navigate(`/production/${bon.plan_id}/bon-sortie`)}
+                    onClick={() => navigate(`/warehouse/bsi/${bon.plan_id}`)}
                     className="px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors flex items-center gap-1"
                   >
                     <Eye size={12} /> Détail
@@ -218,7 +229,7 @@ export default function WarehousePage() {
           </p>
         </div>
         <button
-          onClick={() => (tab === 'active' ? refetch() : refetchHistory())}
+          onClick={() => (tab === 'active' ? refetch() : tab === 'pesage' ? refetchPesage() : refetchHistory())}
           disabled={isRefetching}
           className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {isRefetching ? <Loader2 size={14} className="animate-spin" /> : <ClipboardList size={14} />}
@@ -243,6 +254,24 @@ export default function WarehousePage() {
           }`}>
             {activeCount}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('pesage')}
+          className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
+            tab === 'pesage'
+              ? 'border-amber-500 text-amber-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}>
+          <Beaker size={14} />
+          <span>Stock pesage</span>
+          {pesageStock.length > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              tab === 'pesage' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {pesageStock.length}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -295,6 +324,8 @@ export default function WarehousePage() {
             />
           </div>
         )
+      ) : tab === 'pesage' ? (
+        <PesageStockList rows={pesageStock} isLoading={isLoadingPesage} />
       ) : (
         <HistoryList
           rows={historyRows}
@@ -303,9 +334,238 @@ export default function WarehousePage() {
           limit={historyLimit}
           offset={historyOffset}
           onOffsetChange={setHistoryOffset}
-          onOpen={(planId) => navigate(`/production/${planId}/bon-sortie`)}
+          onOpen={(planId) => navigate(`/warehouse/bsi/${planId}`)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Onglet "Stock pesage" : ingredients actuellement ouverts au pesage ───
+// Aggregation par ingredient (1 ligne) avec details des lots ouverts (expansion).
+type PesageSort = 'dlc_asc' | 'name_asc' | 'qty_desc' | 'qty_asc';
+function PesageStockList({ rows, isLoading }: { rows: Record<string, unknown>[]; isLoading: boolean }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<PesageSort>('dlc_asc');
+  const [filterExpiringSoon, setFilterExpiringSoon] = useState(false);
+
+  // Calcule daysUntil une fois pour tri/filtre, evite Date.now() dans chaque comparaison.
+  type EnrichedRow = Record<string, unknown> & { _daysUntil: number | null };
+  const enriched: EnrichedRow[] = rows.map(r => {
+    const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
+    const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
+    return { ...r, _daysUntil: daysUntil };
+  });
+
+  const filtered = enriched.filter(r => {
+    if (search) {
+      const q = search.toLowerCase().trim();
+      const name = ((r.ingredient_name as string) || '').toLowerCase();
+      if (!name.includes(q)) return false;
+    }
+    if (filterExpiringSoon) {
+      const d = r._daysUntil;
+      if (d === null || d > 7) return false;
+    }
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'name_asc':
+        return ((a.ingredient_name as string) || '').localeCompare((b.ingredient_name as string) || '', 'fr');
+      case 'qty_desc':
+        return parseFloat(b.total_pesage as string || '0') - parseFloat(a.total_pesage as string || '0');
+      case 'qty_asc':
+        return parseFloat(a.total_pesage as string || '0') - parseFloat(b.total_pesage as string || '0');
+      case 'dlc_asc':
+      default: {
+        const da = a._daysUntil;
+        const db = b._daysUntil;
+        if (da === null && db === null) return 0;
+        if (da === null) return 1;  // pas de DLC en bas
+        if (db === null) return -1;
+        return da - db;
+      }
+    }
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={32} className="animate-spin text-amber-500" />
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl py-12 text-center text-sm text-gray-400">
+        Aucun ingredient au pesage actuellement. Ouvre un contenant via la page lot pour commencer.
+      </div>
+    );
+  }
+
+  // Compteurs pour les badges
+  const expiringSoonCount = enriched.filter(r => r._daysUntil !== null && (r._daysUntil as number) <= 7).length;
+
+  return (
+    <div className="space-y-3">
+      {/* Barre d'outils : recherche + tri + filtres */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher un ingredient..."
+            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:bg-white outline-none transition"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <ArrowUpDown size={12} />
+          <select
+            value={sortBy} onChange={(e) => setSortBy(e.target.value as PesageSort)}
+            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-amber-400 focus:bg-white outline-none cursor-pointer">
+            <option value="dlc_asc">DLC la plus proche</option>
+            <option value="name_asc">Nom A-Z</option>
+            <option value="qty_desc">Qty decroissante</option>
+            <option value="qty_asc">Qty croissante</option>
+          </select>
+        </div>
+        <button
+          onClick={() => setFilterExpiringSoon(!filterExpiringSoon)}
+          className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
+            filterExpiringSoon
+              ? 'bg-amber-100 text-amber-800 border-amber-300'
+              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+          }`}>
+          <CalendarClock size={12} />
+          Expirant ≤7j
+          {expiringSoonCount > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              filterExpiringSoon ? 'bg-amber-200 text-amber-900' : 'bg-gray-200 text-gray-700'
+            }`}>
+              {expiringSoonCount}
+            </span>
+          )}
+        </button>
+        {(search || filterExpiringSoon || sortBy !== 'dlc_asc') && (
+          <button
+            onClick={() => { setSearch(''); setFilterExpiringSoon(false); setSortBy('dlc_asc'); }}
+            className="px-3 py-2 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors">
+            Reinitialiser
+          </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 bg-amber-50/50 border-b border-amber-100 text-xs text-amber-800">
+          <strong>{sorted.length}</strong> sur <strong>{rows.length}</strong> ingredient{rows.length > 1 ? 's' : ''} affiche{sorted.length > 1 ? 's' : ''}
+          {(search || filterExpiringSoon) ? ' (filtres actifs)' : ''}.
+        </div>
+        {sorted.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400 italic">
+            Aucun ingredient ne correspond aux filtres.
+          </div>
+        ) : (
+        <div className="divide-y divide-gray-50">
+          {sorted.map((r) => {
+          const ingredientId = r.ingredient_id as string;
+          const isOpen = expanded === ingredientId;
+          const total = parseFloat(r.total_pesage as string || '0');
+          const lotsCount = parseInt(r.lots_count as string || '0', 10);
+          const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
+          const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
+          const dlcClass = daysUntil === null ? 'text-gray-400' : daysUntil < 0 ? 'text-red-600 font-bold' : daysUntil <= 3 ? 'text-orange-600 font-bold' : daysUntil <= 7 ? 'text-amber-600' : 'text-gray-500';
+          const lots = (r.lots as Record<string, unknown>[]) || [];
+          return (
+            <div key={ingredientId}>
+              <div onClick={() => setExpanded(isOpen ? null : ingredientId)}
+                className="px-5 py-3.5 flex items-center gap-4 cursor-pointer hover:bg-amber-50/30 transition-colors">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
+                  <Beaker size={16} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">{r.ingredient_name as string}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {lotsCount} lot{lotsCount > 1 ? 's' : ''} ouvert{lotsCount > 1 ? 's' : ''}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-bold text-amber-900 font-mono">{total.toFixed(2)} {r.ingredient_unit as string}</div>
+                  {dlc ? (
+                    <div className={`text-[11px] mt-0.5 flex items-center gap-1 justify-end ${dlcClass}`}>
+                      <CalendarClock size={10} />
+                      <span>{format(dlc, 'dd/MM/yyyy')}</span>
+                      <span>·</span>
+                      <span>
+                        {daysUntil !== null && daysUntil < 0
+                          ? `Expire -${Math.abs(daysUntil)}j`
+                          : daysUntil === 0
+                            ? "auj."
+                            : `J-${daysUntil}`}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="shrink-0">
+                  {isOpen ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                </div>
+              </div>
+              {isOpen && lots.length > 0 && (
+                <div className="px-5 pb-3 pt-0 ml-12 space-y-1.5">
+                  {lots.map((lot, i) => {
+                    const pq = parseFloat(lot.pesage_quantity as string || '0');
+                    const eq = parseFloat(lot.economat_quantity as string || '0');
+                    const lotDlc = (lot.effective_expiry_after_opening || lot.expiration_date) as string | null;
+                    const lotDays = lotDlc ? differenceInDays(new Date(lotDlc), new Date()) : null;
+                    const lotDlcClass = lotDays === null ? 'text-gray-400' : lotDays < 0 ? 'text-red-600' : lotDays <= 3 ? 'text-orange-600' : lotDays <= 7 ? 'text-amber-600' : 'text-gray-500';
+                    return (
+                      <div key={i} className="bg-amber-50/40 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-3 text-xs">
+                        <Package size={12} className="text-amber-600 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-mono font-bold text-amber-900">
+                            {(lot.supplier_lot_number || lot.lot_number || '—') as string}
+                          </div>
+                          <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                            {lot.supplier_name ? <span>{lot.supplier_name as string}</span> : null}
+                            {lot.first_opened_at ? (
+                              <span>Ouvert : {format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy')}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-mono text-amber-900 font-semibold">{pq.toFixed(2)} {r.ingredient_unit as string}</div>
+                          {eq > 0 && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">+ {eq.toFixed(2)} en economat</div>
+                          )}
+                        </div>
+                        {lotDlc ? (
+                          <div className={`text-[10px] flex flex-col items-end shrink-0 ${lotDlcClass}`}>
+                            <span className="flex items-center gap-1">
+                              <CalendarClock size={10} />
+                              {format(new Date(lotDlc), 'dd/MM/yyyy')}
+                            </span>
+                            <span>
+                              {lotDays !== null && lotDays < 0
+                                ? `Exp. -${Math.abs(lotDays)}j`
+                                : lotDays === 0
+                                  ? "Exp. auj."
+                                  : `J-${lotDays}`}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        </div>
+        )}
+      </div>
     </div>
   );
 }

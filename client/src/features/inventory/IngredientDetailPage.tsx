@@ -91,6 +91,8 @@ interface Lot {
   supplier_name: string | null;
   quantity_received: string;
   quantity_remaining: string;
+  economat_quantity?: string;
+  pesage_quantity?: string;
   unit_cost: string | null;
   expiration_date: string | null;
   manufactured_date: string | null;
@@ -137,6 +139,9 @@ export default function IngredientDetailPage() {
   const [showAdjust, setShowAdjust] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showOrderRequest, setShowOrderRequest] = useState(false);
+  // Magasinier seul peut ouvrir un contenant Economat → Pesage hors BSI.
+  const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
+  const [openContainerLot, setOpenContainerLot] = useState<Lot | null>(null);
 
   // Fetch inventory list and find this ingredient
   const { data: inventory = [] } = useQuery({ queryKey: ['inventory'], queryFn: inventoryApi.list });
@@ -226,6 +231,20 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       notify.success('Lot marqué comme déchet');
     },
+  });
+
+  // Ouverture manuelle d'un contenant : transfere qty Economat -> Pesage. Hors BSI,
+  // utile pour pre-ouvrir un sac le matin ou reorganiser le stock entre zones.
+  const openContainerMutation = useMutation({
+    mutationFn: ({ lotId, quantity, note }: { lotId: string; quantity: number; note?: string }) =>
+      ingredientLotsApi.openContainer(lotId, quantity, note),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ingredient-lots', id] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setOpenContainerLot(null);
+      notify.success('Contenant ouvert — qty transferee Economat → Pesage');
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.response?.data?.error || 'Erreur ouverture contenant'),
   });
 
   const addToWaitingListMutation = useMutation({
@@ -426,6 +445,7 @@ export default function IngredientDetailPage() {
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
                     onQuarantine={() => quarantineMutation.mutate(lot.id)}
                     onWaste={() => wasteMutation.mutate(lot.id)}
+                    onOpenContainer={isMagasinier ? () => setOpenContainerLot(lot) : undefined}
                   />
                 ))}
               </div>
@@ -629,6 +649,90 @@ export default function IngredientDetailPage() {
           isLoading={addToWaitingListMutation.isPending}
         />
       )}
+
+      {openContainerLot && (
+        <OpenContainerModal
+          lot={openContainerLot}
+          onClose={() => setOpenContainerLot(null)}
+          onSave={(qty, note) => openContainerMutation.mutate({ lotId: openContainerLot.id, quantity: qty, note })}
+          isLoading={openContainerMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Open Container Modal : magasinier transfere qty Economat -> Pesage ─── */
+function OpenContainerModal({ lot, onClose, onSave, isLoading }: {
+  lot: Lot;
+  onClose: () => void;
+  onSave: (qty: number, note?: string) => void;
+  isLoading: boolean;
+}) {
+  const economat = parseFloat(lot.economat_quantity || '0');
+  const [quantity, setQuantity] = useState<string>(economat.toString());
+  const [note, setNote] = useState<string>('');
+  const qty = parseFloat(quantity);
+  const isValid = !isNaN(qty) && qty > 0 && qty <= economat;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-5 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+            <Package size={20} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">Ouvrir contenant</h2>
+            <p className="text-sm text-white/80">Transfert Economat → Pesage</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+            <div className="font-semibold mb-1">Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</div>
+            <div>Economat dispo : <strong className="font-mono">{economat.toFixed(2)} {lot.ingredient_unit}</strong></div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+              Quantite a transferer
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" step="0.01" min="0" max={economat}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                autoFocus
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
+              />
+              <span className="text-sm text-gray-500 font-medium">{lot.ingredient_unit}</span>
+            </div>
+            {qty > economat && (
+              <p className="text-xs text-red-600 mt-1.5">Depasse la qty Economat dispo ({economat.toFixed(2)})</p>
+            )}
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+              Motif (optionnel)
+            </label>
+            <input
+              type="text" value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder="Ex : Pre-ouverture matin, reorganisation..."
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 px-4 rounded-xl text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 transition-colors">
+              Annuler
+            </button>
+            <button onClick={() => onSave(qty, note.trim() || undefined)}
+              disabled={!isValid || isLoading}
+              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              {isLoading ? 'Transfert...' : 'Transferer'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -732,16 +836,19 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
 }
 
 /* ─── Lot Row Component ─── */
-function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste }: {
+function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste, onOpenContainer }: {
   lot: Lot;
   isExpanded: boolean;
   onToggle: () => void;
   traceability: LotTraceability[];
   onQuarantine?: () => void;
   onWaste?: () => void;
+  onOpenContainer?: () => void;
 }) {
   const remaining = parseFloat(lot.quantity_remaining);
   const received = parseFloat(lot.quantity_received);
+  const economat = parseFloat(lot.economat_quantity || '0');
+  const pesage = parseFloat(lot.pesage_quantity || '0');
   const pct = received > 0 ? Math.round((remaining / received) * 100) : 0;
   const isExpired = lot.expiration_date ? new Date(lot.expiration_date) < new Date() : false;
   const daysUntil = lot.expiration_date
@@ -897,9 +1004,35 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               </div>
             )}
 
+            {/* Repartition Economat / Pesage (visible si lot a des quantites par zone) */}
+            {(economat > 0 || pesage > 0) && (
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-3 border border-amber-100">
+                <h4 className="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1.5">
+                  <Package size={12} /> Repartition par zone
+                </h4>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-amber-200">
+                    <div className="text-[10px] text-amber-600 uppercase tracking-wide font-semibold">Economat (scelle)</div>
+                    <div className="text-sm font-bold text-amber-900 font-mono">{economat.toFixed(2)} {lot.ingredient_unit}</div>
+                  </div>
+                  <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-emerald-200">
+                    <div className="text-[10px] text-emerald-600 uppercase tracking-wide font-semibold">Pesage (ouvert)</div>
+                    <div className="text-sm font-bold text-emerald-900 font-mono">{pesage.toFixed(2)} {lot.ingredient_unit}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Lot actions */}
-            {(onQuarantine || onWaste) && lot.status === 'active' && remaining > 0 && (
-              <div className="flex gap-2">
+            {(onQuarantine || onWaste || onOpenContainer) && lot.status === 'active' && remaining > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {onOpenContainer && economat > 0 && (
+                  <button onClick={(e) => { e.stopPropagation(); onOpenContainer(); }}
+                    className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors flex items-center gap-1"
+                    title="Transferer une partie du contenant Economat vers le Pesage (ouverture)">
+                    <Package size={10} /> Ouvrir contenant → Pesage
+                  </button>
+                )}
                 {onQuarantine && (
                   <button onClick={(e) => { e.stopPropagation(); onQuarantine(); }}
                     className="px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-colors flex items-center gap-1">

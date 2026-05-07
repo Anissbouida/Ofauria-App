@@ -90,23 +90,20 @@ export const inventoryController = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
-      const storeFilter = req.user!.storeId ? ' AND store_id = $2' : '';
-      const lockParams: unknown[] = [ingredientId];
-      if (req.user!.storeId) lockParams.push(req.user!.storeId);
+      const storeId = req.user!.storeId || null;
 
-      // Lock la ligne d'inventaire et verifie stock suffisant avant decrement.
-      const lockRes = await client.query(
-        `SELECT current_quantity FROM inventory
-         WHERE ingredient_id = $1${storeFilter}
-         FOR UPDATE`,
-        lockParams
+      // Source de verite = ingredient_lots (depuis migration 114). On verifie le stock
+      // dispo via SUM des lots actifs et on manipule les lots — le trigger
+      // trg_inventory_sync_lots maintient inventory.current_quantity automatiquement.
+      const totalRes = await client.query(
+        `SELECT COALESCE(SUM(economat_quantity + pesage_quantity), 0)::numeric AS total
+         FROM ingredient_lots
+         WHERE ingredient_id = $1 AND ${storeId ? 'store_id = $2' : 'store_id IS NULL'}
+           AND status = 'active'`,
+        storeId ? [ingredientId, storeId] : [ingredientId]
       );
-      if (lockRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        res.status(404).json({ success: false, error: { message: 'Inventaire introuvable pour cet ingredient' } });
-        return;
-      }
-      const current = parseFloat(lockRes.rows[0].current_quantity);
+      const current = parseFloat(totalRes.rows[0]?.total || '0');
+
       if (qty < 0 && current + qty < 0) {
         await client.query('ROLLBACK');
         res.status(409).json({
@@ -116,17 +113,70 @@ export const inventoryController = {
         return;
       }
 
-      const updateParams: unknown[] = [qty, ingredientId];
-      if (req.user!.storeId) updateParams.push(req.user!.storeId);
-      await client.query(
-        `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
-         WHERE ingredient_id = $2${req.user!.storeId ? ' AND store_id = $3' : ''}`,
-        updateParams
-      );
+      if (qty > 0) {
+        // Ajustement positif : cree un lot d'ajustement (economat). Pas de fournisseur,
+        // pas de DLC. Marque par lot_number 'ADJ-YYMMDD-NNN' pour audit.
+        const now = new Date();
+        const yymmdd = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const seqRes = await client.query(
+          `SELECT COUNT(*)::int AS n FROM ingredient_lots WHERE lot_number LIKE $1`,
+          [`ADJ-${yymmdd}-%`]
+        );
+        const seq = String((seqRes.rows[0]?.n ?? 0) + 1).padStart(3, '0');
+        const lotNumber = `ADJ-${yymmdd}-${seq}`;
+
+        await client.query(
+          `INSERT INTO ingredient_lots
+             (ingredient_id, store_id, lot_number, quantity_received, quantity_remaining,
+              economat_quantity, pesage_quantity, status, notes)
+           VALUES ($1, $2, $3, $4, $4, $4, 0, 'active', $5)`,
+          [ingredientId, storeId, lotNumber, qty,
+           `Ajustement positif (${type}) : ${note || 'sans motif'}`]
+        );
+      } else if (qty < 0) {
+        // Ajustement negatif : decremente FIFO sur les lots actifs (economat puis pesage).
+        // Choix : pesage en premier (stock en cours d'utilisation, plus probable d'etre
+        // l'origine d'un ecart d'inventaire), puis economat.
+        let remaining = -qty;  // qty est negatif, on retire |qty|
+        const lotsRes = await client.query(
+          `SELECT id, economat_quantity, pesage_quantity
+           FROM ingredient_lots
+           WHERE ingredient_id = $1 AND ${storeId ? 'store_id = $2' : 'store_id IS NULL'}
+             AND status = 'active' AND (economat_quantity + pesage_quantity) > 0
+           ORDER BY received_at ASC, created_at ASC
+           FOR UPDATE`,
+          storeId ? [ingredientId, storeId] : [ingredientId]
+        );
+
+        for (const lot of lotsRes.rows) {
+          if (remaining <= 0) break;
+          const pesage = parseFloat(lot.pesage_quantity);
+          const economat = parseFloat(lot.economat_quantity);
+          const takePesage = Math.min(pesage, remaining);
+          remaining -= takePesage;
+          const takeEconomat = Math.min(economat, remaining);
+          remaining -= takeEconomat;
+          if (takePesage > 0 || takeEconomat > 0) {
+            await client.query(
+              `UPDATE ingredient_lots
+               SET pesage_quantity = pesage_quantity - $1,
+                   economat_quantity = economat_quantity - $2
+               WHERE id = $3`,
+              [takePesage, takeEconomat, lot.id]
+            );
+          }
+        }
+        // Si remaining > 0 ici, c'est qu'on a ete en concurrence — peu probable car FOR UPDATE.
+        if (remaining > 0.0001) {
+          throw new Error(`Decrement impossible : ${remaining.toFixed(4)} restant non couvert`);
+        }
+      }
+      // qty === 0 : no-op stock, mais on garde l'audit transaction.
+
       await client.query(
         `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [ingredientId, type, qty, note || null, req.user!.userId, req.user!.storeId || null]
+        [ingredientId, type, qty, note || null, req.user!.userId, storeId]
       );
       await client.query('COMMIT');
     } catch (err) {
