@@ -431,7 +431,7 @@ export const productionRepository = {
       // Le chef suit l'avancement dans le sous-onglet "Gestion du bon de sortie".
       try {
         const storeId = planDateResult.rows[0]?.store_id as string | undefined;
-        if (storeId && needsMap.size > 0) {
+        if (storeId && userId && needsMap.size > 0) {
           const bsi = await bonSortieRepository.generate(planId, storeId, userId);
           if (bsi?.id) {
             // Notification aux magasiniers du store : nouveau BSI a preparer.
