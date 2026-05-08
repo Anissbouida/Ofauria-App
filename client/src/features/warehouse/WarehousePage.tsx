@@ -6,7 +6,7 @@ import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import {
-  Truck, Loader2, Package, ClipboardList, CheckCircle, Eye, Clock, AlertTriangle,
+  Truck, Loader2, Package, PackageOpen, ClipboardList, CheckCircle, Eye, Clock, AlertTriangle,
   Archive, XCircle, Lock, Beaker, ChevronDown, ChevronRight, CalendarClock,
   Search, ArrowUpDown,
 } from 'lucide-react';
@@ -458,103 +458,164 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
         )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3 bg-amber-50/50 border-b border-amber-100 text-xs text-amber-800">
-          <strong>{sorted.length}</strong> sur <strong>{rows.length}</strong> ingredient{rows.length > 1 ? 's' : ''} affiche{sorted.length > 1 ? 's' : ''}
-          {(search || filterExpiringSoon) ? ' (filtres actifs)' : ''}.
+      <div className="text-xs text-gray-500 px-1">
+        <strong className="text-gray-700">{sorted.length}</strong> sur <strong className="text-gray-700">{rows.length}</strong> ingredient{rows.length > 1 ? 's' : ''} affiche{sorted.length > 1 ? 's' : ''}
+        {(search || filterExpiringSoon) ? ' (filtres actifs)' : ''}
+      </div>
+      {sorted.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400 italic">
+          Aucun ingredient ne correspond aux filtres.
         </div>
-        {sorted.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400 italic">
-            Aucun ingredient ne correspond aux filtres.
-          </div>
-        ) : (
-        <div className="divide-y divide-gray-50">
-          {sorted.map((r) => {
+      ) : (
+      <div className="space-y-2">
+        {sorted.map((r) => {
           const ingredientId = r.ingredient_id as string;
           const isOpen = expanded === ingredientId;
           const total = parseFloat(r.total_pesage as string || '0');
           const lotsCount = parseInt(r.lots_count as string || '0', 10);
           const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
           const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
-          const dlcClass = daysUntil === null ? 'text-gray-400' : daysUntil < 0 ? 'text-red-600 font-bold' : daysUntil <= 3 ? 'text-orange-600 font-bold' : daysUntil <= 7 ? 'text-amber-600' : 'text-gray-500';
+
+          // Niveau d'urgence DLC -> theme couleur unifie (accent + dot + badge)
+          const urgency: 'safe' | 'soon' | 'urgent' | 'expired' | 'none' =
+            daysUntil === null ? 'none'
+            : daysUntil < 0 ? 'expired'
+            : daysUntil <= 3 ? 'urgent'
+            : daysUntil <= 7 ? 'soon'
+            : 'safe';
+
+          const theme = {
+            none:    { accent: 'bg-gray-200',     dot: 'bg-gray-300',     badge: 'bg-gray-100 text-gray-600 ring-gray-200', dayLabel: '' },
+            safe:    { accent: 'bg-emerald-200',  dot: 'bg-emerald-500',  badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dayLabel: daysUntil !== null ? `${daysUntil} j` : '' },
+            soon:    { accent: 'bg-amber-300',    dot: 'bg-amber-500',    badge: 'bg-amber-50 text-amber-800 ring-amber-200', dayLabel: daysUntil !== null ? `${daysUntil} j` : '' },
+            urgent:  { accent: 'bg-orange-400',   dot: 'bg-orange-500',   badge: 'bg-orange-50 text-orange-800 ring-orange-200', dayLabel: daysUntil === 0 ? "auj." : daysUntil !== null ? `${daysUntil} j` : '' },
+            expired: { accent: 'bg-red-400',      dot: 'bg-red-500',      badge: 'bg-red-50 text-red-700 ring-red-200', dayLabel: daysUntil !== null ? `-${Math.abs(daysUntil)} j` : '' },
+          }[urgency];
+
           const lots = (r.lots as Record<string, any>[]) || [];
           return (
-            <div key={ingredientId}>
-              <div onClick={() => setExpanded(isOpen ? null : ingredientId)}
-                className="px-5 py-3.5 flex items-center gap-4 cursor-pointer hover:bg-amber-50/30 transition-colors">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
-                  <Beaker size={16} className="text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{r.ingredient_name as string}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    {lotsCount} lot{lotsCount > 1 ? 's' : ''} ouvert{lotsCount > 1 ? 's' : ''}
+            <div key={ingredientId}
+              className={`group bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all hover:shadow-md hover:border-gray-200 ${isOpen ? 'shadow-md ring-1 ring-gray-100' : 'shadow-sm'}`}>
+              {/* Ruban d'urgence vertical a gauche */}
+              <div className="flex">
+                <div className={`w-1 shrink-0 ${theme.accent}`} aria-hidden="true" />
+                <div onClick={() => setExpanded(isOpen ? null : ingredientId)}
+                  className="flex-1 px-4 py-3.5 flex items-center gap-4 cursor-pointer">
+                  {/* Icone + dot d'urgence */}
+                  <div className="relative shrink-0">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200/70 flex items-center justify-center">
+                      <Beaker size={18} className="text-gray-500" />
+                    </div>
+                    {urgency !== 'none' && urgency !== 'safe' && (
+                      <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${theme.dot}`} aria-hidden="true" />
+                    )}
                   </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-sm font-bold text-amber-900 font-mono">{total.toFixed(2)} {r.ingredient_unit as string}</div>
-                  {dlc ? (
-                    <div className={`text-[11px] mt-0.5 flex items-center gap-1 justify-end ${dlcClass}`}>
-                      <CalendarClock size={10} />
-                      <span>{format(dlc, 'dd/MM/yyyy')}</span>
-                      <span>·</span>
-                      <span>
-                        {daysUntil !== null && daysUntil < 0
-                          ? `Expire -${Math.abs(daysUntil)}j`
-                          : daysUntil === 0
-                            ? "auj."
-                            : `J-${daysUntil}`}
+
+                  {/* Nom + meta */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] font-semibold text-gray-900 truncate tracking-tight">{r.ingredient_name as string}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
+                      <PackageOpen size={11} className="text-gray-400" />
+                      <span>{lotsCount} lot{lotsCount > 1 ? 's' : ''} ouvert{lotsCount > 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+
+                  {/* DLC en bloc date */}
+                  {dlc && (
+                    <div className="hidden sm:flex flex-col items-center justify-center px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-100 shrink-0 min-w-[68px]">
+                      <span className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider leading-none">
+                        {format(dlc, 'MMM', { locale: fr }).replace('.', '')}
+                      </span>
+                      <span className="text-lg font-bold text-gray-800 leading-tight tabular-nums">
+                        {format(dlc, 'dd')}
+                      </span>
+                      <span className={`mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-inset ${theme.badge} leading-none`}>
+                        {theme.dayLabel}
                       </span>
                     </div>
-                  ) : null}
-                </div>
-                <div className="shrink-0">
-                  {isOpen ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                  )}
+
+                  {/* Quantite : grand chiffre */}
+                  <div className="text-right shrink-0 min-w-[72px]">
+                    <div className="flex items-baseline gap-1 justify-end leading-none">
+                      <span className="text-2xl font-bold text-gray-900 tabular-nums tracking-tight">{total.toFixed(2)}</span>
+                      <span className="text-xs font-medium text-gray-400">{r.ingredient_unit as string}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-1.5 uppercase tracking-wider font-medium">au pesage</div>
+                  </div>
+
+                  {/* Chevron */}
+                  <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${isOpen ? 'bg-gray-900 text-white rotate-0' : 'bg-gray-50 text-gray-400 group-hover:bg-gray-100'}`}>
+                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </div>
                 </div>
               </div>
+
+              {/* Lots developpes : timeline indentee */}
               {isOpen && lots.length > 0 && (
-                <div className="px-5 pb-3 pt-0 ml-12 space-y-1.5">
+                <div className="border-t border-gray-100 bg-gradient-to-b from-gray-50/40 to-white px-5 pt-3 pb-4 space-y-2">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 mb-2 ml-1">Detail des lots</div>
                   {lots.map((lot, i) => {
                     const pq = parseFloat(lot.pesage_quantity as string || '0');
                     const eq = parseFloat(lot.economat_quantity as string || '0');
                     const lotDlc = (lot.effective_expiry_after_opening || lot.expiration_date) as string | null;
                     const lotDays = lotDlc ? differenceInDays(new Date(lotDlc), new Date()) : null;
-                    const lotDlcClass = lotDays === null ? 'text-gray-400' : lotDays < 0 ? 'text-red-600' : lotDays <= 3 ? 'text-orange-600' : lotDays <= 7 ? 'text-amber-600' : 'text-gray-500';
+                    const lotUrgency: 'safe' | 'soon' | 'urgent' | 'expired' | 'none' =
+                      lotDays === null ? 'none'
+                      : lotDays < 0 ? 'expired'
+                      : lotDays <= 3 ? 'urgent'
+                      : lotDays <= 7 ? 'soon'
+                      : 'safe';
+                    const lotTheme = {
+                      none:    { dot: 'bg-gray-300',     badge: 'bg-gray-100 text-gray-600 ring-gray-200',         label: '' },
+                      safe:    { dot: 'bg-emerald-500',  badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: lotDays !== null ? `${lotDays} j` : '' },
+                      soon:    { dot: 'bg-amber-500',    badge: 'bg-amber-50 text-amber-800 ring-amber-200',       label: lotDays !== null ? `${lotDays} j` : '' },
+                      urgent:  { dot: 'bg-orange-500',   badge: 'bg-orange-50 text-orange-800 ring-orange-200',    label: lotDays === 0 ? "auj." : lotDays !== null ? `${lotDays} j` : '' },
+                      expired: { dot: 'bg-red-500',      badge: 'bg-red-50 text-red-700 ring-red-200',             label: lotDays !== null ? `-${Math.abs(lotDays)} j` : '' },
+                    }[lotUrgency];
+                    const lotName = (lot.supplier_lot_number || lot.lot_number || '—') as string;
+
                     return (
-                      <div key={i} className="bg-amber-50/40 border border-amber-100 rounded-lg px-3 py-2 flex items-center gap-3 text-xs">
-                        <Package size={12} className="text-amber-600 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-mono font-bold text-amber-900">
-                            {(lot.supplier_lot_number || lot.lot_number || '—') as string}
+                      <div key={i} className="bg-white rounded-xl border border-gray-150 px-3.5 py-2.5 flex items-center gap-3 hover:border-gray-200 transition-colors" style={{ borderColor: 'rgb(243 244 246)' }}>
+                        <div className="relative shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                            <Package size={14} className="text-gray-500" />
                           </div>
-                          <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                            {lot.supplier_name ? <span>{lot.supplier_name as string}</span> : null}
-                            {lot.first_opened_at ? (
-                              <span>Ouvert : {format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy')}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="font-mono text-amber-900 font-semibold">{pq.toFixed(2)} {r.ingredient_unit as string}</div>
-                          {eq > 0 && (
-                            <div className="text-[10px] text-gray-400 mt-0.5">+ {eq.toFixed(2)} en economat</div>
+                          {lotUrgency !== 'none' && lotUrgency !== 'safe' && (
+                            <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white ${lotTheme.dot}`} aria-hidden="true" />
                           )}
                         </div>
-                        {lotDlc ? (
-                          <div className={`text-[10px] flex flex-col items-end shrink-0 ${lotDlcClass}`}>
-                            <span className="flex items-center gap-1">
-                              <CalendarClock size={10} />
-                              {format(new Date(lotDlc), 'dd/MM/yyyy')}
-                            </span>
-                            <span>
-                              {lotDays !== null && lotDays < 0
-                                ? `Exp. -${Math.abs(lotDays)}j`
-                                : lotDays === 0
-                                  ? "Exp. auj."
-                                  : `J-${lotDays}`}
-                            </span>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-mono font-semibold text-gray-800 truncate">{lotName}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                            {lot.supplier_name ? <span>{lot.supplier_name as string}</span> : null}
+                            {lot.first_opened_at && (
+                              <span className="inline-flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-gray-300" aria-hidden="true" />
+                                Ouvert {format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy')}
+                              </span>
+                            )}
+                            {eq > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">
+                                +{eq.toFixed(2)} {r.ingredient_unit as string} economat
+                              </span>
+                            )}
                           </div>
-                        ) : null}
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="flex items-baseline gap-1 justify-end leading-none">
+                            <span className="text-base font-bold text-gray-900 tabular-nums">{pq.toFixed(2)}</span>
+                            <span className="text-[10px] text-gray-400">{r.ingredient_unit as string}</span>
+                          </div>
+                          {lotDlc && lotTheme.label && (
+                            <span className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full ring-1 ring-inset text-[10px] font-semibold ${lotTheme.badge}`}>
+                              <CalendarClock size={9} />
+                              {format(new Date(lotDlc), 'dd/MM')} · {lotTheme.label}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -563,9 +624,8 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
             </div>
           );
         })}
-        </div>
-        )}
       </div>
+      )}
     </div>
   );
 }

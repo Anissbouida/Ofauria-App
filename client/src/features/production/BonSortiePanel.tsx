@@ -787,6 +787,23 @@ export function BonSortiePanel({
             ? (isTransferRequired ? transferRequiredQty : allocated)
             : (allocated > 0 ? allocated : needed);
 
+          // Source du stock : badge visuel pour aider le magasinier a savoir ou recuperer l'ingredient.
+          //  - PESAGE : sac deja ouvert dans la zone pesage (rien a faire de special)
+          //  - ECONOMAT_REQUIRES_TRANSFER : besoin de transferer un contenant scelle de l'economat vers le pesage
+          //  - rupture avec lot attache : contenant economat dispo mais a ouvrir
+          //  - RUPTURE : aucun stock
+          const sourceLocation = line.source_location as string | undefined;
+          const isToOpenFromEconomat = lineStatus === 'rupture' && !!line.ingredient_lot_id && allocated >= needed && allocated > 0;
+          const sourceBadge = isTransferRequired
+            ? { label: 'Économat — à transférer', cls: 'bg-amber-50 text-amber-800 border-amber-200', Icon: PackageOpen }
+            : isToOpenFromEconomat
+            ? { label: 'Économat — à ouvrir', cls: 'bg-blue-50 text-blue-800 border-blue-200', Icon: PackageOpen }
+            : sourceLocation === 'PESAGE'
+            ? { label: 'Pesage', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', Icon: Package }
+            : sourceLocation === 'RUPTURE' || lineStatus === 'rupture'
+            ? { label: 'Rupture', cls: 'bg-red-50 text-red-700 border-red-200', Icon: AlertTriangle }
+            : null;
+
           return (
             <div
               key={line.id as string}
@@ -821,6 +838,15 @@ export function BonSortiePanel({
                     )}
                     {isMagasinier && lotExpired && <span className="text-red-500 font-bold ml-1">Lot expire</span>}
                   </p>
+                  {sourceBadge && !isDone && (
+                    <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sourceBadge.cls}`}>
+                      <sourceBadge.Icon size={10} />
+                      {sourceBadge.label}
+                      {isToOpenFromEconomat && line.lot_number && (
+                        <span className="font-mono opacity-70">· {line.lot_number as string}</span>
+                      )}
+                    </span>
+                  )}
                 </div>
 
                 {/* Boutons "Modifier qty" / "Confirmer" : magasinier seul, et uniquement

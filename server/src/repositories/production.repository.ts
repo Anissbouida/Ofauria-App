@@ -101,8 +101,25 @@ export const productionRepository = {
       [id]
     );
 
+    // available_quantity calcule en temps reel a partir de ingredient_lots, en utilisant
+    // exactement la meme source que la generation du BSI (bon-sortie.repository#generate) :
+    //   - pesage_quantity des lots actifs/expires (consommable directement)
+    //   - economat_quantity des lots actifs (transferable au pesage)
+    // Cela garantit que l'affichage "Besoins en ingredients" reflete ce que le BSI
+    // trouvera reellement au moment de la generation, et tient compte des reapprovisionnements
+    // sans necessiter de rafraichir le snapshot de production_ingredient_needs.
     const needsResult = await db.query(
-      `SELECT pin.*, ing.name as ingredient_name, ing.unit,
+      `SELECT pin.*,
+              COALESCE((
+                SELECT SUM(
+                  CASE WHEN il.status IN ('active', 'expired') THEN COALESCE(il.pesage_quantity, 0) ELSE 0 END
+                  + CASE WHEN il.status = 'active' THEN COALESCE(il.economat_quantity, 0) ELSE 0 END
+                )
+                FROM ingredient_lots il
+                WHERE il.ingredient_id = pin.ingredient_id
+                  AND il.store_id = (SELECT store_id FROM production_plans WHERE id = pin.plan_id)
+              ), 0) as available_quantity,
+              ing.name as ingredient_name, ing.unit,
               p.name as product_name, c.slug as category_slug
        FROM production_ingredient_needs pin
        JOIN ingredients ing ON ing.id = pin.ingredient_id
@@ -541,6 +558,18 @@ export const productionRepository = {
         );
       }
 
+      // Si un BSI de ce plan a deja deduit le stock (status >= 'prelevement', cad
+      // chef a accepte la reception), on saute la deduction ingredient ici pour
+      // eviter une double consommation. Les lots ont ete decremente​s dans
+      // bonSortieRepository.startPrelevement.
+      const bsiDeductedResult = await client.query(
+        `SELECT 1 FROM production_bons_sortie
+          WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')
+          LIMIT 1`,
+        [planId]
+      );
+      const bsiAlreadyDeducted = bsiDeductedResult.rows.length > 0;
+
       // Deduct ingredients based on actual production
       const itemsResult = await client.query(
         `SELECT ppi.*, p.name as product_name FROM production_plan_items ppi
@@ -580,6 +609,7 @@ export const productionRepository = {
 
       for (const item of itemsResult.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
+        if (bsiAlreadyDeducted) continue;
 
         const recipeResult = await client.query(
           `SELECT r.id, r.yield_quantity FROM recipes r WHERE r.product_id = $1`,
@@ -884,9 +914,20 @@ export const productionRepository = {
         [planId, items.map(i => i.planItemId)]
       );
 
+      // Si BSI deja en prelevement+ on saute la deduction (faite par startPrelevement).
+      // Sauf pour les semi-finis qui n'ont pas de BSI propre (dependances internes).
+      const bsiDeductedResult2 = await client.query(
+        `SELECT 1 FROM production_bons_sortie
+          WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')
+          LIMIT 1`,
+        [planId]
+      );
+      const bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
+
       // Deduct ingredients for produced items
       for (const item of producedItems.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
+        if (bsiAlreadyDeducted2) continue;
 
         // Determine recipe: either from product_id (normal) or base_recipe_id (semi-finished)
         let recipeResult;

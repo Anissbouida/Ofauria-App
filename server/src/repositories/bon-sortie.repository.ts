@@ -273,6 +273,38 @@ export const bonSortieRepository = {
         [bon.id, planId]
       );
 
+      // 6. Si le BSI alloue tous les ingredients sans rupture, on leve le statut
+      //    'waiting' pose au confirm() : la verification au confirm utilise une vue
+      //    aggregee qui peut etre desynchronisee, mais le BSI est la source de verite
+      //    (FEFO sur les vrais lots). On nettoie aussi le warning obsolete.
+      const ruptureCheck = await client.query(
+        `SELECT COUNT(*)::int AS rupture_count
+         FROM production_bons_sortie_lignes
+         WHERE bon_id = $1 AND source_location = 'RUPTURE'`,
+        [bon.id]
+      );
+      const hasRupture = (ruptureCheck.rows[0]?.rupture_count ?? 0) > 0;
+      if (!hasRupture) {
+        await client.query(
+          `UPDATE production_plan_items
+              SET waiting_status = 'restored'
+            WHERE plan_id = $1 AND waiting_status = 'waiting'`,
+          [planId]
+        );
+        // Retire les warnings "ingredients insuffisants" du plan (obsoletes).
+        await client.query(
+          `UPDATE production_plans
+              SET warnings = COALESCE(
+                ARRAY(
+                  SELECT w FROM unnest(warnings) AS w
+                  WHERE w NOT LIKE '%ingredients insuffisants%'
+                ), ARRAY[]::text[]
+              )
+            WHERE id = $1`,
+          [planId]
+        );
+      }
+
       await client.query('COMMIT');
       return { ...bon, lines };
     } catch (err) {
@@ -428,21 +460,90 @@ export const bonSortieRepository = {
     return { ...bon, lines: linesResult.rows };
   },
 
-  // ─── Start prelevement: update status ───
+  // ─── Start prelevement: update status + decrement pesage stock ───
   // Accepte les statuts 'genere' (flow legacy sans magasinier) ET 'pret' (flow magasinier,
   // chef valide la reception -> on demarre le prelevement pour la tracabilite des ecarts).
+  // Au moment ou le chef accepte la reception, les ingredients ont physiquement quitte
+  // la zone pesage : on decremente pesage_quantity sur chaque lot prele​ve, on trace
+  // un mouvement 'production' et on lie au plan via inventory_transactions.
   async startPrelevement(bonId: string, userId: string) {
-    const result = await db.query(
-      `UPDATE production_bons_sortie
-       SET status = 'prelevement', prelevement_by = $1, prelevement_at = NOW(), updated_at = NOW()
-       WHERE id = $2 AND status IN ('genere', 'pret')
-       RETURNING *`,
-      [userId, bonId]
-    );
-    if (result.rows.length === 0) {
-      throw new Error('Bon de sortie introuvable ou statut invalide pour demarrer le prelevement');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const bonResult = await client.query(
+        `UPDATE production_bons_sortie
+         SET status = 'prelevement', prelevement_by = $1, prelevement_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND status IN ('genere', 'pret')
+         RETURNING *`,
+        [userId, bonId]
+      );
+      if (bonResult.rows.length === 0) {
+        throw new Error('Bon de sortie introuvable ou statut invalide pour demarrer le prelevement');
+      }
+      const bon = bonResult.rows[0];
+
+      // Recupere les lignes prelevees / substituees / avec ecart : ce sont celles qui
+      // ont quitte le pesage. Les lignes 'en_attente' ou 'rupture' sont ignorees.
+      const linesResult = await client.query(
+        `SELECT bsl.id, bsl.ingredient_id, bsl.unit, bsl.status,
+                bsl.allocated_quantity, bsl.actual_quantity, bsl.substitute_lot_id, bsl.ingredient_lot_id,
+                ing.name AS ingredient_name
+         FROM production_bons_sortie_lignes bsl
+         JOIN ingredients ing ON ing.id = bsl.ingredient_id
+         WHERE bsl.bon_id = $1
+           AND bsl.status IN ('preleve', 'substitue', 'ecart')
+           AND bsl.ingredient_id IS NOT NULL
+         FOR UPDATE OF bsl`,
+        [bonId]
+      );
+
+      for (const line of linesResult.rows) {
+        const lotId = line.substitute_lot_id || line.ingredient_lot_id;
+        if (!lotId) continue;
+        const qty = parseFloat(line.actual_quantity ?? line.allocated_quantity ?? '0');
+        if (qty <= 0) continue;
+
+        // Decremente pesage_quantity. Bascule en 'depleted' si tout est consomme.
+        // Le trigger sync_quantity_remaining maintient quantity_remaining a jour.
+        await client.query(
+          `UPDATE ingredient_lots
+              SET pesage_quantity = GREATEST(pesage_quantity - $1, 0),
+                  status = CASE
+                    WHEN economat_quantity = 0 AND pesage_quantity - $1 <= 0 THEN 'depleted'
+                    ELSE status
+                  END
+            WHERE id = $2`,
+          [qty, lotId]
+        );
+
+        // Trace mouvement de stock (type='production' pour coherence avec consumeFEFO).
+        // Le trigger trg_inventory_sync_lots resync inventory.current_quantity depuis
+        // les lots — pas besoin de mettre a jour inventory manuellement ici.
+        await client.query(
+          `INSERT INTO inventory_transactions
+             (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id)
+           VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+          [
+            line.ingredient_id,
+            -qty,
+            `BSI ${bon.numero} — Reception acceptee : ${qty.toFixed(3)} ${line.unit || ''} ${line.ingredient_name}`,
+            userId,
+            bon.store_id,
+            lotId,
+            bon.plan_id,
+          ]
+        );
+      }
+
+      await client.query('COMMIT');
+      return bon;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-    return result.rows[0];
   },
 
   // ─── Magasinier : prendre en charge la preparation ───
