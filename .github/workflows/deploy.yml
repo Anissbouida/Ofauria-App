@@ -91,6 +91,12 @@ jobs:
           region: ${{ vars.GCP_REGION }}
           image: ${{ needs.build-and-push.outputs.image }}
           flags: --port=8080 --allow-unauthenticated
+          env_vars: |
+            NODE_ENV=production
+            SERVER_PORT=8080
+          secrets: |
+            JWT_SECRET=JWT_SECRET:latest
+            DATABASE_URL=DATABASE_URL:latest
 
       - name: Show service URL
         run: echo "Deployed to ${{ steps.deploy.outputs.url }}"
