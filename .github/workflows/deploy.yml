@@ -90,7 +90,7 @@ jobs:
           service: ${{ vars.GCP_SERVICE_NAME }}
           region: ${{ vars.GCP_REGION }}
           image: ${{ needs.build-and-push.outputs.image }}
-          flags: --port=8080 --allow-unauthenticated
+          flags: --port=8080 --allow-unauthenticated --add-cloudsql-instances=ofauria:europe-west1:ofauria-db
           env_vars: |
             NODE_ENV=production
             SERVER_PORT=8080
