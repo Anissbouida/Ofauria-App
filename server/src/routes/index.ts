@@ -34,6 +34,7 @@ import productionEtapesRoutes from './production-etapes.routes.js';
 import productionCoutRoutes from './production-cout.routes.js';
 import packagingRoutes from './packaging.routes.js';
 import productLotRoutes from './product-lot.routes.js';
+import openingInventoryCheckRoutes from './opening-inventory-check.routes.js';
 
 const router = Router();
 
@@ -83,5 +84,6 @@ router.use('/stock-frigo', stockFrigoRoutes);
 router.use('/bons-sortie', bonSortieRoutes);
 router.use('/production-etapes', productionEtapesRoutes);
 router.use('/production-cout', productionCoutRoutes);
+router.use('/inventory-checks', openingInventoryCheckRoutes);
 
 export default router;

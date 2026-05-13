@@ -65,8 +65,26 @@ export const cashRegisterController = {
     }
 
     const { openingAmount = 0 } = req.body;
-    const session = await cashRegisterRepository.open(req.user!.userId, openingAmount, req.user!.storeId);
-    res.status(201).json({ success: true, data: session });
+    try {
+      const session = await cashRegisterRepository.open(req.user!.userId, openingAmount, req.user!.storeId);
+      res.status(201).json({ success: true, data: session });
+    } catch (err) {
+      // Trigger SQL `check_opening_inventory_required` bloque l'ouverture si le contrôle
+      // d'inventaire matinal n'a pas été validé. On expose un code dédié au front pour
+      // rediriger vers la page de contrôle.
+      const message = err instanceof Error ? err.message : '';
+      if (message.includes('opening_inventory_check_required')) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'OPENING_INVENTORY_CHECK_REQUIRED',
+            message: 'Contrôle d\'inventaire d\'ouverture requis avant d\'ouvrir la caisse.',
+          },
+        });
+        return;
+      }
+      throw err;
+    }
   },
 
   async close(req: AuthRequest, res: Response) {

@@ -31,6 +31,8 @@ import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
 import RequestDetailPage from './features/replenishment/RequestDetailPage';
 import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
+import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
+import InventoryCheckValidationPage from './features/inventory-check/InventoryCheckValidationPage';
 import WarehousePage from './features/warehouse/WarehousePage';
 
 export const queryClient = new QueryClient({
@@ -71,6 +73,8 @@ export default function App() {
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />
+              <Route path="/inventory-check/opening" element={<OpeningInventoryCheckPage />} />
+              <Route path="/inventory-check/validation" element={<InventoryCheckValidationPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
