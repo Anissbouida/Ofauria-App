@@ -8,6 +8,7 @@ export const saleRepository = {
     dateFrom?: string; dateTo?: string; customerId?: string;
     paymentMethod?: string; userId?: string; search?: string;
     categoryId?: string; productId?: string; storeId?: string;
+    paymentStatus?: 'paid' | 'unpaid';
     limit: number; offset: number;
   }) {
     const conditions: string[] = [];
@@ -23,6 +24,7 @@ export const saleRepository = {
     if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date <= $${i++}`); values.push(params.dateTo); }
     if (params.customerId) { conditions.push(`s.customer_id = $${i++}`); values.push(params.customerId); }
     if (params.paymentMethod) { conditions.push(`s.payment_method = $${i++}`); values.push(params.paymentMethod); }
+    if (params.paymentStatus) { conditions.push(`s.payment_status = $${i++}`); values.push(params.paymentStatus); }
     if (params.userId) { conditions.push(`s.user_id = $${i++}`); values.push(params.userId); }
     if (params.search) { conditions.push(`s.sale_number ILIKE $${i++}`); values.push(`%${params.search}%`); }
     if (params.productId) {
@@ -135,6 +137,8 @@ export const saleRepository = {
     advanceAmount?: number; advanceDate?: string | null; orderId?: string;
     skipStockDeduction?: boolean;
     saleType?: 'standard' | 'advance' | 'delivery';
+    paymentStatus?: 'paid' | 'unpaid';
+    unpaidCustomerName?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number }[];
   }) {
     const client = await db.getClient();
@@ -143,12 +147,17 @@ export const saleRepository = {
 
       const saleNumber = await generateSaleNumber(client);
 
+      const paymentStatus = data.paymentStatus || 'paid';
+      // paid_at est NULL pour une vente impayee : sera renseigne lors de l'encaissement differe.
+      const paidAtExpr = paymentStatus === 'paid' ? 'NOW()' : 'NULL';
+
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17) RETURNING *`,
         [saleNumber, data.customerId || null, data.userId, data.subtotal,
          data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
-         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard']
+         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard',
+         paymentStatus, data.unpaidCustomerName || null]
       );
 
       for (const item of data.items) {
@@ -211,8 +220,9 @@ export const saleRepository = {
         }
       }
 
-      // Update customer loyalty
-      if (data.customerId) {
+      // Update customer loyalty — seulement pour les ventes effectivement payees.
+      // Les ventes impayees attribuent les points lors de l'encaissement differe.
+      if (data.customerId && paymentStatus === 'paid') {
         const loyaltyPoints = Math.floor(data.total);
         await client.query(
           `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
@@ -227,6 +237,57 @@ export const saleRepository = {
       throw err;
     } finally {
       client.release();
+    }
+  },
+
+  async markPaid(saleId: string, params: { paymentMethod: string; sessionId: string }) {
+    const dbClient = await db.getClient();
+    try {
+      await dbClient.query('BEGIN');
+
+      // Verrou pessimiste pour empecher un double encaissement concurrent.
+      const lockResult = await dbClient.query(
+        `SELECT id, customer_id, total, payment_status FROM sales WHERE id = $1 FOR UPDATE`,
+        [saleId]
+      );
+      const existing = lockResult.rows[0];
+      if (!existing) {
+        await dbClient.query('ROLLBACK');
+        return { ok: false as const, reason: 'not_found' as const };
+      }
+      if (existing.payment_status !== 'unpaid') {
+        await dbClient.query('ROLLBACK');
+        return { ok: false as const, reason: 'already_paid' as const };
+      }
+
+      const result = await dbClient.query(
+        `UPDATE sales
+           SET payment_status = 'paid',
+               paid_at = NOW(),
+               payment_method = $2,
+               session_id = $3
+         WHERE id = $1
+         RETURNING *`,
+        [saleId, params.paymentMethod, params.sessionId]
+      );
+
+      // Attribution des points de fidelite au moment de l'encaissement effectif.
+      if (existing.customer_id) {
+        const total = parseFloat(existing.total);
+        const loyaltyPoints = Math.floor(total);
+        await dbClient.query(
+          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
+          [total, loyaltyPoints, existing.customer_id]
+        );
+      }
+
+      await dbClient.query('COMMIT');
+      return { ok: true as const, sale: result.rows[0] };
+    } catch (err) {
+      await dbClient.query('ROLLBACK');
+      throw err;
+    } finally {
+      dbClient.release();
     }
   },
 

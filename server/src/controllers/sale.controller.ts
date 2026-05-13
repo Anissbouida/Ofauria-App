@@ -12,12 +12,14 @@ export const saleController = {
       res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
       return;
     }
-    const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, paymentStatus, page = '1', limit = '20' } = req.query as Record<string, string>;
     // OWASP API4 : borner pagination pour eviter DoS DB.
     const p = Math.max(1, Math.min(100000, parseInt(page) || 1));
     const l = Math.max(1, Math.min(200, parseInt(limit) || 20));
+    const validPaymentStatus = paymentStatus === 'paid' || paymentStatus === 'unpaid' ? paymentStatus : undefined;
     const result = await saleRepository.findAll({
       dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId,
+      paymentStatus: validPaymentStatus,
       storeId: req.user!.storeId,
       limit: l, offset: (p - 1) * l,
     });
@@ -42,7 +44,7 @@ export const saleController = {
   },
 
   async checkout(req: AuthRequest, res: Response) {
-    const { customerId, items, paymentMethod, notes, discountAmount = 0 } = req.body;
+    const { customerId, items, paymentMethod, notes, discountAmount = 0, paymentStatus = 'paid', unpaidCustomerName } = req.body;
 
     // POS strictly consumes from vitrine (product_store_stock). Cashier must be
     // rattached to a store — otherwise we risk silently decrementing the global
@@ -90,6 +92,13 @@ export const saleController = {
 
     const total = subtotal - discountAmount + taxAmount;
 
+    // Paiement reporte : on exige un beneficiaire identifiable (client formel OU nom libre).
+    // Sans ca, on ne saurait pas a qui reclamer plus tard.
+    if (paymentStatus === 'unpaid' && !customerId && !(unpaidCustomerName && unpaidCustomerName.trim())) {
+      res.status(400).json({ success: false, error: { message: 'Un client ou un nom de beneficiaire est requis pour un paiement reporte' } });
+      return;
+    }
+
     // Require an open cash register session
     const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
     if (!activeSession) {
@@ -97,13 +106,59 @@ export const saleController = {
       return;
     }
 
+    // Pour une vente impayee, on force payment_method='credit' jusqu'a l'encaissement
+    // (le mode reel sera renseigne lors du pay).
+    const effectivePaymentMethod = paymentStatus === 'unpaid' ? 'credit' : paymentMethod;
+
     const sale = await saleRepository.create({
       customerId, userId: req.user!.userId,
-      subtotal, taxAmount, discountAmount, total, paymentMethod, notes, items: saleItems,
+      subtotal, taxAmount, discountAmount, total, paymentMethod: effectivePaymentMethod, notes, items: saleItems,
       sessionId: activeSession.id, storeId: req.user!.storeId,
+      paymentStatus, unpaidCustomerName: unpaidCustomerName?.trim() || undefined,
     });
 
     res.status(201).json({ success: true, data: sale });
+  },
+
+  async pay(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const { paymentMethod } = req.body;
+
+    if (!req.user!.storeId) {
+      res.status(400).json({ success: false, error: { message: 'Caissier non rattache a un magasin' } });
+      return;
+    }
+
+    const existing = await saleRepository.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      return;
+    }
+    if (existing.store_id && existing.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
+
+    const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
+    if (!activeSession) {
+      res.status(400).json({ success: false, error: { message: 'Vous devez ouvrir la caisse avant d\'encaisser' } });
+      return;
+    }
+
+    const result = await saleRepository.markPaid(id, { paymentMethod, sessionId: activeSession.id });
+    if (!result.ok) {
+      if (result.reason === 'not_found') {
+        res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+        return;
+      }
+      if (result.reason === 'already_paid') {
+        res.status(409).json({ success: false, error: { message: 'Cette vente est deja payee' } });
+        return;
+      }
+    } else {
+      res.json({ success: true, data: result.sale });
+      return;
+    }
   },
 
   async todayStats(req: AuthRequest, res: Response) {

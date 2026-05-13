@@ -3,7 +3,7 @@ import { saleController } from '../controllers/sale.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { checkoutSchema } from '../validators/sale.validator.js';
+import { checkoutSchema, paySaleSchema } from '../validators/sale.validator.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
@@ -18,6 +18,13 @@ router.post(
   authorize(...ROLE_GROUPS.SALES),
   validate(checkoutSchema),
   saleController.checkout,
+);
+router.post(
+  '/:id/pay',
+  authenticate,
+  authorize(...ROLE_GROUPS.SALES),
+  validate(paySaleSchema),
+  saleController.pay,
 );
 router.post('/import', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.importCSV);
 

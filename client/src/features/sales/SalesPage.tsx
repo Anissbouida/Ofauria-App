@@ -1,10 +1,12 @@
 import { useState, useMemo, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { returnsApi } from '../../api/returns.api';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { notify } from '../../components/ui/InlineNotification';
+import { getApiErrorMessage } from '../../utils/api-error';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
@@ -113,6 +115,9 @@ export default function SalesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [importResults, setImportResults] = useState<Record<string, any>[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+  const [paySaleTarget, setPaySaleTarget] = useState<Record<string, any> | null>(null);
+  const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
     saleNumber: string; date: string; cashierName: string; customerName?: string;
@@ -151,11 +156,28 @@ export default function SalesPage() {
     });
   };
 
-  // Receipt list query
+  // Receipt list query — quand on filtre "Impayes uniquement", on ignore la
+  // fenetre de date pour ne pas masquer un impaye plus ancien.
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', { dateFrom, dateTo }],
-    queryFn: () => salesApi.list({ dateFrom, dateTo, limit: '500' }),
+    queryKey: ['sales', { dateFrom, dateTo, unpaid: showUnpaidOnly }],
+    queryFn: () => salesApi.list(
+      showUnpaidOnly
+        ? { paymentStatus: 'unpaid', limit: '500' }
+        : { dateFrom, dateTo, limit: '500' }
+    ),
     enabled: mainTab === 'sales' && view === 'receipt',
+  });
+
+  const paySaleMutation = useMutation({
+    mutationFn: ({ id, paymentMethod }: { id: string; paymentMethod: string }) =>
+      salesApi.pay(id, { paymentMethod }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      notify.success('Encaissement enregistré');
+      setPaySaleTarget(null);
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Erreur lors de l'encaissement")),
   });
 
   // Summary query (grouped views)
@@ -403,6 +425,15 @@ export default function SalesPage() {
             className="p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="Période suivante">
             <ChevronRight size={18} />
           </button>
+          <button onClick={() => setShowUnpaidOnly(v => !v)}
+            title={showUnpaidOnly ? 'Afficher toutes les ventes' : 'Afficher uniquement les ventes en paiement reporté'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              showUnpaidOnly
+                ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}>
+            <Clock size={16} /> Impayés
+          </button>
           <button onClick={handleExport}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             <Download size={16} /> Exporter
@@ -591,8 +622,13 @@ export default function SalesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {sortedSales.map((s: Record<string, any>) => (
-                      <tr key={s.id as string} className="hover:bg-gray-50/50 transition-colors">
+                    {sortedSales.map((s: Record<string, any>) => {
+                      const isUnpaid = s.payment_status === 'unpaid';
+                      const beneficiary = s.customer_first_name
+                        ? `${s.customer_first_name} ${s.customer_last_name}`
+                        : (s.unpaid_customer_name as string) || 'Client de passage';
+                      return (
+                      <tr key={s.id as string} className={`hover:bg-gray-50/50 transition-colors ${isUnpaid ? 'bg-amber-50/40' : ''}`}>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm font-semibold text-gray-700">{s.sale_number as string}</span>
@@ -600,7 +636,12 @@ export default function SalesPage() {
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-50 text-orange-600 ring-1 ring-orange-200">Avance</span>
                             )}
                             {(s.sale_type === 'delivery') && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600 ring-1 ring-blue-200">Solde livraison</span>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] py-0.5 font-semibold bg-blue-50 text-blue-600 ring-1 ring-blue-200">Solde livraison</span>
+                            )}
+                            {isUnpaid && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 ring-1 ring-amber-300">
+                                <Clock size={10} /> Impayé
+                              </span>
                             )}
                           </div>
                         </td>
@@ -609,19 +650,23 @@ export default function SalesPage() {
                             <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
                               <User size={12} className="text-gray-400" />
                             </div>
-                            <span className="text-sm text-gray-700">
-                              {s.customer_first_name ? `${s.customer_first_name} ${s.customer_last_name}` : 'Client de passage'}
-                            </span>
+                            <span className="text-sm text-gray-700">{beneficiary}</span>
                           </div>
                         </td>
                         <td className="px-5 py-3.5 text-sm text-gray-500">{s.cashier_first_name as string} {s.cashier_last_name as string}</td>
                         <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                            s.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
-                          }`}>
-                            {s.payment_method === 'cash' ? <Banknote size={11} /> : <CreditCard size={11} />}
-                            {PAYMENT_LABELS[s.payment_method as string] || String(s.payment_method)}
-                          </span>
+                          {isUnpaid ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
+                              <Clock size={11} /> À encaisser
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                              s.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                            }`}>
+                              {s.payment_method === 'cash' ? <Banknote size={11} /> : <CreditCard size={11} />}
+                              {PAYMENT_LABELS[s.payment_method as string] || String(s.payment_method)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           <span className="text-sm font-bold text-gray-800">{formatCurrency(parseFloat(s.total as string))}</span>
@@ -633,13 +678,23 @@ export default function SalesPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-center">
-                          <button onClick={() => openReceipt(s.id as string)}
-                            className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-600 transition-colors mx-auto">
-                            <Eye size={15} />
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {isUnpaid && (
+                              <button onClick={() => { setPayPaymentMethod('cash'); setPaySaleTarget(s); }}
+                                title="Encaisser le paiement"
+                                className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors">
+                                <Banknote size={13} /> Encaisser
+                              </button>
+                            )}
+                            <button onClick={() => openReceipt(s.id as string)}
+                              className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-600 transition-colors">
+                              <Eye size={15} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {filteredSales.length === 0 && <EmptyState text={searchQuery ? 'Aucun résultat pour cette recherche' : 'Aucune vente pour cette période'} />}
@@ -1076,6 +1131,63 @@ export default function SalesPage() {
       {/* Receipt Modal */}
       {receiptData && (
         <ReceiptModal receipt={receiptData} onClose={() => setReceiptData(null)} />
+      )}
+
+      {/* Modal d'encaissement d'une vente impayée */}
+      {paySaleTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center">
+                <Banknote size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Encaisser la vente</h2>
+                <p className="text-xs text-gray-500 font-mono">{paySaleTarget.sale_number as string}</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Bénéficiaire</span>
+                <span className="font-medium text-gray-800">
+                  {paySaleTarget.customer_first_name
+                    ? `${paySaleTarget.customer_first_name} ${paySaleTarget.customer_last_name}`
+                    : (paySaleTarget.unpaid_customer_name as string) || '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Montant à encaisser</span>
+                <span className="text-xl font-bold text-primary-700">{formatCurrency(parseFloat(paySaleTarget.total as string))}</span>
+              </div>
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-5">
+              <button onClick={() => setPayPaymentMethod('cash')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${
+                  payPaymentMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
+                }`}>
+                <Banknote size={15} /> Espèces
+              </button>
+              <button onClick={() => setPayPaymentMethod('card')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${
+                  payPaymentMethod === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
+                }`}>
+                <CreditCard size={15} /> Carte
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setPaySaleTarget(null)} className="btn-secondary flex-1">Annuler</button>
+              <button onClick={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod })}
+                disabled={paySaleMutation.isPending}
+                className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40">
+                {paySaleMutation.isPending ? 'En cours...' : 'Encaisser'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

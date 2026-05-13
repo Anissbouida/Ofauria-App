@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
+import { openingInventoryCheckApi } from '../../api/opening-inventory-check.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { productionApi } from '../../api/production.api';
@@ -61,6 +63,8 @@ const statusColors: Record<string, string> = {
 
 export default function POSPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [posTab, setPosTab] = useState<PosTab>('sell');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -73,6 +77,8 @@ export default function POSPage() {
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
+  const [showUnpaidModal, setShowUnpaidModal] = useState(false);
+  const [unpaidCustomerName, setUnpaidCustomerName] = useState('');
 
   // Cart draft: restore from localStorage on mount
   const cartInitialized = useRef(false);
@@ -125,6 +131,7 @@ export default function POSPage() {
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [openingAmount, setOpeningAmount] = useState('0');
+  const [checkingInventory, setCheckingInventory] = useState(false);
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
   const [closeStep, setCloseStep] = useState<'choose-type' | 'expired' | 'inventory' | 'input' | 'result'>('choose-type');
@@ -205,6 +212,18 @@ export default function POSPage() {
     queryKey: ['cash-register-session'],
     queryFn: cashRegisterApi.currentSession,
   });
+
+  // Apres validation du controle d'ouverture, on arrive ici avec autoOpenCash=true.
+  // On ouvre directement la modal de fond de caisse pour eviter au caissier
+  // de cliquer une seconde fois sur "Ouvrir la caisse".
+  useEffect(() => {
+    const state = location.state as { autoOpenCash?: boolean } | null;
+    if (state?.autoOpenCash && !activeSession && !sessionLoading) {
+      setOpeningAmount('');
+      setShowOpenModal(true);
+      navigate('/pos', { replace: true, state: {} });
+    }
+  }, [location.state, activeSession, sessionLoading, navigate]);
 
   // Last closed session amount (for pre-filling opening amount)
   const { data: lastClosedData } = useQuery({
@@ -302,6 +321,23 @@ export default function POSPage() {
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la confirmation')),
   });
 
+  const handleOpenClick = useCallback(async () => {
+    setCheckingInventory(true);
+    try {
+      const pending = await openingInventoryCheckApi.getPending();
+      if (pending.items.length > 0 || (pending.existingCheck && pending.existingCheck.status !== 'validated')) {
+        navigate('/inventory-check/opening');
+        return;
+      }
+    } catch {
+      // Si l'API echoue, on laisse le trigger DB faire le garde-fou
+    } finally {
+      setCheckingInventory(false);
+    }
+    setOpeningAmount('');
+    setShowOpenModal(true);
+  }, [navigate]);
+
   const openMutation = useMutation({
     mutationFn: (amount: number) => cashRegisterApi.open(amount),
     onSuccess: () => {
@@ -310,7 +346,15 @@ export default function POSPage() {
       setOpeningAmount('0');
       notify.success('Caisse ouverte !');
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de l\'ouverture')),
+    onError: (e: unknown) => {
+      const errCode = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
+      if (errCode === 'OPENING_INVENTORY_CHECK_REQUIRED') {
+        setShowOpenModal(false);
+        navigate('/inventory-check/opening');
+        return;
+      }
+      notify.error(getApiErrorMessage(e, 'Erreur lors de l\'ouverture'));
+    },
   });
 
   const closeMutation = useMutation({
@@ -412,24 +456,29 @@ export default function POSPage() {
   const checkoutMutation = useMutation({
     mutationFn: salesApi.checkout,
     onSuccess: (sale: Record<string, any>) => {
+      const isUnpaid = sale.payment_status === 'unpaid';
+      const effectivePaymentMethod = isUnpaid ? 'credit' : paymentMethod;
+      const beneficiaryName = customerSearch.length >= 2
+        ? customerSearch
+        : (sale.unpaid_customer_name as string | undefined);
       const receipt: ReceiptData = {
         saleNumber: sale.sale_number as string,
         date: sale.created_at as string,
         cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
-        customerName: customerSearch.length >= 2 ? customerSearch : undefined,
+        customerName: beneficiaryName,
         items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, subtotal: i.price * i.quantity })),
         subtotal,
         discountAmount: 0,
         total,
-        paymentMethod,
-        cashGiven: paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
-        changeAmount: paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
+        paymentMethod: effectivePaymentMethod,
+        cashGiven: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
+        changeAmount: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
       };
       setLastReceipt(receipt);
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
-      notify.success('Vente enregistree !');
+      notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
     },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la vente')),
   });
@@ -630,6 +679,24 @@ export default function POSPage() {
     });
   };
 
+  const handleSaveUnpaid = () => {
+    // Beneficiaire : fiche client OU nom libre.
+    const hasBeneficiary = !!customerId || unpaidCustomerName.trim().length > 0;
+    if (!hasBeneficiary) {
+      notify.error('Indiquez un client ou un nom de bénéficiaire');
+      return;
+    }
+    checkoutMutation.mutate({
+      customerId: customerId || undefined,
+      items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
+      paymentMethod: 'credit',
+      paymentStatus: 'unpaid',
+      unpaidCustomerName: !customerId && unpaidCustomerName.trim() ? unpaidCustomerName.trim() : undefined,
+    });
+    setShowUnpaidModal(false);
+    setUnpaidCustomerName('');
+  };
+
 
   const isCashierRole = user && ['cashier', 'saleswoman'].includes(user.role);
 
@@ -672,10 +739,10 @@ export default function POSPage() {
                 Ouvrez la caisse pour commencer a vendre
               </p>
             </div>
-            <button onClick={() => { setOpeningAmount(''); setShowOpenModal(true); }}
-              className="mx-auto flex flex-col items-center gap-1.5 px-8 py-4 bg-primary-50 text-primary-700 rounded-xl font-bold text-lg hover:bg-primary-100 transition-colors">
+            <button onClick={handleOpenClick} disabled={checkingInventory}
+              className="mx-auto flex flex-col items-center gap-1.5 px-8 py-4 bg-primary-50 text-primary-700 rounded-xl font-bold text-lg hover:bg-primary-100 transition-colors disabled:opacity-50">
               <Unlock size={24} />
-              <span>Ouvrir la caisse</span>
+              <span>{checkingInventory ? 'Vérification...' : 'Ouvrir la caisse'}</span>
             </button>
             {isCashierRole && (
               <button onClick={logout} className="flex flex-col items-center gap-1 mx-auto px-4 py-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors mt-4">
@@ -1163,6 +1230,13 @@ export default function POSPage() {
                       className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors">
                       <Trash2 size={18} />
                       <span className="text-[10px] font-semibold">Vider</span>
+                    </button>
+                    <button onClick={() => { setUnpaidCustomerName(''); setShowUnpaidModal(true); }}
+                      disabled={checkoutMutation.isPending}
+                      title="Sauvegarder sans encaissement (client paiera plus tard)"
+                      className="flex flex-col items-center justify-center gap-1 px-3 py-3 bg-amber-50 text-amber-700 rounded-xl font-bold hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
+                      <Clock size={18} />
+                      <span className="text-[10px] font-semibold">Plus tard</span>
                     </button>
                     <button onClick={handleCheckout}
                       disabled={checkoutMutation.isPending || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)}
@@ -3053,6 +3127,52 @@ export default function POSPage() {
                   <p className="text-sm mt-1">Tous les transferts ont ete confirmes.</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpaid sale modal — paiement reporté */}
+      {showUnpaidModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center">
+                <Clock size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Paiement reporté</h2>
+                <p className="text-xs text-gray-500">Le client part avec la marchandise et paiera plus tard</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 flex items-center justify-between">
+              <span className="text-sm text-gray-600">Total dû</span>
+              <span className="text-xl font-bold text-primary-700">{total.toFixed(2)} DH</span>
+            </div>
+
+            {customerId ? (
+              <div className="mb-4 bg-primary-50 ring-1 ring-primary-200 rounded-lg p-3 flex items-center gap-2">
+                <User size={16} className="text-primary-600" />
+                <span className="text-sm font-semibold text-primary-700 truncate">{customerSearch}</span>
+              </div>
+            ) : (
+              <>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Bénéficiaire</label>
+                <input type="text" placeholder="Ex: Joseph - personnel" value={unpaidCustomerName}
+                  onChange={(e) => setUnpaidCustomerName(e.target.value)} maxLength={120}
+                  className="input mb-2" autoFocus />
+                <p className="text-[11px] text-gray-400 mb-4">Aucune fiche client liée — saisissez un nom libre pour retrouver la vente.</p>
+              </>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowUnpaidModal(false)} className="btn-secondary flex-1">Annuler</button>
+              <button onClick={handleSaveUnpaid}
+                disabled={checkoutMutation.isPending || (!customerId && unpaidCustomerName.trim().length === 0)}
+                className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed">
+                {checkoutMutation.isPending ? 'En cours...' : 'Sauvegarder'}
+              </button>
             </div>
           </div>
         </div>

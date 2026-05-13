@@ -23,6 +23,15 @@ export const checkoutSchema = z.object({
     .max(999999.99, 'Remise trop elevee')
     .optional()
     .default(0),
+  // Paiement reporte : la vente est enregistree mais non encaissee.
+  // Le client part avec la marchandise (stock decremente normalement).
+  paymentStatus: z.enum(['paid', 'unpaid']).optional().default('paid'),
+  // Nom libre du beneficiaire quand customerId n'est pas fourni (ex: personnel).
+  unpaidCustomerName: z.string().trim().min(1).max(120).optional(),
+});
+
+export const paySaleSchema = z.object({
+  paymentMethod: z.enum(PAYMENT_METHODS),
 });
 
 export { moneyAmount, positiveQuantity };
