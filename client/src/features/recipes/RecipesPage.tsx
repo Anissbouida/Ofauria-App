@@ -82,6 +82,15 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
   return from.factor / to.factor;
 }
 
+/** Affiche une quantite avec max 3 decimales, sans zeros traînants.
+ *  Ex: "600.0000" → "600", "1.0520" → "1.052", "0.1252" → "0.125". */
+function trimZeros(value: string | number | null | undefined): string {
+  if (value == null || value === '') return '';
+  const n = typeof value === 'number' ? value : parseFloat(value);
+  if (!isFinite(n)) return '';
+  return String(parseFloat(n.toFixed(3)));
+}
+
 // Compatible units grouped by type
 const COMPATIBLE_UNITS: Record<string, string[]> = {
   kg: ['kg', 'g'], g: ['kg', 'g'],
@@ -490,7 +499,12 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   const multiplier = targetPortions / yieldQty;
 
   const ingredientCost = recipe?.ingredients?.reduce((sum, ing) => {
-    return sum + (ing.quantity * multiplier * parseFloat(ing.unit_cost || '0'));
+    // Conversion d'unite : le unit_cost est en DH/{ingredient_base_unit}.
+    // Si la recette utilise une autre unite compatible (ex: ing.unit='g' alors
+    // que le cout est par kg), il faut convertir pour ne pas multiplier des
+    // grammes par un prix en DH/kg.
+    const factor = unitConversionFactor(ing.unit || ing.ingredient_base_unit, ing.ingredient_base_unit);
+    return sum + (ing.quantity * factor * multiplier * parseFloat(ing.unit_cost || '0'));
   }, 0) || 0;
 
   const subRecipeCost = recipe?.sub_recipes?.reduce((sum, sr) => {
@@ -705,7 +719,12 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                       <tbody className="divide-y divide-gray-50">
                         {recipe.ingredients.map((ing, idx) => {
                           const qty = ing.quantity * multiplier;
-                          const cost = qty * parseFloat(ing.unit_cost || '0');
+                          // Cout par unite stocke en DH/{ingredient_base_unit}.
+                          // On convertit la qty de l'unite recette vers l'unite de base
+                          // de l'ingredient avant de multiplier (ex: 600 g de beurre @ 64 DH/kg
+                          // = 0.6 × 64 = 38.40 DH, pas 600 × 64).
+                          const factor = unitConversionFactor(ing.unit || ing.ingredient_base_unit, ing.ingredient_base_unit);
+                          const cost = qty * factor * parseFloat(ing.unit_cost || '0');
                           return (
                             <tr key={idx} className="hover:bg-gray-50">
                               <td className="px-4 py-2.5 text-sm font-medium">{ing.ingredient_name}</td>
@@ -713,7 +732,9 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                                 {qty < 0.01 ? qty.toFixed(4) : qty < 1 ? qty.toFixed(3) : qty.toFixed(2)}
                               </td>
                               <td className="px-4 py-2.5 text-sm text-right text-gray-500">{ing.unit}</td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{parseFloat(ing.unit_cost).toFixed(2)} DH</td>
+                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">
+                                {parseFloat(ing.unit_cost).toFixed(2)} DH/{ing.ingredient_base_unit}
+                              </td>
                               <td className="px-4 py-2.5 text-sm text-right font-bold">{cost.toFixed(2)} DH</td>
                             </tr>
                           );
@@ -1147,19 +1168,19 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setIsBase(existingRecipe.is_base || false);
     setFormIngredients(
       existingRecipe.ingredients.length > 0
-        ? existingRecipe.ingredients.map(ing => ({ ingredientId: ing.ingredient_id || '', quantity: String(ing.quantity), unit: ing.unit || '' }))
+        ? existingRecipe.ingredients.map(ing => ({ ingredientId: ing.ingredient_id || '', quantity: trimZeros(ing.quantity), unit: ing.unit || '' }))
         : [{ ingredientId: '', quantity: '', unit: '' }]
     );
     setFormSubRecipes(
       existingRecipe.sub_recipes && existingRecipe.sub_recipes.length > 0
-        ? existingRecipe.sub_recipes.map(sr => ({ subRecipeId: sr.sub_recipe_id, quantity: String(sr.quantity) }))
+        ? existingRecipe.sub_recipes.map(sr => ({ subRecipeId: sr.sub_recipe_id, quantity: trimZeros(sr.quantity) }))
         : []
     );
     setFormPackaging(
       Array.isArray((existingRecipe as Record<string, any>).packaging) && ((existingRecipe as Record<string, any>).packaging as Record<string, any>[]).length > 0
         ? ((existingRecipe as Record<string, any>).packaging as Record<string, any>[]).map(p => ({
             packagingId: p.packaging_id as string,
-            quantity: String(p.quantity),
+            quantity: trimZeros(p.quantity as string | number),
             unit: (p.unit as string) || (p.base_unit as string) || 'piece',
           }))
         : []
@@ -1414,10 +1435,14 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 )}
 
-                {/* Contenant — obligatoire */}
+                {/* Contenant — optionnel (baguettes/pieces unitaires n'en ont pas) */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    <span className="flex items-center gap-2"><Box size={15} className="text-blue-500" /> Contenant</span>
+                    <span className="flex items-center gap-2">
+                      <Box size={15} className="text-blue-500" />
+                      Contenant
+                      <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+                    </span>
                   </label>
                   <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
                     value={contenantId} onChange={(e) => {
@@ -1433,8 +1458,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                           setYieldUnit(ct.unite_lancement as string || 'unit');
                         }
                       }
-                    }} required>
-                    <option value="">-- Choisir un contenant --</option>
+                    }}>
+                    <option value="">— Aucun contenant (produit unitaire) —</option>
                     {allContenants.map((c: Record<string, any>) => {
                       const cMode = getModeCalcul(c.unite_lancement as string || 'unit');
                       const cLabels = MODE_LABELS[cMode];

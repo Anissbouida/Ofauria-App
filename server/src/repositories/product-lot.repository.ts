@@ -642,10 +642,16 @@ export const productLotRepository = {
     return result.rowCount ?? 0;
   },
 
-  /** Phase B — Auto-expire idempotent : pour chaque lot avec DLV ou DDE
-   *  atteinte, transfere le residu vitrine_qty + backroom_qty en wasted_qty,
-   *  cree une perte automatique, et marque le lot 'expired'.
-   *  Idempotent : ne touche QUE les lots 'active'. Si rien ne change, retourne 0.
+  /** Phase B — Auto-expire idempotent : selon l'horloge depassee, traite
+   *  les quantites differemment :
+   *    - DLC depassee (expires_at < today) : tout le lot part aux pertes
+   *      (securite alimentaire — produit perime).
+   *    - DLV seule depassee (display_expires_at < now, DLC encore OK) :
+   *      SEULE la part vitrine_qty part aux pertes. Le backroom_qty reste
+   *      vendable jusqu'a la DLC. La DLV est reinitialisee (first_displayed_at
+   *      et display_expires_at remis a NULL) pour que la prochaine remise en
+   *      vitrine declenche une nouvelle DLV.
+   *  Idempotent : ne touche QUE les lots 'active'.
    *  Appele en lazy trigger : a chaque login user / load POS / load fermeture caisse.
    */
   async autoExpireDueLots(): Promise<{ count: number; productIds: string[] }> {
@@ -653,9 +659,9 @@ export const productLotRepository = {
     try {
       await client.query('BEGIN');
 
-      // Lots dont la DLV (date) ou la DDE (timestamp) est passee
+      // Lots dont la DLC est passee OU dont la DLV est passee
       const dueLotsResult = await client.query(
-        `SELECT pl.id, pl.product_id, pl.store_id, pl.lot_number,
+        `SELECT pl.id, pl.product_id, pl.store_id, pl.lot_number, pl.produced_at,
                 pl.vitrine_qty, pl.backroom_qty, pl.expires_at, pl.display_expires_at,
                 p.name as product_name, p.cost_price
          FROM product_lots pl
@@ -671,52 +677,87 @@ export const productLotRepository = {
 
       const productIdsAffected = new Set<string>();
       for (const lot of dueLotsResult.rows) {
-        const totalLost = parseFloat(lot.vitrine_qty) + parseFloat(lot.backroom_qty);
-        if (totalLost <= 0) continue;
+        const vitrineQty = parseFloat(lot.vitrine_qty);
+        const backroomQty = parseFloat(lot.backroom_qty);
+        if (vitrineQty + backroomQty <= 0) continue;
         const unitCost = parseFloat(lot.cost_price) || 0;
-        const totalCost = unitCost * totalLost;
-        const reason = lot.expires_at && new Date(lot.expires_at) < new Date()
-          ? 'dlc_expiree'
-          : 'dlv_expiree';
 
-        // Synchroniser product_store_stock (decrement vitrine + backroom)
-        await client.query(
-          `UPDATE product_store_stock
-           SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
-               stock_quantity   = GREATEST(0, stock_quantity - $2),
-               updated_at = NOW()
-           WHERE product_id = $3 AND store_id = $4`,
-          [parseFloat(lot.vitrine_qty), parseFloat(lot.backroom_qty), lot.product_id, lot.store_id]
-        );
+        const dlcExpired = lot.expires_at && new Date(lot.expires_at) < new Date(new Date().toISOString().slice(0, 10));
+        const dlvExpired = lot.display_expires_at && new Date(lot.display_expires_at) < new Date();
 
-        // Lot : transferer tout en wasted + status expired
-        await client.query(
-          `UPDATE product_lots
-           SET wasted_qty = wasted_qty + vitrine_qty + backroom_qty,
-               vitrine_qty = 0, backroom_qty = 0,
-               status = 'expired', updated_at = NOW()
-           WHERE id = $1`,
-          [lot.id]
-        );
+        // Quantite reellement perdue : tout le lot si DLC, sinon seulement vitrine
+        const qtyLost = dlcExpired ? (vitrineQty + backroomQty) : vitrineQty;
+        if (qtyLost <= 0) continue;
+        const totalCost = unitCost * qtyLost;
+        const reason = dlcExpired ? 'dlc_expiree' : 'dlv_expiree';
 
-        // Sync product_display_tracking : marque la ligne correspondante comme 'wasted'
-        // pour eviter les orphelins qui faussent les requetes de detection d'expiration.
-        // Match heuristique : meme produit/store + produced_at proche (tolerance 1 minute).
-        await client.query(
-          `UPDATE product_display_tracking
-           SET status = 'wasted', updated_at = NOW()
-           WHERE product_id = $1 AND store_id = $2 AND status = 'active'
-             AND ($3::timestamptz IS NULL OR ABS(EXTRACT(EPOCH FROM (produced_at - $3::timestamptz))) < 60)`,
-          [lot.product_id, lot.store_id, lot.produced_at || null]
-        );
+        // Synchroniser product_store_stock
+        if (dlcExpired) {
+          await client.query(
+            `UPDATE product_store_stock
+             SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
+                 stock_quantity   = GREATEST(0, stock_quantity - $2),
+                 updated_at = NOW()
+             WHERE product_id = $3 AND store_id = $4`,
+            [vitrineQty, backroomQty, lot.product_id, lot.store_id]
+          );
+        } else if (dlvExpired && vitrineQty > 0) {
+          // DLV seule : on ne touche QUE le vitrine_quantity du store
+          await client.query(
+            `UPDATE product_store_stock
+             SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
+                 updated_at = NOW()
+             WHERE product_id = $2 AND store_id = $3`,
+            [vitrineQty, lot.product_id, lot.store_id]
+          );
+        }
 
-        // Trace transaction
+        // Mettre a jour le lot
+        if (dlcExpired) {
+          // DLC : tout part en pertes, status expired
+          await client.query(
+            `UPDATE product_lots
+             SET wasted_qty = wasted_qty + vitrine_qty + backroom_qty,
+                 vitrine_qty = 0, backroom_qty = 0,
+                 status = 'expired', updated_at = NOW()
+             WHERE id = $1`,
+            [lot.id]
+          );
+        } else {
+          // DLV seule : on transfere vitrine_qty -> wasted_qty, backroom reste,
+          // on reset la DLV pour que la prochaine remise en vitrine demarre un
+          // nouveau cycle de display_life_hours (clef du modele par-batch-de-transfert).
+          await client.query(
+            `UPDATE product_lots
+             SET wasted_qty = wasted_qty + vitrine_qty,
+                 vitrine_qty = 0,
+                 first_displayed_at = NULL,
+                 display_expires_at = NULL,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [lot.id]
+          );
+        }
+
+        // Sync product_display_tracking — seulement si tout le lot part en pertes
+        // (sinon le backroom reste actif et le tracking doit suivre).
+        if (dlcExpired) {
+          await client.query(
+            `UPDATE product_display_tracking
+             SET status = 'wasted', updated_at = NOW()
+             WHERE product_id = $1 AND store_id = $2 AND status = 'active'
+               AND ($3::timestamptz IS NULL OR ABS(EXTRACT(EPOCH FROM (produced_at - $3::timestamptz))) < 60)`,
+            [lot.product_id, lot.store_id, lot.produced_at || null]
+          );
+        }
+
+        // Trace transaction (seulement si qty perdue > 0)
         await client.query(
           `INSERT INTO product_stock_transactions
              (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
            VALUES ($1, 'waste', $2, 0, $3, NULL, $4)`,
-          [lot.product_id, -totalLost,
-           `Auto-expire (${reason}): ${lot.product_name} lot ${lot.lot_number} x${totalLost}`,
+          [lot.product_id, -qtyLost,
+           `Auto-expire (${reason}): ${lot.product_name} lot ${lot.lot_number} x${qtyLost}`,
            lot.store_id]
         );
 
@@ -727,7 +768,7 @@ export const productLotRepository = {
               unit_cost, total_cost, ingredients_consumed,
               declared_by, store_id, source_product_lot_id)
            VALUES ($1, $2, 'perime', $3, $4, $5, $6, true, NULL, $7, $8)`,
-          [lot.product_id, totalLost, reason,
+          [lot.product_id, qtyLost, reason,
            `Auto-expire ${reason} sur lot ${lot.lot_number}`,
            unitCost, totalCost, lot.store_id, lot.id]
         );
