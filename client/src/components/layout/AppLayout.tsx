@@ -159,8 +159,8 @@ export default function AppLayout() {
         </div>
       )}
 
-      {/* Main content */}
-      <main className="flex-1 p-6 overflow-auto">
+      {/* Main content — pas de padding sur les pages Économat (style Odoo full-width) */}
+      <main className={`flex-1 overflow-auto ${location.pathname.startsWith('/inventory') ? '' : 'p-6'}`}>
         <Outlet />
       </main>
 
