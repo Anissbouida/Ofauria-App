@@ -4,7 +4,6 @@ import { orderRepository } from '../repositories/order.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
-import { productionRepository } from '../repositories/production.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { paymentRepository, invoiceRepository } from '../repositories/accounting.repository.js';
 import { getLocalISODate, getLocalNow } from '../utils/timezone.js';
@@ -158,56 +157,37 @@ export const orderController = {
       }
     }
 
-    // Auto-confirm and send order to production
-    await orderRepository.updateStatus(order.id, 'confirmed');
-    await orderRepository.updateStatus(order.id, 'in_production');
+    // Sourcing automatique : orderRepository.create a deja calcule
+    // qty_from_stock vs qty_to_produce et cree un plan de production
+    // UNIQUEMENT pour les produits manquants (memes regles que DRA).
+    // Si _productionPlanId est present → notifier les chefs concernes.
+    const productionPlanId = (order as Record<string, unknown>)._productionPlanId as string | null;
 
-    // Auto-create production plans grouped by responsible chef role
-    // Priority: product.responsible_role > category-based role > 'baker' fallback
-    const itemsByRole = new Map<string, { productId: string; plannedQuantity: number }[]>();
-    for (const item of items) {
-      const product = await productRepository.findById(item.productId);
-      if (!product) continue;
-      const role = product.responsible_role || getRoleForCategorySlug(product.category_slug);
-      if (!itemsByRole.has(role)) itemsByRole.set(role, []);
-      itemsByRole.get(role)!.push({ productId: item.productId, plannedQuantity: item.quantity });
-    }
+    if (productionPlanId) {
+      // Recuperer les roles chefs concernes par les lignes a produire
+      const rolesToNotify = new Set<string>();
+      for (const item of items) {
+        const product = await productRepository.findById(item.productId);
+        if (!product) continue;
+        const role = product.responsible_role || getRoleForCategorySlug(product.category_slug);
+        rolesToNotify.add(role);
+      }
 
-    // Create one production plan per chef role, linked to the order
-    const createdPlans: { id: string; targetRole: string }[] = [];
-    for (const [role, planItems] of itemsByRole) {
-      try {
-        const plan = await productionRepository.create({
-          planDate: pickupDate,
-          type: 'daily',
-          notes: `Commande ${orderNumber} — Client: ${customerName || ''}`,
-          createdBy: req.user!.userId,
+      for (const role of rolesToNotify) {
+        await createNotification({
           targetRole: role,
           storeId: req.user!.storeId,
-          orderId: order.id,
-          items: planItems,
+          type: 'production_plan_created',
+          title: 'Nouvelle demande de production',
+          message: `Commande ${orderNumber} pour le ${pickupDate} — produits a produire`,
+          referenceType: 'production_plan',
+          referenceId: productionPlanId,
+          createdBy: req.user!.userId,
         });
-        createdPlans.push({ id: plan.id, targetRole: role });
-      } catch (err) {
-        console.error(`Failed to auto-create production plan for role ${role}:`, err);
       }
     }
 
-    // Notify chefs about auto-created production plans
-    for (const plan of createdPlans) {
-      await createNotification({
-        targetRole: plan.targetRole,
-        storeId: req.user!.storeId,
-        type: 'production_plan_created',
-        title: 'Nouvelle demande de production',
-        message: `Commande ${orderNumber} pour le ${pickupDate} — ${itemsByRole.get(plan.targetRole)?.length || 0} produit(s) a produire`,
-        referenceType: 'production_plan',
-        referenceId: plan.id,
-        createdBy: req.user!.userId,
-      });
-    }
-
-    res.status(201).json({ success: true, data: { ...order, status: 'in_production', advanceReceipt, items: orderItems } });
+    res.status(201).json({ success: true, data: { ...order, advanceReceipt, items: orderItems } });
   },
 
   async update(req: AuthRequest, res: Response) {
@@ -247,56 +227,12 @@ export const orderController = {
     const order = await orderRepository.updateStatus(req.params.id, status);
     if (!order) { res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } }); return; }
 
-    // When cashier sends order to production: create production plans + notify chefs
-    if (status === 'in_production') {
-      // Fetch full order with items
-      const fullOrder = await orderRepository.findById(req.params.id);
-      if (fullOrder && fullOrder.items && fullOrder.items.length > 0) {
-        // Group items by responsible chef role
-        const itemsByRole = new Map<string, { productId: string; plannedQuantity: number }[]>();
-        for (const item of fullOrder.items) {
-          const product = await productRepository.findById(item.product_id);
-          if (!product) continue;
-          const role = product.responsible_role || getRoleForCategorySlug(product.category_slug);
-          if (!itemsByRole.has(role)) itemsByRole.set(role, []);
-          itemsByRole.get(role)!.push({ productId: item.product_id, plannedQuantity: parseInt(item.quantity) || 1 });
-        }
-
-        // Create one production plan per chef role
-        const createdPlans: { id: string; targetRole: string }[] = [];
-        for (const [role, planItems] of itemsByRole) {
-          try {
-            const plan = await productionRepository.create({
-              planDate: fullOrder.pickup_date || new Date().toISOString().split('T')[0],
-              type: 'daily',
-              notes: `Commande ${fullOrder.order_number} — Client: ${fullOrder.customer_first_name || ''} ${fullOrder.customer_last_name || ''}`.trim(),
-              createdBy: req.user!.userId,
-              targetRole: role,
-              storeId: req.user!.storeId,
-              orderId: req.params.id,
-              items: planItems,
-            });
-            createdPlans.push({ id: plan.id, targetRole: role });
-          } catch (err) {
-            console.error(`Failed to create production plan for role ${role}:`, err);
-          }
-        }
-
-        // Notify chefs about new production plans
-        for (const plan of createdPlans) {
-          await createNotification({
-            targetRole: plan.targetRole,
-            storeId: req.user!.storeId,
-            type: 'production_plan_created',
-            title: 'Nouvelle demande de production',
-            message: `Commande ${fullOrder.order_number} pour le ${fullOrder.pickup_date || 'aujourd\'hui'} — ${itemsByRole.get(plan.targetRole)?.length || 0} produit(s) a produire`,
-            referenceType: 'production_plan',
-            referenceId: plan.id,
-            createdBy: req.user!.userId,
-          });
-        }
-      }
-    }
+    // Note : a la creation de la commande, orderRepository.create a deja fait
+    // le sourcing (stock vs production) et cree le plan UNIQUEMENT si
+    // qty_to_produce > 0. Ce handler ne re-cree donc PAS de plan ici, sinon
+    // il en cree un en doublon meme quand le stock magasin couvre la demande.
+    // Si l'utilisateur clique "Envoyer en production" sur une commande dont
+    // tout vient du stock, le statut change mais aucun plan inutile n'est cree.
 
     // Notify cashier/saleswoman when order is ready for pickup
     if (status === 'ready') {

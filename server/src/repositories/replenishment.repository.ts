@@ -1,9 +1,9 @@
 import { db } from '../config/database.js';
 import { getCategoryRole } from '@ofauria/shared';
 import { getUserTimezone } from '../utils/timezone.js';
-import { productionRepository } from './production.repository.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
+import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 
 export const replenishmentRepository = {
 
@@ -270,165 +270,40 @@ export const replenishmentRepository = {
         [requestId]
       );
 
-      // 3. Stock availability check (magasin + frigo)
-      const productIds = itemsResult.rows.map((r: Record<string, unknown>) => r.product_id);
-      const stockResult = await client.query(
-        `SELECT product_id, COALESCE(stock_quantity, 0) as stock_quantity
-         FROM product_store_stock
-         WHERE product_id = ANY($1) AND store_id = $2`,
-        [productIds, req.store_id]
-      );
-      const stockMap: Record<string, number> = {};
-      for (const row of stockResult.rows) {
-        stockMap[row.product_id] = Math.floor(parseFloat(row.stock_quantity));
-      }
+      // 3. Sourcing + creation plan via le helper partage (factorise avec orders).
+      const sourcing = await computeSourcingAndCreatePlan(client, {
+        items: itemsResult.rows.map((r: Record<string, unknown>) => ({
+          itemId: r.id as string,
+          productId: r.product_id as string,
+          requestedQuantity: parseInt(r.requested_quantity as string),
+        })),
+        storeId: req.store_id,
+        createdBy: acknowledgedBy,
+        planLabel: `Auto — approvisionnement ${req.request_number}`,
+        targetRole: req.assigned_role,
+        linkColumn: 'replenishment_request_id',
+        linkId: requestId,
+      });
 
-      // 3b. Stock frigo availability (FEFO)
-      const frigoResult = await client.query(
-        `SELECT product_id, COALESCE(SUM(quantity), 0) as frigo_quantity
-         FROM stock_semifini_frigo
-         WHERE product_id = ANY($1) AND store_id = $2
-           AND is_active = true AND quantity > 0
-           AND (expires_at IS NULL OR expires_at > NOW())
-         GROUP BY product_id`,
-        [productIds, req.store_id]
-      );
-      const frigoMap: Record<string, number> = {};
-      for (const row of frigoResult.rows) {
-        frigoMap[row.product_id] = Math.floor(parseFloat(row.frigo_quantity));
-      }
-
-      // 3c. Production profiles (contenant info for calcul inverse).
-      // Hierarchie de resolution du contenant/rendement :
-      //   1) produit_profil_production (specifique au produit, avec surcharges eventuelles)
-      //   2) fallback : contenant lie a la recette (recipes.contenant_id)
-      // Sans ce fallback, un produit qui n'a que sa recette (pas de profil specifique)
-      // voit ses plans crees avec la demande brute, sans arrondi au cadre/fournee.
-      const profileResult = await client.query(
-        `SELECT p.id AS produit_id,
-                COALESCE(pp.contenant_id, r.contenant_id) AS contenant_id,
-                COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) AS quantite_theorique,
-                COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) AS pertes_fixes,
-                (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique)
-                 - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) AS quantite_nette_cible
-         FROM products p
-         LEFT JOIN produit_profil_production pp ON pp.produit_id = p.id
-         LEFT JOIN recipes r ON r.product_id = p.id
-         LEFT JOIN production_contenants pc ON pc.id = COALESCE(pp.contenant_id, r.contenant_id)
-         WHERE p.id = ANY($1)
-           AND COALESCE(pp.contenant_id, r.contenant_id) IS NOT NULL`,
-        [productIds]
-      );
-      const profileMap: Record<string, { contenantId: string; quantiteNetteCible: number; quantiteTheorique: number }> = {};
-      for (const row of profileResult.rows) {
-        profileMap[row.produit_id] = {
-          contenantId: row.contenant_id,
-          quantiteNetteCible: parseFloat(row.quantite_nette_cible),
-          quantiteTheorique: parseFloat(row.quantite_theorique),
-        };
-      }
-
-      // 4. Update each item with stock split info (magasin + frigo + calcul inverse)
-      const productionNeeded: { productId: string; qty: number; itemId: string;
-        contenantId?: string; nbContenants?: number; quantiteNetteCible?: number; quantiteBrute?: number; qtyFromFrigo: number; surplusFrigo: number }[] = [];
-      for (const item of itemsResult.rows) {
-        const available = Math.max(stockMap[item.product_id] || 0, 0);
-        const requested = parseInt(item.requested_quantity);
-        const fromStock = Math.min(available, requested);
-        let remaining = requested - fromStock;
-
-        // Check frigo stock
-        const frigoAvailable = Math.max(frigoMap[item.product_id] || 0, 0);
-        const fromFrigo = Math.min(frigoAvailable, remaining);
-        remaining -= fromFrigo;
-
-        const toProduce = remaining;
-        const sourceType = toProduce === 0
-          ? (fromFrigo > 0 ? 'mixed' : 'stock')
-          : fromStock === 0 && fromFrigo === 0 ? 'production' : 'mixed';
-
+      // 4. Persiste le sourcing sur les lignes de la demande (table specifique).
+      for (const it of sourcing.items) {
         await client.query(
           `UPDATE replenishment_request_items
-           SET source_type = $1, qty_from_stock = $2, qty_to_produce = $3
-           WHERE id = $4`,
-          [sourceType, fromStock + fromFrigo, toProduce, item.id]
+           SET source_type = $1, qty_from_stock = $2, qty_to_produce = $3,
+               production_plan_id = $4
+           WHERE id = $5`,
+          [it.sourceType, it.qtyFromStock, it.qtyToProduce, it.productionPlanId, it.itemId]
         );
-
-        if (toProduce > 0) {
-          const profile = profileMap[item.product_id];
-          let effectiveQty = toProduce;
-          let nbContenants: number | undefined;
-          let quantiteNetteCible: number | undefined;
-          let quantiteBrute: number | undefined;
-          let surplusFrigo = 0;
-
-          if (profile && profile.quantiteNetteCible > 0) {
-            // Calcul inverse: parts → contenants
-            nbContenants = Math.ceil(toProduce / profile.quantiteNetteCible);
-            quantiteNetteCible = profile.quantiteNetteCible;
-            effectiveQty = nbContenants * profile.quantiteNetteCible;
-            quantiteBrute = nbContenants * profile.quantiteTheorique;
-            surplusFrigo = effectiveQty - toProduce;
-          }
-
-          productionNeeded.push({
-            productId: item.product_id, qty: effectiveQty, itemId: item.id,
-            contenantId: profile?.contenantId, nbContenants, quantiteNetteCible, quantiteBrute,
-            qtyFromFrigo: fromFrigo, surplusFrigo,
-          });
-        }
-      }
-
-      // 5. Create production plan if any items need production
-      let productionPlanId: string | null = null;
-      if (productionNeeded.length > 0) {
-        const planResult = await client.query(
-          `INSERT INTO production_plans (plan_date, type, notes, created_by, target_role, store_id, replenishment_request_id)
-           VALUES (CURRENT_DATE, 'daily', $1, $2, $3, $4, $5) RETURNING id`,
-          [`Auto — approvisionnement ${req.request_number}`, acknowledgedBy, req.assigned_role, req.store_id, requestId]
-        );
-        productionPlanId = planResult.rows[0].id;
-
-        // Fetch min_production_quantity for products needing production
-        const prodIds = productionNeeded.map(pi => pi.productId);
-        const minQtyResult = await client.query(
-          `SELECT id, COALESCE(min_production_quantity, 0) as min_production_quantity FROM products WHERE id = ANY($1)`,
-          [prodIds]
-        );
-        const minQtyMap: Record<string, number> = {};
-        for (const row of minQtyResult.rows) {
-          minQtyMap[row.id] = parseInt(row.min_production_quantity) || 0;
-        }
-
-        for (const pi of productionNeeded) {
-          const minQty = minQtyMap[pi.productId] || 0;
-          const effectiveQty = Math.max(pi.qty, minQty);
-          await client.query(
-            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, contenant_id, nb_contenants, quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [productionPlanId, pi.productId, effectiveQty,
-             pi.contenantId || null, pi.nbContenants || null, pi.quantiteNetteCible || null, pi.quantiteBrute || null,
-             pi.qtyFromFrigo || 0, pi.surplusFrigo || 0]
-          );
-          await client.query(
-            `UPDATE replenishment_request_items SET production_plan_id = $1 WHERE id = $2`,
-            [productionPlanId, pi.itemId]
-          );
-        }
       }
 
       await client.query('COMMIT');
 
-      // After commit: detect semi-finished needs for the created production plan
-      let semiFinishedInfo = null;
-      if (productionPlanId) {
-        try {
-          semiFinishedInfo = await productionRepository.detectAndCreateSemiFinishedPlans(productionPlanId, acknowledgedBy);
-        } catch { /* non-blocking — plan created successfully, semi-finished detection is best-effort */ }
-      }
-
       const fullRequest = await this.findById(requestId);
-      return { ...fullRequest, _productionPlanId: productionPlanId, _semiFinishedInfo: semiFinishedInfo };
+      return {
+        ...fullRequest,
+        _productionPlanId: sourcing.productionPlanId,
+        _semiFinishedInfo: sourcing.semiFinishedInfo,
+      };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

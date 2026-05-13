@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 
 export const orderRepository = {
   async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; limit: number; offset: number }) {
@@ -66,12 +67,64 @@ export const orderRepository = {
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null]
       );
 
+      const orderId = orderResult.rows[0].id;
+      const insertedItems: { itemId: string; productId: string; quantity: number }[] = [];
+
       for (const item of data.items) {
-        await client.query(
-          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [orderResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null]
+        const itemRes = await client.query(
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING id`,
+          [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null]
         );
+        insertedItems.push({
+          itemId: itemRes.rows[0].id,
+          productId: item.productId,
+          quantity: item.quantity,
+        });
+      }
+
+      // Sourcing automatique : reutilise le mecanisme de l'approvisionnement.
+      // Stock magasin + frigo → consume si dispo, sinon cree un plan de production
+      // lie a la commande (production_plans.order_id). Sans store_id (vente
+      // immediate au comptoir), le sourcing est skipped.
+      let productionPlanId: string | null = null;
+      let semiFinishedInfo: unknown = null;
+      if (data.storeId && insertedItems.length > 0) {
+        const sourcing = await computeSourcingAndCreatePlan(client, {
+          items: insertedItems.map((it) => ({
+            itemId: it.itemId,
+            productId: it.productId,
+            requestedQuantity: it.quantity,
+          })),
+          storeId: data.storeId,
+          createdBy: data.userId,
+          planLabel: `Auto — commande ${data.orderNumber}`,
+          targetRole: null,
+          linkColumn: 'order_id',
+          linkId: orderId,
+        });
+        productionPlanId = sourcing.productionPlanId;
+        semiFinishedInfo = sourcing.semiFinishedInfo;
+
+        for (const it of sourcing.items) {
+          await client.query(
+            `UPDATE order_items
+             SET source_type = $1, qty_from_stock = $2, qty_to_produce = $3,
+                 production_plan_id = $4
+             WHERE id = $5`,
+            [it.sourceType, it.qtyFromStock, it.qtyToProduce, it.productionPlanId, it.itemId]
+          );
+        }
+
+        // Si un plan de production a ete cree, la commande passe en
+        // 'in_production' pour refleter qu'elle depend d'une production en cours
+        // (meme semantique que markPlanCompleted qui repasse en 'ready').
+        if (productionPlanId) {
+          await client.query(
+            `UPDATE orders SET status = 'in_production' WHERE id = $1`,
+            [orderId]
+          );
+        }
       }
 
       // Update customer total spent and loyalty points
@@ -84,7 +137,7 @@ export const orderRepository = {
       }
 
       await client.query('COMMIT');
-      return orderResult.rows[0];
+      return { ...orderResult.rows[0], _productionPlanId: productionPlanId, _semiFinishedInfo: semiFinishedInfo };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
