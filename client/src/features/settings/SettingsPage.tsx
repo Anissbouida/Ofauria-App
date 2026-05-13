@@ -16,7 +16,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -67,6 +67,7 @@ export default function SettingsPage() {
     { key: 'print', label: 'Impression', icon: <Printer size={18} /> },
     { key: 'stores', label: 'Points de vente', icon: <Store size={18} /> },
     { key: 'referentiel', label: 'Referentiel', icon: <Database size={18} /> },
+    { key: 'production', label: 'Production', icon: <BarChart3 size={18} /> },
   ];
 
   return (
@@ -119,6 +120,8 @@ export default function SettingsPage() {
       {activeTab === 'stores' && <StoresSection />}
 
       {activeTab === 'referentiel' && <ReferentielTab />}
+
+      {activeTab === 'production' && <ProductionChargesTab />}
     </div>
   );
 }
@@ -1921,6 +1924,64 @@ function EntryRow({
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ============ PRODUCTION CHARGES TAB ============ */
+
+function ProductionChargesTab() {
+  const { settings, updateSettings } = useSettings();
+  const [loyer, setLoyer] = useState(String(settings.productionChargeLoyer || 0));
+  const [energie, setEnergie] = useState(String(settings.productionChargeEnergie || 0));
+  const [autres, setAutres] = useState(String(settings.productionChargeAutres || 0));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSettings({
+        productionChargeLoyer: parseFloat(loyer) || 0,
+        productionChargeEnergie: parseFloat(energie) || 0,
+        productionChargeAutres: parseFloat(autres) || 0,
+      });
+      notify.success('Charges fixes enregistrees');
+    } catch {
+      notify.error('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-lg font-bold text-gray-800 mb-1">Charges fixes mensuelles</h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Ces montants sont repartis proportionnellement sur chaque plan de production du mois pour calculer le cout de revient.
+      </p>
+      <div className="space-y-4 max-w-md">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Loyer mensuel (DH)</label>
+          <input type="number" value={loyer} onChange={e => setLoyer(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Energie mensuelle (DH)</label>
+          <input type="number" value={energie} onChange={e => setEnergie(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Autres charges (DH)</label>
+          <input type="number" value={autres} onChange={e => setAutres(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
+        </div>
+        <div className="pt-2">
+          <button onClick={handleSave} disabled={saving}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition inline-flex items-center gap-2 disabled:opacity-60">
+            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer les charges'}
+          </button>
+        </div>
       </div>
     </div>
   );

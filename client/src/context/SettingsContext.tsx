@@ -43,6 +43,9 @@ const defaults: CompanySettings = {
   themeAccentLight: '#F5E6CC',
   themeCtaColor: '#C4872B',
   themeCtaText: '#FFFFFF',
+  productionChargeLoyer: 0,
+  productionChargeEnergie: 0,
+  productionChargeAutres: 0,
 };
 
 function loadCachedSettings(): CompanySettings {

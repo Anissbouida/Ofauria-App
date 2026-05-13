@@ -35,5 +35,8 @@ router.get('/plans/:planId/cout', authenticate, asyncHandler(productionCoutContr
 // ─── Dashboard ───
 router.get('/stats', authenticate, asyncHandler(productionCoutController.costStats));
 router.get('/by-day', authenticate, asyncHandler(productionCoutController.costByDay));
+router.get('/by-product', authenticate, asyncHandler(productionCoutController.costByProduct));
+router.get('/plans-with-cost', authenticate, asyncHandler(productionCoutController.plansWithCost));
+router.post('/batch-calculate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionCoutController.batchCalculate));
 
 export default router;

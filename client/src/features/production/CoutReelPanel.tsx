@@ -3,19 +3,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
-  Calculator, TrendingUp, TrendingDown, Loader2,
-  ChevronDown, ChevronRight, Users, Zap, Package, AlertTriangle, DollarSign
+  Calculator, Loader2,
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal
 } from 'lucide-react';
 
 interface CoutReelPanelProps {
   planId: string;
   planStatus: string;
   isChef: boolean;
+  totalQuantity?: number;
 }
 
-// NOTE : l'API Postgres renvoie les colonnes `numeric` sous forme de string
-// (pg driver default). On type donc les montants en `number | string` et on
-// passe partout par `toNum()` avant d'appeler des methodes numeriques.
 type Money = number | string | null | undefined;
 
 interface CoutReel {
@@ -26,6 +24,8 @@ interface CoutReel {
   cout_energie: Money;
   cout_pertes: Money;
   cout_total: Money;
+  cout_charges_fixes: Money;
+  detail_charges_fixes: { label: string; mensuel: Money; part: Money }[];
   cout_prevu: Money;
   ecart_pct: Money;
   detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
@@ -42,7 +42,7 @@ function toNum(v: Money): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPanelProps) {
+export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantity }: CoutReelPanelProps) {
   const queryClient = useQueryClient();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -56,43 +56,38 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
     mutationFn: () => productionCoutApi.calculateCost(planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-cout', planId] });
-      notify.success('Cout reel calcule');
+      notify.success('Cout de revient calcule');
     },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur calcul'),
   });
 
   if (planStatus !== 'completed' && planStatus !== 'in_progress') return null;
 
-  const formatDH = (val: Money) => {
-    if (val == null) return '—';
-    return `${toNum(val).toFixed(2)} DH`;
-  };
+  const formatDH = (val: Money) => `${toNum(val).toFixed(2)} DH`;
 
-  const sections = [
-    { key: 'matieres', label: 'Matieres premieres', icon: <Package size={13} className="text-amber-500" />, total: cout?.cout_matieres, color: 'amber' },
-    { key: 'main_oeuvre', label: 'Main d\'oeuvre', icon: <Users size={13} className="text-blue-500" />, total: cout?.cout_main_oeuvre, color: 'blue' },
-    { key: 'energie', label: 'Energie / Equipements', icon: <Zap size={13} className="text-violet-500" />, total: cout?.cout_energie, color: 'violet' },
-    { key: 'pertes', label: 'Pertes', icon: <AlertTriangle size={13} className="text-red-500" />, total: cout?.cout_pertes, color: 'red' },
-  ];
+  const coutMat = toNum(cout?.cout_matieres);
+  const coutMO = toNum(cout?.cout_main_oeuvre);
+  const coutCharges = toNum(cout?.cout_charges_fixes);
+  const coutRevient = coutMat + coutMO + coutCharges;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
         <Calculator size={16} className="text-amber-600" />
-        <h3 className="font-semibold text-gray-900 text-sm">Cout reel de production</h3>
+        <h3 className="font-semibold text-gray-900 text-sm">Cout de revient</h3>
         {cout && (
-          <span className="ml-auto text-sm font-bold text-gray-900">{formatDH(cout.cout_total)}</span>
+          <span className="ml-auto text-sm font-bold text-emerald-700">{formatDH(coutRevient)}</span>
         )}
       </div>
 
       {!cout && !isLoading && (
         <div className="p-5 text-center">
-          <p className="text-sm text-gray-500 mb-3">Le cout reel n'a pas encore ete calcule pour ce plan.</p>
+          <p className="text-sm text-gray-500 mb-3">Le cout de revient n'a pas encore ete calcule.</p>
           {isChef && planStatus === 'completed' && (
             <button onClick={() => calculateMutation.mutate()} disabled={calculateMutation.isPending}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition inline-flex items-center gap-2">
               {calculateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
-              Calculer le cout reel
+              Calculer le cout de revient
             </button>
           )}
         </div>
@@ -106,46 +101,51 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
 
       {cout && (
         <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
-            {sections.map(s => (
-              <div key={s.key} className={`rounded-xl bg-${s.color}-50 border border-${s.color}-200 p-3`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  {s.icon}
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{s.label}</span>
-                </div>
-                <div className={`text-base font-bold text-${s.color}-700`}>{formatDH(s.total)}</div>
+          {/* Formula: Matieres + MO + Charges = Revient */}
+          <div className="flex items-center gap-2 justify-center p-4">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-center flex-1">
+              <div className="flex items-center gap-1 justify-center mb-0.5">
+                <Package size={10} className="text-amber-500" />
+                <span className="text-[9px] font-bold text-gray-500 uppercase">Matieres</span>
               </div>
-            ))}
+              <div className="text-sm font-bold text-amber-700">{formatDH(coutMat)}</div>
+            </div>
+            <Plus size={12} className="text-gray-400 shrink-0" />
+            <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-center flex-1">
+              <div className="flex items-center gap-1 justify-center mb-0.5">
+                <Users size={10} className="text-blue-500" />
+                <span className="text-[9px] font-bold text-gray-500 uppercase">M.O.</span>
+              </div>
+              <div className="text-sm font-bold text-blue-700">{formatDH(coutMO)}</div>
+            </div>
+            <Plus size={12} className="text-gray-400 shrink-0" />
+            <div className="rounded-xl bg-violet-50 border border-violet-200 px-3 py-2 text-center flex-1">
+              <div className="flex items-center gap-1 justify-center mb-0.5">
+                <Building2 size={10} className="text-violet-500" />
+                <span className="text-[9px] font-bold text-gray-500 uppercase">Charges</span>
+              </div>
+              <div className="text-sm font-bold text-violet-700">{formatDH(coutCharges)}</div>
+            </div>
+            <Equal size={12} className="text-gray-400 shrink-0" />
+            <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-center flex-1">
+              <div className="flex items-center gap-1 justify-center mb-0.5">
+                <DollarSign size={10} className="text-emerald-500" />
+                <span className="text-[9px] font-bold text-gray-500 uppercase">Revient</span>
+              </div>
+              <div className="text-sm font-bold text-emerald-700">{formatDH(coutRevient)}</div>
+            </div>
           </div>
 
-          {/* Variance */}
-          {cout.cout_prevu != null && (() => {
-            const ecart = toNum(cout.ecart_pct);
-            const hasEcart = cout.ecart_pct != null;
-            return (
-              <div className={`mx-4 mb-3 p-3 rounded-xl border flex items-center gap-3 ${
-                ecart <= 0 ? 'bg-emerald-50 border-emerald-200' : ecart <= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
-              }`}>
-                <DollarSign size={16} className="text-gray-500" />
-                <div className="flex-1">
-                  <span className="text-xs text-gray-500">Prevu: {formatDH(cout.cout_prevu)}</span>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <span className="text-xs text-gray-500">Reel: {formatDH(cout.cout_total)}</span>
-                </div>
-                <div className={`flex items-center gap-1 text-sm font-bold ${
-                  ecart <= 0 ? 'text-emerald-700' : ecart <= 10 ? 'text-amber-700' : 'text-red-700'
-                }`}>
-                  {ecart <= 0 ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
-                  {hasEcart ? `${ecart > 0 ? '+' : ''}${ecart.toFixed(1)}%` : '—'}
-                </div>
-              </div>
-            );
-          })()}
+          {/* Prix par unite */}
+          {totalQuantity && totalQuantity > 0 && (
+            <div className="mx-4 mb-3 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between">
+              <span className="text-xs text-gray-500">Prix de revient par unite ({totalQuantity} unites)</span>
+              <span className="text-sm font-bold text-gray-900">{(coutRevient / totalQuantity).toFixed(2)} DH</span>
+            </div>
+          )}
 
           {/* Expandable detail sections */}
           <div className="border-t border-gray-100 divide-y divide-gray-100">
-            {/* Matières */}
             {cout.detail_matieres.length > 0 && (
               <DetailSection title="Detail matieres" icon={<Package size={12} className="text-amber-500" />}
                 isExpanded={expandedSection === 'matieres'} onToggle={() => setExpandedSection(expandedSection === 'matieres' ? null : 'matieres')}>
@@ -168,7 +168,6 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
               </DetailSection>
             )}
 
-            {/* Main d'oeuvre */}
             {cout.detail_main_oeuvre.length > 0 && (
               <DetailSection title="Detail main d'oeuvre" icon={<Users size={12} className="text-blue-500" />}
                 isExpanded={expandedSection === 'mo'} onToggle={() => setExpandedSection(expandedSection === 'mo' ? null : 'mo')}>
@@ -191,23 +190,20 @@ export default function CoutReelPanel({ planId, planStatus, isChef }: CoutReelPa
               </DetailSection>
             )}
 
-            {/* Energie */}
-            {cout.detail_energie.length > 0 && (
-              <DetailSection title="Detail energie" icon={<Zap size={12} className="text-violet-500" />}
-                isExpanded={expandedSection === 'energie'} onToggle={() => setExpandedSection(expandedSection === 'energie' ? null : 'energie')}>
+            {(cout.detail_charges_fixes || []).length > 0 && (
+              <DetailSection title="Detail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
+                isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
                 <table className="w-full text-xs">
                   <thead><tr className="text-gray-400 uppercase">
-                    <th className="text-left py-1 px-2">Equipement</th>
-                    <th className="text-right py-1 px-2">Minutes</th>
-                    <th className="text-right py-1 px-2">Cout/h</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                    <th className="text-left py-1 px-2">Charge</th>
+                    <th className="text-right py-1 px-2">Mensuel</th>
+                    <th className="text-right py-1 px-2">Quote-part</th>
                   </tr></thead>
-                  <tbody>{cout.detail_energie.map((d, i) => (
+                  <tbody>{(cout.detail_charges_fixes || []).map((d, i) => (
                     <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_horaire).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-gray-700">{d.label}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{formatDH(d.mensuel)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{formatDH(d.part)}</td>
                     </tr>
                   ))}</tbody>
                 </table>

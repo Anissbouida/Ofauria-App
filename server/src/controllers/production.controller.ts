@@ -4,6 +4,7 @@ import { productionRepository } from '../repositories/production.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { createNotification } from '../utils/notify.js';
+import { productionCoutRepository } from '../repositories/production-cout.repository.js';
 
 const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 
@@ -452,6 +453,12 @@ export const productionController = {
         referenceId: updated.replenishment_request_id,
         createdBy: req.user!.userId,
       });
+    }
+
+    try {
+      await productionCoutRepository.calculateAndSave(req.params.id, req.user!.userId);
+    } catch (err) {
+      console.error('Auto-calculate cost failed (non-blocking):', err);
     }
 
     res.json({ success: true, data: updated, warnings });

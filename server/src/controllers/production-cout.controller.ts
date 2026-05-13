@@ -125,4 +125,25 @@ export const productionCoutController = {
     const data = await productionCoutRepository.getByDay(storeId, dateFrom, dateTo);
     res.json({ success: true, data });
   },
+
+  async costByProduct(req: AuthRequest, res: Response) {
+    const storeId = (req.query.storeId as string) || req.user!.storeId!;
+    const data = await productionCoutRepository.getByProduct(
+      storeId, req.query.dateFrom as string | undefined, req.query.dateTo as string | undefined
+    );
+    res.json({ success: true, data });
+  },
+
+  async batchCalculate(req: AuthRequest, res: Response) {
+    const data = await productionCoutRepository.calculateAllUncalculated(req.user!.userId);
+    res.json({ success: true, data });
+  },
+
+  async plansWithCost(req: AuthRequest, res: Response) {
+    const storeId = (req.query.storeId as string) || req.user!.storeId!;
+    const data = await productionCoutRepository.getPlansWithCost(
+      storeId, req.query.dateFrom as string | undefined, req.query.dateTo as string | undefined
+    );
+    res.json({ success: true, data });
+  },
 };

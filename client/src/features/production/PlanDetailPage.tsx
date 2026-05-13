@@ -2476,7 +2476,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <>
           <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
           <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
-          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef} />
+          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
+            totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
         </>
       )}
 

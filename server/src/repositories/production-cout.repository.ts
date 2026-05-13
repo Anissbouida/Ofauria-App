@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
 
+const TAUX_CHARGES_FIXES_ESTIME = 0.40;
+
 export const productionCoutRepository = {
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -57,14 +59,13 @@ export const productionCoutRepository = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Temps de travail (labor tracking)
+  // Temps de travail (legacy manual labor tracking)
   // ═══════════════════════════════════════════════════════════════════════════
 
   async recordTempsTravail(data: {
     planId: string; planItemId?: string; employeeId: string;
     debut: string; fin?: string; dureeMinutes?: number; notes?: string;
   }) {
-    // Snapshot the employee's hourly rate at record time
     const empResult = await db.query(
       `SELECT hourly_rate, monthly_salary FROM employees WHERE id = $1`, [data.employeeId]
     );
@@ -137,14 +138,14 @@ export const productionCoutRepository = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Cost calculation — aggregate all 4 components
+  // Cost calculation
+  // Formule : Cout de revient = Matieres + Main d'oeuvre + Charges fixes
+  // MO calculee depuis production_item_etapes (qui a valide chaque etape)
+  // Charges fixes = quote-part mensuelle / nombre de plans du mois
   // ═══════════════════════════════════════════════════════════════════════════
 
   async calculateAndSave(planId: string, userId: string) {
-    // 1. Coût matières — FIFO réel : utilise le prix des lots effectivement consommés.
-    //    Source autoritaire : production_lot_usage (lien plan → lot avec quantité utilisée).
-    //    Fallback : inventory_transactions × ingredients.unit_cost si aucun lot_usage enregistré
-    //    (anciennes données, consommation manuelle sans allocation de lot).
+    // 1. Cout matieres — FIFO reel via production_lot_usage, fallback inventory_transactions
     const lotUsageResult = await db.query(
       `SELECT plu.ingredient_id, i.name,
               SUM(plu.quantity_used) as qty,
@@ -162,12 +163,14 @@ export const productionCoutRepository = {
     const lotCoveredIds = new Set(lotUsageResult.rows.map(r => r.ingredient_id));
 
     const fallbackResult = await db.query(
-      `SELECT it.ingredient_id, i.name, ABS(it.quantity_change) as qty,
+      `SELECT it.ingredient_id, i.name,
+              SUM(ABS(it.quantity_change)) as qty,
               COALESCE(i.unit_cost, 0) as unit_cost,
-              ABS(it.quantity_change) * COALESCE(i.unit_cost, 0) as total
+              SUM(ABS(it.quantity_change)) * COALESCE(i.unit_cost, 0) as total
        FROM inventory_transactions it
        JOIN ingredients i ON i.id = it.ingredient_id
-       WHERE it.production_plan_id = $1 AND it.type = 'production'`,
+       WHERE it.production_plan_id = $1 AND it.type = 'production'
+       GROUP BY it.ingredient_id, i.name, i.unit_cost`,
       [planId]
     );
 
@@ -189,64 +192,45 @@ export const productionCoutRepository = {
     }
     const coutMatieres = detailMatieres.reduce((s, d) => s + d.total, 0);
 
-    // 2. Coût main d'oeuvre — from temps_travail
+    // 2. Cout main d'oeuvre — depuis production_item_etapes
+    // Chaque etape completee a un completed_by (user) et duree_reelle_min.
+    // Taux horaire = monthly_salary / 191 (norme marocaine 44h/semaine)
     const moResult = await db.query(
-      `SELECT ptt.employee_id, e.first_name || ' ' || e.last_name as name,
-              ptt.duree_minutes, ptt.hourly_rate_snapshot,
-              ROUND(COALESCE(ptt.duree_minutes, 0) * COALESCE(ptt.hourly_rate_snapshot, 0) / 60.0, 2) as total
-       FROM production_temps_travail ptt
-       JOIN employees e ON e.id = ptt.employee_id
-       WHERE ptt.plan_id = $1 AND ptt.duree_minutes IS NOT NULL`,
+      `SELECT e.id as employee_id, e.first_name || ' ' || e.last_name as name,
+              SUM(pie.duree_reelle_min) as total_minutes,
+              COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) as hourly_rate,
+              ROUND(SUM(pie.duree_reelle_min) * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) / 60.0, 2) as total
+       FROM production_item_etapes pie
+       JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+       JOIN users u ON u.id = pie.completed_by
+       JOIN employees e ON e.user_id = u.id
+       WHERE ppi.plan_id = $1
+         AND pie.status = 'completed'
+         AND pie.duree_reelle_min IS NOT NULL
+         AND pie.completed_by IS NOT NULL
+       GROUP BY e.id, e.first_name, e.last_name, e.hourly_rate, e.monthly_salary`,
       [planId]
     );
     const detailMO = moResult.rows.map(r => ({
       employee_id: r.employee_id, name: r.name,
-      minutes: parseInt(r.duree_minutes), hourly_rate: parseFloat(r.hourly_rate_snapshot),
+      minutes: parseInt(r.total_minutes), hourly_rate: parseFloat(r.hourly_rate),
       total: parseFloat(r.total),
     }));
     const coutMO = detailMO.reduce((s, d) => s + d.total, 0);
 
-    // 3. Coût énergie — from equipement usage
-    const energieResult = await db.query(
-      `SELECT peu.equipement_id, pe.nom as name,
-              peu.duree_minutes, peu.cout_horaire_snapshot,
-              ROUND(COALESCE(peu.duree_minutes, 0) * COALESCE(peu.cout_horaire_snapshot, 0) / 60.0, 2) as total
-       FROM production_equipement_usage peu
-       JOIN production_equipements pe ON pe.id = peu.equipement_id
-       WHERE peu.plan_id = $1 AND peu.duree_minutes IS NOT NULL`,
-      [planId]
-    );
-    const detailEnergie = energieResult.rows.map(r => ({
-      equipement_id: r.equipement_id, name: r.name,
-      minutes: parseInt(r.duree_minutes), cout_horaire: parseFloat(r.cout_horaire_snapshot),
-      total: parseFloat(r.total),
-    }));
-    const coutEnergie = detailEnergie.reduce((s, d) => s + d.total, 0);
-
-    // 4. Coût pertes — from rendement pertes_detail × ingredient unit_cost
-    const pertesResult = await db.query(
-      `SELECT pr.pertes_detail, pr.pertes_total,
-              COALESCE(p.cost_price, 0) as product_cost_price,
-              ppi.product_id
-       FROM production_rendement pr
-       JOIN production_plan_items ppi ON ppi.id = pr.plan_item_id
-       LEFT JOIN products p ON p.id = ppi.product_id
-       WHERE pr.plan_id = $1`,
-      [planId]
-    );
-    let coutPertes = 0;
-    const detailPertes: { categorie: string; quantite: number; cout_unitaire: number; total: number }[] = [];
-    for (const row of pertesResult.rows) {
-      const costPerUnit = parseFloat(row.product_cost_price) || 0;
-      const pertes = row.pertes_detail || [];
-      for (const p of pertes) {
-        const total = p.quantite * costPerUnit;
-        detailPertes.push({ categorie: p.categorie, quantite: p.quantite, cout_unitaire: costPerUnit, total });
-        coutPertes += total;
-      }
+    // 3. Charges fixes = TAUX_CHARGES_FIXES_ESTIME × cout matieres
+    const coutCharges = Math.round(coutMatieres * TAUX_CHARGES_FIXES_ESTIME * 100) / 100;
+    const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
+    if (coutCharges > 0) {
+      detailCharges.push({
+        label: 'Charges fixes estimees',
+        taux: TAUX_CHARGES_FIXES_ESTIME,
+        base: coutMatieres,
+        part: coutCharges,
+      });
     }
 
-    // 5. Coût prévu — from recipe total_cost × planned_quantity
+    // Cout prevu (from recipes)
     const prevuResult = await db.query(
       `SELECT SUM(COALESCE(r.total_cost, 0) * ppi.planned_quantity / NULLIF(r.yield_quantity, 0)) as total
        FROM production_plan_items ppi
@@ -255,7 +239,7 @@ export const productionCoutRepository = {
       [planId]
     );
     const coutPrevu = parseFloat(prevuResult.rows[0]?.total) || null;
-    const coutTotal = coutMatieres + coutMO + coutEnergie + coutPertes;
+    const coutTotal = coutMatieres + coutMO + coutCharges;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
@@ -264,30 +248,32 @@ export const productionCoutRepository = {
     const result = await db.query(
       `INSERT INTO production_cout_reel
        (plan_id, cout_matieres, cout_main_oeuvre, cout_energie, cout_pertes,
+        cout_charges_fixes, detail_charges_fixes,
         cout_prevu, ecart_pct,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
         calculated_by, calculated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+       VALUES ($1, $2, $3, 0, 0, $4, $5, $6, $7, $8, $9, '[]', '[]', $10, NOW())
        ON CONFLICT (plan_id)
        DO UPDATE SET
          cout_matieres = EXCLUDED.cout_matieres,
          cout_main_oeuvre = EXCLUDED.cout_main_oeuvre,
-         cout_energie = EXCLUDED.cout_energie,
-         cout_pertes = EXCLUDED.cout_pertes,
+         cout_energie = 0,
+         cout_pertes = 0,
+         cout_charges_fixes = EXCLUDED.cout_charges_fixes,
+         detail_charges_fixes = EXCLUDED.detail_charges_fixes,
          cout_prevu = EXCLUDED.cout_prevu,
          ecart_pct = EXCLUDED.ecart_pct,
          detail_matieres = EXCLUDED.detail_matieres,
          detail_main_oeuvre = EXCLUDED.detail_main_oeuvre,
-         detail_energie = EXCLUDED.detail_energie,
-         detail_pertes = EXCLUDED.detail_pertes,
+         detail_energie = '[]',
+         detail_pertes = '[]',
          calculated_by = EXCLUDED.calculated_by,
          calculated_at = NOW(),
          updated_at = NOW()
        RETURNING *`,
-      [planId, coutMatieres, coutMO, coutEnergie, coutPertes,
-       coutPrevu, ecartPct,
+      [planId, coutMatieres, coutMO, coutCharges,
+       JSON.stringify(detailCharges), coutPrevu, ecartPct,
        JSON.stringify(detailMatieres), JSON.stringify(detailMO),
-       JSON.stringify(detailEnergie), JSON.stringify(detailPertes),
        userId]
     );
     return result.rows[0];
@@ -305,6 +291,95 @@ export const productionCoutRepository = {
     return result.rows[0] || null;
   },
 
+  // ─── Batch calculate all uncalculated completed plans ───
+  async calculateAllUncalculated(userId: string) {
+    const result = await db.query(
+      `SELECT pp.id FROM production_plans pp
+       LEFT JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
+       WHERE pp.status = 'completed' AND pcr.id IS NULL
+       ORDER BY pp.plan_date DESC`
+    );
+    let calculated = 0;
+    for (const row of result.rows) {
+      try {
+        await this.calculateAndSave(row.id, userId);
+        calculated++;
+      } catch (err) {
+        console.error(`Batch calculate failed for plan ${row.id}:`, err);
+      }
+    }
+    return { total: result.rows.length, calculated };
+  },
+
+  // ─── Dashboard: plans with cost (per-plan breakdown) ───
+  async getPlansWithCost(storeId: string, dateFrom?: string, dateTo?: string) {
+    const params: unknown[] = [storeId];
+    let dateFilter = '';
+    if (dateFrom) { params.push(dateFrom); dateFilter += ` AND pp.plan_date >= $${params.length}`; }
+    if (dateTo) { params.push(dateTo); dateFilter += ` AND pp.plan_date <= $${params.length}`; }
+
+    const result = await db.query(
+      `SELECT
+         pp.id as plan_id,
+         pp.plan_date,
+         pp.status,
+         pp.target_role,
+         pp.created_by,
+         u.first_name || ' ' || u.last_name as created_by_name,
+         pcr.calculated_at,
+         COALESCE(pcr.cout_matieres, 0) as plan_cout_matieres,
+         COALESCE(pcr.cout_main_oeuvre, 0) as plan_cout_mo,
+         COALESCE(pcr.cout_charges_fixes, 0) as plan_cout_charges,
+         COALESCE(pcr.cout_matieres, 0) + COALESCE(pcr.cout_main_oeuvre, 0) + COALESCE(pcr.cout_charges_fixes, 0) as plan_cout_revient,
+         pcr.detail_charges_fixes as plan_detail_charges,
+         (
+           SELECT json_agg(sub ORDER BY sub.product_name)
+           FROM (
+             SELECT
+               ppi.id as item_id,
+               ppi.product_id,
+               p.name as product_name,
+               ppi.planned_quantity,
+               ppi.actual_quantity,
+               ppi.status as item_status,
+               COALESCE(item_mat.cout_matieres_item, 0) as cout_matieres_item,
+               COALESCE(item_mo.cout_mo_item, 0) as cout_mo_item
+             FROM production_plan_items ppi
+             JOIN products p ON p.id = ppi.product_id
+             LEFT JOIN LATERAL (
+               SELECT SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) as cout_matieres_item
+               FROM production_lot_usage plu
+               JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
+               WHERE plu.production_plan_id = pp.id
+                 AND plu.ingredient_id IN (
+                   SELECT ri.ingredient_id FROM recipe_ingredients ri
+                   JOIN recipes r ON r.id = ri.recipe_id
+                   WHERE r.product_id = ppi.product_id
+                 )
+             ) item_mat ON true
+             LEFT JOIN LATERAL (
+               SELECT ROUND(SUM(pie.duree_reelle_min * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) / 60.0), 2) as cout_mo_item
+               FROM production_item_etapes pie
+               JOIN users usr ON usr.id = pie.completed_by
+               JOIN employees e ON e.user_id = usr.id
+               WHERE pie.plan_item_id = ppi.id
+                 AND pie.status = 'completed'
+                 AND pie.duree_reelle_min IS NOT NULL
+                 AND pie.completed_by IS NOT NULL
+             ) item_mo ON true
+             WHERE ppi.plan_id = pp.id AND ppi.status != 'cancelled'
+           ) sub
+         ) as items
+       FROM production_plans pp
+       LEFT JOIN users u ON u.id = pp.created_by
+       LEFT JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
+       WHERE pp.store_id = $1 AND pp.status = 'completed'${dateFilter}
+       ORDER BY pp.plan_date DESC`,
+      params
+    );
+    return result.rows;
+  },
+
   // ─── Dashboard: cost stats over a period ───
   async getStats(storeId: string, dateFrom?: string, dateTo?: string) {
     const params: unknown[] = [storeId];
@@ -317,9 +392,8 @@ export const productionCoutRepository = {
          COUNT(pcr.id) as total_plans,
          SUM(pcr.cout_matieres) as total_matieres,
          SUM(pcr.cout_main_oeuvre) as total_main_oeuvre,
-         SUM(pcr.cout_energie) as total_energie,
-         SUM(pcr.cout_pertes) as total_pertes,
-         SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + pcr.cout_energie + pcr.cout_pertes) as total_cout,
+         SUM(COALESCE(pcr.cout_charges_fixes, 0)) as total_charges,
+         SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + COALESCE(pcr.cout_charges_fixes, 0)) as total_cout,
          SUM(pcr.cout_prevu) as total_prevu,
          AVG(pcr.ecart_pct) as avg_ecart_pct
        FROM production_cout_reel pcr
@@ -336,15 +410,52 @@ export const productionCoutRepository = {
       `SELECT pp.plan_date,
               SUM(pcr.cout_matieres) as matieres,
               SUM(pcr.cout_main_oeuvre) as main_oeuvre,
-              SUM(pcr.cout_energie) as energie,
-              SUM(pcr.cout_pertes) as pertes,
-              SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + pcr.cout_energie + pcr.cout_pertes) as total
+              SUM(COALESCE(pcr.cout_charges_fixes, 0)) as charges,
+              SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + COALESCE(pcr.cout_charges_fixes, 0)) as total
        FROM production_cout_reel pcr
        JOIN production_plans pp ON pp.id = pcr.plan_id
        WHERE pp.store_id = $1 AND pp.plan_date >= $2 AND pp.plan_date <= $3
        GROUP BY pp.plan_date
        ORDER BY pp.plan_date ASC`,
       [storeId, dateFrom, dateTo]
+    );
+    return result.rows;
+  },
+
+  // ─── Cost aggregated by product ───
+  async getByProduct(storeId: string, dateFrom?: string, dateTo?: string) {
+    const params: unknown[] = [storeId];
+    let dateFilter = '';
+    if (dateFrom) { params.push(dateFrom); dateFilter += ` AND pp.plan_date >= $${params.length}`; }
+    if (dateTo) { params.push(dateTo); dateFilter += ` AND pp.plan_date <= $${params.length}`; }
+
+    const result = await db.query(
+      `SELECT
+         ppi.product_id,
+         p.name as product_name,
+         COUNT(DISTINCT pp.id) as nb_plans,
+         SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) as total_quantity,
+         SUM(
+           COALESCE((
+             SELECT SUM(plu.quantity_used * COALESCE(il.unit_cost, 0))
+             FROM production_lot_usage plu
+             JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
+             WHERE plu.production_plan_id = pp.id
+               AND plu.ingredient_id IN (
+                 SELECT ri.ingredient_id FROM recipe_ingredients ri
+                 JOIN recipes r ON r.id = ri.recipe_id
+                 WHERE r.product_id = ppi.product_id
+               )
+           ), 0)
+         ) as total_matieres
+       FROM production_plan_items ppi
+       JOIN production_plans pp ON pp.id = ppi.plan_id
+       JOIN products p ON p.id = ppi.product_id
+       JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
+       WHERE pp.store_id = $1 AND pp.status = 'completed' AND ppi.status != 'cancelled'${dateFilter}
+       GROUP BY ppi.product_id, p.name
+       ORDER BY total_matieres DESC`,
+      params
     );
     return result.rows;
   },

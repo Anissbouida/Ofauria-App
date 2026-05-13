@@ -34,6 +34,9 @@ export interface CompanySettings {
   themeAccentLight: string;
   themeCtaColor: string;
   themeCtaText: string;
+  productionChargeLoyer: number;
+  productionChargeEnergie: number;
+  productionChargeAutres: number;
 }
 
 export const settingsApi = {

@@ -36,6 +36,9 @@ function toApi(row: Record<string, unknown>) {
     themeAccentLight: row.theme_accent_light || '#F5E6CC',
     themeCtaColor: row.theme_cta_color || '#C4872B',
     themeCtaText: row.theme_cta_text || '#FFFFFF',
+    productionChargeLoyer: parseFloat(String(row.production_charge_loyer)) || 0,
+    productionChargeEnergie: parseFloat(String(row.production_charge_energie)) || 0,
+    productionChargeAutres: parseFloat(String(row.production_charge_autres)) || 0,
   };
 }
 
@@ -57,6 +60,7 @@ export const settingsController = {
       themeTextStrong, themeTextBody, themeTextMuted,
       themeAccent, themeAccentHover, themeAccentLight,
       themeCtaColor, themeCtaText,
+      productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
     } = req.body;
 
     if (primaryColor && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
@@ -89,6 +93,7 @@ export const settingsController = {
       themeTextStrong, themeTextBody, themeTextMuted,
       themeAccent, themeAccentHover, themeAccentLight,
       themeCtaColor, themeCtaText,
+      productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
     });
     res.json({ success: true, data: toApi(settings) });
   },

@@ -39,4 +39,10 @@ export const productionCoutApi = {
     api.get('/production-cout/stats', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
   costByDay: (storeId: string, dateFrom: string, dateTo: string) =>
     api.get('/production-cout/by-day', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
+  costByProduct: (storeId: string, dateFrom?: string, dateTo?: string) =>
+    api.get('/production-cout/by-product', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
+  plansWithCost: (storeId: string, dateFrom?: string, dateTo?: string) =>
+    api.get('/production-cout/plans-with-cost', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
+  batchCalculate: () =>
+    api.post('/production-cout/batch-calculate').then(r => r.data.data),
 };

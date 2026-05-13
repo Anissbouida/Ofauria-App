@@ -25,6 +25,7 @@ export const settingsRepository = {
     productionFrigoEnabled?: boolean; productionCalculInverseEnabled?: boolean;
     productionStepsEnabled?: boolean; productionStepsBlocking?: boolean;
     productionYieldEnabled?: boolean; productionCostEnabled?: boolean;
+    productionChargeLoyer?: number; productionChargeEnergie?: number; productionChargeAutres?: number;
   }) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -66,6 +67,9 @@ export const settingsRepository = {
       productionStepsBlocking: 'production_steps_blocking',
       productionYieldEnabled: 'production_yield_enabled',
       productionCostEnabled: 'production_cost_enabled',
+      productionChargeLoyer: 'production_charge_loyer',
+      productionChargeEnergie: 'production_charge_energie',
+      productionChargeAutres: 'production_charge_autres',
     };
 
     const fields: string[] = [];
