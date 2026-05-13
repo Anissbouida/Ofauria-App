@@ -107,16 +107,12 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition-colors`}
-      onClick={() => onSort(sk)}>
+    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
       <span className="inline-flex items-center gap-1">
-        {align === 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
         {label}
-        {align !== 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
+        <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
+          {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+        </span>
       </span>
     </th>
   );
@@ -197,237 +193,237 @@ export default function RecipesPage() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Contenant et Recettes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{recipes.length} recettes au catalogue</p>
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Recettes</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">
+            {activeTab === 'contenants' ? 'Contenants'
+              : activeTab === 'base' ? 'Préparations de base'
+              : 'Recettes produits finis'}
+          </span>
         </div>
         {activeTab !== 'contenants' && (
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
-            <Plus size={18} /> {activeTab === 'base' ? 'Nouvelle preparation' : 'Nouvelle recette'}
+          <button onClick={openCreate} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau
           </button>
+        )}
+        <div style={{ flex: 1 }} />
+        {activeTab !== 'contenants' && (
+          <span className="odoo-pager">
+            <strong>{sortedFiltered.length}</strong> / {activeTab === 'base' ? baseCount : productCount}
+          </span>
+        )}
+        {activeTab !== 'contenants' && (
+          <div className="odoo-view-switcher">
+            <button onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} title="Vue liste">
+              <List size={14} />
+            </button>
+            <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} title="Vue kanban">
+              <LayoutGrid size={14} />
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2">
+      {/* ══════ TABS ══════ */}
+      <div className="odoo-tabs">
         <button onClick={() => { setActiveTab('contenants'); setSearch(''); }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
-            activeTab === 'contenants'
-              ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md'
-              : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
-          }`}>
-          <Package size={18} /> Contenants
+          className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
+          <Package size={13} /> Contenants
         </button>
         <button onClick={() => { setActiveTab('base'); setSearch(''); }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
-            activeTab === 'base'
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-              : 'bg-white border border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'
-          }`}>
-          <Layers size={18} /> Preparations de base
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-            activeTab === 'base' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
-          }`}>{baseCount}</span>
+          className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
+          <Layers size={13} /> Préparations de base
+          {baseCount > 0 && (
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{baseCount}</span>
+          )}
         </button>
         <button onClick={() => { setActiveTab('product'); setSearch(''); }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold transition-all ${
-            activeTab === 'product'
-              ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md'
-              : 'bg-white border border-gray-200 text-gray-600 hover:border-green-300 hover:bg-green-50'
-          }`}>
-          <ChefHat size={18} /> Recettes produits finis
-          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-            activeTab === 'product' ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700'
-          }`}>{productCount}</span>
+          className={`odoo-tab ${activeTab === 'product' ? 'active' : ''}`}>
+          <ChefHat size={13} /> Recettes produits finis
+          {productCount > 0 && (
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{productCount}</span>
+          )}
         </button>
       </div>
 
-      {activeTab === 'contenants' ? <ContenantsPage /> : <>
-      {/* Search + view toggle */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text"
-              placeholder={activeTab === 'base' ? 'Rechercher une preparation de base...' : 'Rechercher une recette ou un produit...'}
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-colors" />
-          </div>
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <button onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <LayoutGrid size={18} />
-            </button>
-            <button onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <List size={18} />
-            </button>
-          </div>
-        </div>
+      {activeTab === 'contenants' ? <div style={{ padding: '1rem' }}><ContenantsPage /></div> : <>
+      {/* ══════ SEARCH PANEL ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text"
+          placeholder={activeTab === 'base' ? 'Rechercher une préparation de base...' : 'Rechercher une recette ou un produit...'}
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          className="odoo-search-input" />
+        {search && (
+          <span className="odoo-filter-chip">
+            Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
       </div>
 
-      {/* Content */}
+      {/* ══════ CONTENT ══════ */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
       ) : viewMode === 'grid' ? (
-        /* ═══ Grid View ═══ */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
-          {sortedFiltered.map((r: Record<string, any>) => {
-            const totalCost = parseFloat(r.total_cost as string || '0');
-            const yieldQty = r.yield_quantity as number || 1;
-            const costPerUnit = totalCost / yieldQty;
-            const price = parseFloat(r.product_price as string || '0');
-            const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
+        /* ═══ GRID View (kanban Odoo) ═══ */
+        sortedFiltered.length === 0 ? (
+          <div style={{ padding: '5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+            <BookOpen size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+            <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucune recette trouvée</p>
+            <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Essayez de modifier vos filtres</p>
+          </div>
+        ) : (
+        <div className="odoo-kanban">
+          <div className="odoo-kanban-grid">
+            {sortedFiltered.map((r: Record<string, any>) => {
+              const totalCost = parseFloat(r.total_cost as string || '0');
+              const yieldQty = r.yield_quantity as number || 1;
+              const costPerUnit = totalCost / yieldQty;
+              const price = parseFloat(r.product_price as string || '0');
+              const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
+              const cardStatus = !r.is_base && price > 0 ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger') : 'ok';
 
-            return (
-              <div key={r.id as string}
-                className={`bg-white rounded-xl border shadow-sm overflow-hidden group hover:shadow-md transition-all cursor-pointer ${
-                  r.is_base ? 'border-l-4 border-l-amber-400' : 'border-gray-100'
-                }`}
-                onClick={() => setSelectedRecipeId(r.id as string)}
-              >
-                {/* Header */}
-                <div className={`p-4 ${r.is_base ? 'bg-gradient-to-r from-amber-50 to-yellow-50' : 'bg-gradient-to-r from-orange-50 to-amber-50'}`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`p-2.5 rounded-xl shrink-0 ${r.is_base ? 'bg-amber-100' : 'bg-white/80'}`}>
-                      {r.is_base ? <Layers size={22} className="text-amber-600" /> : <ChefHat size={22} className="text-amber-700" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-sm text-gray-900 truncate" title={r.name as string}>{r.name as string}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">
-                        {r.is_base
-                          ? <span className="text-amber-600 font-medium">Preparation de base</span>
-                          : (r.product_name as string || 'Aucun produit')}
-                      </p>
-                    </div>
+              return (
+                <div key={r.id as string}
+                  className={`odoo-kanban-card ${cardStatus}`}
+                  onClick={() => setSelectedRecipeId(r.id as string)}>
+                  <div className="odoo-kanban-card-title">
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {r.is_base ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
+                      {r.name as string}
+                    </span>
+                    <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
+                      {r.is_base ? 'Base' : 'Produit'}
+                    </span>
+                  </div>
+                  <div className="odoo-kanban-card-supplier">
+                    {r.is_base ? 'Préparation de base' : (r.product_name as string || 'Aucun produit')}
+                  </div>
+                  <div className="odoo-kanban-card-stock">
+                    <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--theme-accent)' }}>
+                      {totalCost.toFixed(2)}
+                    </span>
+                    <span className="odoo-kanban-card-stock-unit">DH coût total</span>
+                  </div>
+                  <div className="odoo-kanban-card-split">
+                    <span>Rendement <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
+                    <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
+                    <span>Coût/u. <strong>{costPerUnit.toFixed(2)} DH</strong></span>
+                  </div>
+                  <div className="odoo-kanban-card-footer">
+                    <span>
+                      {r.contenant_nom && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--theme-text-muted)' }}>
+                          <Box size={9} /> {r.contenant_nom as string}
+                        </span>
+                      )}
+                    </span>
+                    {!r.is_base && price > 0 && (
+                      <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}>
+                        Marge {margin.toFixed(0)}%
+                      </span>
+                    )}
                   </div>
                 </div>
-                {/* Stats */}
-                <div className="p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
-                      <div className="text-xs text-gray-400">Rendement</div>
-                      <div className="text-sm font-bold text-gray-700">{yieldQty} {r.yield_unit as string || 'u.'}</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
-                      <div className="text-xs text-gray-400">Cout total</div>
-                      <div className="text-sm font-bold text-amber-700">{totalCost.toFixed(2)} DH</div>
-                    </div>
-                  </div>
-                  {r.contenant_nom && (
-                    <div className="flex items-center gap-1.5 px-1">
-                      <Box size={12} className="text-blue-400" />
-                      <span className="text-xs text-blue-600 font-medium truncate">{r.contenant_nom as string}</span>
-                    </div>
-                  )}
-                  {!r.is_base && price > 0 && (
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-xs text-gray-400">Marge</span>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        margin >= 50 ? 'bg-green-100 text-green-700' : margin >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                      }`}>{margin.toFixed(0)}%</span>
-                    </div>
-                  )}
-                </div>
-                {/* Actions */}
-                <div className="border-t border-gray-50 px-4 py-2 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => openEdit(r.id as string)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
-                    <Pencil size={14} className="text-gray-400" />
-                  </button>
-                  <button onClick={() => { if (confirm('Supprimer cette recette ?')) deleteMutation.mutate(r.id as string); }}
-                    className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer">
-                    <Trash2 size={14} className="text-red-400" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {filtered.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-400">
-              <BookOpen size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucune recette trouvee</p>
-              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
+        )
       ) : (
-        /* ═══ List View ═══ */
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b sticky top-0 z-10">
+        /* ═══ LIST View (table dense Odoo) ═══ */
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
+                <th style={{ width: 24 }}></th>
                 <SortHeader label="Recette" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Contenant" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                <SortHeader label="Cout total" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Cout/u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Marge" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Coût total" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Coût/u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Marge" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {sortedFiltered.map((r: Record<string, any>) => {
+            <tbody>
+              {sortedFiltered.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                  Aucune recette trouvée
+                </td></tr>
+              ) : sortedFiltered.map((r: Record<string, any>) => {
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 const costPerUnit = totalCost / yieldQty;
                 const price = parseFloat(r.product_price as string || '0');
                 const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
+                const dotClass = !r.is_base && price > 0
+                  ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger')
+                  : 'neutral';
 
                 return (
-                  <tr key={r.id as string} className="hover:bg-amber-50/30 transition-colors cursor-pointer" onClick={() => setSelectedRecipeId(r.id as string)}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg shrink-0 ${r.is_base ? 'bg-amber-100' : 'bg-orange-50'}`}>
-                          {r.is_base ? <Layers size={16} className="text-amber-600" /> : <ChefHat size={16} className="text-amber-700" />}
-                        </div>
-                        <span className="font-semibold text-sm text-gray-900">{r.name as string}</span>
-                      </div>
+                  <tr key={r.id as string} onClick={() => setSelectedRecipeId(r.id as string)}>
+                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                        {r.is_base ? <Layers size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={13} style={{ color: 'var(--theme-accent)' }} />}
+                        {r.name as string}
+                      </span>
                     </td>
-                    <td className="px-5 py-3">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        r.is_base ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
-                      }`}>
+                    <td>
+                      <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
                         {r.is_base ? 'Base' : 'Produit'}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-sm text-gray-600">
+                    <td style={{ color: 'var(--theme-text-muted)' }}>
                       {r.contenant_nom ? (
-                        <span className="flex items-center gap-1.5"><Box size={13} className="text-blue-400" /> {r.contenant_nom as string}</span>
-                      ) : <span className="text-gray-300">—</span>}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Box size={11} /> {r.contenant_nom as string}
+                        </span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td className="px-5 py-3 text-center text-sm font-semibold text-gray-700">{yieldQty} {r.yield_unit as string || 'u.'}</td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="text-sm font-bold text-gray-900">{totalCost.toFixed(2)}</span>
-                      <span className="text-xs text-gray-400 ml-0.5">DH</span>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 500 }}>{yieldQty}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{r.yield_unit as string || 'u.'}</span>
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="text-sm font-medium text-gray-600">{costPerUnit.toFixed(2)}</span>
-                      <span className="text-xs text-gray-400 ml-0.5">DH</span>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 600 }}>{totalCost.toFixed(2)}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 500 }}>{costPerUnit.toFixed(2)}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
                       {!r.is_base && price > 0 ? (
-                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          margin >= 50 ? 'bg-green-100 text-green-700' : margin >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                        }`}>{margin.toFixed(0)}%</span>
-                      ) : <span className="text-gray-300">—</span>}
+                        <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}>
+                          {margin.toFixed(0)}%
+                        </span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setSelectedRecipeId(r.id as string)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Voir">
-                          <Eye size={15} className="text-gray-400" />
+                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
+                        <button onClick={() => setSelectedRecipeId(r.id as string)}
+                          className="odoo-pager-btn" title="Voir">
+                          <Eye size={13} />
                         </button>
-                        <button onClick={() => openEdit(r.id as string)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
-                          <Pencil size={15} className="text-gray-500" />
+                        <button onClick={() => openEdit(r.id as string)}
+                          className="odoo-pager-btn" title="Modifier">
+                          <Pencil size={13} />
                         </button>
                         <button onClick={() => { if (confirm('Supprimer cette recette ?')) deleteMutation.mutate(r.id as string); }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer">
-                          <Trash2 size={15} className="text-red-400" />
+                          className="odoo-pager-btn" title="Supprimer"
+                          style={{ color: '#dc3545' }}>
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -436,13 +432,6 @@ export default function RecipesPage() {
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <BookOpen size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucune recette trouvee</p>
-              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
-            </div>
-          )}
         </div>
       )}
 
