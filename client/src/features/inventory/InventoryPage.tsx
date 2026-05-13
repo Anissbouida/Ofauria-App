@@ -6,9 +6,10 @@ import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { TransferRequestsList } from '../warehouse/TransferRequestsList';
 import {
-  AlertTriangle, Package, Search, TrendingUp, TrendingDown,
-  Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight, ChevronDown,
+  AlertTriangle, Package, Search, TrendingUp,
+  Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
+  Plus, List, Save,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -224,61 +225,68 @@ export default function InventoryPage() {
     const active = sortKey === col;
     return (
       <th onClick={() => toggleSort(col)}
-        className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors ${className}`}>
+        style={{ textAlign: align }}
+        className={className}>
         <span className="inline-flex items-center gap-1">
-          {align === 'right' && (active
-            ? (sortDir === 'asc' ? <ArrowUp size={12} className="text-violet-500" /> : <ArrowDown size={12} className="text-violet-500" />)
-            : <ArrowUpDown size={11} className="opacity-30" />)}
           {children}
-          {align !== 'right' && (active
-            ? (sortDir === 'asc' ? <ArrowUp size={12} className="text-violet-500" /> : <ArrowDown size={12} className="text-violet-500" />)
-            : <ArrowUpDown size={11} className="opacity-30" />)}
+          <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
+            {active ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+          </span>
         </span>
       </th>
     );
   };
 
   return (
-    <div className="space-y-4">
-      {/* ══════ HEADER ══════ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Économat — Stock principal</h1>
-          <p className="text-sm text-gray-500 mt-1">Sacs, boîtes et contenants scellés. Une fois ouverts, ils basculent en Pesage.</p>
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR (Odoo) ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <Warehouse size={14} style={{ color: '#714B67' }} />
+          <span>Économat</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">
+            {econoTab === 'transfers' ? 'Transferts demandés' : 'Stock principal'}
+          </span>
         </div>
         {econoTab === 'stock' && (
-          <button onClick={() => setShowAddIngredient(true)} className="btn-primary flex items-center gap-2">
-            <Package size={16} /> Ajouter un ingrédient
+          <button onClick={() => setShowAddIngredient(true)} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau
           </button>
         )}
+        <div style={{ flex: 1 }} />
+        {econoTab === 'stock' && totalItems > 0 && (
+          <div className="odoo-pager">
+            <span style={{ marginRight: '0.5rem' }}>
+              <strong>1-{filteredInventory.length}</strong> / {totalItems}
+            </span>
+            <button className="odoo-pager-btn" disabled><ChevronLeft size={14} /></button>
+            <button className="odoo-pager-btn" disabled><ChevronRight size={14} /></button>
+          </div>
+        )}
+        <div className="odoo-view-switcher">
+          <button className="active" title="Vue liste"><List size={14} /></button>
+        </div>
       </div>
 
-      {/* Onglets : Stock economat / Transferts demandes — visibles uniquement aux roles warehouse */}
+      {/* Onglets : Stock / Transferts */}
       {isWarehouseUser && (
-        <div className="flex items-center gap-1 border-b border-gray-200">
+        <div className="odoo-tabs">
           <button
             type="button"
             onClick={() => changeEconoTab('stock')}
-            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-              econoTab === 'stock'
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
-            <Warehouse size={14} />
+            className={`odoo-tab ${econoTab === 'stock' ? 'active' : ''}`}>
+            <Warehouse size={13} />
             <span>Stock économat</span>
           </button>
           <button
             type="button"
             onClick={() => changeEconoTab('transfers')}
-            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-              econoTab === 'transfers'
-                ? 'border-amber-500 text-amber-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
-            <PackageOpen size={14} />
+            className={`odoo-tab ${econoTab === 'transfers' ? 'active' : ''}`}>
+            <PackageOpen size={13} />
             <span>Transferts demandés</span>
             {transferRequests.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-700">
+              <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: '0.25rem' }}>
                 {transferRequests.length}
               </span>
             )}
@@ -287,87 +295,92 @@ export default function InventoryPage() {
       )}
 
       {econoTab === 'transfers' ? (
-        <TransferRequestsList />
+        <div style={{ padding: '1rem' }}>
+          <TransferRequestsList />
+        </div>
       ) : (
       <>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <button onClick={() => setViewFilter('all')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'all' ? 'ring-2 ring-gray-300' : ''}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center mx-auto mb-2"><Package size={16} className="text-white" /></div>
-          <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
-          <p className="text-xs text-gray-500">Total</p>
+      {/* ══════ STAT TILES (sober) ══════ */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setViewFilter('all')}
+          className={`odoo-stat-card ${viewFilter === 'all' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Total ingrédients
+          </div>
+          <div className="odoo-stat-card-value">{totalItems}</div>
         </button>
-        <button onClick={() => setViewFilter(viewFilter === 'low' ? 'all' : 'low')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'low' ? 'ring-2 ring-red-300' : ''}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center mx-auto mb-2"><AlertTriangle size={16} className="text-white" /></div>
-          <p className="text-2xl font-bold text-gray-900">{lowCount}</p>
-          <p className="text-xs text-gray-500">Stock bas</p>
+        <button onClick={() => setViewFilter(viewFilter === 'low' ? 'all' : 'low')}
+          className={`odoo-stat-card ${viewFilter === 'low' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Stock bas
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: lowCount > 0 ? '#dc3545' : undefined }}>{lowCount}</div>
         </button>
-        <button onClick={() => setViewFilter(viewFilter === 'ok' ? 'all' : 'ok')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'ok' ? 'ring-2 ring-emerald-300' : ''}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center mx-auto mb-2"><TrendingUp size={16} className="text-white" /></div>
-          <p className="text-2xl font-bold text-gray-900">{totalItems - lowCount}</p>
-          <p className="text-xs text-gray-500">Stock OK</p>
+        <button onClick={() => setViewFilter(viewFilter === 'ok' ? 'all' : 'ok')}
+          className={`odoo-stat-card ${viewFilter === 'ok' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Stock OK
+          </div>
+          <div className="odoo-stat-card-value">{totalItems - lowCount}</div>
         </button>
-        <button onClick={() => setViewFilter(viewFilter === 'expiring' ? 'all' : 'expiring')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'expiring' ? 'ring-2 ring-amber-300' : ''}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mx-auto mb-2"><CalendarClock size={16} className="text-white" /></div>
-          <p className="text-2xl font-bold text-gray-900">{expiringCount}</p>
-          <p className="text-xs text-gray-500">DLC critique</p>
+        <button onClick={() => setViewFilter(viewFilter === 'expiring' ? 'all' : 'expiring')}
+          className={`odoo-stat-card ${viewFilter === 'expiring' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <CalendarClock size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />DLC critique
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: expiringCount > 0 ? '#b85d1a' : undefined }}>{expiringCount}</div>
         </button>
       </div>
 
-      {/* ══════ NEW : LOTS EXPIRES A TRAITER (DLC ou DLV depassee) ══════ */}
+      {/* ══════ LOTS EXPIRES A TRAITER (DLC depassee) ══════ */}
       {(expiredActiveLots as Record<string, any>[]).length > 0 && (() => {
         const lots = expiredActiveLots as Record<string, any>[];
         return (
-          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-start gap-3 mb-3">
-              <div className="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center shrink-0 animate-pulse">
-                <AlertTriangle size={20} className="text-white" />
+          <div className="odoo-alert danger">
+            <AlertTriangle size={16} style={{ marginTop: 2, color: '#dc3545', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div className="odoo-alert-title">
+                {lots.length} lot{lots.length > 1 ? 's' : ''} expiré{lots.length > 1 ? 's' : ''} à retirer du stock
               </div>
-              <div className="flex-1">
-                <p className="text-base font-bold text-red-900">
-                  {lots.length} lot{lots.length > 1 ? 's' : ''} expiré{lots.length > 1 ? 's' : ''} à retirer du stock
-                </p>
-                <p className="text-xs text-red-700 mt-0.5">
-                  Ces ingrédients doivent être envoyés aux pertes — la date imprimée sur le paquet est dépassée.
-                </p>
+              <div style={{ fontSize: '0.75rem', marginTop: 2, opacity: 0.9 }}>
+                Ces ingrédients doivent être envoyés aux pertes — la date imprimée sur le paquet est dépassée.
               </div>
-            </div>
-            <div className="bg-white rounded-xl border border-red-200 divide-y divide-red-50 max-h-80 overflow-y-auto">
-              {lots.map((lot) => {
-                const reason = lot.expiry_reason as string;
-                const totalQty = parseFloat(lot.total_qty as string) || 0;
-                const unitCost = parseFloat(lot.unit_cost as string) || 0;
-                const lostValue = totalQty * unitCost;
-                const daysExpired = lot.days_expired as number;
-                return (
-                  <div key={lot.id as string} className="px-4 py-2.5 flex items-center gap-3 hover:bg-red-50/30">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-gray-900 truncate">{lot.ingredient_name as string}</span>
-                        <span className="text-[10px] font-mono text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-                          {(lot.lot_number as string) || '?'}
-                        </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700">
-                          DLC expirée
-                        </span>
+              <div style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto', border: '1px solid #f5c6cb', borderRadius: 4, backgroundColor: '#fff' }}>
+                {lots.map((lot, i) => {
+                  const totalQty = parseFloat(lot.total_qty as string) || 0;
+                  const unitCost = parseFloat(lot.unit_cost as string) || 0;
+                  const lostValue = totalQty * unitCost;
+                  const daysExpired = lot.days_expired as number;
+                  return (
+                    <div key={lot.id as string} style={{
+                      padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      borderTop: i > 0 ? '1px solid #fce4e1' : 'none', fontSize: '0.75rem',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 600, color: '#2e3338' }}>{lot.ingredient_name as string}</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: '#721c24', backgroundColor: '#f8d7da', padding: '0 0.375rem', borderRadius: 2 }}>
+                            {(lot.lot_number as string) || '?'}
+                          </span>
+                          <span className="odoo-tag odoo-tag-red">DLC expirée</span>
+                        </div>
+                        <div style={{ marginTop: 2, color: '#6c757d', fontSize: '0.6875rem' }}>
+                          Expiré depuis <strong style={{ color: '#dc3545' }}>{daysExpired}j</strong> ·
+                          Écon. {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string} ·
+                          Pesage {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">
-                        Expiré depuis <strong className="text-red-600">{daysExpired}j</strong> ·
-                        <span className="ml-1">Économat : {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string}</span>
-                        <span className="ml-2">Pesage : {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}</span>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontWeight: 600, color: '#721c24' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
+                        <div style={{ fontSize: '0.6875rem', color: '#6c757d' }}>{lostValue.toFixed(2)} DH</div>
                       </div>
+                      <button onClick={() => setLossDialogLot(lot)} className="odoo-btn-danger" style={{ flexShrink: 0 }}>
+                        <Trash2 size={11} /> Pertes
+                      </button>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold text-red-700">{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
-                      <div className="text-[10px] text-gray-500">{lostValue.toFixed(2)} DH perdus</div>
-                    </div>
-                    <button
-                      onClick={() => setLossDialogLot(lot)}
-                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shrink-0">
-                      <Trash2 size={12} /> Envoyer aux pertes
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
@@ -385,26 +398,29 @@ export default function InventoryPage() {
         />
       )}
 
-      {/* ══════ DLC ALERTS — anciens lots expires sans stock (legacy display) ══════ */}
+      {/* ══════ DLC ALERTS — anciens lots expires sans stock ══════ */}
       {(expiredLots as Record<string, any>[]).length > 0 && (() => {
         const allExpired = expiredLots as Record<string, any>[];
         const visibleExpired = showAllExpired ? allExpired : allExpired.slice(0, 3);
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
-            <div className="px-5 py-2.5 border-b border-red-100 bg-gradient-to-r from-red-50 to-rose-50 flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center"><AlertTriangle size={12} className="text-white" /></div>
-              <span className="text-xs font-bold text-red-700">{allExpired.length} lot(s) expiré(s) avec stock restant</span>
-              {allExpired.length > 3 && (
-                <button onClick={() => setShowAllExpired(!showAllExpired)} className="ml-auto text-[10px] font-medium text-red-600 hover:text-red-800 flex items-center gap-0.5">
-                  {showAllExpired ? <><ChevronDown size={10} /> Réduire</> : <><ChevronRight size={10} /> Voir tous ({allExpired.length})</>}
-                </button>
-              )}
-            </div>
-            <div className="divide-y divide-red-50">
-              {visibleExpired.map((lot) => (
-                <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-red-50/30">
-                  <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-red-600">{lot.supplier_lot_number as string || '?'}</span> — expiré depuis {lot.days_expired as number}j</span>
-                  <span className="font-bold text-red-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
+          <div className="odoo-alert danger">
+            <AlertTriangle size={14} style={{ color: '#dc3545', marginTop: 2, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="odoo-alert-title">{allExpired.length} lot(s) expiré(s) avec stock restant</span>
+                {allExpired.length > 3 && (
+                  <button onClick={() => setShowAllExpired(!showAllExpired)} className="odoo-filter-dropdown" style={{ fontSize: '0.6875rem' }}>
+                    {showAllExpired ? <><ChevronDown size={11} /> Réduire</> : <><ChevronRight size={11} /> Voir tous ({allExpired.length})</>}
+                  </button>
+                )}
+              </div>
+              {visibleExpired.map((lot, i) => (
+                <div key={lot.id as string} style={{
+                  display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem',
+                  paddingTop: i === 0 ? '0.375rem' : '0.25rem',
+                }}>
+                  <span><strong>{lot.ingredient_name as string}</strong> — <span style={{ fontFamily: 'monospace', color: '#dc3545' }}>{lot.supplier_lot_number as string || '?'}</span> — expiré depuis {lot.days_expired as number}j</span>
+                  <span style={{ fontWeight: 600, color: '#dc3545' }}>{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
                 </div>
               ))}
             </div>
@@ -415,21 +431,24 @@ export default function InventoryPage() {
         const allExpiring = expiringLots as Record<string, any>[];
         const visibleExpiring = showAllExpiring ? allExpiring : allExpiring.slice(0, 3);
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-            <div className="px-5 py-2.5 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center"><Clock size={12} className="text-white" /></div>
-              <span className="text-xs font-bold text-amber-700">{allExpiring.length} lot(s) expirent dans les 7 prochains jours</span>
-              {allExpiring.length > 3 && (
-                <button onClick={() => setShowAllExpiring(!showAllExpiring)} className="ml-auto text-[10px] font-medium text-amber-600 hover:text-amber-800 flex items-center gap-0.5">
-                  {showAllExpiring ? <><ChevronDown size={10} /> Réduire</> : <><ChevronRight size={10} /> Voir tous ({allExpiring.length})</>}
-                </button>
-              )}
-            </div>
-            <div className="divide-y divide-amber-50">
-              {visibleExpiring.map((lot) => (
-                <div key={lot.id as string} className="px-5 py-2 flex items-center justify-between text-xs hover:bg-amber-50/30">
-                  <span className="text-gray-700"><strong>{lot.ingredient_name as string}</strong> — <span className="font-mono text-amber-600">{lot.supplier_lot_number as string || '?'}</span> — DLC dans {lot.days_until_expiry as number}j</span>
-                  <span className="font-bold text-amber-600">{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
+          <div className="odoo-alert warning">
+            <Clock size={14} style={{ color: '#856404', marginTop: 2, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="odoo-alert-title">{allExpiring.length} lot(s) expirent dans les 7 prochains jours</span>
+                {allExpiring.length > 3 && (
+                  <button onClick={() => setShowAllExpiring(!showAllExpiring)} className="odoo-filter-dropdown" style={{ fontSize: '0.6875rem' }}>
+                    {showAllExpiring ? <><ChevronDown size={11} /> Réduire</> : <><ChevronRight size={11} /> Voir tous ({allExpiring.length})</>}
+                  </button>
+                )}
+              </div>
+              {visibleExpiring.map((lot, i) => (
+                <div key={lot.id as string} style={{
+                  display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem',
+                  paddingTop: i === 0 ? '0.375rem' : '0.25rem',
+                }}>
+                  <span><strong>{lot.ingredient_name as string}</strong> — <span style={{ fontFamily: 'monospace', color: '#856404' }}>{lot.supplier_lot_number as string || '?'}</span> — DLC dans {lot.days_until_expiry as number}j</span>
+                  <span style={{ fontWeight: 600, color: '#856404' }}>{parseFloat(lot.quantity_remaining as string).toFixed(1)} {lot.ingredient_unit as string}</span>
                 </div>
               ))}
             </div>
@@ -437,170 +456,170 @@ export default function InventoryPage() {
         );
       })()}
 
-      {/* ══════ SEARCH + FILTERS ══════ */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Rechercher par nom, fournisseur, N° lot..." value={search}
-            onChange={(e) => setSearch(e.target.value)} className="input pl-10" />
-        </div>
-        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="input w-48">
-          <option value="">Toutes les catégories</option>
+      {/* ══════ SEARCH PANEL Odoo ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: '#6c757d', flexShrink: 0 }} />
+        <input
+          type="text"
+          placeholder="Rechercher par nom, fournisseur, N° lot..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="odoo-search-input"
+        />
+        {search && (
+          <span className="odoo-filter-chip">
+            Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
+        {categoryFilter && (
+          <span className="odoo-filter-chip">
+            {INGREDIENT_CATEGORIES.find(c => c.value === categoryFilter)?.label}
+            <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
+          </span>
+        )}
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          className="odoo-filter-dropdown"
+          style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}
+        >
+          <option value="">▾ Catégorie</option>
           {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </div>
 
-      {/* ══════ TABLE ══════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-auto">
-          <table className="w-full">
-            <thead className="border-b border-gray-100">
-              <tr>
-                <SortHeader col="name">Ingrédient</SortHeader>
-                <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
-                <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 hidden md:table-cell" title="Dernier prix d'achat saisi — utilise pour estimer le cout des recettes">
-                  <span className="inline-flex items-center gap-1">Dernier prix <span className="text-[9px] font-normal text-gray-400">(estim. recette)</span></span>
-                </th>
-                <SortHeader col="quantity">Stock</SortHeader>
-                <SortHeader col="lots" className="hidden lg:table-cell">Lots</SortHeader>
-                <SortHeader col="days_stock" className="hidden lg:table-cell">Jours stock</SortHeader>
-                <SortHeader col="dlc" className="hidden lg:table-cell">DLC</SortHeader>
-                <th className="px-4 py-3 w-10"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {isLoading ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Chargement...</td></tr>
-              ) : filteredInventory.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Aucun ingrédient trouvé</td></tr>
-              ) : filteredInventory.map((item, idx) => {
-                const qty = parseFloat(item.current_quantity);
-                const threshold = parseFloat(item.minimum_threshold);
-                const isLow = threshold > 0 && qty <= threshold;
-                const isOut = qty <= 0;
-                const lotsCount = parseInt(item.active_lots_count) || 0;
-                const expiredCount = parseInt(item.expired_lots_count) || 0;
-                const expiringSoonCount = parseInt(item.expiring_soon_count) || 0;
-                const nearestDlc = item.nearest_dlc ? new Date(item.nearest_dlc) : null;
-                const daysUntilDlc = nearestDlc ? Math.ceil((nearestDlc.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                const pct = threshold > 0 ? Math.min(Math.round((qty / (threshold * 3)) * 100), 100) : (qty > 0 ? 100 : 0);
+      {/* ══════ TABLE Odoo (dense) ══════ */}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead>
+            <tr>
+              <th style={{ width: 24 }}></th>
+              <SortHeader col="name">Ingrédient</SortHeader>
+              <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
+              <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
+              <th
+                className="hidden md:table-cell"
+                style={{ textAlign: 'right' }}
+                title="Dernier prix d'achat saisi — base du cout estime des recettes">
+                Dernier prix
+              </th>
+              <SortHeader col="quantity" align="right">Stock</SortHeader>
+              <SortHeader col="lots" className="hidden lg:table-cell" align="right">Lots</SortHeader>
+              <SortHeader col="days_stock" className="hidden lg:table-cell" align="right">Jours stock</SortHeader>
+              <SortHeader col="dlc" className="hidden lg:table-cell">DLC</SortHeader>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>Chargement...</td></tr>
+            ) : filteredInventory.length === 0 ? (
+              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>Aucun ingrédient trouvé</td></tr>
+            ) : filteredInventory.map((item) => {
+              const qty = parseFloat(item.current_quantity);
+              const threshold = parseFloat(item.minimum_threshold);
+              const isLow = threshold > 0 && qty <= threshold;
+              const isOut = qty <= 0;
+              const lotsCount = parseInt(item.active_lots_count) || 0;
+              const expiredCount = parseInt(item.expired_lots_count) || 0;
+              const expiringSoonCount = parseInt(item.expiring_soon_count) || 0;
+              const nearestDlc = item.nearest_dlc ? new Date(item.nearest_dlc) : null;
+              const daysUntilDlc = nearestDlc ? Math.ceil((nearestDlc.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
 
-                return (
-                  <tr key={item.id} onClick={() => navigate(`/inventory/${item.ingredient_id}`)}
-                    className={`cursor-pointer transition-colors ${idx % 2 === 1 ? 'bg-gray-50/30' : ''} ${
-                      expiredCount > 0 ? 'hover:bg-red-50/40' : isLow ? 'hover:bg-amber-50/40' : 'hover:bg-violet-50/40'
+              const statusDot = expiredCount > 0 ? 'danger' :
+                isOut ? 'danger' :
+                isLow ? 'warning' :
+                expiringSoonCount > 0 ? 'warning' : 'ok';
+              const rowClass = expiredCount > 0 ? 'row-danger' : isLow ? 'row-warning' : '';
+
+              return (
+                <tr key={item.id} onClick={() => navigate(`/inventory/${item.ingredient_id}`)} className={rowClass}>
+                  <td><span className={`odoo-status-dot ${statusDot}`} /></td>
+                  <td><span style={{ fontWeight: 500 }}>{item.ingredient_name}</span></td>
+                  <td className="hidden sm:table-cell">
+                    <span className={`odoo-tag ${
+                      ['farines','pates_riz'].includes(item.category) ? 'odoo-tag-yellow' :
+                      ['sucres','decors'].includes(item.category) ? 'odoo-tag-purple' :
+                      ['produits_laitiers','gelifiants'].includes(item.category) ? 'odoo-tag-blue' :
+                      ['fruits','legumes','preparations'].includes(item.category) ? 'odoo-tag-green' :
+                      ['chocolat','viandes','epices','sauces','colorants'].includes(item.category) ? 'odoo-tag-red' :
+                      ['matieres_grasses','levures','conserves'].includes(item.category) ? 'odoo-tag-orange' :
+                      'odoo-tag-grey'
                     }`}>
-                    {/* Name */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-2 h-8 rounded-full shrink-0 ${
-                          expiredCount > 0 ? 'bg-red-500' : isOut ? 'bg-red-400' : isLow ? 'bg-amber-400' : expiringSoonCount > 0 ? 'bg-amber-300' : 'bg-emerald-400'
-                        }`} />
-                        <span className="font-medium text-sm text-gray-900">{item.ingredient_name}</span>
-                      </div>
-                    </td>
-                    {/* Category */}
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[item.category || 'autre'] || CATEGORY_COLORS.autre}`}>
-                        {INGREDIENT_CATEGORIES.find(c => c.value === (item.category || 'autre'))?.label || 'Autre'}
-                      </span>
-                    </td>
-                    {/* Supplier */}
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-xs text-gray-500">{item.supplier || '—'}</span>
-                    </td>
-                    {/* Dernier prix d'achat — base du cout estime des recettes */}
-                    <td className="px-4 py-3 hidden md:table-cell text-right">
-                      {(() => {
-                        const cost = parseFloat(item.unit_cost || '0');
-                        return cost > 0 ? (
-                          <span className="text-xs font-semibold text-gray-700">
-                            {cost.toFixed(2)} <span className="text-[10px] text-gray-400">DH/{item.unit}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-gray-300">—</span>
-                        );
-                      })()}
-                    </td>
-                    {/* Stock — split Économat / Pesage */}
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const economatQty = parseFloat(item.economat_quantity || '0');
-                        const pesageQty = parseFloat(item.pesage_quantity || '0');
-                        return (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-bold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-800'}`}>
-                                {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
-                              </span>
-                              <span className="text-[10px] text-gray-400">{item.unit}</span>
-                              <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden hidden sm:block">
-                                <div className={`h-full rounded-full ${isOut ? 'bg-red-500' : isLow ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                            <div className="flex gap-2 text-[9px]">
-                              <span className="text-amber-700" title="Stock scellé en Économat">
-                                <strong>{economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</strong> écon.
-                              </span>
-                              <span className="text-blue-700" title="Stock ouvert en Pesage">
-                                <strong>{pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</strong> pesage
-                              </span>
-                            </div>
+                      {INGREDIENT_CATEGORIES.find(c => c.value === (item.category || 'autre'))?.label || 'Autre'}
+                    </span>
+                  </td>
+                  <td className="hidden md:table-cell" style={{ color: '#6c757d' }}>{item.supplier || '—'}</td>
+                  <td className="hidden md:table-cell" style={{ textAlign: 'right' }}>
+                    {(() => {
+                      const cost = parseFloat(item.unit_cost || '0');
+                      return cost > 0 ? (
+                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: '#95a5a6', fontSize: '0.6875rem' }}>DH/{item.unit}</span></span>
+                      ) : <span style={{ color: '#95a5a6' }}>—</span>;
+                    })()}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {(() => {
+                      const economatQty = parseFloat(item.economat_quantity || '0');
+                      const pesageQty = parseFloat(item.pesage_quantity || '0');
+                      return (
+                        <div>
+                          <div style={{ fontWeight: 600, color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#2e3338' }}>
+                            {qty.toFixed(qty % 1 === 0 ? 0 : 1)} <span style={{ color: '#95a5a6', fontWeight: 400, fontSize: '0.6875rem' }}>{item.unit}</span>
                           </div>
-                        );
-                      })()}
-                    </td>
-                    {/* Lots */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {lotsCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">
-                          <Boxes size={10} /> {lotsCount}
+                          <div style={{ fontSize: '0.625rem', color: '#6c757d', marginTop: 2 }}>
+                            <span title="Économat">éc. {economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</span>
+                            <span style={{ margin: '0 0.25rem', color: '#dee2e6' }}>·</span>
+                            <span title="Pesage">pe. {pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="hidden lg:table-cell" style={{ textAlign: 'right' }}>
+                    {lotsCount > 0 ? (
+                      <span className="odoo-tag odoo-tag-blue">
+                        <Boxes size={9} /> {lotsCount}
+                      </span>
+                    ) : <span style={{ color: '#95a5a6' }}>—</span>}
+                  </td>
+                  <td className="hidden lg:table-cell" style={{ textAlign: 'right' }}>
+                    {(() => {
+                      const avgConso = parseFloat(item.avg_daily_consumption || '0');
+                      if (avgConso <= 0) return <span style={{ color: '#95a5a6' }}>—</span>;
+                      const daysOfStock = Math.round(qty / avgConso);
+                      return (
+                        <span style={{
+                          fontWeight: 600,
+                          color: daysOfStock <= 3 ? '#dc3545' : daysOfStock <= 7 ? '#b85d1a' : daysOfStock <= 14 ? '#1f6391' : '#28a745',
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                        }}>
+                          <Timer size={10} />{daysOfStock}j
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-gray-300">—</span>
-                      )}
-                    </td>
-                    {/* Jours de stock */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {(() => {
-                        const avgConso = parseFloat(item.avg_daily_consumption || '0');
-                        if (avgConso <= 0) return <span className="text-[10px] text-gray-300">—</span>;
-                        const daysOfStock = Math.round(qty / avgConso);
-                        return (
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold ${
-                            daysOfStock <= 3 ? 'text-red-600' : daysOfStock <= 7 ? 'text-amber-600' : daysOfStock <= 14 ? 'text-blue-600' : 'text-emerald-600'
-                          }`}>
-                            <Timer size={10} />
-                            {daysOfStock}j
+                      );
+                    })()}
+                  </td>
+                  <td className="hidden lg:table-cell">
+                    {nearestDlc ? (
+                      <span style={{
+                        fontWeight: 500,
+                        color: daysUntilDlc !== null && daysUntilDlc < 0 ? '#dc3545' :
+                          daysUntilDlc !== null && daysUntilDlc <= 7 ? '#b85d1a' : '#6c757d',
+                      }}>
+                        {format(nearestDlc, 'dd/MM/yy')}
+                        {daysUntilDlc !== null && daysUntilDlc <= 30 && (
+                          <span style={{ fontSize: '0.625rem', marginLeft: 4, opacity: 0.7 }}>
+                            ({daysUntilDlc < 0 ? `${Math.abs(daysUntilDlc)}j!` : `${daysUntilDlc}j`})
                           </span>
-                        );
-                      })()}
-                    </td>
-                    {/* DLC */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {nearestDlc ? (
-                        <span className={`text-xs font-medium ${
-                          daysUntilDlc !== null && daysUntilDlc < 0 ? 'text-red-600' :
-                          daysUntilDlc !== null && daysUntilDlc <= 7 ? 'text-amber-600' : 'text-gray-500'
-                        }`}>
-                          {format(nearestDlc, 'dd/MM/yy')}
-                          {daysUntilDlc !== null && daysUntilDlc <= 30 && (
-                            <span className="text-[10px] ml-1 font-normal">({daysUntilDlc < 0 ? `${Math.abs(daysUntilDlc)}j!` : `${daysUntilDlc}j`})</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-gray-300">—</span>
-                      )}
-                    </td>
-                    {/* Chevron */}
-                    <td className="px-4 py-3"><ChevronRight size={16} className="text-gray-300" /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        )}
+                      </span>
+                    ) : <span style={{ color: '#95a5a6' }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Add Ingredient Modal */}
@@ -614,35 +633,54 @@ export default function InventoryPage() {
   );
 }
 
-/* ─── Add Ingredient Modal ─── */
+/* ─── Add Ingredient Modal (Odoo style) ─── */
 function AddIngredientModal({ onClose, onSave, isLoading }: {
   onClose: () => void; onSave: (data: Record<string, any>) => void; isLoading: boolean;
 }) {
   const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', category: 'autre' });
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-violet-500 to-purple-600 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><Package size={20} className="text-white" /></div>
-            <div><h2 className="text-lg font-bold text-white">Nouvel ingrédient</h2><p className="text-sm text-white/70">Ajouter au suivi inventaire</p></div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Package size={16} style={{ color: '#714B67' }} />
+            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Nouvel ingrédient</h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
+          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, category: form.category }); }} className="p-5 space-y-4">
-          <div><label className="block text-sm font-medium mb-1">Nom de l'ingrédient *</label><input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Farine T55" autoFocus /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Unité</label>
+        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, category: form.category }); }}
+          style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Nom de l'ingrédient *</label>
+            <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Farine T55" autoFocus />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Unité</label>
               <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
                 <option value="kg">Kilogramme (kg)</option><option value="g">Gramme (g)</option><option value="l">Litre (l)</option><option value="ml">Millilitre (ml)</option><option value="unit">Unité</option>
-              </select></div>
-            <div><label className="block text-sm font-medium mb-1">Coût unitaire (DH)</label><input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} placeholder="0.00" required /></div>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Coût unitaire (DH)</label>
+              <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} placeholder="0.00" required />
+            </div>
           </div>
-          <div><label className="block text-sm font-medium mb-1">Catégorie</label><select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
-          <div><label className="block text-sm font-medium mb-1">Fournisseur</label><input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Nom du fournisseur" /></div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-            <button type="submit" disabled={isLoading} className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-violet-600 hover:bg-violet-700 transition-colors disabled:opacity-50">{isLoading ? 'Ajout...' : 'Ajouter'}</button>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Catégorie</label>
+            <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
+            <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Nom du fournisseur" />
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6', marginTop: '0.25rem' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
+              <Save size={13} /> {isLoading ? 'Sauvegarde...' : 'Sauvegarder'}
+            </button>
           </div>
         </form>
       </div>
@@ -670,53 +708,51 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
   const pesageQty = parseFloat(lot.pesage_quantity as string) || 0;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="px-5 py-4 border-b border-red-100 bg-gradient-to-r from-red-50 to-orange-50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-red-500 flex items-center justify-center shrink-0">
-            <Trash2 size={18} className="text-white" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fdf0ed' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Trash2 size={16} style={{ color: '#dc3545' }} />
+            <div>
+              <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#721c24' }}>Envoyer aux pertes</h3>
+              <p style={{ fontSize: '0.75rem', color: '#721c24', opacity: 0.85, marginTop: 1 }}>Action irréversible — le lot sera retiré du stock.</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-red-900">Envoyer aux pertes</h3>
-            <p className="text-xs text-red-700 mt-0.5">Action irréversible — le lot sera retiré du stock.</p>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-red-100 rounded-lg">
-            <X size={18} className="text-red-700" />
-          </button>
+          <button onClick={onClose} style={{ padding: 4, color: '#721c24' }}><X size={16} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           {/* Recap lot */}
-          <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">Produit</span>
-              <span className="font-semibold text-gray-900">{lot.ingredient_name as string}</span>
+          <div style={{ border: '1px solid #dee2e6', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.625rem 0.75rem', fontSize: '0.8125rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
+              <span style={{ color: '#6c757d' }}>Produit</span>
+              <span style={{ fontWeight: 600 }}>{lot.ingredient_name as string}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">N° lot</span>
-              <span className="font-mono text-xs text-gray-700">{(lot.lot_number as string) || '?'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
+              <span style={{ color: '#6c757d' }}>N° lot</span>
+              <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{(lot.lot_number as string) || '?'}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-500">Stock à retirer</span>
-              <span className="font-bold text-red-700">
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
+              <span style={{ color: '#6c757d' }}>Stock à retirer</span>
+              <span style={{ fontWeight: 600, color: '#721c24' }}>
                 {totalQty.toFixed(2)} {lot.ingredient_unit as string}
-                <span className="text-xs text-gray-400 ml-1">
+                <span style={{ fontSize: '0.6875rem', color: '#95a5a6', marginLeft: 4 }}>
                   ({economatQty > 0 ? `${economatQty.toFixed(1)} écon.` : ''}
                   {economatQty > 0 && pesageQty > 0 ? ' + ' : ''}
                   {pesageQty > 0 ? `${pesageQty.toFixed(1)} pesage` : ''})
                 </span>
               </span>
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-gray-200">
-              <span className="text-gray-500">Valeur perdue</span>
-              <span className="font-bold text-red-700">{lostValue.toFixed(2)} DH</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0 0', borderTop: '1px solid #dee2e6', marginTop: '0.25rem' }}>
+              <span style={{ color: '#6c757d' }}>Valeur perdue</span>
+              <span style={{ fontWeight: 600, color: '#721c24' }}>{lostValue.toFixed(2)} DH</span>
             </div>
           </div>
 
           {/* Motif */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Motif</label>
-            <div className="grid grid-cols-2 gap-2">
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 6 }}>Motif</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
               {([
                 { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption dépassée' },
                 { v: 'damaged', label: 'Endommagé', sub: 'Casse, contamination' },
@@ -724,13 +760,16 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
                 { v: 'other', label: 'Autre', sub: 'Préciser dans la note' },
               ] as const).map(opt => (
                 <button key={opt.v} type="button" onClick={() => setReason(opt.v)}
-                  className={`px-3 py-2 rounded-lg border text-left transition-all ${
-                    reason === opt.v
-                      ? 'border-red-400 bg-red-50 ring-2 ring-red-200'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}>
-                  <div className="text-sm font-semibold text-gray-900">{opt.label}</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">{opt.sub}</div>
+                  style={{
+                    padding: '0.5rem 0.625rem',
+                    borderRadius: 3,
+                    border: `1px solid ${reason === opt.v ? '#714B67' : '#dee2e6'}`,
+                    backgroundColor: reason === opt.v ? '#f3edf2' : '#fff',
+                    textAlign: 'left',
+                    boxShadow: reason === opt.v ? 'inset 0 0 0 1px #714B67' : 'none',
+                  }}>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#2e3338' }}>{opt.label}</div>
+                  <div style={{ fontSize: '0.6875rem', color: '#6c757d', marginTop: 1 }}>{opt.sub}</div>
                 </button>
               ))}
             </div>
@@ -738,21 +777,17 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
 
           {/* Note optionnelle */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
               placeholder="Détails additionnels..."
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500" />
+              className="input" style={{ width: '100%' }} />
           </div>
 
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
-              Annuler
-            </button>
-            <button onClick={() => onConfirm(reason, note || undefined)}
-              disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
-              {isPending ? 'Envoi...' : <><Trash2 size={14} /> Confirmer l&apos;envoi aux pertes</>}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+            <button type="button" onClick={onClose} disabled={isPending} className="odoo-btn-secondary">Annuler</button>
+            <button onClick={() => onConfirm(reason, note || undefined)} disabled={isPending}
+              className="odoo-btn-primary" style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}>
+              <Trash2 size={13} /> {isPending ? 'Envoi...' : 'Envoyer aux pertes'}
             </button>
           </div>
         </div>

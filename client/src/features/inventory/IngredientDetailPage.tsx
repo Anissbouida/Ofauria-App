@@ -7,8 +7,9 @@ import { suppliersApi } from '../../api/accounting.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
-  ChevronDown, ChevronRight, Factory, TrendingDown, Trash2, Edit3,
+  ChevronDown, ChevronRight, ChevronLeft, Factory, TrendingDown, Trash2, Edit3,
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
+  Warehouse,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
@@ -295,151 +296,120 @@ export default function IngredientDetailPage() {
   const quarantinedLots = lots.filter(l => l.status === 'quarantine');
 
   return (
-    <div className="space-y-4">
-      {/* ══════ HERO HEADER ══════ */}
-      <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-2xl p-6 text-white relative overflow-hidden shadow-lg">
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
-        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full" />
-
-        <div className="relative">
-          {/* Back + Title */}
-          <div className="flex items-start justify-between gap-4 mb-5">
-            <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/inventory')}
-                className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold">{ingredientName}</h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium bg-white/20`}>
-                    {INGREDIENT_CATEGORIES.find(c => c.value === category)?.label || 'Autre'}
-                  </span>
-                  {supplier ? <span className="text-xs text-white/60">{supplier}</span> : null}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowEdit(true)}
-                className="p-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl transition-all">
-                <Edit3 size={16} />
-              </button>
-              <button onClick={() => setShowOrderRequest(true)}
-                className="px-4 py-2.5 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-xl font-medium transition-all flex items-center gap-2 text-sm">
-                <ShoppingCart size={16} /> Commander
-              </button>
-            </div>
-          </div>
-
-          {/* Stat Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <p className={`text-2xl font-bold ${isOut ? 'text-red-200' : isLow ? 'text-amber-200' : ''}`}>
-                {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
-              </p>
-              <p className="text-xs text-white/70 flex items-center justify-center gap-1">
-                <Package size={12} /> Stock ({unit})
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold">{threshold.toFixed(0)}</p>
-              <p className="text-xs text-white/70 flex items-center justify-center gap-1">
-                <AlertTriangle size={12} /> Seuil min
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold">{lotsCount}</p>
-              <p className="text-xs text-white/70 flex items-center justify-center gap-1">
-                <Boxes size={12} /> Lots actifs
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold">{unitCost.toFixed(2)}</p>
-              <p className="text-xs text-white/70 flex items-center justify-center gap-1">
-                DH/{unit}
-              </p>
-            </div>
-          </div>
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR (breadcrumb + actions + pager) ══════ */}
+      <div className="odoo-control-bar">
+        <button onClick={() => navigate('/inventory')} className="odoo-pager-btn" title="Retour à la liste">
+          <ArrowLeft size={14} />
+        </button>
+        <div className="odoo-breadcrumb">
+          <Warehouse size={14} style={{ color: '#714B67' }} />
+          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/inventory')}>Économat</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">{ingredientName || '—'}</span>
         </div>
+        <button onClick={() => setShowEdit(true)} className="odoo-btn-secondary">
+          <Edit3 size={13} /> Modifier
+        </button>
+        <button onClick={() => setShowAdjust(true)} className="odoo-btn-secondary">
+          <TrendingDown size={13} /> Ajuster
+        </button>
+        <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
+          <ShoppingCart size={13} /> Commander
+        </button>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowDelete(true)} className="odoo-btn-danger" title="Supprimer">
+          <Trash2 size={13} />
+        </button>
       </div>
 
-      {/* ══════ STATUS ALERTS ══════ */}
+      {/* ══════ STATUS ALERTS (sober) ══════ */}
       {isLow && (
-        <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3 bg-gradient-to-r from-amber-50 to-yellow-50 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center">
-              <AlertTriangle size={14} className="text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-amber-700">Stock bas</p>
-              <p className="text-xs text-amber-600">
-                {qty.toFixed(1)} {unit} restant(s) — seuil minimum: {threshold.toFixed(0)} {unit}
-              </p>
-            </div>
-            <button onClick={() => setShowOrderRequest(true)}
-              className="ml-auto text-xs font-medium text-amber-700 hover:text-amber-800 bg-amber-100 px-3 py-1.5 rounded-lg flex items-center gap-1">
-              <ShoppingCart size={12} /> Demander
-            </button>
+        <div className="odoo-alert warning">
+          <AlertTriangle size={14} style={{ color: '#856404', marginTop: 2, flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <span className="odoo-alert-title">Stock bas</span> — {qty.toFixed(1)} {unit} restant(s), seuil minimum {threshold.toFixed(0)} {unit}
           </div>
+          <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>
+            <ShoppingCart size={11} /> Demander
+          </button>
         </div>
       )}
       {expiredCount > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
-          <div className="px-5 py-3 bg-gradient-to-r from-red-50 to-rose-50 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <CalendarClock size={14} className="text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-red-700">{expiredCount} lot(s) expiré(s)</p>
-              <p className="text-xs text-red-600">Des lots actifs ont dépassé leur date limite de consommation</p>
-            </div>
+        <div className="odoo-alert danger">
+          <CalendarClock size={14} style={{ color: '#721c24', marginTop: 2, flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <span className="odoo-alert-title">{expiredCount} lot(s) expiré(s)</span> — des lots actifs ont dépassé leur date limite de consommation.
           </div>
         </div>
       )}
 
-      {/* ══════ ACTIONS BAR ══════ */}
-      <div className="flex gap-2 flex-wrap">
-        <button onClick={() => setShowAdjust(true)}
-          className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm">
-          <TrendingDown size={14} /> Ajuster le stock
-        </button>
-        <button onClick={() => setShowDelete(true)}
-          className="px-4 py-2 bg-white border border-red-200 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 shadow-sm">
-          <Trash2 size={14} /> Supprimer
-        </button>
+      {/* ══════ SMART BUTTONS ROW ══════ */}
+      <div className="odoo-smart-button-row">
+        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')}>
+          <div className="odoo-smart-button-value" style={{ color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#714B67' }}>
+            {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
+          </div>
+          <div className="odoo-smart-button-label"><Package size={11} /> Stock ({unit})</div>
+        </div>
+        <div className="odoo-smart-button" onClick={() => setShowEdit(true)}>
+          <div className="odoo-smart-button-value">{threshold.toFixed(0)}</div>
+          <div className="odoo-smart-button-label"><AlertTriangle size={11} /> Seuil min</div>
+        </div>
+        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')}>
+          <div className="odoo-smart-button-value">{lotsCount}</div>
+          <div className="odoo-smart-button-label"><Boxes size={11} /> Lots actifs</div>
+        </div>
+        <div className="odoo-smart-button">
+          <div className="odoo-smart-button-value">{unitCost.toFixed(2)}</div>
+          <div className="odoo-smart-button-label">DH / {unit}</div>
+        </div>
       </div>
 
-      {/* ══════ TABS ══════ */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-        <button onClick={() => setActiveTab('lots')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'lots' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+      {/* ══════ FORM HEADER (title + category + supplier) ══════ */}
+      <div className="odoo-form-header">
+        <h1 className="odoo-form-title">{ingredientName}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6 }}>
+          <span className={`odoo-tag ${
+            ['farines','pates_riz'].includes(category) ? 'odoo-tag-yellow' :
+            ['sucres','decors'].includes(category) ? 'odoo-tag-purple' :
+            ['produits_laitiers','gelifiants'].includes(category) ? 'odoo-tag-blue' :
+            ['fruits','legumes','preparations'].includes(category) ? 'odoo-tag-green' :
+            ['chocolat','viandes','epices','sauces','colorants'].includes(category) ? 'odoo-tag-red' :
+            ['matieres_grasses','levures','conserves'].includes(category) ? 'odoo-tag-orange' :
+            'odoo-tag-grey'
           }`}>
-          <span className="flex items-center gap-2"><ShieldCheck size={14} /> Lots & Traçabilité</span>
+            {INGREDIENT_CATEGORIES.find(c => c.value === category)?.label || 'Autre'}
+          </span>
+          {supplier && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>{supplier}</span>}
+          {isLow && <span className="odoo-tag odoo-tag-orange">STOCK BAS</span>}
+          {expiredCount > 0 && <span className="odoo-tag odoo-tag-red">LOT EXPIRÉ</span>}
+        </div>
+      </div>
+
+      {/* ══════ TABS Odoo (notebook) ══════ */}
+      <div className="odoo-tabs">
+        <button onClick={() => setActiveTab('lots')}
+          className={`odoo-tab ${activeTab === 'lots' ? 'active' : ''}`}>
+          <ShieldCheck size={13} /> Lots &amp; Traçabilité
         </button>
         <button onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'history' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}>
-          <span className="flex items-center gap-2"><Clock size={14} /> Historique</span>
+          className={`odoo-tab ${activeTab === 'history' ? 'active' : ''}`}>
+          <Clock size={13} /> Historique
         </button>
       </div>
 
       {/* ══════ LOTS TAB ══════ */}
       {activeTab === 'lots' && (
-        <div className="space-y-4">
-          {/* Active lots */}
+        <div>
           {activeLots.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                  <Boxes size={12} className="text-white" />
-                </div>
-                <span className="text-sm font-bold text-emerald-700">Lots actifs ({activeLots.length})</span>
+            <div className="odoo-section">
+              <div className="odoo-section-header" style={{ color: '#28a745' }}>
+                <Boxes size={12} /> Lots actifs ({activeLots.length})
               </div>
-              <div className="divide-y divide-gray-50">
-                {activeLots.map((lot) => (
-                  <LotRow key={lot.id} lot={lot}
+              {activeLots.map((lot, i) => (
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                  <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
@@ -447,64 +417,58 @@ export default function IngredientDetailPage() {
                     onWaste={() => wasteMutation.mutate(lot.id)}
                     onOpenContainer={isMagasinier ? () => setOpenContainerLot(lot) : undefined}
                   />
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Quarantined lots */}
           {quarantinedLots.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-orange-200 overflow-hidden">
-              <div className="px-5 py-3 border-b border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-                  <Shield size={12} className="text-white" />
-                </div>
-                <span className="text-sm font-bold text-orange-700">Quarantaine ({quarantinedLots.length})</span>
+            <div className="odoo-section">
+              <div className="odoo-section-header" style={{ color: '#b85d1a' }}>
+                <Shield size={12} /> Quarantaine ({quarantinedLots.length})
               </div>
-              <div className="divide-y divide-orange-50">
-                {quarantinedLots.map((lot) => (
-                  <LotRow key={lot.id} lot={lot}
+              {quarantinedLots.map((lot, i) => (
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                  <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
                     onWaste={() => wasteMutation.mutate(lot.id)}
                   />
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Depleted lots */}
           {depletedLots.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-slate-50 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-gray-400 to-slate-400 flex items-center justify-center">
-                  <Package size={12} className="text-white" />
-                </div>
-                <span className="text-sm font-bold text-gray-500">Lots épuisés ({depletedLots.length})</span>
+            <div className="odoo-section">
+              <div className="odoo-section-header">
+                <Package size={12} /> Lots épuisés ({depletedLots.length})
               </div>
-              <div className="divide-y divide-gray-50">
-                {depletedLots.slice(0, 10).map((lot) => (
-                  <LotRow key={lot.id} lot={lot}
+              {depletedLots.slice(0, 10).map((lot, i) => (
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                  <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
                     traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
                   />
-                ))}
-                {depletedLots.length > 10 && (
-                  <div className="px-5 py-2 text-xs text-gray-400 text-center">
-                    + {depletedLots.length - 10} lots épuisés supplémentaires
-                  </div>
-                )}
-              </div>
+                </div>
+              ))}
+              {depletedLots.length > 10 && (
+                <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: '#6c757d', textAlign: 'center', borderTop: '1px solid #dee2e6' }}>
+                  + {depletedLots.length - 10} lots épuisés supplémentaires
+                </div>
+              )}
             </div>
           )}
 
           {lots.length === 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center text-gray-400">
-              <Boxes size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun lot enregistré pour cet ingrédient</p>
-              <p className="text-xs mt-1">Les lots sont créés automatiquement lors de la réception des bons de commande</p>
+            <div className="odoo-section">
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>
+                <Boxes size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                <p style={{ fontSize: '0.8125rem' }}>Aucun lot enregistré pour cet ingrédient</p>
+                <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Les lots sont créés automatiquement lors de la réception des bons de commande</p>
+              </div>
             </div>
           )}
         </div>
@@ -512,21 +476,18 @@ export default function IngredientDetailPage() {
 
       {/* ══════ HISTORY TAB ══════ */}
       {activeTab === 'history' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-purple-50 flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
-              <Clock size={12} className="text-white" />
-            </div>
-            <span className="text-sm font-bold text-violet-700">Historique des mouvements</span>
+        <div className="odoo-section">
+          <div className="odoo-section-header">
+            <Clock size={12} /> Historique des mouvements
           </div>
           {(transactions as Transaction[]).length === 0 ? (
-            <div className="p-8 text-center text-gray-400">
-              <Clock size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun mouvement enregistré</p>
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>
+              <Clock size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '0.8125rem' }}>Aucun mouvement enregistré</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {(transactions as Transaction[]).map((tx) => {
+            <div>
+              {(transactions as Transaction[]).map((tx, i) => {
                 const isPositive = parseFloat(tx.quantity_change) > 0;
                 const initials = tx.performed_by_first
                   ? `${tx.performed_by_first[0]}${(tx.performed_by_last || '')[0] || ''}`.toUpperCase()
@@ -536,38 +497,45 @@ export default function IngredientDetailPage() {
                   tx.performed_by_role === 'baker' ? 'Boulanger' :
                   tx.performed_by_role === 'cashier' ? 'Caissier' : '';
                 return (
-                  <div key={tx.id} className="px-5 py-3 flex items-center gap-3 hover:bg-gray-50/50 transition-colors">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      isPositive ? 'bg-emerald-100' : 'bg-red-100'
-                    }`}>
-                      {tx.type === 'restock' ? <Package size={14} className="text-emerald-600" /> :
-                       tx.type === 'purchase_order' ? <Package size={14} className="text-emerald-600" /> :
-                       tx.type === 'production' ? <Factory size={14} className="text-blue-600" /> :
-                       tx.type === 'adjustment' ? <TrendingDown size={14} className="text-amber-600" /> :
-                       tx.type === 'waste' ? <Ban size={14} className="text-red-600" /> :
-                       tx.type === 'usage' ? <Beaker size={14} className="text-orange-600" /> :
-                       <Beaker size={14} className="text-gray-500" />}
+                  <div key={tx.id} style={{
+                    padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
+                    borderTop: i > 0 ? '1px solid #dee2e6' : 'none', fontSize: '0.8125rem',
+                  }}>
+                    <div style={{
+                      width: 24, height: 24, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: isPositive ? '#d4edda' : '#f8d7da', flexShrink: 0,
+                    }}>
+                      {tx.type === 'restock' ? <Package size={12} style={{ color: '#155724' }} /> :
+                       tx.type === 'purchase_order' ? <Package size={12} style={{ color: '#155724' }} /> :
+                       tx.type === 'production' ? <Factory size={12} style={{ color: '#1f6391' }} /> :
+                       tx.type === 'adjustment' ? <TrendingDown size={12} style={{ color: '#b85d1a' }} /> :
+                       tx.type === 'waste' ? <Ban size={12} style={{ color: '#721c24' }} /> :
+                       tx.type === 'usage' ? <Beaker size={12} style={{ color: '#b85d1a' }} /> :
+                       <Beaker size={12} style={{ color: '#6c757d' }} />}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, color: '#2e3338' }}>
                         {tx.type === 'restock' ? 'Réapprovisionnement' :
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
                          tx.type === 'adjustment' ? 'Ajustement' :
                          tx.type === 'waste' ? 'Perte / Déchet' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">
-                          <span className="w-3.5 h-3.5 rounded-full bg-violet-200 text-violet-800 flex items-center justify-center text-[7px] font-bold">{initials}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '0.6875rem', color: '#6c757d' }}>
+                        <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.625rem' }}>
+                          <span style={{
+                            width: 12, height: 12, borderRadius: '50%', backgroundColor: '#efe6ee',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 700,
+                          }}>{initials}</span>
                           {tx.performed_by_name || 'Système'}
                         </span>
-                        {roleLabel && <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500 font-medium">{roleLabel}</span>}
-                        <span className="text-[10px] text-gray-400">{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                        {roleLabel && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.625rem' }}>{roleLabel}</span>}
+                        <span>{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
                       </div>
-                      {tx.note && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{tx.note}</p>}
+                      {tx.note && <div style={{ fontSize: '0.75rem', color: '#6c757d', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
                     </div>
-                    <span className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <span style={{ fontWeight: 600, color: isPositive ? '#28a745' : '#dc3545', flexShrink: 0 }}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
                     </span>
                   </div>
@@ -610,27 +578,22 @@ export default function IngredientDetailPage() {
       )}
 
       {showDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-red-500 to-rose-600 p-5 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                <Trash2 size={20} className="text-white" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Supprimer</h2>
-                <p className="text-sm text-white/70">Action irréversible</p>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#fdf0ed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Trash2 size={16} style={{ color: '#dc3545' }} />
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#721c24' }}>Supprimer l'ingrédient</h2>
             </div>
-            <div className="p-5 space-y-4">
-              <p className="text-sm text-gray-600">
+            <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
+              <p style={{ fontSize: '0.8125rem', color: '#2e3338', marginBottom: '1rem' }}>
                 Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
               </p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowDelete(false)} className="btn-secondary flex-1">Annuler</button>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid #dee2e6', paddingTop: '0.75rem' }}>
+                <button onClick={() => setShowDelete(false)} className="odoo-btn-secondary">Annuler</button>
                 <button onClick={() => deleteIngredientMutation.mutate()}
                   disabled={deleteIngredientMutation.isPending}
-                  className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50">
-                  {deleteIngredientMutation.isPending ? 'Suppression...' : 'Supprimer'}
+                  className="odoo-btn-primary" style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}>
+                  <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression...' : 'Supprimer'}
                 </button>
               </div>
             </div>
@@ -676,59 +639,41 @@ function OpenContainerModal({ lot, onClose, onSave, isLoading }: {
   const isValid = !isNaN(qty) && qty > 0 && qty <= economat;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            <Package size={20} className="text-white" />
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Package size={16} style={{ color: '#714B67' }} />
           <div>
-            <h2 className="text-lg font-bold text-white">Ouvrir contenant</h2>
-            <p className="text-sm text-white/80">Transfert Economat → Pesage</p>
+            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Ouvrir contenant</h2>
+            <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>Transfert Économat → Pesage</p>
           </div>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-            <div className="font-semibold mb-1">Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</div>
-            <div>Economat dispo : <strong className="font-mono">{economat.toFixed(2)} {lot.ingredient_unit}</strong></div>
+        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
+          <div style={{ border: '1px solid #dee2e6', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#2e3338' }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</div>
+            <div>Économat dispo : <strong style={{ fontFamily: 'monospace' }}>{economat.toFixed(2)} {lot.ingredient_unit}</strong></div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
-              Quantite a transferer
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number" step="0.01" min="0" max={economat}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                autoFocus
-                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
-              />
-              <span className="text-sm text-gray-500 font-medium">{lot.ingredient_unit}</span>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité à transférer</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="number" step="0.01" min="0" max={economat} value={quantity}
+                onChange={(e) => setQuantity(e.target.value)} autoFocus
+                className="input" style={{ flex: 1, fontFamily: 'monospace', textAlign: 'right' }} />
+              <span style={{ fontSize: '0.8125rem', color: '#6c757d', fontWeight: 500 }}>{lot.ingredient_unit}</span>
             </div>
             {qty > economat && (
-              <p className="text-xs text-red-600 mt-1.5">Depasse la qty Economat dispo ({economat.toFixed(2)})</p>
+              <p style={{ fontSize: '0.75rem', color: '#dc3545', marginTop: 4 }}>Dépasse la qté Économat dispo ({economat.toFixed(2)})</p>
             )}
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
-              Motif (optionnel)
-            </label>
-            <input
-              type="text" value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="Ex : Pre-ouverture matin, reorganisation..."
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none"
-            />
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Motif (optionnel)</label>
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder="Ex : Pré-ouverture matin, réorganisation..." className="input" />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose}
-              className="flex-1 py-2.5 px-4 rounded-xl text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 transition-colors">
-              Annuler
-            </button>
-            <button onClick={() => onSave(qty, note.trim() || undefined)}
-              disabled={!isValid || isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
-              {isLoading ? 'Transfert...' : 'Transferer'}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+            <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button onClick={() => onSave(qty, note.trim() || undefined)} disabled={!isValid || isLoading} className="odoo-btn-primary">
+              <Truck size={13} /> {isLoading ? 'Transfert...' : 'Transférer'}
             </button>
           </div>
         </div>
@@ -768,48 +713,43 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-teal-500 to-emerald-600 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <ShoppingCart size={20} className="text-white" />
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShoppingCart size={16} style={{ color: '#714B67' }} />
             <div>
-              <h2 className="text-lg font-bold text-white">Demande d'achat</h2>
-              <p className="text-sm text-white/70">{ingredientName}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Demande d'achat</h2>
+              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={18} className="text-white" />
-          </button>
+          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const qty = parseFloat(form.quantity);
           if (isNaN(qty) || qty <= 0) return;
           onSave({ quantity: qty, reason: form.reason, note: form.note || undefined, supplierId: form.supplierId || null });
-        }} className="p-5 space-y-4">
-          <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 text-xs text-teal-700">
-            Cette demande sera ajoutée à la liste d'attente d'achat.
-            Le manager pourra ensuite générer un bon de commande regroupé par fournisseur.
+        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
+          <div style={{ border: '1px solid #d6e9f8', borderRadius: 4, backgroundColor: '#eaf3fb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#1f6391' }}>
+            Cette demande sera ajoutée à la liste d'attente d'achat. Le manager pourra ensuite générer un bon de commande regroupé par fournisseur.
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Fournisseur</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
             <select className="input" value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })}>
-              <option value="">-- Aucun fournisseur --</option>
+              <option value="">— Aucun fournisseur —</option>
               {(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => (
                 <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Quantité à commander ({unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité à commander ({unit})</label>
             <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
               onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Motif</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Motif</label>
             <select className="input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
               <option value="stock_bas">Stock bas</option>
               <option value="production">Besoin production</option>
@@ -818,15 +758,14 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
             <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
               placeholder="Contexte de la demande..." />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-            <button type="submit" disabled={isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-teal-600 hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-              <ShoppingCart size={14} /> {isLoading ? 'Ajout...' : 'Ajouter à la liste'}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
+              <ShoppingCart size={13} /> {isLoading ? 'Ajout...' : 'Ajouter à la liste'}
             </button>
           </div>
         </form>
@@ -855,141 +794,132 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
     ? Math.ceil((new Date(lot.expiration_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
 
+  const dotClass = lot.status === 'quarantine' ? 'warning' :
+    lot.status === 'waste' ? 'neutral' :
+    remaining <= 0 ? 'neutral' :
+    isExpired ? 'danger' :
+    daysUntil !== null && daysUntil <= 7 ? 'warning' : 'ok';
+
   return (
     <div>
       <div onClick={onToggle}
-        className={`px-5 py-3 flex items-center gap-3 cursor-pointer transition-colors ${
-          lot.status === 'quarantine' ? 'hover:bg-orange-50/40' :
-          isExpired ? 'hover:bg-red-50/40' : 'hover:bg-violet-50/40'
-        }`}>
-        {/* Status dot */}
-        <div className={`w-2 h-8 rounded-full shrink-0 ${
-          lot.status === 'quarantine' ? 'bg-orange-400' :
-          lot.status === 'waste' ? 'bg-gray-400' :
-          remaining <= 0 ? 'bg-gray-300' :
-          isExpired ? 'bg-red-500' :
-          daysUntil !== null && daysUntil <= 7 ? 'bg-amber-400' : 'bg-emerald-400'
-        }`} />
+        style={{
+          padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
+          cursor: 'pointer', backgroundColor: '#fff', fontSize: '0.8125rem',
+        }}>
+        <span className={`odoo-status-dot ${dotClass}`} />
 
-        {/* Lot info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-gray-800 font-mono">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#2e3338' }}>
               {lot.supplier_lot_number || lot.lot_number || '—'}
             </span>
-            {lot.status === 'quarantine' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">QUARANTAINE</span>
-            )}
-            {isExpired && lot.status === 'active' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">EXPIRÉ</span>
-            )}
+            {lot.status === 'quarantine' && <span className="odoo-tag odoo-tag-orange">QUARANTAINE</span>}
+            {isExpired && lot.status === 'active' && <span className="odoo-tag odoo-tag-red">EXPIRÉ</span>}
             {!isExpired && daysUntil !== null && daysUntil <= 7 && lot.status === 'active' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">{daysUntil}j</span>
+              <span className="odoo-tag odoo-tag-yellow">{daysUntil}j</span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
-            {lot.supplier_name ? <span>{lot.supplier_name}</span> : null}
-            {lot.unit_cost && parseFloat(lot.unit_cost) > 0 ? (
-              <span className="font-semibold text-gray-600">
+          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: '#6c757d', marginTop: 2 }}>
+            {lot.supplier_name && <span>{lot.supplier_name}</span>}
+            {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
+              <span style={{ fontWeight: 500 }}>
                 {parseFloat(lot.unit_cost).toFixed(2)} DH/{lot.ingredient_unit}
               </span>
-            ) : null}
+            )}
           </div>
         </div>
 
-        {/* Quantity */}
-        <div className="text-right shrink-0">
-          <p className="text-sm font-bold text-gray-800">
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontWeight: 600, color: '#2e3338' }}>
             {remaining.toFixed(1)} / {received.toFixed(1)} {lot.ingredient_unit}
-          </p>
-          {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 ? (
-            <p className="text-[10px] text-gray-400 mt-0.5">
-              Valeur: {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
-            </p>
-          ) : null}
-          <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1 ml-auto">
-            <div className={`h-full rounded-full ${pct > 50 ? 'bg-emerald-400' : pct > 20 ? 'bg-amber-400' : 'bg-red-400'}`}
-              style={{ width: `${pct}%` }} />
+          </div>
+          {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 && (
+            <div style={{ fontSize: '0.625rem', color: '#6c757d', marginTop: 2 }}>
+              Valeur : {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
+            </div>
+          )}
+          <div style={{ width: 64, height: 4, backgroundColor: '#e9ecef', borderRadius: 2, overflow: 'hidden', marginTop: 4, marginLeft: 'auto' }}>
+            <div style={{
+              height: '100%', width: `${pct}%`,
+              backgroundColor: pct > 50 ? '#28a745' : pct > 20 ? '#ffc107' : '#dc3545',
+            }} />
           </div>
         </div>
 
-        {/* Expand */}
-        <div className="shrink-0">
-          {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+        <div style={{ flexShrink: 0, color: '#95a5a6' }}>
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
       </div>
 
-      {/* Expanded Details */}
       {isExpanded && (
-        <div className="px-5 pb-4 pt-0">
-          <div className="ml-5 space-y-3">
+        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: '#f9fafb', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
             {/* Supply chain */}
-            <div className="bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl p-4 border border-violet-100">
-              <h4 className="text-xs font-bold text-violet-700 mb-3 flex items-center gap-1.5">
-                <ShieldCheck size={12} /> Chaîne d'approvisionnement
-              </h4>
-              <div className="flex items-center gap-2 flex-wrap">
-                {lot.purchase_order_number ? (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-xs bg-white px-2.5 py-1 rounded-lg border border-violet-200 text-violet-700 font-medium">
-                      <FileText size={10} /> BC: {lot.purchase_order_number}
-                    </span>
-                    <ChevronRight size={12} className="text-violet-300" />
-                  </>
-                ) : null}
-                {lot.reception_voucher_number ? (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-xs bg-white px-2.5 py-1 rounded-lg border border-violet-200 text-violet-700 font-medium">
-                      <Truck size={10} /> BR: {lot.reception_voucher_number}
-                    </span>
-                    <ChevronRight size={12} className="text-violet-300" />
-                  </>
-                ) : null}
-                <span className="inline-flex items-center gap-1 text-xs bg-white px-2.5 py-1 rounded-lg border border-violet-200 text-violet-700 font-bold">
-                  <Hash size={10} /> Lot fabriquant: {lot.supplier_lot_number || lot.lot_number || '—'}
-                </span>
+            <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#714B67', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <ShieldCheck size={11} /> Chaîne d'approvisionnement
               </div>
-              <div className="flex items-center gap-4 mt-3 text-xs text-violet-600">
-                {lot.expiration_date ? (
-                  <span className={`flex items-center gap-1 ${isExpired ? 'text-red-600 font-bold' : ''}`}>
-                    <CalendarClock size={10} /> DLC: {format(new Date(lot.expiration_date), 'dd/MM/yyyy')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                {lot.purchase_order_number && (
+                  <>
+                    <span className="odoo-tag odoo-tag-purple"><FileText size={9} /> BC : {lot.purchase_order_number}</span>
+                    <ChevronRight size={10} style={{ color: '#dee2e6' }} />
+                  </>
+                )}
+                {lot.reception_voucher_number && (
+                  <>
+                    <span className="odoo-tag odoo-tag-purple"><Truck size={9} /> BR : {lot.reception_voucher_number}</span>
+                    <ChevronRight size={10} style={{ color: '#dee2e6' }} />
+                  </>
+                )}
+                <span className="odoo-tag odoo-tag-purple"><Hash size={9} /> Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '0.6875rem', color: '#6c757d' }}>
+                {lot.expiration_date && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? '#dc3545' : '#6c757d', fontWeight: isExpired ? 600 : 400 }}>
+                    <CalendarClock size={10} /> DLC : {format(new Date(lot.expiration_date), 'dd/MM/yyyy')}
                   </span>
-                ) : null}
-                <span className="flex items-center gap-1">
-                  <Clock size={10} /> Reçu: {format(new Date(lot.received_at), 'dd/MM/yyyy')}
+                )}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <Clock size={10} /> Reçu : {format(new Date(lot.received_at), 'dd/MM/yyyy')}
                 </span>
-                {lot.manufactured_date ? (
-                  <span className="flex items-center gap-1">
-                    <Factory size={10} /> Fabriqué: {format(new Date(lot.manufactured_date), 'dd/MM/yyyy')}
+                {lot.manufactured_date && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <Factory size={10} /> Fabriqué : {format(new Date(lot.manufactured_date), 'dd/MM/yyyy')}
                   </span>
-                ) : null}
+                )}
               </div>
             </div>
 
-            {/* Forward traceability — productions */}
+            {/* Forward traceability */}
             {traceability.length > 0 && (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                <h4 className="text-xs font-bold text-blue-700 mb-3 flex items-center gap-1.5">
-                  <Factory size={12} /> Productions utilisant ce lot ({traceability.length})
-                </h4>
-                <div className="space-y-1.5">
+              <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#1f6391', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Factory size={11} /> Productions utilisant ce lot ({traceability.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {traceability.map((t) => (
                     <div key={t.id}
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/production/${t.production_plan_id}`; }}
-                      className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-blue-100 cursor-pointer hover:bg-blue-50/50 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <Factory size={12} className="text-blue-500" />
-                        <span className="text-xs font-medium text-gray-700">
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '0.25rem 0.5rem', borderRadius: 3, border: '1px solid #dee2e6',
+                        cursor: 'pointer', fontSize: '0.75rem',
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Factory size={11} style={{ color: '#1f6391' }} />
+                        <span style={{ fontWeight: 500 }}>
                           {format(new Date(t.plan_date), 'dd/MM/yyyy')} — {t.plan_type === 'morning' ? 'Matin' : t.plan_type === 'afternoon' ? 'Après-midi' : t.plan_type}
                         </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                          t.plan_status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                          t.plan_status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                        <span className={`odoo-tag ${
+                          t.plan_status === 'completed' ? 'odoo-tag-green' :
+                          t.plan_status === 'in_progress' ? 'odoo-tag-yellow' : 'odoo-tag-grey'
                         }`}>
                           {t.plan_status === 'completed' ? 'Terminé' : t.plan_status === 'in_progress' ? 'En cours' : t.plan_status}
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-blue-700">
+                      <span style={{ fontWeight: 600, color: '#1f6391' }}>
                         {parseFloat(t.quantity_used).toFixed(1)} {lot.ingredient_unit}
                       </span>
                     </div>
@@ -999,25 +929,25 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             )}
 
             {traceability.length === 0 && (
-              <div className="bg-blue-50/50 rounded-xl p-3 border border-blue-100 text-center">
-                <p className="text-xs text-blue-400">Aucune production liée à ce lot</p>
+              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: '#95a5a6', backgroundColor: '#fff', border: '1px solid #dee2e6', borderRadius: 3 }}>
+                Aucune production liée à ce lot
               </div>
             )}
 
-            {/* Repartition Economat / Pesage (visible si lot a des quantites par zone) */}
+            {/* Repartition Economat / Pesage */}
             {(economat > 0 || pesage > 0) && (
-              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-3 border border-amber-100">
-                <h4 className="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1.5">
-                  <Package size={12} /> Repartition par zone
-                </h4>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-amber-200">
-                    <div className="text-[10px] text-amber-600 uppercase tracking-wide font-semibold">Economat (scelle)</div>
-                    <div className="text-sm font-bold text-amber-900 font-mono">{economat.toFixed(2)} {lot.ingredient_unit}</div>
+              <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Package size={11} /> Répartition par zone
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ flex: 1, border: '1px solid #ffe5d0', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
+                    <div style={{ fontSize: '0.625rem', color: '#b85d1a', textTransform: 'uppercase', fontWeight: 600 }}>Économat (scellé)</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#b85d1a' }}>{economat.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
-                  <div className="flex-1 bg-white rounded-lg px-3 py-2 border border-emerald-200">
-                    <div className="text-[10px] text-emerald-600 uppercase tracking-wide font-semibold">Pesage (ouvert)</div>
-                    <div className="text-sm font-bold text-emerald-900 font-mono">{pesage.toFixed(2)} {lot.ingredient_unit}</div>
+                  <div style={{ flex: 1, border: '1px solid #d4edda', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
+                    <div style={{ fontSize: '0.625rem', color: '#28a745', textTransform: 'uppercase', fontWeight: 600 }}>Pesage (ouvert)</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#28a745' }}>{pesage.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
                 </div>
               </div>
@@ -1025,24 +955,22 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
             {/* Lot actions */}
             {(onQuarantine || onWaste || onOpenContainer) && lot.status === 'active' && remaining > 0 && (
-              <div className="flex gap-2 flex-wrap">
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 {onOpenContainer && economat > 0 && (
                   <button onClick={(e) => { e.stopPropagation(); onOpenContainer(); }}
-                    className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors flex items-center gap-1"
-                    title="Transferer une partie du contenant Economat vers le Pesage (ouverture)">
-                    <Package size={10} /> Ouvrir contenant → Pesage
+                    className="odoo-btn-secondary"
+                    title="Transférer une partie du contenant Économat vers le Pesage">
+                    <Package size={11} /> Ouvrir contenant → Pesage
                   </button>
                 )}
                 {onQuarantine && (
-                  <button onClick={(e) => { e.stopPropagation(); onQuarantine(); }}
-                    className="px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-colors flex items-center gap-1">
-                    <Shield size={10} /> Quarantaine
+                  <button onClick={(e) => { e.stopPropagation(); onQuarantine(); }} className="odoo-btn-secondary">
+                    <Shield size={11} /> Quarantaine
                   </button>
                 )}
                 {onWaste && (
-                  <button onClick={(e) => { e.stopPropagation(); onWaste(); }}
-                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1">
-                    <Ban size={10} /> Déchet
+                  <button onClick={(e) => { e.stopPropagation(); onWaste(); }} className="odoo-btn-danger">
+                    <Ban size={11} /> Déchet
                   </button>
                 )}
               </div>
@@ -1072,68 +1000,60 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-violet-500 to-purple-600 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Edit3 size={20} className="text-white" />
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Edit3 size={16} style={{ color: '#714B67' }} />
             <div>
-              <h2 className="text-lg font-bold text-white">Modifier</h2>
-              <p className="text-sm text-white/70">{ingredient.name as string}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Modifier l'ingrédient</h2>
+              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredient.name as string}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={18} className="text-white" />
-          </button>
+          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           onSave({
-            name: form.name,
-            unit: form.unit,
-            unitCost: parseFloat(form.unitCost) || 0,
-            supplier: form.supplier || undefined,
-            category: form.category,
+            name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0,
+            supplier: form.supplier || undefined, category: form.category,
             threshold: parseFloat(form.threshold) || 0,
           });
-        }} className="p-5 space-y-4">
+        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
-            <label className="block text-sm font-medium mb-1">Nom</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Nom</label>
             <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label className="block text-sm font-medium mb-1">Unité</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Unité</label>
               <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
                 <option value="kg">kg</option><option value="g">g</option><option value="l">l</option><option value="ml">ml</option><option value="unit">Unité</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Coût unitaire (DH)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Coût unitaire (DH)</label>
               <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Catégorie</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Catégorie</label>
             <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
               {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Fournisseur</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
             <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Seuil minimum d'alerte ({form.unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Seuil minimum d'alerte ({form.unit})</label>
             <input type="number" step="0.1" className="input" value={form.threshold} onChange={e => setForm({ ...form, threshold: e.target.value })} />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-            <button type="submit" disabled={isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-violet-600 hover:bg-violet-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-              <Save size={14} /> {isLoading ? 'Enregistrement...' : 'Enregistrer'}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
+              <Save size={13} /> {isLoading ? 'Enregistrement...' : 'Sauvegarder'}
             </button>
           </div>
         </form>
@@ -1156,32 +1076,27 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   const [form, setForm] = useState({ quantity: '', type: 'waste', note: '' });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <TrendingDown size={20} className="text-white" />
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <TrendingDown size={16} style={{ color: '#714B67' }} />
             <div>
-              <h2 className="text-lg font-bold text-white">Ajuster le stock</h2>
-              <p className="text-sm text-white/70">{ingredientName}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Ajuster le stock</h2>
+              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={18} className="text-white" />
-          </button>
+          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const qty = parseFloat(form.quantity);
           if (isNaN(qty) || qty <= 0) return;
-          // Signe : decrement pour perte/correction, increment pour restock.
           const signedQty = form.type === 'restock' ? qty : -qty;
           onSave({ quantity: signedQty, type: form.type, note: form.note || undefined });
-        }} className="p-5 space-y-4">
+        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
-            <label className="block text-sm font-medium mb-1">Type d'ajustement</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Type d'ajustement</label>
             <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
               <option value="waste">Perte / Casse</option>
               <option value="adjustment">Correction d'inventaire</option>
@@ -1189,20 +1104,19 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Quantité ({unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité ({unit})</label>
             <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
               onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
             <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
               placeholder="Raison de l'ajustement..." />
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-            <button type="submit" disabled={isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-amber-600 hover:bg-amber-700 transition-colors disabled:opacity-50">
-              {isLoading ? 'Ajustement...' : 'Ajuster'}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
+              <Save size={13} /> {isLoading ? 'Ajustement...' : 'Sauvegarder'}
             </button>
           </div>
         </form>

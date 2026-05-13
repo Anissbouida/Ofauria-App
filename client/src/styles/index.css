@@ -115,3 +115,450 @@
     border: 1px solid var(--theme-bg-separator);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STYLE ODOO — scopé via wrapper .odoo-scope
+   Neutralise le thème "boulangerie" (gris/cream) au profit d'un look
+   professionnel Odoo (blanc, violet #714B67, tableaux denses).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.odoo-scope {
+  --odoo-purple: #714B67;
+  --odoo-purple-hover: #5d3d54;
+  --odoo-purple-light: #f3edf2;
+  --odoo-bg: #ffffff;
+  --odoo-bg-alt: #f9fafb;
+  --odoo-bg-hover: #f0f4f8;
+  --odoo-border: #dee2e6;
+  --odoo-border-strong: #c5cdd6;
+  --odoo-text: #2e3338;
+  --odoo-text-muted: #6c757d;
+  --odoo-text-light: #95a5a6;
+
+  background-color: var(--odoo-bg) !important;
+  color: var(--odoo-text);
+  margin: -1.5rem;
+  min-height: calc(100vh - 3rem);
+}
+
+/* Reset thème boulangerie dans le scope Odoo */
+.odoo-scope .bg-white      { background-color: var(--odoo-bg) !important; }
+.odoo-scope .bg-gray-50    { background-color: var(--odoo-bg-alt) !important; }
+.odoo-scope .bg-gray-100   { background-color: var(--odoo-bg-alt) !important; }
+.odoo-scope .border-gray-100 { border-color: var(--odoo-border) !important; }
+.odoo-scope .border-gray-200 { border-color: var(--odoo-border) !important; }
+.odoo-scope .text-gray-900,
+.odoo-scope .text-gray-800 { color: var(--odoo-text) !important; }
+.odoo-scope .text-gray-700,
+.odoo-scope .text-gray-600 { color: var(--odoo-text) !important; }
+.odoo-scope .text-gray-500,
+.odoo-scope .text-gray-400 { color: var(--odoo-text-muted) !important; }
+.odoo-scope .text-gray-300 { color: var(--odoo-text-light) !important; }
+.odoo-scope .hover\:bg-gray-50:hover  { background-color: var(--odoo-bg-hover) !important; }
+.odoo-scope .hover\:bg-gray-100:hover { background-color: var(--odoo-bg-hover) !important; }
+
+/* ── Control bar (top action strip) ── */
+.odoo-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 46px;
+  padding: 0 1rem;
+  background-color: var(--odoo-bg);
+  border-bottom: 1px solid var(--odoo-border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.odoo-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--odoo-text);
+}
+.odoo-breadcrumb-separator { color: var(--odoo-text-light); font-weight: 400; }
+.odoo-breadcrumb-current   { color: var(--odoo-text-muted); font-weight: 400; }
+
+.odoo-btn-primary {
+  background-color: var(--odoo-purple);
+  color: #fff;
+  padding: 0.375rem 0.875rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--odoo-purple);
+  transition: background-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.odoo-btn-primary:hover:not(:disabled) { background-color: var(--odoo-purple-hover); border-color: var(--odoo-purple-hover); }
+.odoo-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.odoo-btn-secondary {
+  background-color: var(--odoo-bg);
+  color: var(--odoo-text);
+  padding: 0.375rem 0.875rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--odoo-border-strong);
+  transition: background-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.odoo-btn-secondary:hover:not(:disabled) { background-color: var(--odoo-bg-hover); }
+
+.odoo-btn-danger {
+  background-color: #fff;
+  color: #c0392b;
+  padding: 0.375rem 0.875rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid #e8c4bf;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.odoo-btn-danger:hover:not(:disabled) { background-color: #fdf2f0; }
+
+/* ── Pagination + view switcher ── */
+.odoo-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--odoo-text-muted);
+}
+.odoo-pager-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--odoo-text-muted);
+}
+.odoo-pager-btn:hover:not(:disabled) { background-color: var(--odoo-bg-hover); color: var(--odoo-text); }
+.odoo-pager-btn:disabled { opacity: 0.3; }
+
+.odoo-view-switcher {
+  display: inline-flex;
+  border: 1px solid var(--odoo-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.odoo-view-switcher button {
+  padding: 0.375rem 0.5rem;
+  background-color: var(--odoo-bg);
+  color: var(--odoo-text-muted);
+  border-right: 1px solid var(--odoo-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.odoo-view-switcher button:last-child { border-right: none; }
+.odoo-view-switcher button.active { background-color: var(--odoo-bg-hover); color: var(--odoo-purple); }
+.odoo-view-switcher button:hover:not(.active) { background-color: var(--odoo-bg-hover); }
+
+/* ── Search panel ── */
+.odoo-search-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--odoo-bg-alt);
+  border-bottom: 1px solid var(--odoo-border);
+}
+.odoo-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.875rem;
+  color: var(--odoo-text);
+  padding: 0.25rem 0.5rem;
+}
+.odoo-search-input::placeholder { color: var(--odoo-text-light); }
+
+.odoo-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background-color: var(--odoo-bg);
+  border: 1px solid var(--odoo-border);
+  padding: 0.125rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: var(--odoo-purple);
+  font-weight: 500;
+}
+.odoo-filter-chip-remove {
+  margin-left: 0.125rem;
+  color: var(--odoo-text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+.odoo-filter-chip-remove:hover { color: var(--odoo-text); }
+
+.odoo-filter-dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  color: var(--odoo-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.odoo-filter-dropdown:hover { background-color: var(--odoo-bg-hover); color: var(--odoo-text); }
+
+/* ── Sober stat cards ── */
+.odoo-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0;
+  border-bottom: 1px solid var(--odoo-border);
+}
+.odoo-stat-card {
+  padding: 1rem 1.25rem;
+  border-right: 1px solid var(--odoo-border);
+  background-color: var(--odoo-bg);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  text-align: left;
+}
+.odoo-stat-card:last-child { border-right: none; }
+.odoo-stat-card:hover { background-color: var(--odoo-bg-hover); }
+.odoo-stat-card.active { background-color: var(--odoo-purple-light); box-shadow: inset 0 -2px 0 var(--odoo-purple); }
+.odoo-stat-card-label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--odoo-text-muted);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.odoo-stat-card-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--odoo-text);
+  line-height: 1.2;
+}
+.odoo-stat-card-sub {
+  font-size: 0.75rem;
+  color: var(--odoo-text-muted);
+  margin-top: 0.125rem;
+}
+
+/* ── Dense list table ── */
+.odoo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.odoo-table thead th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--odoo-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.625rem 0.75rem;
+  background-color: var(--odoo-bg-alt);
+  border-bottom: 1px solid var(--odoo-border-strong);
+  border-top: 1px solid var(--odoo-border);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.odoo-table thead th:hover { color: var(--odoo-text); }
+.odoo-table tbody tr {
+  border-bottom: 1px solid var(--odoo-border);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.odoo-table tbody tr:hover { background-color: var(--odoo-purple-light); }
+.odoo-table tbody td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+}
+.odoo-table tbody tr.row-warning { background-color: #fff8e8; }
+.odoo-table tbody tr.row-danger  { background-color: #fdf0ed; }
+
+/* ── Tags / badges ── */
+.odoo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.odoo-tag-purple  { background-color: #efe6ee; color: #714B67; }
+.odoo-tag-blue    { background-color: #d6e9f8; color: #1f6391; }
+.odoo-tag-green   { background-color: #d4edda; color: #155724; }
+.odoo-tag-orange  { background-color: #ffe5d0; color: #b85d1a; }
+.odoo-tag-red     { background-color: #f8d7da; color: #721c24; }
+.odoo-tag-yellow  { background-color: #fff3cd; color: #856404; }
+.odoo-tag-grey    { background-color: #e9ecef; color: #495057; }
+
+/* ── Status indicator dot (left of name) ── */
+.odoo-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.odoo-status-dot.ok      { background-color: #28a745; }
+.odoo-status-dot.warning { background-color: #ffc107; }
+.odoo-status-dot.danger  { background-color: #dc3545; }
+.odoo-status-dot.neutral { background-color: #adb5bd; }
+
+/* ── Alert banner sober ── */
+.odoo-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--odoo-border);
+  font-size: 0.8125rem;
+}
+.odoo-alert.danger { background-color: #fdf0ed; color: #721c24; border-bottom-color: #f5c6cb; }
+.odoo-alert.warning{ background-color: #fff8e8; color: #856404; border-bottom-color: #ffeeba; }
+.odoo-alert-title { font-weight: 600; }
+
+/* ── Section card (form view) ── */
+.odoo-section {
+  background-color: var(--odoo-bg);
+  border: 1px solid var(--odoo-border);
+  border-radius: 4px;
+  margin: 1rem;
+  overflow: hidden;
+}
+.odoo-section-header {
+  padding: 0.625rem 1rem;
+  background-color: var(--odoo-bg-alt);
+  border-bottom: 1px solid var(--odoo-border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--odoo-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Smart buttons (top of form view) ── */
+.odoo-smart-button-row {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--odoo-border);
+  background-color: var(--odoo-bg);
+}
+.odoo-smart-button {
+  flex: 0 0 auto;
+  min-width: 110px;
+  padding: 0.625rem 1rem;
+  border-right: 1px solid var(--odoo-border);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.odoo-smart-button:hover { background-color: var(--odoo-bg-hover); }
+.odoo-smart-button-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--odoo-purple);
+  line-height: 1.2;
+}
+.odoo-smart-button-label {
+  font-size: 0.6875rem;
+  color: var(--odoo-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+  margin-top: 0.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+/* ── Form header (title + status) ── */
+.odoo-form-header {
+  padding: 1rem 1.5rem 1.25rem;
+  background-color: var(--odoo-bg);
+  border-bottom: 1px solid var(--odoo-border);
+}
+.odoo-form-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--odoo-text);
+  margin: 0;
+}
+.odoo-form-subtitle {
+  font-size: 0.8125rem;
+  color: var(--odoo-text-muted);
+  margin-top: 0.25rem;
+}
+
+/* ── Tabs (Odoo notebook) ── */
+.odoo-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--odoo-border);
+  background-color: var(--odoo-bg);
+  padding: 0 1rem;
+}
+.odoo-tab {
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--odoo-text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.odoo-tab:hover { color: var(--odoo-text); }
+.odoo-tab.active {
+  color: var(--odoo-purple);
+  border-bottom-color: var(--odoo-purple);
+}
+
+/* ── Input fields in form view ── */
+.odoo-scope .input {
+  background-color: var(--odoo-bg);
+  border: 1px solid var(--odoo-border);
+  border-radius: 3px;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.5rem;
+  color: var(--odoo-text);
+}
+.odoo-scope .input:focus {
+  border-color: var(--odoo-purple);
+  box-shadow: 0 0 0 2px rgba(113, 75, 103, 0.15);
+}
+
+/* ── Sortable header arrow ── */
+.odoo-sort-arrow {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.625rem;
+  opacity: 0.4;
+}
+.odoo-sort-arrow.active { opacity: 1; color: var(--odoo-purple); }
