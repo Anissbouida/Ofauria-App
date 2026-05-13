@@ -10,11 +10,9 @@ import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs 
 import {
   Plus, Trash2, Factory, Calendar, ShoppingBag, Package, Search,
   Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
-  FileText, User, Snowflake, BarChart3,
+  FileText, User,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
 } from 'lucide-react';
-import StockFrigoPage from './StockFrigoPage';
-import ProductionDashboardPage from './ProductionDashboardPage';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -67,32 +65,9 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }
 
 export default function ProductionPage() {
-  const [activeView, setActiveView] = useState<'plans' | 'frigo' | 'dashboard'>('plans');
-
   return (
     <div className="space-y-5">
-      {/* Top-level tab switcher */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {([
-          { key: 'plans', label: 'Plans', icon: Factory },
-          { key: 'frigo', label: 'Stock Frigo', icon: Snowflake },
-          { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-        ] as const).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveView(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeView === tab.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <tab.icon size={16} /> {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeView === 'plans' ? <ProductionPlansView /> : activeView === 'frigo' ? <StockFrigoPage /> : <ProductionDashboardPage />}
+      <ProductionPlansView />
     </div>
   );
 }

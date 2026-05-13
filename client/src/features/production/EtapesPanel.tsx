@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { useProductionTimers } from '../../context/ProductionTimerContext';
 import {
   CheckCircle, Play, Clock, SkipForward, ListChecks, Timer,
-  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2
+  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock
 } from 'lucide-react';
 
 interface EtapesPanelProps {
   planId: string;
   planStatus: string;
   isChef: boolean;
+  onSaveAndExit?: () => void;
 }
 
 interface Etape {
@@ -47,10 +49,16 @@ const statusColors = {
 
 const statusLabels = { pending: 'A faire', in_progress: 'En cours', completed: 'Termine', skipped: 'Passe' };
 
-export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelProps) {
+export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit }: EtapesPanelProps) {
   const queryClient = useQueryClient();
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<Record<string, { label: string; ok: boolean }[]>>({});
+  const currentEtapeRef = useRef<HTMLDivElement | null>(null);
+  const autoScrolledRef = useRef(false);
+  // Le contexte timer est monte au root de l'app → l'alarme sonne sur n'importe
+  // quelle page tant que l'onglet reste ouvert. On lui pousse les timers d'etapes
+  // demarres ici pour beneficier du tick global et du son d'alarme.
+  const { startTimer: pushClientTimer, timers: clientTimers } = useProductionTimers();
 
   const { data: etapes = [], isLoading } = useQuery<Etape[]>({
     queryKey: ['production-etapes', planId],
@@ -74,9 +82,22 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
   });
 
   const timerMutation = useMutation({
-    mutationFn: (etapeId: string) => productionEtapesApi.startTimer(etapeId),
-    onSuccess: () => {
+    mutationFn: (etape: Etape) => productionEtapesApi.startTimer(etape.id).then(() => etape),
+    onSuccess: (etape) => {
       queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] });
+      // Synchronisation avec le contexte timer global : declenche l'alarme sonore
+      // a la fin meme si le chef navigue ailleurs dans l'app.
+      const alreadyTracked = clientTimers.some(t => t.etapeId === etape.id);
+      if (etape.duree_estimee_min && !alreadyTracked) {
+        pushClientTimer({
+          planId,
+          planItemId: etape.plan_item_id,
+          etapeId: etape.id,
+          stepName: etape.nom,
+          productName: etape.product_name,
+          durationMin: etape.duree_estimee_min,
+        });
+      }
       notify.success('Timer demarre');
     },
   });
@@ -88,6 +109,111 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
     },
   });
 
+  // Group by plan_item_id (memoized so the same Map is reused across renders).
+  const grouped = useMemo(() => {
+    const map = new Map<string, { productName: string; etapes: Etape[] }>();
+    for (const e of etapes) {
+      const key = e.plan_item_id;
+      if (!map.has(key)) map.set(key, { productName: e.product_name, etapes: [] });
+      map.get(key)!.etapes.push(e);
+    }
+    // Sort etapes by ordre within each group (defensive — backend should already do this).
+    for (const g of map.values()) g.etapes.sort((a, b) => a.ordre - b.ordre);
+    return map;
+  }, [etapes]);
+
+  // Identifie l'etape "courante" pour la reprise. Priorites :
+  // 1. Etape memorisee lors du "Enregistrer & quitter" (localStorage par planId)
+  //    → repositionnement exact, meme avec plusieurs produits.
+  // 2. Sinon, 1ere etape in_progress (dans n'importe quel groupe).
+  // 3. Sinon, dans le groupe contenant la derniere etape completee (le produit sur lequel
+  //    le chef travaillait), 1ere etape pending.
+  // 4. Sinon, 1ere etape pending globale.
+  const lastResumeKey = `ofauria_resume_etape_${planId}`;
+  const currentEtape = useMemo<{ etape: Etape; itemId: string } | null>(() => {
+    // 1. Etape memorisee
+    try {
+      const memorized = localStorage.getItem(lastResumeKey);
+      if (memorized) {
+        for (const [itemId, group] of grouped.entries()) {
+          const found = group.etapes.find(e => e.id === memorized && (e.status === 'pending' || e.status === 'in_progress'));
+          if (found) return { etape: found, itemId };
+        }
+        // Memo obsolete (etape terminee/sautee) : on la nettoie pour passer aux heuristiques.
+        localStorage.removeItem(lastResumeKey);
+      }
+    } catch {
+      // localStorage indispo (mode prive) — on continue avec les heuristiques.
+    }
+
+    // 2. Premiere etape in_progress
+    for (const [itemId, group] of grouped.entries()) {
+      const inProgress = group.etapes.find(e => e.status === 'in_progress');
+      if (inProgress) return { etape: inProgress, itemId };
+    }
+
+    // 3. Groupe avec la completion la plus recente → 1ere pending dans CE groupe
+    let mostRecentGroup: { itemId: string; group: { productName: string; etapes: Etape[] }; lastTs: number } | null = null;
+    for (const [itemId, group] of grouped.entries()) {
+      const completedTimestamps = group.etapes
+        .filter(e => e.status === 'completed' && e.completed_at)
+        .map(e => new Date(e.completed_at as string).getTime())
+        .filter(n => !Number.isNaN(n));
+      const lastTs = completedTimestamps.length > 0 ? Math.max(...completedTimestamps) : 0;
+      if (lastTs > 0 && (!mostRecentGroup || lastTs > mostRecentGroup.lastTs)) {
+        mostRecentGroup = { itemId, group, lastTs };
+      }
+    }
+    if (mostRecentGroup) {
+      const pending = mostRecentGroup.group.etapes.find(e => e.status === 'pending');
+      if (pending) return { etape: pending, itemId: mostRecentGroup.itemId };
+    }
+
+    // 4. Premiere etape pending globale
+    for (const [itemId, group] of grouped.entries()) {
+      const pending = group.etapes.find(e => e.status === 'pending');
+      if (pending) return { etape: pending, itemId };
+    }
+    return null;
+  }, [grouped, lastResumeKey]);
+
+  // Auto-deplie le groupe contenant l'etape courante a la 1ere arrivee sur le plan.
+  useEffect(() => {
+    if (!currentEtape || expandedItem !== null || autoScrolledRef.current) return;
+    setExpandedItem(currentEtape.itemId);
+  }, [currentEtape, expandedItem]);
+
+  // Resynchronise les timers cote serveur avec le contexte client a l'arrivee :
+  // si le chef revient sur un autre poste/onglet (localStorage vide), on re-pousse les
+  // timers d'etapes encore actifs pour que l'alarme sonne quand meme.
+  useEffect(() => {
+    for (const etape of etapes) {
+      if (etape.status !== 'in_progress' || !etape.timer_fire_at) continue;
+      const endsAt = new Date(etape.timer_fire_at).getTime();
+      if (Number.isNaN(endsAt) || endsAt <= Date.now()) continue;
+      const alreadyTracked = clientTimers.some(t => t.etapeId === etape.id);
+      if (alreadyTracked) continue;
+      const remainingMs = endsAt - Date.now();
+      pushClientTimer({
+        planId,
+        planItemId: etape.plan_item_id,
+        etapeId: etape.id,
+        stepName: etape.nom,
+        productName: etape.product_name,
+        durationMin: remainingMs / 60000,
+      });
+    }
+  }, [etapes, clientTimers, pushClientTimer, planId]);
+
+  // Auto-scroll vers l'etape courante apres deploiement, une seule fois par session.
+  useEffect(() => {
+    if (autoScrolledRef.current) return;
+    if (!currentEtape || expandedItem !== currentEtape.itemId) return;
+    if (!currentEtapeRef.current) return;
+    currentEtapeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    autoScrolledRef.current = true;
+  }, [currentEtape, expandedItem]);
+
   if (etapes.length === 0 && !isLoading) return null;
   if (isLoading) return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex items-center justify-center gap-2 text-gray-400">
@@ -95,17 +221,9 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
     </div>
   );
 
-  // Group by plan_item_id
-  const grouped = new Map<string, { productName: string; etapes: Etape[] }>();
-  for (const e of etapes) {
-    const key = e.plan_item_id;
-    if (!grouped.has(key)) grouped.set(key, { productName: e.product_name, etapes: [] });
-    grouped.get(key)!.etapes.push(e);
-  }
-
   const handleStartEtape = (etape: Etape) => {
     if (etape.timer_auto && etape.duree_estimee_min) {
-      timerMutation.mutate(etape.id);
+      timerMutation.mutate(etape);
     } else {
       updateMutation.mutate({ etapeId: etape.id, status: 'in_progress' });
     }
@@ -128,15 +246,38 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
         <span className="text-xs text-gray-400">
           {etapes.filter(e => e.status === 'completed').length}/{etapes.length} terminees
         </span>
-        {progress.length > 0 && (
-          <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
+          {progress.length > 0 && (
             <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full bg-violet-500 rounded-full transition-all"
                 style={{ width: `${(etapes.filter(e => e.status === 'completed').length / etapes.length) * 100}%` }} />
             </div>
-          </div>
-        )}
+          )}
+          {/* Sauvegarde implicite : chaque action ecrit deja en base. Le bouton sert
+              uniquement de signal UX explicite ("je quitte, je reprends plus tard"). */}
+          {isChef && planStatus === 'in_progress' && onSaveAndExit && (
+            <button
+              onClick={onSaveAndExit}
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+              title="Vos actions sont deja enregistrees. Vous reviendrez sur l'etape en cours."
+            >
+              <Save size={12} /> Enregistrer & quitter
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Bandeau "reprise" : indique au chef ou il en est, visible juste sous le header.
+          Disparait quand le plan est entierement termine. */}
+      {isChef && planStatus === 'in_progress' && currentEtape && (
+        <div className="px-5 py-2.5 bg-violet-50/60 border-b border-violet-100 flex items-center gap-2 text-xs">
+          <Play size={12} className="text-violet-600" />
+          <span className="text-violet-800">
+            <span className="font-semibold">Etape en cours :</span> {currentEtape.etape.nom}
+            <span className="text-violet-500 ml-1.5">— {grouped.get(currentEtape.itemId)?.productName}</span>
+          </span>
+        </div>
+      )}
 
       <div className="divide-y divide-gray-100">
         {Array.from(grouped.entries()).map(([itemId, group]) => {
@@ -164,13 +305,25 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
 
               {isExpanded && (
                 <div className="px-5 pb-4 space-y-2">
-                  {group.etapes.map((etape) => {
+                  {group.etapes.map((etape, idx) => {
                     const sc = statusColors[etape.status];
                     const timerActive = etape.status === 'in_progress' && etape.timer_fire_at;
                     const timerDone = timerActive && new Date(etape.timer_fire_at!) <= new Date();
+                    // Progression stricte : une etape pending ne peut etre demarree que si toutes
+                    // les etapes precedentes (par ordre) sont 'completed' ou 'skipped'.
+                    // Aucune autre etape ne peut etre 'in_progress' simultanement dans le groupe.
+                    const previous = group.etapes.slice(0, idx);
+                    const allPreviousDone = previous.every(p => p.status === 'completed' || p.status === 'skipped');
+                    const someoneElseInProgress = group.etapes.some(e => e.id !== etape.id && e.status === 'in_progress');
+                    const canStart = allPreviousDone && !someoneElseInProgress;
+                    const isCurrent = currentEtape?.etape.id === etape.id;
 
                     return (
-                      <div key={etape.id} className={`rounded-xl border p-3 ${etape.status === 'completed' ? 'border-emerald-200 bg-emerald-50/50' : etape.status === 'in_progress' ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200 bg-white'}`}>
+                      <div
+                        key={etape.id}
+                        ref={isCurrent ? currentEtapeRef : undefined}
+                        className={`rounded-xl border p-3 ${etape.status === 'completed' ? 'border-emerald-200 bg-emerald-50/50' : etape.status === 'in_progress' ? 'border-blue-200 bg-blue-50/50' : isCurrent ? 'border-violet-300 bg-violet-50/40 ring-2 ring-violet-200' : 'border-gray-200 bg-white'}`}
+                      >
                         <div className="flex items-center gap-3">
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${sc.bg} ${sc.text}`}>
                             {etape.status === 'completed' ? <CheckCircle size={14} /> : etape.status === 'in_progress' ? <Play size={12} /> : etape.ordre}
@@ -198,14 +351,27 @@ export default function EtapesPanel({ planId, planStatus, isChef }: EtapesPanelP
                             <div className="flex items-center gap-1.5">
                               {etape.status === 'pending' && (
                                 <>
-                                  <button onClick={() => handleStartEtape(etape)}
-                                    className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition inline-flex items-center gap-1">
-                                    <Play size={11} /> {etape.timer_auto ? 'Timer' : 'Demarrer'}
+                                  <button
+                                    onClick={() => handleStartEtape(etape)}
+                                    disabled={!canStart}
+                                    className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition inline-flex items-center gap-1 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                    title={canStart ? '' : 'Termine d\'abord l\'etape precedente'}
+                                  >
+                                    {canStart ? <Play size={11} /> : <Lock size={11} />} {etape.timer_auto ? 'Timer' : 'Demarrer'}
                                   </button>
-                                  <button onClick={() => updateMutation.mutate({ etapeId: etape.id, status: 'skipped' })}
-                                    className="px-2 py-1 bg-gray-100 text-gray-500 rounded-lg text-xs hover:bg-gray-200 transition" title="Passer">
-                                    <SkipForward size={11} />
-                                  </button>
+                                  {/* "Passer" interdit pour les etapes bloquantes : elles doivent
+                                      etre completees, pas sautees. Et toujours conditionne par
+                                      la progression stricte (etape precedente terminee). */}
+                                  {!etape.est_bloquante && (
+                                    <button
+                                      onClick={() => updateMutation.mutate({ etapeId: etape.id, status: 'skipped' })}
+                                      disabled={!canStart}
+                                      className="px-2 py-1 bg-gray-100 text-gray-500 rounded-lg text-xs hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={canStart ? 'Passer cette etape (non bloquante)' : 'Termine d\'abord l\'etape precedente'}
+                                    >
+                                      <SkipForward size={11} />
+                                    </button>
+                                  )}
                                 </>
                               )}
                               {etape.status === 'in_progress' && !etape.est_repetable && (

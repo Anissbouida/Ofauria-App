@@ -9,6 +9,7 @@ export interface ProductionTimer {
   id: string;           // unique timer ID
   planId: string;
   planItemId: string;
+  etapeId?: string;     // optional : ID de l'etape DB associee (pour dedup avec EtapesPanel)
   productName: string;
   stepName: string;
   durationMin: number;  // total duration in minutes
@@ -22,6 +23,12 @@ interface ProductionTimerContextValue {
   stopTimer: (id: string) => void;
   getTimerRemaining: (id: string) => number; // seconds remaining, 0 if done
   activeCount: number;
+  /**
+   * Indique si un timer pour (planItemId, stepName) s'est deja declenche dans le passe.
+   * Utile pour les UI qui ont besoin de savoir si une etape avec timer est "validee"
+   * apres son expiration (le timer est retire du tableau `timers` une fois expire).
+   */
+  hasTimerFired: (planItemId: string, stepName: string) => boolean;
 }
 
 const ProductionTimerContext = createContext<ProductionTimerContextValue | null>(null);
@@ -31,6 +38,7 @@ const ProductionTimerContext = createContext<ProductionTimerContextValue | null>
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'ofauria_production_timers';
+const FIRED_STORAGE_KEY = 'ofauria_production_timers_fired';
 
 function loadTimers(): ProductionTimer[] {
   try {
@@ -42,6 +50,24 @@ function loadTimers(): ProductionTimer[] {
 
 function saveTimers(timers: ProductionTimer[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(timers));
+}
+
+// Cle composite (planItemId + stepName) → timestamp d'expiration. Persiste les
+// timers deja expires pour que l'UI puisse savoir qu'une etape avec timer est
+// "validee" meme si le timer a ete retire du tableau actif.
+type FiredMap = Record<string, number>;
+function firedKey(planItemId: string, stepName: string): string {
+  return `${planItemId}::${stepName}`;
+}
+function loadFired(): FiredMap {
+  try {
+    const raw = localStorage.getItem(FIRED_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as FiredMap;
+  } catch { return {}; }
+}
+function saveFired(fired: FiredMap) {
+  try { localStorage.setItem(FIRED_STORAGE_KEY, JSON.stringify(fired)); } catch { /* ignore */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -134,11 +160,15 @@ function stopAlarmSound() {
 export function ProductionTimerProvider({ children }: { children: ReactNode }) {
   const [timers, setTimers] = useState<ProductionTimer[]>(loadTimers);
   const firedRef = useRef<Set<string>>(new Set());
+  const [firedMap, setFiredMap] = useState<FiredMap>(loadFired);
 
   // Persist to localStorage on change
   useEffect(() => {
     saveTimers(timers);
   }, [timers]);
+  useEffect(() => {
+    saveFired(firedMap);
+  }, [firedMap]);
 
   // Tick every second to check for expired timers
   useEffect(() => {
@@ -174,6 +204,17 @@ export function ProductionTimerProvider({ children }: { children: ReactNode }) {
             }
           );
         }
+
+        // Memorise les expirations : permet a l'UI wizard de savoir qu'une etape
+        // bloquante a deja ete completee (sinon, apres retrait du timer, le bouton
+        // Suivant croit que le timer n'a jamais ete lance et reste desactive).
+        setFiredMap(prev => {
+          const next = { ...prev };
+          for (const t of expired) {
+            next[firedKey(t.planItemId, t.stepName)] = t.endsAt;
+          }
+          return next;
+        });
 
         // Remove expired timers
         setTimers(prev => prev.filter(t => !expired.some(e => e.id === t.id)));
@@ -218,6 +259,11 @@ export function ProductionTimerProvider({ children }: { children: ReactNode }) {
     return remaining;
   }, [timers]);
 
+  const hasTimerFired = useCallback(
+    (planItemId: string, stepName: string) => !!firedMap[firedKey(planItemId, stepName)],
+    [firedMap]
+  );
+
   return (
     <ProductionTimerContext.Provider
       value={{
@@ -225,6 +271,7 @@ export function ProductionTimerProvider({ children }: { children: ReactNode }) {
         startTimer,
         stopTimer,
         getTimerRemaining,
+        hasTimerFired,
         activeCount: timers.length,
       }}
     >

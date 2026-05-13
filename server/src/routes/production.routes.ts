@@ -9,6 +9,7 @@ const router = Router();
 
 router.get('/', authenticate, asyncHandler(productionController.list));
 // Static routes BEFORE /:id to avoid capture
+router.post('/suggest-quantities', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.suggestQuantities));
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
 router.post('/transfers/:transferId/receive', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 

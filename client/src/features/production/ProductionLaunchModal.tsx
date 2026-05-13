@@ -91,7 +91,7 @@ export default function ProductionLaunchModal({
   const LOSS_REASONS = prodLossReasonEntries.map(e => ({ value: e.code, label: e.label }));
 
   // Production timers
-  const { timers: activeTimers, startTimer, stopTimer, getTimerRemaining } = useProductionTimers();
+  const { timers: activeTimers, startTimer, stopTimer, getTimerRemaining, hasTimerFired } = useProductionTimers();
 
   // If a specific item is targeted, only show that item; otherwise show all pending items
   const items = targetItemId
@@ -298,6 +298,11 @@ export default function ProductionLaunchModal({
         queryClient.invalidateQueries({ queryKey: ['production-lots'] }),
       ]);
 
+      // Production finalisee : on nettoie le pointeur de reprise (sinon la prochaine
+      // production de ce meme item rouvrirait sur la derniere etape de la precedente).
+      if (resumeKey) {
+        try { localStorage.removeItem(resumeKey); } catch { /* ignore */ }
+      }
       notify.success('Production enregistree avec succes');
       onCompleted();
       onClose();
@@ -1120,10 +1125,35 @@ export default function ProductionLaunchModal({
 
   const isSingleItem = !!targetItemId && items.length === 1;
   const singleProductId = isSingleItem ? (items[0]?.product_id as string) : undefined;
-  // If item is already in_progress (resuming), skip to step 2 (Recette)
-  const initialSingleStep = isSingleItem && items[0] && (items[0].status as string) === 'in_progress' ? 2 : 1;
-  const [singleStep, setSingleStep] = useState(initialSingleStep);
+  // Reprise : si l'utilisateur a sauvegarde-et-quitte sur une etape precise, on
+  // restaure cette etape. Sinon, fallback historique : in_progress → step 2 (Recette),
+  // sinon step 1 (Lancement).
+  const resumeKey = targetItemId ? `ofauria_resume_step_${targetItemId}` : null;
+  const initialSingleStep = (() => {
+    if (!isSingleItem || !items[0]) return 1;
+    if (resumeKey) {
+      try {
+        const saved = localStorage.getItem(resumeKey);
+        const parsed = saved ? parseInt(saved, 10) : NaN;
+        if (Number.isFinite(parsed) && parsed >= 1) return parsed;
+      } catch { /* localStorage indispo */ }
+    }
+    return (items[0].status as string) === 'in_progress' ? 2 : 1;
+  })();
+  const [singleStep, setSingleStepState] = useState(initialSingleStep);
   const [starting, setStarting] = useState(false);
+
+  // Wrapper qui persiste l'etape courante dans localStorage a chaque changement,
+  // pour que la fermeture brutale (cmd+W) ne perde pas la position.
+  const setSingleStep: typeof setSingleStepState = (action) => {
+    setSingleStepState((prev) => {
+      const next = typeof action === 'function' ? (action as (p: number) => number)(prev) : action;
+      if (resumeKey) {
+        try { localStorage.setItem(resumeKey, String(next)); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  };
 
   // Fetch production profile for single-item view
   const { data: profileData } = useQuery({
@@ -1205,6 +1235,30 @@ export default function ProductionLaunchModal({
       : 'Vente du jour';
     const hasLoss = actual < planned;
     const isAlreadyStarted = (item.status as string) === 'in_progress';
+
+    // Progression stricte : pour une etape de profil avec timer auto, il faut que le
+    // timer ait demarre ET soit termine pour passer a l'etape suivante. Les etapes
+    // sans timer n'ont pas de critere objectif → on laisse passer (le chef choisit).
+    const currentProfileStep = hasProfileSteps && singleStep <= dynamicSteps.length
+      ? dynamicSteps[singleStep - 1]
+      : null;
+    const stepHasTimer = !!(currentProfileStep?.timer_auto && currentProfileStep?.duree_estimee_min);
+    const stepIsBlocking = !!currentProfileStep?.est_bloquante;
+    const stepName = currentProfileStep?.nom as string | undefined;
+    const stepTimer = stepHasTimer && stepName
+      ? activeTimers.find(t => t.planItemId === id && t.stepName === stepName)
+      : null;
+    const stepTimerRemaining = stepTimer ? getTimerRemaining(stepTimer.id) : -1;
+    // Un timer est "fait" si :
+    //   - il n'existe plus mais a deja sonne pour ce step (firedMap)
+    //   - ou il existe et son temps restant est 0
+    const stepTimerAlreadyFired = !!(stepHasTimer && stepName && hasTimerFired(id, stepName));
+    const stepTimerNotStarted = stepHasTimer && !stepTimer && !stepTimerAlreadyFired;
+    const stepTimerRunning = stepHasTimer && !!stepTimer && stepTimerRemaining > 0;
+    // Le blocage de Suivant ne s'applique QU'AUX etapes bloquantes : pour les non-bloquantes,
+    // le chef peut avancer librement meme sans avoir lance/termine le chrono.
+    const blockedByTimer = stepIsBlocking && (stepTimerNotStarted || stepTimerRunning);
+    const canAdvance = !blockedByTimer;
 
     return (
       <div className="fixed inset-0 z-50 bg-white overflow-auto flex flex-col">
@@ -1650,8 +1704,13 @@ export default function ProductionLaunchModal({
                     await handleAutoStart();
                   }
                   setSingleStep((s) => s + 1);
-                }} disabled={starting}
-                  className="flex items-center gap-1 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50">
+                }} disabled={starting || !canAdvance}
+                  title={
+                    stepTimerNotStarted ? 'Demarre le chronometre de cette etape avant de passer a la suivante'
+                    : stepTimerRunning ? 'Attends la fin du chronometre pour passer a l\'etape suivante'
+                    : ''
+                  }
+                  className="flex items-center gap-1 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                   {starting ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Lancement...</>) : (<>Suivant <ChevronRight size={16} /></>)}
                 </button>
               ) : (

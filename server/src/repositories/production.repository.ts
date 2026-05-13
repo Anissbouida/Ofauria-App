@@ -404,29 +404,8 @@ export const productionRepository = {
         );
       }
 
-      // ═══ Modification 2: Detect per-product ingredient insufficiency → waiting list ═══
-      // For each product, check if ALL its ingredients are sufficient
-      const waitingProductIds: string[] = [];
-      for (const item of itemsResult.rows) {
-        // Get ingredient needs for this specific product
-        const productNeedsResult = await client.query(
-          `SELECT pin.ingredient_id, pin.needed_quantity, pin.available_quantity
-           FROM production_ingredient_needs pin
-           WHERE pin.plan_id = $1 AND pin.product_id = $2`,
-          [planId, item.product_id]
-        );
-        const hasInsufficient = productNeedsResult.rows.some(
-          (n: Record<string, unknown>) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string)
-        );
-        if (hasInsufficient) {
-          waitingProductIds.push(item.product_id);
-          await client.query(
-            `UPDATE production_plan_items SET waiting_status = 'waiting' WHERE plan_id = $1 AND product_id = $2`,
-            [planId, item.product_id]
-          );
-          warnings.push(`"${item.product_name}" mis en liste d'attente — ingredients insuffisants.`);
-        }
-      }
+      // La verification de disponibilite des ingredients est faite par le magasinier
+      // au moment du pesage (bon de sortie), pas a la confirmation du plan.
 
       // Update plan status and persist warnings
       await client.query(
@@ -481,7 +460,7 @@ export const productionRepository = {
         }
       }
 
-      return { warnings, waitingProductIds };
+      return { warnings, waitingProductIds: [] as string[] };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -927,9 +906,10 @@ export const productionRepository = {
       // Deduct ingredients for produced items
       for (const item of producedItems.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
-        if (bsiAlreadyDeducted2) continue;
 
-        // Determine recipe: either from product_id (normal) or base_recipe_id (semi-finished)
+        // Recipe lookup : sert a la fois pour la deduction d'ingredients et pour
+        // les flux semi-finis. On le calcule meme si le BSI a deja consomme les
+        // ingredients (la suite du loop a besoin de recipeResult.rows[0]).
         let recipeResult;
         if (isSemiFinishedPlan && item.base_recipe_id) {
           recipeResult = await client.query(
@@ -942,7 +922,13 @@ export const productionRepository = {
             [item.product_id]
           );
         }
-        if (recipeResult.rows[0]) {
+
+        // Deduction des ingredients : a sauter si le BSI a deja consomme le stock
+        // (chaine BSI 'prelevement' -> on a deja decremente l'inventaire dans
+        // startPrelevement). Sans ce skip, on decompterait deux fois les ingredients.
+        // ATTENTION : ce skip ne doit PAS empecher l'incrementation du stock produit
+        // ni la creation du product_lot — les blocs ci-dessous restent obligatoires.
+        if (!bsiAlreadyDeducted2 && recipeResult.rows[0]) {
           const recipe = recipeResult.rows[0];
           const ingredientNeeds = new Map<string, number>();
 
@@ -1886,6 +1872,88 @@ export const productionRepository = {
       [planId]
     );
     return result.rows;
+  },
+
+  /**
+   * Suggest production quantities for a target plan date.
+   *
+   * For each input { productId, requestedQty }, returns:
+   *   - vitrineQty: quantity left on the vitrine for that product/store
+   *   - suggestedQty: requestedQty − vitrineQty for is_reexposable products,
+   *                   else requestedQty (baguettes etc. start from zero each day)
+   *   - isReexposable: flag from products
+   *   - explanation: human-readable rationale
+   *
+   * Used by the front to pre-fill plans for J+1 — the planner can still override.
+   */
+  async suggestPlannedQuantities(params: {
+    storeId: string | null;
+    items: Array<{ productId: string; requestedQty: number }>;
+  }) {
+    if (params.items.length === 0) return [];
+
+    const productIds = params.items.map((it) => it.productId);
+    const result = await db.query(
+      `SELECT p.id AS product_id, p.name, p.is_reexposable,
+              COALESCE(SUM(pl.vitrine_qty), 0)::numeric AS vitrine_qty
+       FROM products p
+       LEFT JOIN product_lots pl
+         ON pl.product_id = p.id
+        AND pl.status = 'active'
+        AND pl.vitrine_qty > 0
+        ${params.storeId ? 'AND pl.store_id = $2' : ''}
+       WHERE p.id = ANY($1)
+       GROUP BY p.id`,
+      params.storeId ? [productIds, params.storeId] : [productIds]
+    );
+
+    const byProduct = new Map<string, { isReexposable: boolean; vitrineQty: number; name: string }>();
+    for (const row of result.rows) {
+      byProduct.set(row.product_id, {
+        isReexposable: row.is_reexposable === true,
+        vitrineQty: parseFloat(row.vitrine_qty) || 0,
+        name: row.name,
+      });
+    }
+
+    return params.items.map((it) => {
+      const info = byProduct.get(it.productId);
+      const requestedQty = it.requestedQty;
+      if (!info) {
+        return {
+          productId: it.productId,
+          requestedQty,
+          vitrineQty: 0,
+          suggestedQty: requestedQty,
+          isReexposable: false,
+          explanation: 'Produit introuvable.',
+        };
+      }
+      if (!info.isReexposable) {
+        return {
+          productId: it.productId,
+          productName: info.name,
+          requestedQty,
+          vitrineQty: info.vitrineQty,
+          suggestedQty: requestedQty,
+          isReexposable: false,
+          explanation: 'Produit non réexposable — production complète.',
+        };
+      }
+      const suggestedQty = Math.max(0, requestedQty - info.vitrineQty);
+      return {
+        productId: it.productId,
+        productName: info.name,
+        requestedQty,
+        vitrineQty: info.vitrineQty,
+        suggestedQty,
+        isReexposable: true,
+        explanation:
+          info.vitrineQty > 0
+            ? `Cible ${requestedQty} − ${info.vitrineQty} restant en vitrine = produire ${suggestedQty}.`
+            : `Aucun stock vitrine — production complète (${requestedQty}).`,
+      };
+    });
   },
 };
 
