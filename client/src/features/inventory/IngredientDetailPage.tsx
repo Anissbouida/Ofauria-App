@@ -303,7 +303,7 @@ export default function IngredientDetailPage() {
           <ArrowLeft size={14} />
         </button>
         <div className="odoo-breadcrumb">
-          <Warehouse size={14} style={{ color: '#714B67' }} />
+          <Warehouse size={14} style={{ color: 'var(--theme-accent)' }} />
           <span style={{ cursor: 'pointer' }} onClick={() => navigate('/inventory')}>Économat</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{ingredientName || '—'}</span>
@@ -347,7 +347,7 @@ export default function IngredientDetailPage() {
       {/* ══════ SMART BUTTONS ROW ══════ */}
       <div className="odoo-smart-button-row">
         <div className="odoo-smart-button" onClick={() => setActiveTab('lots')}>
-          <div className="odoo-smart-button-value" style={{ color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#714B67' }}>
+          <div className="odoo-smart-button-value" style={{ color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-accent)' }}>
             {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
           </div>
           <div className="odoo-smart-button-label"><Package size={11} /> Stock ({unit})</div>
@@ -381,7 +381,7 @@ export default function IngredientDetailPage() {
           }`}>
             {INGREDIENT_CATEGORIES.find(c => c.value === category)?.label || 'Autre'}
           </span>
-          {supplier && <span style={{ fontSize: '0.8125rem', color: '#6c757d' }}>{supplier}</span>}
+          {supplier && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{supplier}</span>}
           {isLow && <span className="odoo-tag odoo-tag-orange">STOCK BAS</span>}
           {expiredCount > 0 && <span className="odoo-tag odoo-tag-red">LOT EXPIRÉ</span>}
         </div>
@@ -408,7 +408,7 @@ export default function IngredientDetailPage() {
                 <Boxes size={12} /> Lots actifs ({activeLots.length})
               </div>
               {activeLots.map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -428,7 +428,7 @@ export default function IngredientDetailPage() {
                 <Shield size={12} /> Quarantaine ({quarantinedLots.length})
               </div>
               {quarantinedLots.map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -446,7 +446,7 @@ export default function IngredientDetailPage() {
                 <Package size={12} /> Lots épuisés ({depletedLots.length})
               </div>
               {depletedLots.slice(0, 10).map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid #dee2e6' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -455,7 +455,7 @@ export default function IngredientDetailPage() {
                 </div>
               ))}
               {depletedLots.length > 10 && (
-                <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: '#6c757d', textAlign: 'center', borderTop: '1px solid #dee2e6' }}>
+                <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'center', borderTop: '1px solid var(--theme-bg-separator)' }}>
                   + {depletedLots.length - 10} lots épuisés supplémentaires
                 </div>
               )}
@@ -464,7 +464,7 @@ export default function IngredientDetailPage() {
 
           {lots.length === 0 && (
             <div className="odoo-section">
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                 <Boxes size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
                 <p style={{ fontSize: '0.8125rem' }}>Aucun lot enregistré pour cet ingrédient</p>
                 <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Les lots sont créés automatiquement lors de la réception des bons de commande</p>
@@ -481,7 +481,7 @@ export default function IngredientDetailPage() {
             <Clock size={12} /> Historique des mouvements
           </div>
           {(transactions as Transaction[]).length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
               <Clock size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
               <p style={{ fontSize: '0.8125rem' }}>Aucun mouvement enregistré</p>
             </div>
@@ -499,7 +499,7 @@ export default function IngredientDetailPage() {
                 return (
                   <div key={tx.id} style={{
                     padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
-                    borderTop: i > 0 ? '1px solid #dee2e6' : 'none', fontSize: '0.8125rem',
+                    borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none', fontSize: '0.8125rem',
                   }}>
                     <div style={{
                       width: 24, height: 24, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -511,10 +511,10 @@ export default function IngredientDetailPage() {
                        tx.type === 'adjustment' ? <TrendingDown size={12} style={{ color: '#b85d1a' }} /> :
                        tx.type === 'waste' ? <Ban size={12} style={{ color: '#721c24' }} /> :
                        tx.type === 'usage' ? <Beaker size={12} style={{ color: '#b85d1a' }} /> :
-                       <Beaker size={12} style={{ color: '#6c757d' }} />}
+                       <Beaker size={12} style={{ color: 'var(--theme-text-muted)' }} />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, color: '#2e3338' }}>
+                      <div style={{ fontWeight: 500, color: 'var(--theme-text-strong)' }}>
                         {tx.type === 'restock' ? 'Réapprovisionnement' :
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
@@ -522,7 +522,7 @@ export default function IngredientDetailPage() {
                          tx.type === 'waste' ? 'Perte / Déchet' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '0.6875rem', color: '#6c757d' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                         <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.625rem' }}>
                           <span style={{
                             width: 12, height: 12, borderRadius: '50%', backgroundColor: '#efe6ee',
@@ -533,7 +533,7 @@ export default function IngredientDetailPage() {
                         {roleLabel && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.625rem' }}>{roleLabel}</span>}
                         <span>{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
                       </div>
-                      {tx.note && <div style={{ fontSize: '0.75rem', color: '#6c757d', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
+                      {tx.note && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
                     </div>
                     <span style={{ fontWeight: 600, color: isPositive ? '#28a745' : '#dc3545', flexShrink: 0 }}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
@@ -580,15 +580,15 @@ export default function IngredientDetailPage() {
       {showDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
           <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#fdf0ed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#fdf0ed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trash2 size={16} style={{ color: '#dc3545' }} />
               <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#721c24' }}>Supprimer l'ingrédient</h2>
             </div>
             <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
-              <p style={{ fontSize: '0.8125rem', color: '#2e3338', marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '1rem' }}>
                 Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
               </p>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid #dee2e6', paddingTop: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem' }}>
                 <button onClick={() => setShowDelete(false)} className="odoo-btn-secondary">Annuler</button>
                 <button onClick={() => deleteIngredientMutation.mutate()}
                   disabled={deleteIngredientMutation.isPending}
@@ -641,36 +641,36 @@ function OpenContainerModal({ lot, onClose, onSave, isLoading }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Package size={16} style={{ color: '#714B67' }} />
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Package size={16} style={{ color: 'var(--theme-accent)' }} />
           <div>
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Ouvrir contenant</h2>
-            <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>Transfert Économat → Pesage</p>
+            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Ouvrir contenant</h2>
+            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>Transfert Économat → Pesage</p>
           </div>
         </div>
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
-          <div style={{ border: '1px solid #dee2e6', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#2e3338' }}>
+          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: 'var(--theme-text-strong)' }}>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</div>
             <div>Économat dispo : <strong style={{ fontFamily: 'monospace' }}>{economat.toFixed(2)} {lot.ingredient_unit}</strong></div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité à transférer</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité à transférer</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="number" step="0.01" min="0" max={economat} value={quantity}
                 onChange={(e) => setQuantity(e.target.value)} autoFocus
                 className="input" style={{ flex: 1, fontFamily: 'monospace', textAlign: 'right' }} />
-              <span style={{ fontSize: '0.8125rem', color: '#6c757d', fontWeight: 500 }}>{lot.ingredient_unit}</span>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{lot.ingredient_unit}</span>
             </div>
             {qty > economat && (
               <p style={{ fontSize: '0.75rem', color: '#dc3545', marginTop: 4 }}>Dépasse la qté Économat dispo ({economat.toFixed(2)})</p>
             )}
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Motif (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif (optionnel)</label>
             <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Ex : Pré-ouverture matin, réorganisation..." className="input" />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button onClick={() => onSave(qty, note.trim() || undefined)} disabled={!isValid || isLoading} className="odoo-btn-primary">
               <Truck size={13} /> {isLoading ? 'Transfert...' : 'Transférer'}
@@ -715,15 +715,15 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShoppingCart size={16} style={{ color: '#714B67' }} />
+            <ShoppingCart size={16} style={{ color: 'var(--theme-accent)' }} />
             <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Demande d'achat</h2>
-              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredientName}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Demande d'achat</h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
+          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -735,7 +735,7 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
             Cette demande sera ajoutée à la liste d'attente d'achat. Le manager pourra ensuite générer un bon de commande regroupé par fournisseur.
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
             <select className="input" value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })}>
               <option value="">— Aucun fournisseur —</option>
               {(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => (
@@ -744,12 +744,12 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité à commander ({unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité à commander ({unit})</label>
             <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
               onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Motif</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif</label>
             <select className="input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
               <option value="stock_bas">Stock bas</option>
               <option value="production">Besoin production</option>
@@ -758,11 +758,11 @@ function OrderRequestModal({ ingredientName, unit, isLow, supplierHint, onClose,
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
             <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
               placeholder="Contexte de la demande..." />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
               <ShoppingCart size={13} /> {isLoading ? 'Ajout...' : 'Ajouter à la liste'}
@@ -811,7 +811,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#2e3338' }}>
+            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
               {lot.supplier_lot_number || lot.lot_number || '—'}
             </span>
             {lot.status === 'quarantine' && <span className="odoo-tag odoo-tag-orange">QUARANTAINE</span>}
@@ -820,7 +820,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               <span className="odoo-tag odoo-tag-yellow">{daysUntil}j</span>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: '#6c757d', marginTop: 2 }}>
+          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
             {lot.supplier_name && <span>{lot.supplier_name}</span>}
             {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
               <span style={{ fontWeight: 500 }}>
@@ -831,11 +831,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontWeight: 600, color: '#2e3338' }}>
+          <div style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>
             {remaining.toFixed(1)} / {received.toFixed(1)} {lot.ingredient_unit}
           </div>
           {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 && (
-            <div style={{ fontSize: '0.625rem', color: '#6c757d', marginTop: 2 }}>
+            <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
               Valeur : {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
             </div>
           )}
@@ -847,37 +847,37 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
         </div>
 
-        <div style={{ flexShrink: 0, color: '#95a5a6' }}>
+        <div style={{ flexShrink: 0, color: 'var(--theme-text-muted)' }}>
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
       </div>
 
       {isExpanded && (
-        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: '#f9fafb', borderTop: '1px solid #dee2e6' }}>
+        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: '#f9fafb', borderTop: '1px solid var(--theme-bg-separator)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
             {/* Supply chain */}
-            <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#714B67', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <ShieldCheck size={11} /> Chaîne d'approvisionnement
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 {lot.purchase_order_number && (
                   <>
                     <span className="odoo-tag odoo-tag-purple"><FileText size={9} /> BC : {lot.purchase_order_number}</span>
-                    <ChevronRight size={10} style={{ color: '#dee2e6' }} />
+                    <ChevronRight size={10} style={{ color: 'var(--theme-bg-separator)' }} />
                   </>
                 )}
                 {lot.reception_voucher_number && (
                   <>
                     <span className="odoo-tag odoo-tag-purple"><Truck size={9} /> BR : {lot.reception_voucher_number}</span>
-                    <ChevronRight size={10} style={{ color: '#dee2e6' }} />
+                    <ChevronRight size={10} style={{ color: 'var(--theme-bg-separator)' }} />
                   </>
                 )}
                 <span className="odoo-tag odoo-tag-purple"><Hash size={9} /> Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</span>
               </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '0.6875rem', color: '#6c757d' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                 {lot.expiration_date && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? '#dc3545' : '#6c757d', fontWeight: isExpired ? 600 : 400 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: isExpired ? 600 : 400 }}>
                     <CalendarClock size={10} /> DLC : {format(new Date(lot.expiration_date), 'dd/MM/yyyy')}
                   </span>
                 )}
@@ -894,7 +894,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
             {/* Forward traceability */}
             {traceability.length > 0 && (
-              <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
                 <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#1f6391', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Factory size={11} /> Productions utilisant ce lot ({traceability.length})
                 </div>
@@ -904,7 +904,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/production/${t.production_plan_id}`; }}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '0.25rem 0.5rem', borderRadius: 3, border: '1px solid #dee2e6',
+                        padding: '0.25rem 0.5rem', borderRadius: 3, border: '1px solid var(--theme-bg-separator)',
                         cursor: 'pointer', fontSize: '0.75rem',
                       }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -929,15 +929,15 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             )}
 
             {traceability.length === 0 && (
-              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: '#95a5a6', backgroundColor: '#fff', border: '1px solid #dee2e6', borderRadius: 3 }}>
+              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--theme-text-muted)', backgroundColor: '#fff', border: '1px solid var(--theme-bg-separator)', borderRadius: 3 }}>
                 Aucune production liée à ce lot
               </div>
             )}
 
             {/* Repartition Economat / Pesage */}
             {(economat > 0 || pesage > 0) && (
-              <div style={{ border: '1px solid #dee2e6', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Package size={11} /> Répartition par zone
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1002,15 +1002,15 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Edit3 size={16} style={{ color: '#714B67' }} />
+            <Edit3 size={16} style={{ color: 'var(--theme-accent)' }} />
             <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Modifier l'ingrédient</h2>
-              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredient.name as string}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Modifier l'ingrédient</h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredient.name as string}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
+          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -1021,36 +1021,36 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Nom</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom</label>
             <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Unité</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Unité</label>
               <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
                 <option value="kg">kg</option><option value="g">g</option><option value="l">l</option><option value="ml">ml</option><option value="unit">Unité</option>
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Coût unitaire (DH)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Coût unitaire (DH)</label>
               <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} />
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Catégorie</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
             <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
               {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
             <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Seuil minimum d'alerte ({form.unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Seuil minimum d'alerte ({form.unit})</label>
             <input type="number" step="0.1" className="input" value={form.threshold} onChange={e => setForm({ ...form, threshold: e.target.value })} />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
               <Save size={13} /> {isLoading ? 'Enregistrement...' : 'Sauvegarder'}
@@ -1078,15 +1078,15 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingDown size={16} style={{ color: '#714B67' }} />
+            <TrendingDown size={16} style={{ color: 'var(--theme-accent)' }} />
             <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Ajuster le stock</h2>
-              <p style={{ fontSize: '0.75rem', color: '#6c757d', marginTop: 1 }}>{ingredientName}</p>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Ajuster le stock</h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
+          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -1096,7 +1096,7 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
           onSave({ quantity: signedQty, type: form.type, note: form.note || undefined });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Type d'ajustement</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Type d'ajustement</label>
             <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
               <option value="waste">Perte / Casse</option>
               <option value="adjustment">Correction d'inventaire</option>
@@ -1104,16 +1104,16 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Quantité ({unit})</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité ({unit})</label>
             <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
               onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
             <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
               placeholder="Raison de l'ajustement..." />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
               <Save size={13} /> {isLoading ? 'Ajustement...' : 'Sauvegarder'}

@@ -244,7 +244,7 @@ export default function InventoryPage() {
       {/* ══════ CONTROL BAR (Odoo) ══════ */}
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
-          <Warehouse size={14} style={{ color: '#714B67' }} />
+          <Warehouse size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Économat</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
@@ -365,13 +365,13 @@ export default function InventoryPage() {
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontWeight: 600, color: '#2e3338' }}>{lot.ingredient_name as string}</span>
+                          <span style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{lot.ingredient_name as string}</span>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: '#721c24', backgroundColor: '#f8d7da', padding: '0 0.375rem', borderRadius: 2 }}>
                             {(lot.lot_number as string) || '?'}
                           </span>
                           <span className="odoo-tag odoo-tag-red">DLC expirée</span>
                         </div>
-                        <div style={{ marginTop: 2, color: '#6c757d', fontSize: '0.6875rem' }}>
+                        <div style={{ marginTop: 2, color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                           Expiré depuis <strong style={{ color: '#dc3545' }}>{daysExpired}j</strong> ·
                           Écon. {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string} ·
                           Pesage {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}
@@ -379,7 +379,7 @@ export default function InventoryPage() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontWeight: 600, color: '#721c24' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
-                        <div style={{ fontSize: '0.6875rem', color: '#6c757d' }}>{lostValue.toFixed(2)} DH</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{lostValue.toFixed(2)} DH</div>
                       </div>
                       <button onClick={() => setLossDialogLot(lot)} className="odoo-btn-danger" style={{ flexShrink: 0 }}>
                         <Trash2 size={11} /> Pertes
@@ -465,7 +465,7 @@ export default function InventoryPage() {
 
       {/* ══════ SEARCH PANEL Odoo ══════ */}
       <div className="odoo-search-panel">
-        <Search size={14} style={{ color: '#6c757d', flexShrink: 0 }} />
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
         <input
           type="text"
           placeholder="Rechercher par nom, fournisseur, N° lot..."
@@ -520,9 +520,9 @@ export default function InventoryPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>Chargement...</td></tr>
+              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
             ) : filteredInventory.length === 0 ? (
-              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#95a5a6' }}>Aucun ingrédient trouvé</td></tr>
+              <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun ingrédient trouvé</td></tr>
             ) : filteredInventory.map((item) => {
               const qty = parseFloat(item.current_quantity);
               const threshold = parseFloat(item.minimum_threshold);
@@ -557,13 +557,13 @@ export default function InventoryPage() {
                       {INGREDIENT_CATEGORIES.find(c => c.value === (item.category || 'autre'))?.label || 'Autre'}
                     </span>
                   </td>
-                  <td className="hidden md:table-cell" style={{ color: '#6c757d' }}>{item.supplier || '—'}</td>
+                  <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{item.supplier || '—'}</td>
                   <td className="hidden md:table-cell" style={{ textAlign: 'right' }}>
                     {(() => {
                       const cost = parseFloat(item.unit_cost || '0');
                       return cost > 0 ? (
-                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: '#95a5a6', fontSize: '0.6875rem' }}>DH/{item.unit}</span></span>
-                      ) : <span style={{ color: '#95a5a6' }}>—</span>;
+                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>DH/{item.unit}</span></span>
+                      ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
                     })()}
                   </td>
                   <td style={{ textAlign: 'right' }}>
@@ -572,12 +572,12 @@ export default function InventoryPage() {
                       const pesageQty = parseFloat(item.pesage_quantity || '0');
                       return (
                         <div>
-                          <div style={{ fontWeight: 600, color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#2e3338' }}>
-                            {qty.toFixed(qty % 1 === 0 ? 0 : 1)} <span style={{ color: '#95a5a6', fontWeight: 400, fontSize: '0.6875rem' }}>{item.unit}</span>
+                          <div style={{ fontWeight: 600, color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text-strong)' }}>
+                            {qty.toFixed(qty % 1 === 0 ? 0 : 1)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>{item.unit}</span>
                           </div>
-                          <div style={{ fontSize: '0.625rem', color: '#6c757d', marginTop: 2 }}>
+                          <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
                             <span title="Économat">éc. {economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</span>
-                            <span style={{ margin: '0 0.25rem', color: '#dee2e6' }}>·</span>
+                            <span style={{ margin: '0 0.25rem', color: 'var(--theme-bg-separator)' }}>·</span>
                             <span title="Pesage">pe. {pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</span>
                           </div>
                         </div>
@@ -589,12 +589,12 @@ export default function InventoryPage() {
                       <span className="odoo-tag odoo-tag-blue">
                         <Boxes size={9} /> {lotsCount}
                       </span>
-                    ) : <span style={{ color: '#95a5a6' }}>—</span>}
+                    ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                   </td>
                   <td className="hidden lg:table-cell" style={{ textAlign: 'right' }}>
                     {(() => {
                       const avgConso = parseFloat(item.avg_daily_consumption || '0');
-                      if (avgConso <= 0) return <span style={{ color: '#95a5a6' }}>—</span>;
+                      if (avgConso <= 0) return <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
                       const daysOfStock = Math.round(qty / avgConso);
                       return (
                         <span style={{
@@ -612,7 +612,7 @@ export default function InventoryPage() {
                       <span style={{
                         fontWeight: 500,
                         color: daysUntilDlc !== null && daysUntilDlc < 0 ? '#dc3545' :
-                          daysUntilDlc !== null && daysUntilDlc <= 7 ? '#b85d1a' : '#6c757d',
+                          daysUntilDlc !== null && daysUntilDlc <= 7 ? '#b85d1a' : 'var(--theme-text-muted)',
                       }}>
                         {format(nearestDlc, 'dd/MM/yy')}
                         {daysUntilDlc !== null && daysUntilDlc <= 30 && (
@@ -621,7 +621,7 @@ export default function InventoryPage() {
                           </span>
                         )}
                       </span>
-                    ) : <span style={{ color: '#95a5a6' }}>—</span>}
+                    ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                   </td>
                 </tr>
               );
@@ -658,42 +658,42 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Package size={16} style={{ color: '#714B67' }} />
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#2e3338' }}>Nouvel ingrédient</h2>
+            <Package size={16} style={{ color: 'var(--theme-accent)' }} />
+            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Nouvel ingrédient</h2>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: '#6c757d' }}><X size={16} /></button>
+          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, category: form.category }); }}
           style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Nom de l'ingrédient *</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom de l'ingrédient *</label>
             <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Farine T55" autoFocus />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Unité</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Unité</label>
               <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
                 <option value="kg">Kilogramme (kg)</option><option value="g">Gramme (g)</option><option value="l">Litre (l)</option><option value="ml">Millilitre (ml)</option><option value="unit">Unité</option>
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Coût unitaire (DH)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Coût unitaire (DH)</label>
               <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} placeholder="0.00" required />
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Catégorie</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
             <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
               {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Fournisseur</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
             <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Nom du fournisseur" />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6', marginTop: '0.25rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)', marginTop: '0.25rem' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
               <Save size={13} /> {isLoading ? 'Sauvegarde...' : 'Sauvegarder'}
@@ -727,7 +727,7 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid #dee2e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fdf0ed' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fdf0ed' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Trash2 size={16} style={{ color: '#dc3545' }} />
             <div>
@@ -740,35 +740,35 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
 
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           {/* Recap lot */}
-          <div style={{ border: '1px solid #dee2e6', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.625rem 0.75rem', fontSize: '0.8125rem' }}>
+          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.625rem 0.75rem', fontSize: '0.8125rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
-              <span style={{ color: '#6c757d' }}>Produit</span>
+              <span style={{ color: 'var(--theme-text-muted)' }}>Produit</span>
               <span style={{ fontWeight: 600 }}>{lot.ingredient_name as string}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
-              <span style={{ color: '#6c757d' }}>N° lot</span>
+              <span style={{ color: 'var(--theme-text-muted)' }}>N° lot</span>
               <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{(lot.lot_number as string) || '?'}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.125rem 0' }}>
-              <span style={{ color: '#6c757d' }}>Stock à retirer</span>
+              <span style={{ color: 'var(--theme-text-muted)' }}>Stock à retirer</span>
               <span style={{ fontWeight: 600, color: '#721c24' }}>
                 {totalQty.toFixed(2)} {lot.ingredient_unit as string}
-                <span style={{ fontSize: '0.6875rem', color: '#95a5a6', marginLeft: 4 }}>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 4 }}>
                   ({economatQty > 0 ? `${economatQty.toFixed(1)} écon.` : ''}
                   {economatQty > 0 && pesageQty > 0 ? ' + ' : ''}
                   {pesageQty > 0 ? `${pesageQty.toFixed(1)} pesage` : ''})
                 </span>
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0 0', borderTop: '1px solid #dee2e6', marginTop: '0.25rem' }}>
-              <span style={{ color: '#6c757d' }}>Valeur perdue</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0 0', borderTop: '1px solid var(--theme-bg-separator)', marginTop: '0.25rem' }}>
+              <span style={{ color: 'var(--theme-text-muted)' }}>Valeur perdue</span>
               <span style={{ fontWeight: 600, color: '#721c24' }}>{lostValue.toFixed(2)} DH</span>
             </div>
           </div>
 
           {/* Motif */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 6 }}>Motif</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6 }}>Motif</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
               {([
                 { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption dépassée' },
@@ -780,13 +780,13 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
                   style={{
                     padding: '0.5rem 0.625rem',
                     borderRadius: 3,
-                    border: `1px solid ${reason === opt.v ? '#714B67' : '#dee2e6'}`,
+                    border: `1px solid ${reason === opt.v ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
                     backgroundColor: reason === opt.v ? '#f3edf2' : '#fff',
                     textAlign: 'left',
-                    boxShadow: reason === opt.v ? 'inset 0 0 0 1px #714B67' : 'none',
+                    boxShadow: reason === opt.v ? 'inset 0 0 0 1px var(--theme-accent)' : 'none',
                   }}>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#2e3338' }}>{opt.label}</div>
-                  <div style={{ fontSize: '0.6875rem', color: '#6c757d', marginTop: 1 }}>{opt.sub}</div>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>{opt.label}</div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{opt.sub}</div>
                 </button>
               ))}
             </div>
@@ -794,13 +794,13 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
 
           {/* Note optionnelle */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#6c757d', marginBottom: 4 }}>Note (optionnel)</label>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
               placeholder="Détails additionnels..."
               className="input" style={{ width: '100%' }} />
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid #dee2e6' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} disabled={isPending} className="odoo-btn-secondary">Annuler</button>
             <button onClick={() => onConfirm(reason, note || undefined)} disabled={isPending}
               className="odoo-btn-primary" style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}>
@@ -836,7 +836,7 @@ function KanbanView({ items, onSelect }: {
   if (items.length === 0) {
     return (
       <div className="odoo-kanban">
-        <div style={{ padding: '3rem', textAlign: 'center', color: '#95a5a6' }}>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Package size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.875rem' }}>Aucun ingrédient trouvé</p>
         </div>
@@ -853,7 +853,7 @@ function KanbanView({ items, onSelect }: {
             <div className="odoo-kanban-section-header">
               <span>{group.label}</span>
               <span className="odoo-kanban-section-count">{group.items.length}</span>
-              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: '#6c757d', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
                 Stock total : {totalStock.toFixed(totalStock % 1 === 0 ? 0 : 1)}
               </span>
             </div>
@@ -891,7 +891,7 @@ function KanbanView({ items, onSelect }: {
                     )}
                     <div className="odoo-kanban-card-stock">
                       <span className="odoo-kanban-card-stock-value" style={{
-                        color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#2e3338',
+                        color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text-strong)',
                       }}>
                         {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
                       </span>
@@ -900,7 +900,7 @@ function KanbanView({ items, onSelect }: {
                     {(economatQty > 0 || pesageQty > 0) && (
                       <div className="odoo-kanban-card-split">
                         <span>écon. <strong>{economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</strong></span>
-                        <span style={{ color: '#dee2e6' }}>·</span>
+                        <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
                         <span>pesage <strong>{pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</strong></span>
                       </div>
                     )}
@@ -921,7 +921,7 @@ function KanbanView({ items, onSelect }: {
                       <span>
                         {nearestDlc && daysUntilDlc !== null ? (
                           <span style={{
-                            color: daysUntilDlc < 0 ? '#dc3545' : daysUntilDlc <= 7 ? '#b85d1a' : '#6c757d',
+                            color: daysUntilDlc < 0 ? '#dc3545' : daysUntilDlc <= 7 ? '#b85d1a' : 'var(--theme-text-muted)',
                             display: 'inline-flex', alignItems: 'center', gap: 3,
                           }}>
                             <CalendarClock size={9} />

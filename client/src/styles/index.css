@@ -123,17 +123,24 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 .odoo-scope {
-  --odoo-purple: #714B67;
-  --odoo-purple-hover: #5d3d54;
-  --odoo-purple-light: #f3edf2;
-  --odoo-bg: #ffffff;
-  --odoo-bg-alt: #f9fafb;
-  --odoo-bg-hover: #f0f4f8;
-  --odoo-border: #dee2e6;
-  --odoo-border-strong: #c5cdd6;
-  --odoo-text: #2e3338;
-  --odoo-text-muted: #6c757d;
-  --odoo-text-light: #95a5a6;
+  /* Accent (boutons primaires, hover, focus) — pris depuis le theme actif */
+  --odoo-purple: var(--theme-accent);
+  --odoo-purple-hover: var(--theme-accent-hover);
+  --odoo-purple-light: var(--theme-accent-light);
+
+  /* Surfaces (fond page, cartes, hover) — pris depuis le theme actif */
+  --odoo-bg: var(--theme-bg-card);
+  --odoo-bg-alt: var(--theme-bg-page);
+  --odoo-bg-hover: var(--theme-bg-secondary);
+
+  /* Bordures — pris depuis le theme actif */
+  --odoo-border: var(--theme-bg-separator);
+  --odoo-border-strong: color-mix(in srgb, var(--theme-bg-separator) 60%, var(--theme-text-muted) 40%);
+
+  /* Texte — pris depuis le theme actif */
+  --odoo-text: var(--theme-text-strong);
+  --odoo-text-muted: var(--theme-text-muted);
+  --odoo-text-light: color-mix(in srgb, var(--theme-text-muted) 60%, var(--theme-bg-separator) 40%);
 
   background-color: var(--odoo-bg) !important;
   color: var(--odoo-text);
@@ -403,7 +410,7 @@
   border-radius: 3px;
   white-space: nowrap;
 }
-.odoo-tag-purple  { background-color: #efe6ee; color: #714B67; }
+.odoo-tag-purple  { background-color: var(--theme-accent-light); color: var(--theme-accent); }
 .odoo-tag-blue    { background-color: #d6e9f8; color: #1f6391; }
 .odoo-tag-green   { background-color: #d4edda; color: #155724; }
 .odoo-tag-orange  { background-color: #ffe5d0; color: #b85d1a; }
