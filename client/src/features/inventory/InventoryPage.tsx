@@ -9,7 +9,7 @@ import {
   AlertTriangle, Package, Search, TrendingUp,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
-  Plus, List, Save,
+  Plus, List, LayoutGrid, Save,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -20,6 +20,7 @@ type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 
 type SortDir = 'asc' | 'desc';
 type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
 type EconomatTab = 'stock' | 'transfers';
+type ViewMode = 'list' | 'kanban';
 
 const INGREDIENT_CATEGORIES = [
   { value: 'farines', label: 'Farines & Céréales' },
@@ -137,6 +138,7 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showAddIngredient, setShowAddIngredient] = useState(false);
   const [showAllExpired, setShowAllExpired] = useState(false);
   const [showAllExpiring, setShowAllExpiring] = useState(false);
@@ -265,7 +267,12 @@ export default function InventoryPage() {
           </div>
         )}
         <div className="odoo-view-switcher">
-          <button className="active" title="Vue liste"><List size={14} /></button>
+          <button onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} title="Vue liste">
+            <List size={14} />
+          </button>
+          <button onClick={() => setViewMode('kanban')} className={viewMode === 'kanban' ? 'active' : ''} title="Vue kanban (groupée par catégorie)">
+            <LayoutGrid size={14} />
+          </button>
         </div>
       </div>
 
@@ -489,7 +496,8 @@ export default function InventoryPage() {
         </select>
       </div>
 
-      {/* ══════ TABLE Odoo (dense) ══════ */}
+      {/* ══════ TABLE Odoo (dense) — vue liste ══════ */}
+      {viewMode === 'list' && (
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
           <thead>
@@ -621,6 +629,15 @@ export default function InventoryPage() {
           </tbody>
         </table>
       </div>
+      )}
+
+      {/* ══════ KANBAN view — groupée par catégorie ══════ */}
+      {viewMode === 'kanban' && (
+        <KanbanView
+          items={filteredInventory}
+          onSelect={(id) => navigate(`/inventory/${id}`)}
+        />
+      )}
 
       {/* Add Ingredient Modal */}
       {showAddIngredient && <AddIngredientModal
@@ -792,6 +809,136 @@ function SendToLossesDialog({ lot, isPending, onClose, onConfirm }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── Kanban View (Odoo) ─────────────────────────────────────────────
+   Affiche les ingredients groupes par categorie, chaque section
+   contient une grille de cartes cliquables avec stock + indicateurs.
+   ───────────────────────────────────────────────────────────────── */
+function KanbanView({ items, onSelect }: {
+  items: InventoryItem[];
+  onSelect: (ingredientId: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const groups: Record<string, InventoryItem[]> = {};
+    items.forEach((item) => {
+      const cat = item.category || 'autre';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+    return INGREDIENT_CATEGORIES
+      .map((c) => ({ key: c.value, label: c.label, items: groups[c.value] || [] }))
+      .filter((g) => g.items.length > 0);
+  }, [items]);
+
+  if (items.length === 0) {
+    return (
+      <div className="odoo-kanban">
+        <div style={{ padding: '3rem', textAlign: 'center', color: '#95a5a6' }}>
+          <Package size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.875rem' }}>Aucun ingrédient trouvé</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="odoo-kanban">
+      {grouped.map((group) => {
+        const totalStock = group.items.reduce((sum, i) => sum + parseFloat(i.current_quantity || '0'), 0);
+        return (
+          <div key={group.key} className="odoo-kanban-section">
+            <div className="odoo-kanban-section-header">
+              <span>{group.label}</span>
+              <span className="odoo-kanban-section-count">{group.items.length}</span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: '#6c757d', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+                Stock total : {totalStock.toFixed(totalStock % 1 === 0 ? 0 : 1)}
+              </span>
+            </div>
+            <div className="odoo-kanban-grid">
+              {group.items.map((item) => {
+                const qty = parseFloat(item.current_quantity);
+                const threshold = parseFloat(item.minimum_threshold);
+                const isLow = threshold > 0 && qty <= threshold;
+                const isOut = qty <= 0;
+                const lotsCount = parseInt(item.active_lots_count) || 0;
+                const expiredCount = parseInt(item.expired_lots_count) || 0;
+                const expiringSoonCount = parseInt(item.expiring_soon_count) || 0;
+                const economatQty = parseFloat(item.economat_quantity || '0');
+                const pesageQty = parseFloat(item.pesage_quantity || '0');
+                const pct = threshold > 0 ? Math.min(Math.round((qty / (threshold * 3)) * 100), 100) : (qty > 0 ? 100 : 0);
+                const cost = parseFloat(item.unit_cost || '0');
+                const nearestDlc = item.nearest_dlc ? new Date(item.nearest_dlc) : null;
+                const daysUntilDlc = nearestDlc ? Math.ceil((nearestDlc.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+
+                const cardStatus = expiredCount > 0 || isOut ? 'danger' : isLow || expiringSoonCount > 0 ? 'warning' : 'ok';
+
+                return (
+                  <div key={item.id}
+                    className={`odoo-kanban-card ${cardStatus}`}
+                    onClick={() => onSelect(item.ingredient_id)}>
+                    <div className="odoo-kanban-card-title">
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.ingredient_name}
+                      </span>
+                      {expiredCount > 0 && <span className="odoo-tag odoo-tag-red">DLC</span>}
+                      {!expiredCount && isLow && <span className="odoo-tag odoo-tag-orange">BAS</span>}
+                    </div>
+                    {item.supplier && (
+                      <div className="odoo-kanban-card-supplier">{item.supplier}</div>
+                    )}
+                    <div className="odoo-kanban-card-stock">
+                      <span className="odoo-kanban-card-stock-value" style={{
+                        color: isOut ? '#dc3545' : isLow ? '#b85d1a' : '#2e3338',
+                      }}>
+                        {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
+                      </span>
+                      <span className="odoo-kanban-card-stock-unit">{item.unit}</span>
+                    </div>
+                    {(economatQty > 0 || pesageQty > 0) && (
+                      <div className="odoo-kanban-card-split">
+                        <span>écon. <strong>{economatQty.toFixed(economatQty % 1 === 0 ? 0 : 1)}</strong></span>
+                        <span style={{ color: '#dee2e6' }}>·</span>
+                        <span>pesage <strong>{pesageQty.toFixed(pesageQty % 1 === 0 ? 0 : 1)}</strong></span>
+                      </div>
+                    )}
+                    <div className="odoo-kanban-card-progress">
+                      <div className="odoo-kanban-card-progress-bar" style={{
+                        width: `${pct}%`,
+                        backgroundColor: isOut ? '#dc3545' : isLow ? '#ffc107' : '#28a745',
+                      }} />
+                    </div>
+                    <div className="odoo-kanban-card-footer">
+                      <span>
+                        {lotsCount > 0 && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <Boxes size={9} /> {lotsCount} lot{lotsCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </span>
+                      <span>
+                        {nearestDlc && daysUntilDlc !== null ? (
+                          <span style={{
+                            color: daysUntilDlc < 0 ? '#dc3545' : daysUntilDlc <= 7 ? '#b85d1a' : '#6c757d',
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                          }}>
+                            <CalendarClock size={9} />
+                            {daysUntilDlc < 0 ? `${Math.abs(daysUntilDlc)}j!` : `${daysUntilDlc}j`}
+                          </span>
+                        ) : cost > 0 ? (
+                          <span>{cost.toFixed(2)} DH/{item.unit}</span>
+                        ) : null}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
