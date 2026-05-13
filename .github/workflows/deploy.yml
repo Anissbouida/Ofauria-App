@@ -94,6 +94,7 @@ jobs:
           env_vars: |
             NODE_ENV=production
             SERVER_PORT=8080
+            ALLOWED_ORIGINS=https://ofauria-app-gpezecanha-ew.a.run.app,https://ofauria-app-54056779982.europe-west1.run.app
           secrets: |
             JWT_SECRET=JWT_SECRET:latest
             DATABASE_URL=DATABASE_URL:latest
