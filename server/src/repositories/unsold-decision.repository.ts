@@ -22,7 +22,17 @@ function computeSuggestion(product: Record<string, unknown>): { destination: 're
   const maxReexpositions = isReexposable && maxReexpositionsRaw === 0 ? 1 : maxReexpositionsRaw;
   const currentReexCount = parseInt(String(product.current_reexposition_count || product.reexposition_count)) || 0;
   const isRecyclable = product.is_recyclable as boolean;
-  const recycleIngredientId = product.recycle_ingredient_id as string | null;
+  const recycleIngredientIdLegacy = product.recycle_ingredient_id as string | null;
+  // Multi-destinations: array de { ingredient_id, label, ingredient_name, unit, yield_ratio }
+  // injecté par la requête SQL via product_recycle_destinations.
+  const recycleDestinations = (product.recycle_destinations as Array<{ ingredient_id: string }> | null) || null;
+  // On considère le produit comme ayant une cible de recyclage si:
+  //   (a) la nouvelle table multi-destinations contient au moins une ligne active, OU
+  //   (b) le champ legacy recycle_ingredient_id est encore renseigné (compat ascendante)
+  const recycleIngredientId =
+    (recycleDestinations && recycleDestinations.length > 0
+      ? recycleDestinations[0].ingredient_id
+      : recycleIngredientIdLegacy) || null;
   const expiresAt = product.expires_at ? new Date(String(product.expires_at)) : null;
   const displayExpiresAt = product.display_expires_at ? new Date(String(product.display_expires_at)) : null;
   const producedAt = product.produced_at ? new Date(String(product.produced_at)) : null;
@@ -241,7 +251,8 @@ export const unsoldDecisionRepository = {
           'ingredient_id', prd.ingredient_id,
           'label', prd.label,
           'ingredient_name', i.name,
-          'unit', i.unit
+          'unit', i.unit,
+          'yield_ratio', prd.yield_ratio
         ) ORDER BY prd.display_order, i.name) as destinations
         FROM product_recycle_destinations prd
         JOIN ingredients i ON i.id = prd.ingredient_id
@@ -424,10 +435,10 @@ export const unsoldDecisionRepository = {
               const ingLotResult = await client.query(
                 `INSERT INTO ingredient_lots
                    (ingredient_id, lot_number, supplier_lot_number,
-                    quantity_received, quantity_remaining, unit_cost,
+                    quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost,
                     manufactured_date, expiration_date, received_at, store_id,
                     status, notes, source_product_lot_id)
-                 VALUES ($1, $2, $3, $4, $4, $5, CURRENT_DATE, $6, CURRENT_DATE, $7, 'active', $8, $9)
+                 VALUES ($1, $2, $3, $4, $4, $4, 0, $5, CURRENT_DATE, $6, CURRENT_DATE, $7, 'active', $8, $9)
                  RETURNING id`,
                 [
                   d.recycleIngredientId, recLotNumber, sourceLotNumber,

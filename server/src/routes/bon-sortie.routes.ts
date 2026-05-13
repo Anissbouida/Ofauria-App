@@ -14,6 +14,8 @@ router.post('/generate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asy
 router.get('/warehouse/queue', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getWarehouseQueue));
 // Historique magasinier (BSI 'prelevement' / 'verifie' / 'cloture' / 'annule')
 router.get('/warehouse/history', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getWarehouseHistory));
+// Lignes BSI en attente de transfert Economat -> Pesage (module Pesage / WarehousePage)
+router.get('/warehouse/transfer-requests', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getTransferRequests));
 
 // Get bon(s) for a plan
 router.get('/plan/:planId', authenticate, asyncHandler(bonSortieController.getByPlan));

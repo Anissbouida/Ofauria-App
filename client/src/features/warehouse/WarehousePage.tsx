@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { useAuth } from '../../context/AuthContext';
@@ -30,7 +30,28 @@ export default function WarehousePage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
-  const [tab, setTab] = useState<Tab>('active');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab') as Tab | null;
+  const validTabs: Tab[] = ['active', 'history', 'pesage'];
+  const [tab, setTab] = useState<Tab>(
+    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'active'
+  );
+  // Sync URL -> state quand on arrive depuis un deep-link (badge sidebar, lien BSI panel).
+  useEffect(() => {
+    if (tabFromUrl && validTabs.includes(tabFromUrl) && tabFromUrl !== tab) {
+      setTab(tabFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabFromUrl]);
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    if (next === 'active') {
+      searchParams.delete('tab');
+    } else {
+      searchParams.set('tab', next);
+    }
+    setSearchParams(searchParams, { replace: true });
+  };
   const [historyOffset, setHistoryOffset] = useState(0);
   const historyLimit = 30;
 
@@ -229,7 +250,11 @@ export default function WarehousePage() {
           </p>
         </div>
         <button
-          onClick={() => (tab === 'active' ? refetch() : tab === 'pesage' ? refetchPesage() : refetchHistory())}
+          onClick={() => (
+            tab === 'active' ? refetch() :
+            tab === 'pesage' ? refetchPesage() :
+            refetchHistory()
+          )}
           disabled={isRefetching}
           className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {isRefetching ? <Loader2 size={14} className="animate-spin" /> : <ClipboardList size={14} />}
@@ -241,7 +266,7 @@ export default function WarehousePage() {
       <div className="flex items-center gap-1 border-b border-gray-200">
         <button
           type="button"
-          onClick={() => setTab('active')}
+          onClick={() => changeTab('active')}
           className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
             tab === 'active'
               ? 'border-amber-500 text-amber-700'
@@ -257,7 +282,7 @@ export default function WarehousePage() {
         </button>
         <button
           type="button"
-          onClick={() => setTab('pesage')}
+          onClick={() => changeTab('pesage')}
           className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
             tab === 'pesage'
               ? 'border-amber-500 text-amber-700'
@@ -275,7 +300,7 @@ export default function WarehousePage() {
         </button>
         <button
           type="button"
-          onClick={() => setTab('history')}
+          onClick={() => changeTab('history')}
           className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
             tab === 'history'
               ? 'border-amber-500 text-amber-700'
@@ -344,6 +369,8 @@ export default function WarehousePage() {
 // ─── Onglet "Stock pesage" : ingredients actuellement ouverts au pesage ───
 // Aggregation par ingredient (1 ligne) avec details des lots ouverts (expansion).
 type PesageSort = 'dlc_asc' | 'name_asc' | 'qty_desc' | 'qty_asc';
+// L'onglet "Transferts demandes" utilise <TransferRequestsList /> importe depuis
+// ./TransferRequestsList — composant partage entre Pesage et Economat.
 function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isLoading: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');

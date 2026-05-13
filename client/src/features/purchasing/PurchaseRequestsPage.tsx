@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
+import { suppliersApi } from '../../api/accounting.api';
 import {
   ShoppingCart, Package, Search, ChevronDown, ChevronRight, Truck,
   X, Plus, Trash2, FileText, Clock, AlertTriangle, Check,
@@ -54,6 +55,22 @@ export default function PurchaseRequestsPage() {
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ['purchase-requests-grouped'],
     queryFn: purchaseRequestsApi.grouped,
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: suppliersApi.list,
+  });
+
+  const assignSupplierMutation = useMutation({
+    mutationFn: ({ requestIds, supplierId }: { requestIds: string[]; supplierId: string }) =>
+      purchaseRequestsApi.bulkAssignSupplier(requestIds, supplierId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
+      notify.success('Fournisseur attribue');
+    },
+    onError: () => notify.error('Erreur lors de l\'attribution du fournisseur'),
   });
 
   const { data: allRequests = [], isLoading: allLoading } = useQuery({
@@ -243,9 +260,31 @@ export default function PurchaseRequestsPage() {
                         </button>
                       )}
                       {!group.supplier_id && (
-                        <span className="text-[10px] text-amber-600 flex items-center gap-1">
-                          <AlertTriangle size={10} /> Attribuez un fournisseur avant de generer un BC
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-amber-600 flex items-center gap-1">
+                            <AlertTriangle size={10} /> Attribuez un fournisseur :
+                          </span>
+                          <select
+                            className="text-xs border border-amber-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            defaultValue=""
+                            disabled={assignSupplierMutation.isPending}
+                            onChange={(e) => {
+                              const supplierId = e.target.value;
+                              if (!supplierId) return;
+                              const sel = getSelectedForSupplier(group.supplier_id || '');
+                              const ids = sel.size > 0
+                                ? Array.from(sel)
+                                : group.requests.map(r => r.id);
+                              assignSupplierMutation.mutate({ requestIds: ids, supplierId });
+                              e.currentTarget.value = '';
+                            }}
+                          >
+                            <option value="" disabled>Choisir un fournisseur...</option>
+                            {(suppliers as { id: string; name: string }[]).map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </div>
                       )}
                     </div>
 
@@ -257,11 +296,9 @@ export default function PurchaseRequestsPage() {
 
                         return (
                           <div key={req.id} className={`px-5 py-3 flex items-center gap-3 transition-colors ${isSelected ? 'bg-teal-50/40' : 'hover:bg-gray-50/50'}`}>
-                            {group.supplier_id ? (
-                              <input type="checkbox" checked={isSelected}
-                                onChange={() => toggleSelect(group.supplier_id || '', req.id)}
-                                className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0" />
-                            ) : null}
+                            <input type="checkbox" checked={isSelected}
+                              onChange={() => toggleSelect(group.supplier_id || '', req.id)}
+                              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-gray-900">{req.ingredient_name}</span>

@@ -17,6 +17,10 @@ export const purchaseRequestsApi = {
   }) => api.post('/purchase-requests', data).then(r => r.data.data),
   updateQuantity: (id: string, quantity: number) =>
     api.put(`/purchase-requests/${id}/quantity`, { quantity }).then(r => r.data.data),
+  assignSupplier: (id: string, supplierId: string | null) =>
+    api.put(`/purchase-requests/${id}/supplier`, { supplierId }).then(r => r.data.data),
+  bulkAssignSupplier: (requestIds: string[], supplierId: string | null) =>
+    api.post(`/purchase-requests/bulk-assign-supplier`, { requestIds, supplierId }).then(r => r.data.data),
   cancel: (id: string, note?: string) =>
     api.post(`/purchase-requests/${id}/cancel`, { note }).then(r => r.data.data),
   generatePO: (data: {

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bonSortieApi } from '../../api/bon-sortie.api';
-import { ingredientLotsApi } from '../../api/inventory.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check, XCircle,
-  RefreshCw, ChevronDown, ChevronUp, Edit3, Truck, ShoppingCart,
+  RefreshCw, ChevronDown, ChevronUp, Edit3, Truck, ShoppingCart, ArrowRightCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
@@ -117,90 +117,6 @@ export function BonSortiePanel({
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
-  // Ouvrir contenant economat -> pesage + marquer la ligne preleve en 1 clic.
-  // Pour les lignes 'rupture' ou allocated >= needed (cas "a ouvrir depuis economat").
-  const openAndPickMutation = useMutation({
-    mutationFn: async ({ line }: { line: Record<string, any> }) => {
-      const lotId = line.ingredient_lot_id as string;
-      const qty = parseFloat(line.allocated_quantity as string || '0');
-      if (!lotId || qty <= 0) throw new Error('Lot ou quantite invalide');
-      // 1. Ouvrir le contenant (transfert economat -> pesage)
-      await ingredientLotsApi.openContainer(lotId, qty, `Ouvert depuis BSI ${bon?.numero || ''}`);
-      // 2. Marquer la ligne BSI comme prelevee
-      await bonSortieApi.updateLigne(line.id as string, { actualQuantity: qty });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur ouverture contenant'),
-  });
-
-  // Batch : ouvrir tous les contenants economat des lignes "a ouvrir" en une seule action.
-  const [openingAll, setOpeningAll] = useState(false);
-  const openAllContainers = async () => {
-    if (toOpenLines.length === 0) return;
-    setOpeningAll(true);
-    let success = 0;
-    let failed = 0;
-    try {
-      for (const line of toOpenLines) {
-        try {
-          const lotId = line.ingredient_lot_id as string;
-          const qty = parseFloat(line.allocated_quantity as string || '0');
-          if (!lotId || qty <= 0) { failed++; continue; }
-          await ingredientLotsApi.openContainer(lotId, qty, `Ouvert depuis BSI ${bon?.numero || ''}`);
-          await bonSortieApi.updateLigne(line.id as string, { actualQuantity: qty });
-          success++;
-        } catch {
-          failed++;
-        }
-      }
-      await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      if (failed === 0) notify.success(`${success} contenant(s) ouvert(s) et prelevés`);
-      else notify(`${success} ouvert(s), ${failed} erreur(s)`, { icon: '⚠️' });
-    } finally {
-      setOpeningAll(false);
-    }
-  };
-
-  // Option B : transferer une ligne ECONOMAT_REQUIRES_TRANSFER vers Pesage.
-  // Apres transfert, la ligne devient PESAGE/en_attente avec allocated_quantity rempli :
-  // le magasinier peut ensuite peser et confirmer (bouton "Confirmer" existant).
-  const transferLineMutation = useMutation({
-    mutationFn: (ligneId: string) => bonSortieApi.transferLineFromEconomat(ligneId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      notify.success('Transfert Economat → Pesage effectue');
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur transfert'),
-  });
-
-  const [transferringAll, setTransferringAll] = useState(false);
-  const transferAllRequired = async () => {
-    setTransferringAll(true);
-    let success = 0;
-    let failed = 0;
-    try {
-      for (const line of transferRequiredLines) {
-        try {
-          await bonSortieApi.transferLineFromEconomat(line.id as string);
-          success++;
-        } catch {
-          failed++;
-        }
-      }
-      await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      await queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      if (failed === 0) notify.success(`${success} transfert(s) effectue(s) — pese et confirme maintenant`);
-      else notify(`${success} transferes, ${failed} erreur(s)`, { icon: '⚠️' });
-    } finally {
-      setTransferringAll(false);
-    }
-  };
-
   const closeMutation = useMutation({
     mutationFn: () => bonSortieApi.close(bon!.id as string),
     onSuccess: () => {
@@ -266,9 +182,11 @@ export function BonSortiePanel({
   // Stats — la progression compte les lignes effectivement prelevees,
   // pas le complement de "en_attente" (sinon les lignes 'rupture' sont
   // comptees comme prelevees a tort, affichant 100% des le debut).
-  const totalLines = lines.length;
-  const prelevees = lines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
-  const enAttente = lines.filter((l) => ['en_attente', 'rupture'].includes(l.status as string)).length;
+  // Les lignes annulees (status='annule') ne participent plus au BSI : exclues du total.
+  const activeLines = lines.filter((l) => l.status !== 'annule');
+  const totalLines = activeLines.length;
+  const prelevees = activeLines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
+  const enAttente = activeLines.filter((l) => ['en_attente', 'rupture'].includes(l.status as string)).length;
   // Lignes prelevables en "tout conforme" : exclut les transferts requis (allocated=0
   // tant que le magasinier n'a pas transfere depuis l'economat).
   const nonBloquees = lines.filter((l) =>
@@ -284,21 +202,31 @@ export function BonSortiePanel({
   // Les lignes 'rupture' avec allocated >= needed ET un lot attache sont en realite
   // "a ouvrir depuis l'economat" (stock dispo dans le contenant, juste pas encore en pesage)
   // → c'est une etape normale du workflow, pas une rupture.
+  // Les lignes ECONOMAT_REQUIRES_TRANSFER sont affichees dans la section "transferts requis"
+  // (stock dispo en economat, juste a transferer) — elles ne sont pas en rupture.
+  // Les lignes annulees (status='annule') sont exclues : elles ne participent plus au BSI.
   const ruptureLines = lines.filter((l) =>
-    parseFloat(l.allocated_quantity as string || '0') < parseFloat(l.needed_quantity as string || '0')
-    || (l.status === 'rupture' && !l.ingredient_lot_id)
+    l.status !== 'annule'
+    && l.source_location !== 'ECONOMAT_REQUIRES_TRANSFER'
+    && (
+      parseFloat(l.allocated_quantity as string || '0') < parseFloat(l.needed_quantity as string || '0')
+      || (l.status === 'rupture' && !l.ingredient_lot_id)
+    )
   );
-  const toOpenLines = lines.filter((l) =>
-    l.status === 'rupture'
-    && !!l.ingredient_lot_id
-    && parseFloat(l.allocated_quantity as string || '0') >= parseFloat(l.needed_quantity as string || '0')
-  );
-  // Option B : lignes en attente de transfert Economat → Pesage. Apres transfert,
-  // la ligne devient source_location='PESAGE' avec allocated > 0.
+  // Option B : lignes en attente de transfert Economat → Pesage.
+  // Le transfert se fait DEPUIS le module Pesage (onglet "Transferts demandes" de WarehousePage),
+  // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
   const transferRequiredLines = lines.filter((l) => l.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
   const hasRupture = ruptureLines.length > 0;
   const isPartial = bon?.status === 'preparation_partielle';
-  const canCommitPartial = bon?.status === 'preparation' && hasRupture && prelevees > 0;
+  // Permet le commit partiel si :
+  //  - vraies ruptures (stock manquant) avec au moins une ligne prelevee, OU
+  //  - transferts economat encore non effectues avec au moins une ligne prelevee.
+  // Cas 2 : le magasinier valide ce qui est deja transfere/pese et garde les autres
+  // en attente. Il fera le transfert depuis le module Pesage puis "Re-verifier dispo".
+  const canCommitPartial = bon?.status === 'preparation'
+    && (hasRupture || transferRequiredLines.length > 0)
+    && prelevees > 0;
 
   const confirmLine = (line: Record<string, any>) => {
     const allocated = parseFloat(line.allocated_quantity as string || '0');
@@ -444,7 +372,7 @@ export function BonSortiePanel({
                 onClick={() => markReadyMutation.mutate()}
                 disabled={markReadyMutation.isPending || hasRupture || enAttente > 0 || transferRequiredLines.length > 0}
                 title={
-                  transferRequiredLines.length > 0 ? `${transferRequiredLines.length} transfert(s) Economat → Pesage requis avant de marquer pret` :
+                  transferRequiredLines.length > 0 ? `${transferRequiredLines.length} transfert(s) economat en attente — effectuez-les depuis le module Pesage ou utilisez "Valider partiel"` :
                   hasRupture ? 'Ingredients en rupture — utilisez "Valider partiel"' :
                   enAttente > 0 ? `${enAttente} ingredient(s) non encore preleve(s)` : ''
                 }
@@ -501,11 +429,11 @@ export function BonSortiePanel({
           {canValidate && !rejectingOpen && (
             <div className="flex gap-2">
               <button
-                onClick={() => startMutation.mutate()}
-                disabled={startMutation.isPending}
+                onClick={() => validateBon()}
+                disabled={validating || startMutation.isPending}
                 className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-                {startMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                Accepter la reception
+                {(validating || startMutation.isPending) ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                Accepter et valider la reception
               </button>
               <button
                 onClick={() => setRejectingOpen(true)}
@@ -545,32 +473,32 @@ export function BonSortiePanel({
         );
       })()}
 
-      {/* Option B : bandeau "Transferts Economat → Pesage requis".
-          Visible uniquement par le magasinier. Tant qu'au moins une ligne attend un transfert,
-          le BSI ne peut pas etre marque pret (le backend refuse). */}
+      {/* Bandeau informatif : transferts Economat → Pesage en attente.
+          Le transfert ne se fait PLUS depuis ce panneau : le magasinier doit aller dans
+          le module Pesage (onglet "Transferts demandes"), realiser le transfert physique,
+          puis revenir ici. Ce bandeau est purement passif (pas de bouton). */}
       {!isClosed && transferRequiredLines.length > 0 && isMagasinier && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5">
           <div className="flex items-start gap-3 mb-2">
             <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-              <PackageOpen size={18} className="text-amber-700" />
+              <ArrowRightCircle size={18} className="text-amber-700" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-amber-900">
-                ⚠️ {transferRequiredLines.length} transfert{transferRequiredLines.length > 1 ? 's' : ''} Economat → Pesage requis
+                {transferRequiredLines.length} ingredient{transferRequiredLines.length > 1 ? 's' : ''} disponible{transferRequiredLines.length > 1 ? 's' : ''} en economat
               </p>
               <p className="text-xs text-amber-800 mt-0.5">
-                Ces ingredients sont disponibles en economat mais doivent etre transferes au pesage avant prelevement.
-                Tu dois transferer toutes les lignes avant de marquer le BSI pret.
+                Le stock existe en economat mais n'a pas encore ete transfere au pesage.
+                Effectue le transfert depuis le module Pesage, puis reviens ici pour finaliser le prelevement.
               </p>
             </div>
-            <button
-              onClick={transferAllRequired}
-              disabled={transferringAll}
-              className="px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+            <Link
+              to="/warehouse?tab=transfers"
+              className="px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
             >
-              {transferringAll ? <Loader2 size={13} className="animate-spin" /> : <PackageOpen size={13} />}
-              {transferringAll ? 'Transfert...' : `Tout transferer (${transferRequiredLines.length})`}
-            </button>
+              <ArrowRightCircle size={13} />
+              Voir dans Pesage
+            </Link>
           </div>
           <ul className="text-xs text-amber-900 ml-12 space-y-0.5 mt-2">
             {transferRequiredLines.slice(0, 5).map((l, i) => {
@@ -585,37 +513,6 @@ export function BonSortiePanel({
             })}
             {transferRequiredLines.length > 5 && <li className="italic">+ {transferRequiredLines.length - 5} autres...</li>}
           </ul>
-        </div>
-      )}
-
-      {/* Bandeau info : ingredients a ouvrir depuis l'economat (stock dispo, pas encore au pesage)
-          Visible uniquement par le magasinier — le chef ne gere pas la dispo (Option B).
-          Note : ce bandeau est l'ancien chemin (status='rupture' + lot attache + allocated>=needed),
-          conserve pour les BSI generes avant la migration 113. Les nouveaux BSI utilisent
-          source_location='ECONOMAT_REQUIRES_TRANSFER' (bandeau ci-dessus). */}
-      {!isClosed && toOpenLines.length > 0 && isMagasinier && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-            <PackageOpen size={16} className="text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-900">
-              {toOpenLines.length} ingredient{toOpenLines.length > 1 ? 's' : ''} a ouvrir depuis l'economat
-            </p>
-            <p className="text-xs text-blue-700 mt-0.5">
-              Stock disponible mais pas encore en pesage — ouvrir le contenant economat pour les prelever.
-            </p>
-          </div>
-          {isMagasinier && (
-            <button
-              onClick={openAllContainers}
-              disabled={openingAll}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-            >
-              {openingAll ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}
-              {openingAll ? 'Ouverture...' : `Ouvrir tous (${toOpenLines.length})`}
-            </button>
-          )}
         </div>
       )}
 
@@ -767,7 +664,45 @@ export function BonSortiePanel({
 
       {/* Lines list */}
       <div className="space-y-2">
-        {lines.map((line) => {
+        {(() => {
+          // Pour le chef : on agrege par ingredient (un sac de farine peut etre
+          // pris sur plusieurs lots → le chef veut juste voir le total commande).
+          // Le magasinier garde le detail par lot pour faire le prelevement.
+          if (isMagasinier) return lines;
+          const byIngredient = new Map<string, Record<string, any>>();
+          for (const l of lines) {
+            if (l.status === 'annule') continue;
+            const key = l.ingredient_id as string;
+            const existing = byIngredient.get(key);
+            const needed = parseFloat(l.needed_quantity as string || '0');
+            const allocated = parseFloat(l.allocated_quantity as string || '0');
+            const isRupture = (l.status === 'rupture' && !l.ingredient_lot_id)
+              || allocated < needed
+              || l.source_location === 'RUPTURE';
+            if (!existing) {
+              byIngredient.set(key, {
+                ...l,
+                needed_quantity: needed,
+                allocated_quantity: allocated,
+                actual_quantity: null,
+                lot_number: null,
+                ingredient_lot_id: null,
+                source_location: isRupture ? 'RUPTURE' : null,
+                status: isRupture ? 'rupture' : 'en_attente',
+                _isRupture: isRupture,
+              });
+            } else {
+              existing.needed_quantity = parseFloat(existing.needed_quantity) + needed;
+              existing.allocated_quantity = parseFloat(existing.allocated_quantity) + allocated;
+              if (isRupture) {
+                existing._isRupture = true;
+                existing.status = 'rupture';
+                existing.source_location = 'RUPTURE';
+              }
+            }
+          }
+          return Array.from(byIngredient.values());
+        })().map((line) => {
           const lineStatus = line.status as string;
           const allocated = parseFloat(line.allocated_quantity as string || '0');
           const needed = parseFloat(line.needed_quantity as string || '0');
@@ -838,7 +773,7 @@ export function BonSortiePanel({
                     )}
                     {isMagasinier && lotExpired && <span className="text-red-500 font-bold ml-1">Lot expire</span>}
                   </p>
-                  {sourceBadge && !isDone && (
+                  {sourceBadge && !isDone && isMagasinier && (
                     <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sourceBadge.cls}`}>
                       <sourceBadge.Icon size={10} />
                       {sourceBadge.label}
@@ -875,32 +810,16 @@ export function BonSortiePanel({
                   </div>
                 )}
 
-                {/* Option B : ligne en attente de transfert Economat -> Pesage. Magasinier seul. */}
+                {/* Ligne en attente de transfert Economat -> Pesage : badge passif uniquement.
+                    Le transfert s'effectue depuis le module Pesage (onglet "Transferts demandes"). */}
                 {!isClosed && !isVerified && line.source_location === 'ECONOMAT_REQUIRES_TRANSFER' && isMagasinier && (
-                  <button
-                    onClick={() => transferLineMutation.mutate(line.id as string)}
-                    disabled={transferLineMutation.isPending}
-                    className="px-2.5 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-60 transition-colors flex items-center gap-1 text-xs font-semibold shrink-0 shadow-sm"
-                    title="Transferer depuis Economat vers Pesage"
+                  <span
+                    className="px-2.5 py-1.5 bg-amber-100 text-amber-800 border border-amber-200 rounded-lg flex items-center gap-1 text-xs font-semibold shrink-0"
+                    title="Effectue le transfert depuis le module Pesage (onglet Transferts demandes)"
                   >
-                    {transferLineMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <PackageOpen size={12} />}
-                    Transferer
-                  </button>
-                )}
-
-                {/* Ligne 'a ouvrir depuis economat' (status=rupture, lot attache, allocated>=needed) :
-                    1 clic pour ouvrir le contenant + marquer prelevee.
-                    Chemin legacy pour BSI generes avant migration 113. */}
-                {!isClosed && !isVerified && lineStatus === 'rupture' && !!line.ingredient_lot_id && allocated >= parseFloat(line.needed_quantity as string || '0') && allocated > 0 && isMagasinier && (
-                  <button
-                    onClick={() => openAndPickMutation.mutate({ line })}
-                    disabled={openAndPickMutation.isPending}
-                    className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1 text-xs font-semibold shrink-0 shadow-sm"
-                    title="Ouvrir le contenant economat et prelever"
-                  >
-                    {openAndPickMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <PackageOpen size={12} />}
-                    Ouvrir & prelever
-                  </button>
+                    <ArrowRightCircle size={12} />
+                    A transferer
+                  </span>
                 )}
 
                 {isDone && (
@@ -953,7 +872,7 @@ export function BonSortiePanel({
           a accepte la reception (statut 'prelevement' ou 'verifie'). Avant cette etape,
           le chef doit passer par le bouton "Accepter la reception" du bloc 'pret' ci-dessus,
           qui bascule le BSI en 'prelevement'. Sinon close() echoue avec "statut invalide". */}
-      {!isClosed && allDone && isChef && (bon.status === 'prelevement' || bon.status === 'verifie') && (
+      {!isClosed && isChef && (bon.status === 'prelevement' || bon.status === 'verifie') && (allDone || !isMagasinier) && (
         <button
           onClick={isVerified ? () => closeMutation.mutate() : validateBon}
           disabled={validating || closeMutation.isPending}

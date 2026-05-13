@@ -1,20 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { inventoryApi, ingredientsApi } from '../../api/inventory.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
+import { bonSortieApi } from '../../api/bon-sortie.api';
+import { TransferRequestsList } from '../warehouse/TransferRequestsList';
 import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
   Clock, X, Boxes, ShieldCheck, CalendarClock, ChevronRight, ChevronDown,
-  ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2,
+  ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
+import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 
 type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock';
 type SortDir = 'asc' | 'desc';
 type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
+type EconomatTab = 'stock' | 'transfers';
 
 const INGREDIENT_CATEGORIES = [
   { value: 'farines', label: 'Farines & Céréales' },
@@ -96,6 +100,37 @@ export default function InventoryPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { settings } = useSettings();
+  const { user } = useAuth();
+  const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
+
+  // Onglets : "Stock economat" (defaut, vue actuelle) + "Transferts demandes" (BSI a transferer).
+  // Persiste l'onglet en URL pour permettre les deep-links (badge sidebar, lien BSI panel).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab') as EconomatTab | null;
+  const [econoTab, setEconoTab] = useState<EconomatTab>(
+    tabFromUrl === 'transfers' ? 'transfers' : 'stock'
+  );
+  useEffect(() => {
+    if (tabFromUrl === 'transfers' && econoTab !== 'transfers') setEconoTab('transfers');
+    if (!tabFromUrl && econoTab !== 'stock') setEconoTab('stock');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabFromUrl]);
+  const changeEconoTab = (next: EconomatTab) => {
+    setEconoTab(next);
+    if (next === 'stock') searchParams.delete('tab');
+    else searchParams.set('tab', next);
+    setSearchParams(searchParams, { replace: true });
+  };
+
+  // Compteur de transferts en attente pour le badge de l'onglet.
+  // Visible uniquement aux roles ayant le module pesage (magasinier/admin/manager).
+  const { data: transferRequests = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['warehouse-transfer-requests'],
+    queryFn: bonSortieApi.transferRequests,
+    enabled: isWarehouseUser,
+    refetchInterval: 30000,
+  });
+
   const [search, setSearch] = useState('');
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -211,11 +246,50 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-bold text-gray-900">Économat — Stock principal</h1>
           <p className="text-sm text-gray-500 mt-1">Sacs, boîtes et contenants scellés. Une fois ouverts, ils basculent en Pesage.</p>
         </div>
-        <button onClick={() => setShowAddIngredient(true)} className="btn-primary flex items-center gap-2">
-          <Package size={16} /> Ajouter un ingrédient
-        </button>
+        {econoTab === 'stock' && (
+          <button onClick={() => setShowAddIngredient(true)} className="btn-primary flex items-center gap-2">
+            <Package size={16} /> Ajouter un ingrédient
+          </button>
+        )}
       </div>
 
+      {/* Onglets : Stock economat / Transferts demandes — visibles uniquement aux roles warehouse */}
+      {isWarehouseUser && (
+        <div className="flex items-center gap-1 border-b border-gray-200">
+          <button
+            type="button"
+            onClick={() => changeEconoTab('stock')}
+            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
+              econoTab === 'stock'
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            <Warehouse size={14} />
+            <span>Stock économat</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeEconoTab('transfers')}
+            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
+              econoTab === 'transfers'
+                ? 'border-amber-500 text-amber-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            <PackageOpen size={14} />
+            <span>Transferts demandés</span>
+            {transferRequests.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-700">
+                {transferRequests.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {econoTab === 'transfers' ? (
+        <TransferRequestsList />
+      ) : (
+      <>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <button onClick={() => setViewFilter('all')} className={`bg-white rounded-xl border p-4 text-center transition-all hover:shadow-sm ${viewFilter === 'all' ? 'ring-2 ring-gray-300' : ''}`}>
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center mx-auto mb-2"><Package size={16} className="text-white" /></div>
@@ -534,6 +608,8 @@ export default function InventoryPage() {
         onClose={() => setShowAddIngredient(false)}
         onSave={(data) => addIngredientMutation.mutate(data)}
         isLoading={addIngredientMutation.isPending} />}
+      </>
+      )}
     </div>
   );
 }

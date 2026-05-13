@@ -20,6 +20,10 @@ export const bonSortieApi = {
   warehouseHistory: (params?: { limit?: number; offset?: number }) =>
     api.get('/bons-sortie/warehouse/history', { params }).then(r => r.data),
 
+  // Lignes BSI en attente de transfert Economat -> Pesage (vue magasinier)
+  transferRequests: () =>
+    api.get('/bons-sortie/warehouse/transfer-requests').then(r => r.data.data),
+
   // Get a single bon by id
   getById: (bonId: string) =>
     api.get(`/bons-sortie/${bonId}`).then(r => r.data.data),
@@ -63,11 +67,12 @@ export const bonSortieApi = {
   regenerate: (planId: string, storeId?: string) =>
     api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId }).then(r => r.data.data),
 
-  // Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant)
-  // Le lot suggere par le BSI peut etre substitue via overrideLotId.
+  // Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant).
+  // Le lot suggere peut etre substitue via overrideLotId, et la qty surchargee via overrideQty
+  // (utile pour ouvrir un contenant entier au lieu de la portion exacte).
   transferLineFromEconomat: (
     ligneId: string,
-    payload: { overrideLotId?: string; reason?: string; containerCount?: number } = {},
+    payload: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number } = {},
   ) =>
     api.post(`/bons-sortie/ligne/${ligneId}/transfer-from-economat`, payload).then(r => r.data.data),
 

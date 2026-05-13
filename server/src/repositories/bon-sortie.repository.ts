@@ -93,13 +93,16 @@ export const bonSortieRepository = {
           const take = Math.min(available, remaining);
           const isExpired = lot.expiration_date && new Date(lot.expiration_date) < new Date();
 
+          // needed_quantity = portion couverte par cette ligne (= take), pas le besoin total :
+          // sinon une ligne PESAGE partielle ferait apparaitre "manque" alors que la portion
+          // est entierement allouee, et le total des needed cumulees depasserait le besoin reel.
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
                (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
                 unit, status, source_location, notes)
              VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', 'PESAGE', $7)
              RETURNING *`,
-            [bon.id, need.ingredient_id, lot.id, neededQty, take, need.ingredient_unit || 'kg',
+            [bon.id, need.ingredient_id, lot.id, take, take, need.ingredient_unit || 'kg',
              `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee' : ''}`]
           );
 
@@ -173,10 +176,9 @@ export const bonSortieRepository = {
         }
 
         // Étape 3 : Rupture vraie (Pesage + Economat insuffisants).
-        // allocated_quantity=0 (rien n'a pu etre alloue) — le besoin reel est needed_quantity.
-        // Affichage UI : dispo=0, manque=needed. completePending : stillNeeded=needed-0=needed.
-        // (Ancien code mettait allocated=remaining ce qui faisait afficher "manque 0" et
-        //  bloquait completePending — incorrect semantiquement.)
+        // needed_quantity = remaining (portion non couverte uniquement, pas le besoin total) :
+        // les portions deja couvertes par les lignes PESAGE/ECONOMAT_REQUIRES_TRANSFER ne doivent
+        // pas etre re-comptabilisees ici — sinon double-comptage et fausse rupture.
         if (remaining > 0) {
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
@@ -184,8 +186,8 @@ export const bonSortieRepository = {
                 unit, status, source_location, notes)
              VALUES ($1, $2, NULL, $3, 0, $4, 'rupture', 'RUPTURE', $5)
              RETURNING *`,
-            [bon.id, need.ingredient_id, neededQty, need.ingredient_unit || 'kg',
-             `🚨 Rupture totale — manque ${remaining.toFixed(2)} ${need.ingredient_unit || 'kg'}`]
+            [bon.id, need.ingredient_id, remaining, need.ingredient_unit || 'kg',
+             `🚨 Rupture — manque ${remaining.toFixed(2)} ${need.ingredient_unit || 'kg'}`]
           );
 
           lines.push({
@@ -381,6 +383,48 @@ export const bonSortieRepository = {
     return result.rows;
   },
 
+  // ─── Lignes BSI en attente de transfert Economat -> Pesage ───
+  // Si storeId est fourni, filtre sur le store ; sinon (admin/manager multi-store) renvoie
+  // les transferts de TOUS les stores. Listees dans l'onglet "Transferts demandes" du
+  // module Pesage et du module Economat.
+  // Statuts BSI inclus : genere/preparation/preparation_partielle/pret/prelevement.
+  // 'prelevement' est inclus pour couvrir les BSI ou le chef a accepte la reception
+  // mais qui ont commit_partial laissant des lignes ECONOMAT_REQUIRES_TRANSFER en attente.
+  async findEconomatTransferRequests(storeId: string | null) {
+    const useStoreFilter = !!storeId;
+    const result = await db.query(
+      `SELECT bsl.id AS line_id,
+              bsl.bon_id,
+              bsl.ingredient_id,
+              bsl.transfer_required_qty,
+              bsl.unit,
+              bsl.suggested_economat_lot_id,
+              bs.store_id,
+              bs.numero AS bon_numero,
+              bs.status AS bon_status,
+              bs.plan_id,
+              pp.plan_date, pp.type AS plan_type,
+              s.name AS store_name,
+              ing.name AS ingredient_name,
+              ing.unit AS ingredient_unit,
+              il.lot_number AS suggested_lot_number,
+              il.economat_quantity AS suggested_lot_economat_qty,
+              il.expiration_date AS suggested_lot_dlc
+       FROM production_bons_sortie_lignes bsl
+       JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
+       LEFT JOIN production_plans pp ON pp.id = bs.plan_id
+       LEFT JOIN stores s ON s.id = bs.store_id
+       LEFT JOIN ingredients ing ON ing.id = bsl.ingredient_id
+       LEFT JOIN ingredient_lots il ON il.id = bsl.suggested_economat_lot_id
+       WHERE ($1::uuid IS NULL OR bs.store_id = $1)
+         AND bs.status IN ('genere', 'preparation', 'preparation_partielle', 'pret', 'prelevement')
+         AND bsl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+       ORDER BY pp.plan_date ASC NULLS LAST, bs.numero ASC, ing.name ASC`,
+      [useStoreFilter ? storeId : null]
+    );
+    return result.rows;
+  },
+
   // ─── Get bon(s) for a plan with all lines ───
   async findByPlan(planId: string) {
     const result = await db.query(
@@ -483,8 +527,24 @@ export const bonSortieRepository = {
       }
       const bon = bonResult.rows[0];
 
+      // Le chef accepte la reception : on auto-confirme les lignes 'en_attente'
+      // qui ont deja une allocation FEFO (ingredient_lot_id) en les passant
+      // a 'preleve' avec actual = allocated. Cela debloque la verification +
+      // cloture qui suit dans le workflow chef. Les lignes 'rupture' sans lot
+      // restent telles quelles (rien a consommer).
+      await client.query(
+        `UPDATE production_bons_sortie_lignes
+            SET status = 'preleve', actual_quantity = allocated_quantity, updated_at = NOW()
+          WHERE bon_id = $1
+            AND status = 'en_attente'
+            AND ingredient_id IS NOT NULL
+            AND ingredient_lot_id IS NOT NULL
+            AND allocated_quantity > 0`,
+        [bonId]
+      );
+
       // Recupere les lignes prelevees / substituees / avec ecart : ce sont celles qui
-      // ont quitte le pesage. Les lignes 'en_attente' ou 'rupture' sont ignorees.
+      // ont quitte le pesage. Les lignes 'rupture' sans lot sont ignorees.
       const linesResult = await client.query(
         `SELECT bsl.id, bsl.ingredient_id, bsl.unit, bsl.status,
                 bsl.allocated_quantity, bsl.actual_quantity, bsl.substitute_lot_id, bsl.ingredient_lot_id,
@@ -605,11 +665,13 @@ export const bonSortieRepository = {
   //   3. Met a jour la ligne BSI : ingredient_lot_id <- lot transfere,
   //      allocated_quantity <- qty, source_location <- 'PESAGE',
   //      transferred_at/by remplis. Le statut reste 'en_attente' (pret a etre preleve).
-  // Le magasinier peut substituer le lot suggere via le param overrideLotId.
+  // Le magasinier peut substituer le lot suggere via overrideLotId, et ajuster la qty
+  // transferee via overrideQty (utile s'il decide d'ouvrir un contenant entier au lieu
+  // de la portion exacte demandee). overrideQty doit etre <= economat_quantity du lot.
   async transferLineFromEconomat(
     ligneId: string,
     userId: string,
-    options: { overrideLotId?: string; reason?: string; containerCount?: number } = {},
+    options: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number } = {},
   ) {
     const client = await db.getClient();
     try {
@@ -639,9 +701,22 @@ export const bonSortieRepository = {
         throw new Error('Aucun lot Economat a transferer (lot suggere absent)');
       }
 
-      const transferQty = parseFloat(line.transfer_required_qty);
-      if (!Number.isFinite(transferQty) || transferQty <= 0) {
+      // Quantite a transferer : par defaut le besoin BSI (transfer_required_qty),
+      // mais le magasinier peut surcharger via overrideQty (ex. ouvrir un contenant entier).
+      // Doit etre > 0 ; la verification contre economat_quantity est faite plus bas.
+      const requestedQty = options.overrideQty != null
+        ? Number(options.overrideQty)
+        : parseFloat(line.transfer_required_qty);
+      if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
         throw new Error('Quantite de transfert invalide');
+      }
+      const transferQty = requestedQty;
+      // allocated_quantity sur la ligne BSI doit couvrir le besoin (transfer_required_qty).
+      // Si le magasinier transfere plus, le surplus reste au pesage (sera consomme par les
+      // prochains BSI). Si moins, la ligne BSI ne peut pas etre marquee couverte → on refuse.
+      const requiredQty = parseFloat(line.transfer_required_qty);
+      if (transferQty < requiredQty) {
+        throw new Error(`Quantite insuffisante : ${transferQty} < ${requiredQty} requis pour cette ligne BSI`);
       }
 
       // 2. Verrouiller + verifier le lot Economat
@@ -682,7 +757,6 @@ export const bonSortieRepository = {
       );
 
       // 4. Update lot quantities + opening history
-      const isFirstOpening = !lot.first_opened_at;
       const openingEntry = {
         qty: transferQty,
         opened_at: new Date().toISOString(),
@@ -690,27 +764,21 @@ export const bonSortieRepository = {
         container_count: options.containerCount || null,
         bon_sortie_id: line.bon_id,
       };
+      // Migration 112 a supprime effective_expiry_after_opening / shelf_life_after_opening_days :
+      // pour les ingredients on ne distingue plus DLC vs DLV apres ouverture.
       await client.query(
         `UPDATE ingredient_lots
          SET economat_quantity = economat_quantity - $1,
              pesage_quantity = pesage_quantity + $1,
              first_opened_at = COALESCE(first_opened_at, NOW()),
-             opening_history = opening_history || $2::jsonb,
-             effective_expiry_after_opening = CASE
-               WHEN $3::boolean THEN
-                 LEAST(
-                   COALESCE(expiration_date, NOW()::date + INTERVAL '99 years'),
-                   (NOW()::date + (
-                     COALESCE((SELECT shelf_life_after_opening_days FROM ingredients WHERE id = $4), 365)
-                     || ' days')::interval)::date
-                 )
-               ELSE effective_expiry_after_opening
-             END
-         WHERE id = $5`,
-        [transferQty, JSON.stringify(openingEntry), isFirstOpening, line.ingredient_id, lotId]
+             opening_history = opening_history || $2::jsonb
+         WHERE id = $3`,
+        [transferQty, JSON.stringify(openingEntry), lotId]
       );
 
-      // 5. Update BSI line : attache le lot, bascule en PESAGE, prepare pour prelevement
+      // 5. Update BSI line : attache le lot, bascule en PESAGE, prepare pour prelevement.
+      // allocated_quantity = besoin BSI (requiredQty), pas le total transfere : le surplus
+      // (transferQty - requiredQty) reste au pesage et sera consommable par les autres BSI.
       const updatedLine = await client.query(
         `UPDATE production_bons_sortie_lignes
          SET ingredient_lot_id = $1,
@@ -722,8 +790,8 @@ export const bonSortieRepository = {
              updated_at = NOW()
          WHERE id = $5
          RETURNING *`,
-        [lotId, transferQty, userId,
-         `Transfere depuis Economat (lot ${lot.lot_number}) le ${new Date().toLocaleDateString('fr-FR')}`,
+        [lotId, requiredQty, userId,
+         `Transfere depuis Economat (lot ${lot.lot_number}, ${transferQty.toFixed(2)} ${line.unit || 'kg'}) le ${new Date().toLocaleDateString('fr-FR')}${options.reason ? ` — ${options.reason}` : ''}`,
          ligneId]
       );
 
@@ -808,21 +876,53 @@ export const bonSortieRepository = {
       return current.rows[0];
     }
 
-    // Check ingredient lines only (packaging lines geres separement et invisibles dans l'UI BSI).
-    // Les lignes packaging restent en 'en_attente' jusqu'a la cloture (auto-confirmees).
-    const pendingResult = await db.query(
-      `SELECT COUNT(*) FROM production_bons_sortie_lignes
-       WHERE bon_id = $1 AND status IN ('en_attente') AND ingredient_id IS NOT NULL`,
+    // Auto-confirme les lignes ingredients 'en_attente' qui ont une allocation
+    // FEFO (ingredient_lot_id) — la chef a accepte la reception, on considere
+    // que les ingredients sont recus a la qte allouee. Consomme ensuite les
+    // lots correspondants pour rester coherent avec startPrelevement.
+    const linesToConsume = await db.query(
+      `SELECT bsl.id, bsl.ingredient_id, bsl.unit, bsl.allocated_quantity,
+              bsl.ingredient_lot_id, bsl.substitute_lot_id,
+              ing.name AS ingredient_name,
+              bs.numero, bs.store_id, bs.plan_id
+       FROM production_bons_sortie_lignes bsl
+       JOIN ingredients ing ON ing.id = bsl.ingredient_id
+       JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
+       WHERE bsl.bon_id = $1
+         AND bsl.status = 'en_attente'
+         AND bsl.ingredient_id IS NOT NULL
+         AND bsl.ingredient_lot_id IS NOT NULL
+         AND bsl.allocated_quantity > 0`,
       [bonId]
     );
-    if (parseInt(pendingResult.rows[0].count) > 0) {
-      throw new Error('Toutes les lignes ingredients doivent etre prelevees avant verification');
+    for (const line of linesToConsume.rows) {
+      const lotId = line.substitute_lot_id || line.ingredient_lot_id;
+      const qty = parseFloat(line.allocated_quantity);
+      await db.query(
+        `UPDATE ingredient_lots
+            SET pesage_quantity = GREATEST(pesage_quantity - $1, 0),
+                status = CASE
+                  WHEN economat_quantity = 0 AND pesage_quantity - $1 <= 0 THEN 'depleted'
+                  ELSE status
+                END
+          WHERE id = $2`,
+        [qty, lotId]
+      );
+      await db.query(
+        `INSERT INTO inventory_transactions
+           (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id)
+         VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+        [line.ingredient_id, -qty,
+         `BSI ${line.numero} — Auto-validation : ${qty.toFixed(3)} ${line.unit || ''} ${line.ingredient_name}`,
+         userId, line.store_id, lotId, line.plan_id]
+      );
     }
-    // Auto-confirme les lignes packaging restantes pour ne pas bloquer la cloture
+    // Auto-confirme toutes les lignes en_attente restantes (ingredients sans lot
+    // = ruptures non resolues, et packaging) pour ne pas bloquer la cloture.
     await db.query(
       `UPDATE production_bons_sortie_lignes
        SET status = 'preleve', actual_quantity = allocated_quantity, updated_at = NOW()
-       WHERE bon_id = $1 AND status = 'en_attente' AND packaging_id IS NOT NULL`,
+       WHERE bon_id = $1 AND status = 'en_attente'`,
       [bonId]
     );
 

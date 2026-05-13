@@ -17,6 +17,7 @@ async function notifySafe(data: Parameters<typeof notificationRepository.create>
 }
 
 function safeErrorMessage(err: unknown, fallback: string): string {
+  console.error(`[bon-sortie] ${fallback}:`, err);
   if (err instanceof Error) {
     const msg = err.message;
     const businessPrefixes = [
@@ -24,8 +25,9 @@ function safeErrorMessage(err: unknown, fallback: string): string {
       'Le lot', 'Lot ', 'Quantite',
     ];
     if (businessPrefixes.some(p => msg.startsWith(p))) return msg;
+    // Expose technical error details to help diagnose (dev mode).
+    return `${fallback} : ${msg}`;
   }
-  console.error(`[bon-sortie] ${fallback}:`, err);
   return fallback;
 }
 
@@ -78,6 +80,24 @@ export const bonSortieController = {
     } catch (err: any) {
       console.error('[bon-sortie] getWarehouseQueue:', err);
       res.status(500).json({ error: 'Erreur lors de la recuperation de la file' });
+    }
+  },
+
+  /** GET /bons-sortie/warehouse/transfer-requests — Lignes BSI en attente de transfert Economat -> Pesage.
+   *  Si l'utilisateur n'a pas de storeId associe (admin global / manager multi-store),
+   *  on retourne les transferts de TOUS les stores accessibles plutot qu'une 400 silencieuse.
+   *  Le param ?storeId=... permet d'override (utile pour admin qui choisit un store).
+   */
+  async getTransferRequests(req: Request, res: Response) {
+    try {
+      const userStoreId = (req as any).user?.storeId;
+      const queryStoreId = (req.query.storeId as string) || undefined;
+      const storeId = queryStoreId || userStoreId;
+      const data = await bonSortieRepository.findEconomatTransferRequests(storeId || null);
+      res.json({ data });
+    } catch (err: any) {
+      console.error('[bon-sortie] getTransferRequests:', err);
+      res.status(500).json({ error: 'Erreur lors de la recuperation des demandes de transfert' });
     }
   },
 
@@ -324,9 +344,10 @@ export const bonSortieController = {
     try {
       const ligneId = req.params.ligneId as string;
       const userId = (req as any).user?.userId;
-      const { overrideLotId, reason, containerCount } = req.body || {};
+      const { overrideLotId, overrideQty, reason, containerCount } = req.body || {};
       const data = await bonSortieRepository.transferLineFromEconomat(ligneId, userId, {
         overrideLotId: typeof overrideLotId === 'string' ? overrideLotId : undefined,
+        overrideQty: overrideQty != null && Number.isFinite(Number(overrideQty)) ? Number(overrideQty) : undefined,
         reason: typeof reason === 'string' ? reason : undefined,
         containerCount: Number.isFinite(containerCount) ? Number(containerCount) : undefined,
       });

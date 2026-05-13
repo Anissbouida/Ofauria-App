@@ -40,8 +40,8 @@ export const inventoryController = {
       // Create ingredient lot for ONSSA traceability
       const lotResult = await client.query(
         `INSERT INTO ingredient_lots (ingredient_id, supplier_lot_number,
-          quantity_received, quantity_remaining, unit_cost, manufactured_date, expiration_date, received_at, store_id)
-         VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, $7) RETURNING id`,
+          quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
+         VALUES ($1, $2, $3, $3, $3, 0, $4, $5, $6, CURRENT_DATE, $7) RETURNING id`,
         [ingredientId, supplierLotNumber || null,
          quantity, unitCost, manufacturedDate || null, expirationDate || null,
          req.user!.storeId || null]

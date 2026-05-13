@@ -20,13 +20,16 @@ export const productRepository = {
       : '';
     if (params.storeId) values.push(params.storeId);
 
-    // useVitrine: POS mode — return vitrine_quantity in the stock_quantity
-    // column so all client filters (e.g. stock > 0) operate on what is
-    // actually sellable, not on the backroom reserve.
+    // useVitrine: POS mode → stock_quantity = vitrine_quantity (ce qui est sellable).
+    // Mode admin (non-POS) : stock_quantity = backroom + vitrine (le total reel detenu
+    // par le store). Ainsi un produit avec 0 en backroom mais 10 en vitrine n'apparait
+    // plus en "Rupture" dans la liste produits.
+    // Les colonnes stock_quantity et vitrine_quantity restent exposees individuellement
+    // pour les ecrans qui ont besoin de la decomposition (admin stock, KPIs).
     const stockColumns = params.storeId
       ? (params.useVitrine
           ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
-          : `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.vitrine_quantity, 0) as vitrine_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`)
+          : `(COALESCE(pss.stock_quantity, 0) + COALESCE(pss.vitrine_quantity, 0)) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.vitrine_quantity, 0) as vitrine_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`)
       : `p.stock_quantity, p.stock_min_threshold,`;
 
     // Phase D — pour chaque produit en vitrine, calcule la deadline effective

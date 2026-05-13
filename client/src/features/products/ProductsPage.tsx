@@ -330,6 +330,8 @@ function CatalogueTab() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
           {filteredProducts.map((p: Record<string, any>) => {
             const stock = parseFloat((p.stock_quantity as string) || '0');
+            const vitrine = parseFloat((p.vitrine_quantity as string) || '0');
+            const backroom = parseFloat((p.backroom_quantity as string) || '0');
             const threshold = parseFloat((p.stock_min_threshold as string) || '0');
             const isLow = threshold > 0 && stock <= threshold && stock > 0;
             const isOut = stock <= 0;
@@ -393,10 +395,10 @@ function CatalogueTab() {
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                    <div className="flex items-center gap-1 text-xs">
+                    <div className="flex items-center gap-1 text-xs" title={`Reserve production : ${backroom} — En magasin (gere par caissieres) : ${vitrine}`}>
                       <Package size={12} className="text-gray-400" />
                       <span className={`font-semibold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-600'}`}>
-                        {stock}
+                        {backroom}
                       </span>
                     </div>
                     {p.responsible_first_name && (

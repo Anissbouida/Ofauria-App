@@ -113,6 +113,25 @@ export const purchaseRequestRepository = {
     return result.rows[0] || null;
   },
 
+  /** Assign or change supplier on a pending request */
+  async updateSupplier(id: string, supplierId: string | null) {
+    const result = await db.query(
+      `UPDATE purchase_requests SET supplier_id = $1, updated_at = NOW() WHERE id = $2 AND status = 'pending' RETURNING *`,
+      [supplierId, id]
+    );
+    return result.rows[0] || null;
+  },
+
+  /** Bulk assign supplier to multiple pending requests */
+  async bulkUpdateSupplier(ids: string[], supplierId: string | null) {
+    if (ids.length === 0) return [];
+    const result = await db.query(
+      `UPDATE purchase_requests SET supplier_id = $1, updated_at = NOW() WHERE id = ANY($2) AND status = 'pending' RETURNING *`,
+      [supplierId, ids]
+    );
+    return result.rows;
+  },
+
   /** Cancel a pending request */
   async cancel(id: string, note?: string) {
     const updates = note

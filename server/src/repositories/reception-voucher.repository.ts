@@ -126,8 +126,8 @@ export const receptionVoucherRepository = {
         const effectiveCost = item.unitPrice ?? (poItem ? parseFloat(poItem.unit_price) : null);
         await client.query(
           `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
-            quantity_received, quantity_remaining, unit_cost, manufactured_date, expiration_date, received_at, store_id)
-           VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, CURRENT_DATE, $9)`,
+            quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
+           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9)`,
           [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
            item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,
            data.storeId || null]

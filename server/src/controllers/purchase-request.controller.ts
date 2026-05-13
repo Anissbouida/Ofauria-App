@@ -52,6 +52,26 @@ export const purchaseRequestController = {
     res.json({ success: true, data: updated });
   },
 
+  async assignSupplier(req: AuthRequest, res: Response) {
+    const { supplierId } = req.body;
+    const updated = await purchaseRequestRepository.updateSupplier(req.params.id, supplierId || null);
+    if (!updated) {
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
+      return;
+    }
+    res.json({ success: true, data: updated });
+  },
+
+  async bulkAssignSupplier(req: AuthRequest, res: Response) {
+    const { requestIds, supplierId } = req.body;
+    if (!Array.isArray(requestIds) || requestIds.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'requestIds requis' } });
+      return;
+    }
+    const updated = await purchaseRequestRepository.bulkUpdateSupplier(requestIds, supplierId || null);
+    res.json({ success: true, data: updated });
+  },
+
   async cancel(req: AuthRequest, res: Response) {
     const { note } = req.body;
     const cancelled = await purchaseRequestRepository.cancel(req.params.id, note);

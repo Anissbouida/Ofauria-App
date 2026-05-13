@@ -11,6 +11,8 @@ router.get('/grouped', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), pu
 router.get('/count', authenticate, purchaseRequestController.count);
 router.post('/', authenticate, purchaseRequestController.create);
 router.put('/:id/quantity', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseRequestController.updateQuantity);
+router.put('/:id/supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseRequestController.assignSupplier);
+router.post('/bulk-assign-supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseRequestController.bulkAssignSupplier);
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseRequestController.cancel);
 router.post('/generate-po', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseRequestController.generatePO);
 
