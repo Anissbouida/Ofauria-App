@@ -1433,8 +1433,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                           setYieldUnit(ct.unite_lancement as string || 'unit');
                         }
                       }
-                    }} required>
-                    <option value="">-- Choisir un contenant --</option>
+                    }}>
+                    <option value="">-- Aucun contenant (optionnel) --</option>
                     {allContenants.map((c: Record<string, any>) => {
                       const cMode = getModeCalcul(c.unite_lancement as string || 'unit');
                       const cLabels = MODE_LABELS[cMode];
@@ -1488,7 +1488,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement</label>
                   <div className="flex gap-2">
-                    <input type="number" min={0.1} step="0.1"
+                    <input type="number" min={0.001} step="any"
                       className="w-28 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
                       value={yieldQuantity} onChange={(e) => setYieldQuantity(e.target.value)} required />
                     <select
