@@ -626,6 +626,25 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     ? (allRecipes as Record<string, any>[]).find(r => r.id === form.recipeId) || null
     : null;
 
+  // Auto-remplit le prix de vente et le cout de revient depuis la recette selectionnee.
+  // - cost_per_unit = recipe.total_cost / yield_quantity
+  // - prix_vente = cost_per_unit * margin_multiplier
+  // On override toujours quand recipeId change (la recette est la source de verite).
+  useEffect(() => {
+    if (!selectedRecipe) return;
+    const totalCost = parseFloat((selectedRecipe.total_cost as string) || '0');
+    const yieldQty = parseFloat((selectedRecipe.yield_quantity as string) || '1') || 1;
+    const margin = parseFloat(String(selectedRecipe.margin_multiplier ?? '3')) || 3;
+    const costPerUnit = totalCost / yieldQty;
+    const suggestedPrice = costPerUnit * margin;
+    setForm(f => ({
+      ...f,
+      price: suggestedPrice > 0 ? suggestedPrice.toFixed(2) : f.price,
+      costPrice: costPerUnit > 0 ? costPerUnit.toFixed(2) : f.costPrice,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier]);
+
   // Smart search: fuzzy match on recipe name, normalize accents
   const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const searchFilter = (r: Record<string, any>) => {
