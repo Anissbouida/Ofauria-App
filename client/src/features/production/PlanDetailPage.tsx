@@ -1133,76 +1133,69 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <span className={`odoo-tag ${statusTagClass}`}>{sc.icon}{planStatusBadge}</span>
       </div>
 
-      {/* ══════════════ SMART BUTTONS ROW ══════════════ */}
-      <div className="odoo-smart-button-row">
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{items.length}</div>
-          <div className="odoo-smart-button-label"><Package size={11} /> Articles</div>
+      {/* ══════════════ STAT TILES (sober, comme la liste) ══════════════ */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label"><Package size={11} style={{ display: 'inline', marginRight: 4 }} />Articles</div>
+          <div className="odoo-stat-card-value">{items.length}</div>
         </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value" style={{ color: '#28a745' }}>{producedCount}</div>
-          <div className="odoo-smart-button-label"><CheckCircle2 size={11} /> Produits</div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Produits</div>
+          <div className="odoo-stat-card-value" style={{ color: producedCount > 0 ? '#28a745' : undefined }}>{producedCount}</div>
         </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{needs.length}</div>
-          <div className="odoo-smart-button-label"><Layers size={11} /> Ingrédients</div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label"><Layers size={11} style={{ display: 'inline', marginRight: 4 }} />Ingrédients</div>
+          <div className="odoo-stat-card-value">{needs.length}</div>
         </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value" style={{ color: progressPct >= 100 ? '#28a745' : progressPct >= 50 ? '#b85d1a' : 'var(--theme-accent)' }}>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">Progression</div>
+          <div className="odoo-stat-card-value" style={{ color: progressPct >= 100 ? '#28a745' : progressPct >= 50 ? '#b85d1a' : undefined }}>
             {progressPct}%
           </div>
-          <div className="odoo-smart-button-label">Progression</div>
         </div>
       </div>
 
-      {/* ══════════════ FORM HEADER ══════════════ */}
-      <div className="odoo-form-header">
-        <h1 className="odoo-form-title">
-          Plan du {format(new Date(plan.plan_date), 'dd MMMM yyyy', { locale: fr })}
-        </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-            <User size={12} /> {isSemiFini
-              ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
-              : plan.created_by_name}
+      {/* ══════════════ METADATA STRIP (compact, sans h1) ══════════════ */}
+      <div style={{
+        padding: '0.5rem 1rem',
+        borderBottom: '1px solid var(--theme-bg-separator)',
+        backgroundColor: 'var(--theme-bg-card)',
+        display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+        fontSize: '0.75rem', color: 'var(--theme-text-muted)',
+      }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <User size={11} /> {isSemiFini
+            ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
+            : plan.created_by_name}
+        </span>
+        {rc && <span className="odoo-tag odoo-tag-purple"><ChefHat size={9} /> {rc.label}</span>}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Hash size={11} /> <span style={{ fontFamily: 'monospace' }}>
+            {isSemiFini
+              ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
+              : (plan.id as string).slice(0, 8).toUpperCase()}
           </span>
-          {rc && (
-            <span className="odoo-tag odoo-tag-purple"><ChefHat size={10} /> {rc.label}</span>
-          )}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-            <Hash size={12} /> <span style={{ fontFamily: 'monospace' }}>
-              {isSemiFini
-                ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
-                : (plan.id as string).slice(0, 8).toUpperCase()}
-            </span>
+        </span>
+        {plan.type && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Calendar size={11} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
           </span>
-          {plan.type && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-              <Calendar size={12} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-            </span>
-          )}
-          {plan.notes ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-              <FileText size={12} /> {plan.notes}
-            </span>
-          ) : null}
-        </div>
+        )}
+        {plan.notes ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <FileText size={11} /> {plan.notes}
+          </span>
+        ) : null}
 
-        {/* Progress bar */}
+        {/* Progress bar inline */}
         {(plan.status === 'in_progress' || plan.status === 'completed') && totalActive > 0 && (
-          <div style={{ marginTop: '0.75rem' }}>
-            <div style={{ height: 6, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ flex: 1, minWidth: 200, marginLeft: 'auto' }}>
+            <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{
                 height: '100%', width: `${progressPct}%`,
                 backgroundColor: progressPct >= 100 ? '#28a745' : 'var(--theme-accent)',
                 transition: 'width 0.3s',
               }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 4 }}>
-              <span>{producedCount} produit(s)</span>
-              {inProgressCount > 0 && <span>{inProgressCount} en cours</span>}
-              {waitingCount > 0 && <span>{waitingCount} en attente</span>}
-              {pendingCount > 0 && <span>{pendingCount} à faire</span>}
             </div>
           </div>
         )}
