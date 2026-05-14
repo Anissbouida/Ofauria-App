@@ -24,9 +24,16 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 
 export const recipeRepository = {
   async findAll() {
-    // total_cost est recalcule a la volee via 3 CTE (ingredients + sous-recettes + emballages)
-    // pour ne pas dependre de la valeur stockee qui peut etre obsolete sur les recettes
-    // creees avant l'ajout de la conversion d'unite (g vs kg, ml vs l).
+    // total_cost est recalcule a la volee pour ne pas dependre de la valeur stockee
+    // qui peut etre obsolete (recettes creees avant l'ajout de la conversion d'unite).
+    //
+    // Strategie : on calcule d'abord le cout "direct" de chaque recette (ingredients +
+    // emballages), puis les sous-recettes referencent ce cout direct au lieu du total_cost
+    // stocke. Ca corrige la cascade : si Biscuit a un total_cost stocke faux, le parent
+    // OFAURIA qui l'utilise comme sous-recette reflete quand meme le bon cout.
+    //
+    // Supporte 1 niveau de nesting (sous-recette plate). Pour les niveaux plus profonds
+    // il faudrait un CTE recursif.
     const result = await db.query(
       `WITH ingredient_costs AS (
          SELECT ri.recipe_id, SUM(
@@ -42,15 +49,26 @@ export const recipeRepository = {
          FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
          GROUP BY ri.recipe_id
        ),
-       sub_recipe_costs AS (
-         SELECT rsr.recipe_id, SUM(rsr.quantity * COALESCE(r2.total_cost, 0) / NULLIF(r2.yield_quantity, 0)) AS cost
-         FROM recipe_sub_recipes rsr JOIN recipes r2 ON r2.id = rsr.sub_recipe_id
-         GROUP BY rsr.recipe_id
-       ),
        packaging_costs AS (
          SELECT rp.recipe_id, SUM(rp.quantity * COALESCE(pi.unit_cost, 0)) AS cost
          FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
          GROUP BY rp.recipe_id
+       ),
+       -- Cout direct de chaque recette = ingredients + emballages (sans sous-recettes).
+       -- Utilise ensuite comme source de verite pour le cout d'une sous-recette referencee.
+       direct_costs AS (
+         SELECT r.id, r.yield_quantity,
+                (COALESCE(ic.cost, 0) + COALESCE(pkc.cost, 0)) AS cost
+         FROM recipes r
+         LEFT JOIN ingredient_costs ic ON ic.recipe_id = r.id
+         LEFT JOIN packaging_costs pkc ON pkc.recipe_id = r.id
+       ),
+       sub_recipe_costs AS (
+         SELECT rsr.recipe_id,
+                SUM(rsr.quantity * COALESCE(dc.cost, 0) / NULLIF(dc.yield_quantity, 0)) AS cost
+         FROM recipe_sub_recipes rsr
+         JOIN direct_costs dc ON dc.id = rsr.sub_recipe_id
+         GROUP BY rsr.recipe_id
        )
        SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
@@ -92,11 +110,37 @@ export const recipeRepository = {
       [id]
     );
 
-    // Fetch sub-recipes
+    // Fetch sub-recipes — sub_total_cost est recalcule a la volee depuis les ingredients
+    // de la sous-recette (avec conversion d'unite g/kg, ml/l) pour ne pas refleter une
+    // valeur stockee obsolete. La sous-recette ne peut elle-meme avoir de sous-recettes
+    // dans la pratique (preparations de base = leaf nodes), donc ingredients + emballages
+    // suffit.
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.yield_unit as sub_yield_unit, sr.total_cost as sub_total_cost
+              sr.yield_unit as sub_yield_unit,
+              (
+                COALESCE((
+                  SELECT SUM(
+                    ri.quantity * COALESCE(ing.unit_cost, 0) *
+                    CASE
+                      WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
+                      WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
+                      WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
+                      WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
+                      ELSE 1
+                    END
+                  )
+                  FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
+                  WHERE ri.recipe_id = sr.id
+                ), 0)
+                +
+                COALESCE((
+                  SELECT SUM(rp.quantity * COALESCE(pi.unit_cost, 0))
+                  FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
+                  WHERE rp.recipe_id = sr.id
+                ), 0)
+              ) AS sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
        WHERE rsr.recipe_id = $1`,
