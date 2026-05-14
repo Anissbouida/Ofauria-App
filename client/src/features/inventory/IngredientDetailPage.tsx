@@ -183,6 +183,12 @@ export default function IngredientDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ingredient', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      // Changement de unit_cost : cascade côté serveur via v_recipe_total_cost +
+      // syncProductPrice. Invalider aussi le cache recettes / produits pour
+      // que les coûts affichés reflètent immédiatement la nouvelle valeur.
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['recipe'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
       setShowEdit(false);
       notify.success('Ingrédient mis à jour');
     },
