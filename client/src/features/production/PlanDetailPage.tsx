@@ -1804,18 +1804,6 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
       {semiFinishedDepsBlock}
 
-      {/* ══════════════ ROLE FILTER BANNER (onglet Production) ══════════════ */}
-      {showProd && allowedSlugs && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <Filter size={16} className="text-amber-600" />
-          </div>
-          <span className="text-sm text-amber-800">
-            Affichage filtre selon votre profil — <strong>{items.length}</strong> produit(s) sur {allItems.length} au total
-          </span>
-        </div>
-      )}
-
       {/* ══════════════ ITEMS SECTION (onglet Production) ══════════════ */}
       {showProd && <>{linkedReplenishment ? (() => {
         const repItems = (linkedReplenishment.items || []) as Record<string, any>[];
