@@ -21,42 +21,34 @@ type ViewMode = 'grid' | 'table';
 export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline' | 'semi-finis'>('pipeline');
 
+  const tabLabel = activeTab === 'pipeline' ? 'Pipeline'
+    : activeTab === 'catalogue' ? 'Catalogue' : 'Semi-finis';
+
   return (
-    <div className="space-y-5">
-      {/* Tabs principaux en haut */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        <button
-          onClick={() => setActiveTab('pipeline')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'pipeline'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <GitBranch size={16} />
-          Pipeline
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Produits</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">{tabLabel}</span>
+        </div>
+      </div>
+
+      {/* ══════ TABS Odoo ══════ */}
+      <div className="odoo-tabs">
+        <button onClick={() => setActiveTab('pipeline')}
+          className={`odoo-tab ${activeTab === 'pipeline' ? 'active' : ''}`}>
+          <GitBranch size={13} /> Pipeline
         </button>
-        <button
-          onClick={() => setActiveTab('catalogue')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'catalogue'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <ShoppingBag size={16} />
-          Catalogue
+        <button onClick={() => setActiveTab('catalogue')}
+          className={`odoo-tab ${activeTab === 'catalogue' ? 'active' : ''}`}>
+          <ShoppingBag size={13} /> Catalogue
         </button>
-        <button
-          onClick={() => setActiveTab('semi-finis')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'semi-finis'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Layers size={16} />
-          Semi-finis
+        <button onClick={() => setActiveTab('semi-finis')}
+          className={`odoo-tab ${activeTab === 'semi-finis' ? 'active' : ''}`}>
+          <Layers size={13} /> Semi-finis
         </button>
       </div>
 
@@ -66,8 +58,11 @@ export default function ProductsPage() {
           <ExpiredProductLotsBanner />
           <CatalogueTab />
         </>
-      ) : activeTab === 'semi-finis' ? <SemiFinisTab />
-        : <ProductPipelineTab />}
+      ) : activeTab === 'semi-finis' ? (
+        <div style={{ padding: '1rem' }}><SemiFinisTab /></div>
+      ) : (
+        <div style={{ padding: '1rem' }}><ProductPipelineTab /></div>
+      )}
     </div>
   );
 }
@@ -78,16 +73,12 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition-colors`}
-      onClick={() => onSort(sk)}>
+    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
       <span className="inline-flex items-center gap-1">
-        {align === 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
         {label}
-        {align !== 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
+        <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
+          {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+        </span>
       </span>
     </th>
   );
@@ -204,130 +195,101 @@ function CatalogueTab() {
   }, [filteredProducts, sortKey, sortDir]);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Produits</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {stockFilter !== 'all' ? `${filteredProducts.length} sur ${totalProducts} produits` : `${totalProducts} produits au catalogue`}
-          </p>
+    <>
+      {/* ══════ Action sub-bar (Nouveau produit + pager + view switcher) ══════ */}
+      <div className="odoo-control-bar" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+        <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
+        </button>
+        <div style={{ flex: 1 }} />
+        <span className="odoo-pager">
+          <strong>{filteredProducts.length}</strong> / {totalProducts}
+        </span>
+        <div className="odoo-view-switcher">
+          <button onClick={() => setViewMode('table')} className={viewMode === 'table' ? 'active' : ''} title="Vue liste">
+            <List size={14} />
+          </button>
+          <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} title="Vue kanban">
+            <LayoutGrid size={14} />
+          </button>
         </div>
-        <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
-          <Plus size={18} /> Nouveau produit
+      </div>
+
+      {/* ══════ STAT TILES (sober) ══════ */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setStockFilter('all')}
+          className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total produits
+          </div>
+          <div className="odoo-stat-card-value">{totalProducts}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')}
+          className={`odoo-stat-card ${stockFilter === 'available' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Eye size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Disponibles
+          </div>
+          <div className="odoo-stat-card-value">{availableCount}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
+          className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: lowStockCount > 0 ? '#b85d1a' : undefined }}>{lowStockCount}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')}
+          className={`odoo-stat-card ${stockFilter === 'out' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: outOfStockCount > 0 ? '#dc3545' : undefined }}>{outOfStockCount}</div>
         </button>
       </div>
 
-      {/* Stats cards — clickable as filters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div onClick={() => setStockFilter(stockFilter === 'all' ? 'all' : 'all')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            stockFilter === 'all' ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200' : 'bg-white border-gray-100 hover:border-blue-200 hover:bg-blue-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-              <ShoppingBag size={20} className="text-blue-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900">{totalProducts}</div>
-              <div className="text-xs text-gray-500">Total</div>
-            </div>
-          </div>
-        </div>
-        <div onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            stockFilter === 'available' ? 'bg-green-50 border-green-300 ring-2 ring-green-200' : 'bg-white border-gray-100 hover:border-green-200 hover:bg-green-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-              <Eye size={20} className="text-green-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-700">{availableCount}</div>
-              <div className="text-xs text-gray-500">Disponibles</div>
-            </div>
-          </div>
-        </div>
-        <div onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            stockFilter === 'low' ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200' : 'bg-white border-gray-100 hover:border-amber-200 hover:bg-amber-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <TrendingUp size={20} className="text-amber-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-amber-700">{lowStockCount}</div>
-              <div className="text-xs text-gray-500">Stock bas</div>
-            </div>
-          </div>
-        </div>
-        <div onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')}
-          className={`rounded-xl border p-4 shadow-sm cursor-pointer transition-all ${
-            stockFilter === 'out' ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'bg-white border-gray-100 hover:border-red-200 hover:bg-red-50/50'
-          }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-              <AlertTriangle size={20} className="text-red-600" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-red-700">{outOfStockCount}</div>
-              <div className="text-xs text-gray-500">Rupture</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters bar */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-colors" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Filter size={16} className="text-gray-400" />
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
-              className="py-2.5 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[180px]">
-              <option value="">Toutes les catégories</option>
-              {categories.map((c: { id: number; name: string }) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          {stockFilter !== 'all' && (
-            <button onClick={() => setStockFilter('all')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
-                stockFilter === 'available' ? 'bg-green-50 text-green-700 border-green-200' :
-                stockFilter === 'low' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                'bg-red-50 text-red-700 border-red-200'
-              }`}>
-              {stockFilter === 'available' ? 'Disponibles' : stockFilter === 'low' ? 'Stock bas' : 'Rupture'}
-              <X size={14} />
-            </button>
-          )}
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            <button onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <LayoutGrid size={18} />
-            </button>
-            <button onClick={() => setViewMode('table')}
-              className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'}`}>
-              <List size={18} />
-            </button>
-          </div>
-        </div>
+      {/* ══════ SEARCH PANEL ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher un produit..."
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          className="odoo-search-input" />
+        {search && (
+          <span className="odoo-filter-chip">
+            Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
+        {categoryFilter && (
+          <span className="odoo-filter-chip">
+            {(categories as Array<{ id: number; name: string }>).find(c => String(c.id) === categoryFilter)?.name || 'Catégorie'}
+            <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
+          </span>
+        )}
+        {stockFilter !== 'all' && (
+          <span className="odoo-filter-chip">
+            {stockFilter === 'available' ? 'Disponibles' : stockFilter === 'low' ? 'Stock bas' : 'Rupture'}
+            <span className="odoo-filter-chip-remove" onClick={() => setStockFilter('all')}>×</span>
+          </span>
+        )}
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+          className="odoo-filter-dropdown"
+          style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          <option value="">▾ Catégorie</option>
+          {categories.map((c: { id: number; name: string }) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* Content */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full" />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
       ) : viewMode === 'grid' ? (
-        /* ═══ Grid View ═══ */
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" style={{ maxHeight: 'calc(100vh - 22rem)', overflowY: 'auto' }}>
+        /* ═══ Grid View (kanban Odoo) ═══ */
+        <div className="odoo-kanban">
+        <div className="odoo-kanban-grid">
           {filteredProducts.map((p: Record<string, any>) => {
             const stock = parseFloat((p.stock_quantity as string) || '0');
             const vitrine = parseFloat((p.vitrine_quantity as string) || '0');
@@ -412,31 +374,32 @@ function CatalogueTab() {
               </div>
             );
           })}
+        </div>
           {filteredProducts.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-400">
-              <ShoppingBag size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucun produit trouve</p>
-              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+              <ShoppingBag size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucun produit trouvé</p>
+              <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Essayez de modifier vos filtres</p>
             </div>
           )}
         </div>
       ) : (
-        /* ═══ Table View ═══ */
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b sticky top-0 z-10">
+        /* ═══ Table View (Odoo dense) ═══ */
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
                 <SortHeader label="Produit" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Responsable" sortKey="responsible" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Prix" sortKey="price" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Stock" sortKey="stock_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                <SortHeader label="Stock" sortKey="stock_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Statut" sortKey="is_available" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cycle de vie</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <th style={{ textAlign: 'center' }}>Cycle de vie</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {sortedProducts.map((p: Record<string, any>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
@@ -571,7 +534,7 @@ function CatalogueTab() {
           isLoading={saveMutation.isPending}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -820,35 +783,34 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (mounted && e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        {/* Modal header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
+      onClick={(e) => { if (mounted && e.target === e.currentTarget) onClose(); }}>
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        {/* Control bar */}
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
             {imagePreview ? (
-              <img src={imagePreview} alt="" className="w-12 h-12 rounded-xl object-cover border border-gray-200" />
+              <img src={imagePreview} alt="" style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'cover' }} />
             ) : (
-              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-2xl">🥖</div>
+              <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
             )}
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">{product ? 'Modifier le produit' : 'Nouveau produit'}</h2>
-              {product && <p className="text-xs text-gray-400 mt-0.5">{product.name as string}</p>}
-            </div>
+            <span>Produit</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">
+              {product ? (product.name as string) : 'Nouveau produit'}
+            </span>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
-            <X size={18} className="text-gray-500" />
-          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-5">
+        {/* Tabs Odoo */}
+        <div className="odoo-tabs">
           {tabs.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeTab === tab.key
-                  ? 'border-amber-500 text-amber-700'
-                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-200'
-              }`}>
+            <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
+              className={`odoo-tab ${activeTab === tab.key ? 'active' : ''}`}>
               {tab.icon}
               {tab.label}
             </button>
@@ -1284,21 +1246,27 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             )}
           </div>
 
-          {/* Footer actions */}
-          <div className="sticky bottom-0 bg-white border-t border-gray-100 px-5 py-4 flex items-center justify-between">
-            <button type="button" onClick={onClose}
-              className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
+          {/* Footer actions Odoo */}
+          <div style={{
+            position: 'sticky', bottom: 0,
+            backgroundColor: 'var(--theme-bg-card)',
+            borderTop: '1px solid var(--theme-bg-separator)',
+            padding: '0.625rem 1rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem',
+          }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">
               Annuler
             </button>
-            <button type="submit" disabled={isLoading}
-              className="px-6 py-2.5 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2">
+            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div style={{ width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                   Enregistrement...
                 </>
               ) : (
-                'Enregistrer'
+                <>
+                  <Pencil size={13} /> {product ? 'Mettre à jour' : 'Créer le produit'}
+                </>
               )}
             </button>
           </div>
