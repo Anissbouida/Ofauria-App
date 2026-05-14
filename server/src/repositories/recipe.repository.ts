@@ -207,10 +207,37 @@ export const recipeRepository = {
     };
   },
 
-  /** List only base recipes (for sub-recipe picker) */
+  /** List only base recipes (for sub-recipe picker).
+   *  total_cost recalcule a la volee (ingredients + emballages, avec conversion d'unite)
+   *  pour ne pas renvoyer une valeur stockee obsolete au formulaire de creation/edition. */
   async findBaseRecipes() {
     const result = await db.query(
-      `SELECT id, name, yield_quantity, yield_unit, total_cost FROM recipes WHERE is_base = true ORDER BY name`
+      `SELECT r.id, r.name, r.yield_quantity, r.yield_unit,
+              (
+                COALESCE((
+                  SELECT SUM(
+                    ri.quantity * COALESCE(ing.unit_cost, 0) *
+                    CASE
+                      WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
+                      WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
+                      WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
+                      WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
+                      ELSE 1
+                    END
+                  )
+                  FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
+                  WHERE ri.recipe_id = r.id
+                ), 0)
+                +
+                COALESCE((
+                  SELECT SUM(rp.quantity * COALESCE(pi.unit_cost, 0))
+                  FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
+                  WHERE rp.recipe_id = r.id
+                ), 0)
+              ) AS total_cost
+       FROM recipes r
+       WHERE r.is_base = true
+       ORDER BY r.name`
     );
     return result.rows;
   },
