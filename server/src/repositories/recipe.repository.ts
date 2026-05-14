@@ -24,12 +24,50 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 
 export const recipeRepository = {
   async findAll() {
+    // total_cost est recalcule a la volee via 3 CTE (ingredients + sous-recettes + emballages)
+    // pour ne pas dependre de la valeur stockee qui peut etre obsolete sur les recettes
+    // creees avant l'ajout de la conversion d'unite (g vs kg, ml vs l).
     const result = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.image_url as product_image, p.price as product_price,
-              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
-              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+      `WITH ingredient_costs AS (
+         SELECT ri.recipe_id, SUM(
+           ri.quantity * COALESCE(ing.unit_cost, 0) *
+           CASE
+             WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
+             WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
+             WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
+             WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
+             ELSE 1
+           END
+         ) AS cost
+         FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
+         GROUP BY ri.recipe_id
+       ),
+       sub_recipe_costs AS (
+         SELECT rsr.recipe_id, SUM(rsr.quantity * COALESCE(r2.total_cost, 0) / NULLIF(r2.yield_quantity, 0)) AS cost
+         FROM recipe_sub_recipes rsr JOIN recipes r2 ON r2.id = rsr.sub_recipe_id
+         GROUP BY rsr.recipe_id
+       ),
+       packaging_costs AS (
+         SELECT rp.recipe_id, SUM(rp.quantity * COALESCE(pi.unit_cost, 0)) AS cost
+         FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
+         GROUP BY rp.recipe_id
+       )
+       SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.created_at, r.updated_at,
+              (COALESCE(ic.cost, 0) + COALESCE(src.cost, 0) + COALESCE(pkc.cost, 0)) AS total_cost,
+              p.name as product_name, p.image_url as product_image, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type,
+              pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes,
+              pc.unite_lancement as contenant_unite_lancement,
+              pc.poids_kg as contenant_poids_kg
+       FROM recipes r
+       LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       LEFT JOIN ingredient_costs ic ON ic.recipe_id = r.id
+       LEFT JOIN sub_recipe_costs src ON src.recipe_id = r.id
+       LEFT JOIN packaging_costs pkc ON pkc.recipe_id = r.id
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
