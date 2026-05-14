@@ -893,24 +893,15 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   // ingredients + qty necessaire (pas de DISPO, pas de "insuffisant", pas de
   // "Demander au stock" / "Restaurer & relancer"). La gestion stock est au magasinier.
   const ingredientNeedsBlock = (showPrepNeeds && plan.status !== 'draft' && needs.length > 0) ? (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-purple-500 flex items-center justify-center">
-            <Beaker size={18} className="text-white" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-gray-900">
-              {isMagasinier ? 'Besoins en ingredients' : 'Ingredients necessaires'}
-            </h2>
-            <span className="text-xs text-gray-500">{needs.length} ingredient(s)</span>
-          </div>
-        </div>
+    <div className="odoo-section">
+      <div className="odoo-section-header">
+        <Beaker size={12} /> {isMagasinier ? 'Besoins en ingrédients' : 'Ingrédients nécessaires'}
+        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
         {isMagasinier && (
-          <div className="flex items-center gap-2">
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
             {insufficientNeeds.length > 0 && (
-              <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
-                <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
+              <span className="odoo-tag odoo-tag-red">
+                <AlertTriangle size={10} /> {insufficientNeeds.length} insuffisant(s)
               </span>
             )}
             {(() => {
@@ -918,95 +909,94 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 .filter(it => it.waiting_status === 'waiting');
               if (waiting.length === 0) return null;
               return (
-                <button
-                  onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
-                  disabled={restoreMutation.isPending}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors shadow-sm"
-                  title="Re-verifier la dispo et relancer les articles en attente. Complete aussi le bon de sortie si necessaire."
-                >
-                  <RotateCcw size={12} /> Restaurer ({waiting.length}) & relancer production
+                <button onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
+                  disabled={restoreMutation.isPending} className="odoo-btn-primary"
+                  style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: '#28a745', borderColor: '#28a745' }}
+                  title="Re-verifier la dispo et relancer les articles en attente.">
+                  <RotateCcw size={11} /> Restaurer ({waiting.length}) &amp; relancer
                 </button>
               );
             })()}
-          </div>
+          </span>
         )}
       </div>
-      <div className="divide-y divide-gray-50">
-        {needs.map((need: Record<string, any>) => {
-          const needed = parseFloat(need.needed_quantity as string);
-          const available = parseFloat(need.available_quantity as string);
-          const sufficient = need.is_sufficient as boolean;
-          const pct = needed > 0 ? Math.min(Math.round((available / needed) * 100), 100) : 100;
-          // Vue chef : neutre, pas de coloration rouge/vert (qui revelerait la dispo).
-          const rowBg = isMagasinier && !sufficient ? 'bg-red-50/30' : '';
-          return (
-            <div key={need.id as string} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${rowBg}`}>
-              <div className={`w-1 h-10 rounded-full flex-shrink-0 ${
-                isMagasinier ? (sufficient ? 'bg-emerald-500' : 'bg-red-400') : 'bg-violet-300'
-              }`} />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
-                <div className="text-xs text-gray-400">{need.unit as string}</div>
-              </div>
-              {/* Magasinier seulement : barre dispo + DISPO + statut suffisant/insuffisant + actions */}
-              {isMagasinier && (
-                <>
-                  <div className="w-24 flex-shrink-0">
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
+      <table className="odoo-table">
+        <thead>
+          <tr>
+            <th style={{ width: 24 }}></th>
+            <th>Ingrédient</th>
+            {isMagasinier && <th>Disponibilité</th>}
+            <th style={{ textAlign: 'right' }}>Besoin</th>
+            {isMagasinier && <th style={{ textAlign: 'right' }}>Dispo</th>}
+            {isMagasinier && <th>Statut</th>}
+            {isMagasinier && <th></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {needs.map((need: Record<string, any>) => {
+            const needed = parseFloat(need.needed_quantity as string);
+            const available = parseFloat(need.available_quantity as string);
+            const sufficient = need.is_sufficient as boolean;
+            const pct = needed > 0 ? Math.min(Math.round((available / needed) * 100), 100) : 100;
+            const dotClass = !isMagasinier ? 'neutral' : sufficient ? 'ok' : 'danger';
+            return (
+              <tr key={need.id as string} style={{ cursor: 'default' }}>
+                <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                <td>
+                  <span style={{ fontWeight: 500 }}>{need.ingredient_name as string}</span>
+                </td>
+                {isMagasinier && (
+                  <td>
+                    <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${pct}%`,
+                        backgroundColor: sufficient ? '#28a745' : '#dc3545',
+                      }} />
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
-                  </div>
-                  <div className="flex items-center gap-4 flex-shrink-0">
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
-                      <div className="text-sm font-bold text-gray-700">{needed.toFixed(2)}</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
-                      <div className="text-sm font-bold text-gray-700">{available.toFixed(2)}</div>
-                    </div>
-                  </div>
-                  {sufficient ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
-                      <CheckCircle size={10} /> OK
-                    </span>
-                  ) : (
-                    <>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
-                        <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
-                      </span>
-                      {requestedVerifications.has(need.ingredient_id as string) ? (
-                        <span
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 flex-shrink-0"
-                          title="Demande envoyee au responsable stock"
-                        >
-                          <CheckCircle size={12} /> Demande envoyee
+                    <span style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)' }}>{pct}%</span>
+                  </td>
+                )}
+                <td style={{ textAlign: 'right' }}>
+                  <span style={{ fontWeight: 600 }}>{needed.toFixed(2)}</span>
+                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{need.unit as string}</span>
+                </td>
+                {isMagasinier && (
+                  <td style={{ textAlign: 'right' }}>
+                    <span style={{ fontWeight: 500 }}>{available.toFixed(2)}</span>
+                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{need.unit as string}</span>
+                  </td>
+                )}
+                {isMagasinier && (
+                  <td>
+                    {sufficient ? (
+                      <span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> OK</span>
+                    ) : (
+                      <span className="odoo-tag odoo-tag-red"><AlertTriangle size={10} /> -{(needed - available).toFixed(2)}</span>
+                    )}
+                  </td>
+                )}
+                {isMagasinier && (
+                  <td style={{ textAlign: 'right' }}>
+                    {!sufficient && (
+                      requestedVerifications.has(need.ingredient_id as string) ? (
+                        <span className="odoo-tag odoo-tag-green" title="Demande envoyée">
+                          <CheckCircle size={10} /> Envoyée
                         </span>
                       ) : (
-                        <button
-                          onClick={() => setRestockNeed(need)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1 flex-shrink-0 transition-colors shadow-sm"
-                          title="Demander au responsable stock de verifier la dispo"
-                        >
-                          <Send size={12} /> Demander au stock
+                        <button onClick={() => setRestockNeed(need)} className="odoo-btn-primary"
+                          style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: '#1f6391', borderColor: '#1f6391' }}
+                          title="Demander au responsable stock de vérifier la dispo">
+                          <Send size={11} /> Demander
                         </button>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              {/* Vue chef : juste la quantite necessaire */}
-              {!isMagasinier && (
-                <div className="text-center flex-shrink-0">
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
-                  <div className="text-sm font-bold text-gray-700">{needed.toFixed(2)} {need.unit as string}</div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                      )
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   ) : null;
 
