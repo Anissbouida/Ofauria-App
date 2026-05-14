@@ -287,7 +287,10 @@ export default function RecipesPage() {
               const totalCost = parseFloat(r.total_cost as string || '0');
               const yieldQty = r.yield_quantity as number || 1;
               const costPerUnit = totalCost / yieldQty;
-              const price = parseFloat(r.product_price as string || '0');
+              // Fallback : pas de produit lie → calcule prix attendu via margin_multiplier
+              const productPrice = parseFloat(r.product_price as string || '0');
+              const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
+              const price = productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0);
               const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
               const cardStatus = !r.is_base && price > 0 ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger') : 'ok';
 
@@ -364,7 +367,10 @@ export default function RecipesPage() {
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 const costPerUnit = totalCost / yieldQty;
-                const price = parseFloat(r.product_price as string || '0');
+                // Fallback : pas de produit lie → prix attendu via margin_multiplier
+                const productPrice = parseFloat(r.product_price as string || '0');
+                const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
+                const price = productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0);
                 const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
                 const dotClass = !r.is_base && price > 0
                   ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger')
@@ -503,7 +509,13 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
   const totalCost = ingredientCost + subRecipeCost;
   const costPerUnit = targetPortions > 0 ? totalCost / targetPortions : 0;
-  const sellingPrice = parseFloat(recipe?.product_price || '0');
+  // Prix de vente : priorite au product.price (defini), sinon fallback sur
+  // costPerUnit * margin_multiplier (cas des recettes sans produit lie comme OFAURIA).
+  const productPrice = parseFloat(recipe?.product_price || '0');
+  const recipeMargin = parseFloat(String(recipe?.margin_multiplier ?? '0'));
+  const sellingPrice = productPrice > 0
+    ? productPrice
+    : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0);
   const margin = sellingPrice > 0 ? ((sellingPrice - costPerUnit) / sellingPrice * 100) : 0;
 
   const steps = (() => {
