@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
@@ -7,7 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, X, Check, Download, ChevronRight,
+  Plus, Pencil, X, Check, Download, ChevronRight, ChevronDown,
   ShoppingCart, Receipt, Loader2, Search, Coins,
   BarChart3, Users, Banknote,
 } from 'lucide-react';
@@ -235,219 +235,198 @@ export default function EmittedInvoicesTab() {
 
   return (
     <>
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/5 to-indigo-500/10 rounded-bl-[40px]" />
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><Receipt size={15} className="text-blue-500" /></div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total facturé</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-800">{n(totalFacture)}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">{allInvoices.length} facture{allInvoices.length > 1 ? 's' : ''}</p>
+      {/* KPI stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Receipt size={11} style={{ display: 'inline', marginRight: 4 }} />Total facturé</div>
+          <div className="odoo-stat-card-value">{n(totalFacture)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{allInvoices.length} facture{allInvoices.length > 1 ? 's' : ''}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-amber-500/5 to-orange-500/10 rounded-bl-[40px]" />
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center"><Coins size={15} className="text-amber-500" /></div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">À encaisser</span>
-          </div>
-          <p className="text-2xl font-bold text-amber-600">{n(totalToCollect)}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">{countByStatus.pending + countByStatus.partial} en cours</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />À encaisser</div>
+          <div className="odoo-stat-card-value" style={{ color: totalToCollect > 0 ? '#b85d1a' : undefined }}>{n(totalToCollect)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{countByStatus.pending + countByStatus.partial} en cours</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-green-500/5 to-emerald-500/10 rounded-bl-[40px]" />
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center"><Check size={15} className="text-green-500" /></div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Encaissé</span>
-          </div>
-          <p className="text-2xl font-bold text-green-600">{n(totalEncaisse)}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">{countByStatus.paid} soldée{countByStatus.paid > 1 ? 's' : ''}</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Encaissé</div>
+          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totalEncaisse)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{countByStatus.paid} soldée{countByStatus.paid > 1 ? 's' : ''}</div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-indigo-500/5 to-purple-500/10 rounded-bl-[40px]" />
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center"><BarChart3 size={15} className="text-indigo-500" /></div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Taux encaissement</span>
-          </div>
-          <p className="text-2xl font-bold text-indigo-600">{tauxEncaissement}%</p>
-          <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-purple-500 transition-all duration-500" style={{ width: `${tauxEncaissement}%` }} />
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><BarChart3 size={11} style={{ display: 'inline', marginRight: 4 }} />Taux encaissement</div>
+          <div className="odoo-stat-card-value">{tauxEncaissement}%</div>
+          <div className="odoo-stat-card-sub" style={{ paddingTop: 4 }}>
+            <span style={{ display: 'block', width: '100%', height: 3, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${tauxEncaissement}%` }} />
+            </span>
           </div>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <div className="relative flex-1 w-full sm:max-w-xs">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-            <input type="text" placeholder="Rechercher par N°, client, commande..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 bg-gray-50/50 placeholder:text-gray-300" />
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button onClick={() => setStatusFilter('')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${!statusFilter ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
-              Tous <span className="ml-1 opacity-60">{allInvoices.length}</span>
-            </button>
-            <button onClick={() => setStatusFilter(statusFilter === 'pending' ? '' : 'pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${statusFilter === 'pending' ? 'bg-amber-500 text-white shadow-sm' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'pending' ? 'bg-white' : 'bg-amber-400'}`} /> En attente <span className="opacity-60">{countByStatus.pending}</span>
-            </button>
-            <button onClick={() => setStatusFilter(statusFilter === 'partial' ? '' : 'partial')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${statusFilter === 'partial' ? 'bg-blue-500 text-white shadow-sm' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'partial' ? 'bg-white' : 'bg-blue-400'}`} /> Partiel <span className="opacity-60">{countByStatus.partial}</span>
-            </button>
-            <button onClick={() => setStatusFilter(statusFilter === 'paid' ? '' : 'paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${statusFilter === 'paid' ? 'bg-green-500 text-white shadow-sm' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'paid' ? 'bg-white' : 'bg-green-400'}`} /> Encaissée <span className="opacity-60">{countByStatus.paid}</span>
-            </button>
-          </div>
-          <button onClick={() => { setShowCreateModal(true); setCreateMode('order'); }}
-            className="ml-auto px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 text-sm whitespace-nowrap">
-            <Plus size={16} /> Nouvelle facture
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher par N°, client, commande..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+          className="odoo-search-input" />
+        <div style={{ display: 'inline-flex', gap: 4 }}>
+          <button onClick={() => setStatusFilter('')} className="odoo-filter-dropdown"
+            style={{
+              backgroundColor: !statusFilter ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: !statusFilter ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: !statusFilter ? 600 : 400,
+            }}>
+            Tous <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 4 }}>{allInvoices.length}</span>
+          </button>
+          <button onClick={() => setStatusFilter(statusFilter === 'pending' ? '' : 'pending')} className="odoo-filter-dropdown"
+            style={{
+              backgroundColor: statusFilter === 'pending' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: statusFilter === 'pending' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: statusFilter === 'pending' ? 600 : 400,
+            }}>
+            En attente <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 4 }}>{countByStatus.pending}</span>
+          </button>
+          <button onClick={() => setStatusFilter(statusFilter === 'partial' ? '' : 'partial')} className="odoo-filter-dropdown"
+            style={{
+              backgroundColor: statusFilter === 'partial' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: statusFilter === 'partial' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: statusFilter === 'partial' ? 600 : 400,
+            }}>
+            Partiel <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{countByStatus.partial}</span>
+          </button>
+          <button onClick={() => setStatusFilter(statusFilter === 'paid' ? '' : 'paid')} className="odoo-filter-dropdown"
+            style={{
+              backgroundColor: statusFilter === 'paid' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: statusFilter === 'paid' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: statusFilter === 'paid' ? 600 : 400,
+            }}>
+            Encaissée <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>{countByStatus.paid}</span>
           </button>
         </div>
+        <button onClick={() => { setShowCreateModal(true); setCreateMode('order'); }}
+          className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+          <Plus size={13} /> Nouvelle facture
+        </button>
       </div>
 
       {/* Invoice Table */}
       {isLoading ? (
-        <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center justify-center py-20">
-          <Loader2 className="animate-spin text-blue-400 mb-3" size={24} />
-          <p className="text-sm text-gray-400">Chargement des factures...</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement des factures...</p>
         </div>
       ) : filteredInvoices.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 flex flex-col items-center justify-center py-20">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center mb-4">
-            <Receipt size={28} className="text-blue-300" />
-          </div>
-          <p className="text-gray-500 font-medium">{searchQuery ? 'Aucun résultat' : 'Aucune facture émise'}</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{searchQuery ? 'Aucun résultat' : 'Aucune facture émise'}</p>
           {!searchQuery && (
             <button onClick={() => { setShowCreateModal(true); setCreateMode('order'); }}
-              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors flex items-center gap-2">
-              <Plus size={14} /> Créer une facture
+              className="odoo-btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Plus size={13} /> Créer une facture
             </button>
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="hidden md:grid grid-cols-[1fr_140px_100px_120px_100px] gap-3 px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Facture / Client</span>
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Date</span>
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Statut</span>
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-right">Montant</span>
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider text-right">Actions</span>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {filteredInvoices.map(inv => {
-              const total = parseFloat(inv.total_amount as string);
-              const paid = parseFloat(inv.paid_amount as string);
-              const remaining = total - paid;
-              const progressPct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;
-              const isExpanded = expandedId === inv.id;
-              const customerName = inv.customer_first_name ? `${inv.customer_first_name} ${inv.customer_last_name || ''}` : 'Client inconnu';
-              const statusConfig: Record<string, { dot: string; bg: string; text: string; label: string }> = {
-                pending: { dot: 'bg-amber-400', bg: 'bg-amber-50', text: 'text-amber-700', label: 'En attente' },
-                partial: { dot: 'bg-blue-400', bg: 'bg-blue-50', text: 'text-blue-700', label: 'Partiel' },
-                paid: { dot: 'bg-green-400', bg: 'bg-green-50', text: 'text-green-700', label: 'Soldée' },
-                overdue: { dot: 'bg-red-400', bg: 'bg-red-50', text: 'text-red-700', label: 'En retard' },
-                cancelled: { dot: 'bg-gray-300', bg: 'bg-gray-50', text: 'text-gray-500', label: 'Annulée' },
-              };
-              const st = statusConfig[inv.status as string] || statusConfig.pending;
-              return (
-                <div key={inv.id as string}>
-                  <div className={`group grid grid-cols-1 md:grid-cols-[1fr_140px_100px_120px_100px] gap-2 md:gap-3 px-5 py-3.5 items-center cursor-pointer transition-all ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-gray-50/50'}`}
-                    onClick={() => setExpandedId(isExpanded ? null : inv.id as string)}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${inv.status === 'paid' ? 'bg-gradient-to-br from-green-400 to-emerald-500' : inv.status === 'cancelled' ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-400 to-indigo-500'}`}>
-                        <Receipt size={14} className="text-white" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-gray-800 font-mono">{inv.invoice_number as string}</span>
-                          {inv.order_number_ref && <span className="hidden sm:inline px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-500 text-[10px] font-mono">CMD {inv.order_number_ref as string}</span>}
-                          <ChevronRight size={14} className={`text-gray-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                        </div>
-                        <p className="text-xs text-gray-400 truncate mt-0.5"><Users size={10} className="inline mr-1 relative -top-px" />{customerName}</p>
-                      </div>
-                    </div>
-                    <div className="hidden md:block"><p className="text-sm text-gray-600">{format(new Date(inv.invoice_date as string), 'dd MMM yyyy', { locale: fr })}</p></div>
-                    <div className="hidden md:block">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${st.bg} ${st.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{st.label}
-                      </span>
-                    </div>
-                    <div className="hidden md:block text-right">
-                      <p className="text-sm font-bold text-gray-800">{n(total)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
-                      {remaining > 0 && inv.status !== 'cancelled' && <p className="text-[10px] text-amber-500 font-medium mt-0.5">Reste {n(remaining)} DH</p>}
-                    </div>
-                    <div className="hidden md:flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => handleDownloadPdf(inv)} className="p-1.5 rounded-lg text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100" title="Télécharger PDF"><Download size={15} /></button>
-                      {inv.status !== 'cancelled' && inv.status !== 'paid' && remaining > 0 && (
-                        <button onClick={() => { setShowPayModal(inv); setPayMethod('cash'); }} className="p-1.5 rounded-lg text-gray-300 hover:text-green-600 hover:bg-green-50 transition-all opacity-0 group-hover:opacity-100" title="Encaisser"><Banknote size={15} /></button>
-                      )}
-                      {inv.status !== 'cancelled' && inv.status !== 'paid' && (
-                        <button onClick={() => cancelMutation.mutate(inv.id as string)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100" title="Annuler"><X size={14} /></button>
-                      )}
-                    </div>
-                    <div className="flex md:hidden items-center justify-between">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold ${st.bg} ${st.text}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{st.label}
-                      </span>
-                      <p className="text-sm font-bold text-gray-800">{n(total)} DH</p>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="px-5 pb-4 bg-gradient-to-b from-blue-50/30 to-white">
-                      <div className="ml-12 space-y-3">
-                        {inv.status !== 'cancelled' && (
-                          <div className="bg-white rounded-xl border border-gray-100 p-3">
-                            <div className="flex items-center justify-between mb-2 text-xs">
-                              <span className="text-gray-500 font-medium">Progression encaissement</span>
-                              <span className="font-bold text-gray-700">{Math.round(progressPct)}%</span>
-                            </div>
-                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-500 ${progressPct >= 100 ? 'bg-gradient-to-r from-green-400 to-emerald-500' : progressPct > 0 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' : 'bg-gray-200'}`} style={{ width: `${progressPct}%` }} />
-                            </div>
-                            <div className="flex justify-between mt-2 text-[11px]">
-                              <span className="text-green-600 font-medium">Encaissé: {n(paid)} DH</span>
-                              {remaining > 0 && <span className="text-amber-600 font-medium">Reste: {n(remaining)} DH</span>}
-                            </div>
-                          </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>Facture / Client</th>
+                <th>Date</th>
+                <th>Statut</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th style={{ textAlign: 'right', width: 100 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInvoices.map(inv => {
+                const total = parseFloat(inv.total_amount as string);
+                const paid = parseFloat(inv.paid_amount as string);
+                const remaining = total - paid;
+                const progressPct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;
+                const isExpanded = expandedId === inv.id;
+                const customerName = inv.customer_first_name ? `${inv.customer_first_name} ${inv.customer_last_name || ''}` : 'Client inconnu';
+                const statusTag = inv.status === 'paid' ? 'odoo-tag-green'
+                  : inv.status === 'partial' ? 'odoo-tag-blue'
+                  : inv.status === 'overdue' ? 'odoo-tag-red'
+                  : inv.status === 'cancelled' ? 'odoo-tag-grey'
+                  : 'odoo-tag-yellow';
+                const statusLabel = inv.status === 'paid' ? 'Soldée'
+                  : inv.status === 'partial' ? 'Partiel'
+                  : inv.status === 'overdue' ? 'En retard'
+                  : inv.status === 'cancelled' ? 'Annulée'
+                  : 'En attente';
+                const dotClass = inv.status === 'paid' ? 'ok'
+                  : inv.status === 'overdue' ? 'danger'
+                  : inv.status === 'cancelled' ? 'neutral'
+                  : 'warning';
+                return (
+                  <Fragment key={inv.id as string}>
+                    <tr onClick={() => setExpandedId(isExpanded ? null : inv.id as string)} style={{ cursor: 'pointer' }}>
+                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
+                          {inv.order_number_ref && <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>CMD {inv.order_number_ref as string}</span>}
+                        </span>
+                        <span style={{ display: 'block', color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginTop: 2 }}>
+                          <Users size={10} style={{ display: 'inline', marginRight: 3 }} /> {customerName}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(inv.invoice_date as string), 'dd MMM yyyy', { locale: fr })}</td>
+                      <td><span className={`odoo-tag ${statusTag}`}>{statusLabel}</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700 }}>{n(total)}</span>
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                        {remaining > 0 && inv.status !== 'cancelled' && (
+                          <div style={{ color: '#b85d1a', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(remaining)}</div>
                         )}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                          <div className="bg-white rounded-xl border border-gray-100 p-2.5">
-                            <span className="text-gray-400 block mb-0.5">Client</span>
-                            <span className="text-gray-700 font-medium">{customerName}</span>
-                          </div>
-                          <div className="bg-white rounded-xl border border-gray-100 p-2.5">
-                            <span className="text-gray-400 block mb-0.5">Date</span>
-                            <span className="text-gray-700 font-medium">{format(new Date(inv.invoice_date as string), 'dd MMMM yyyy', { locale: fr })}</span>
-                          </div>
-                          {inv.order_number_ref && (
-                            <div className="bg-white rounded-xl border border-gray-100 p-2.5">
-                              <span className="text-gray-400 block mb-0.5">Commande</span>
-                              <span className="text-indigo-600 font-mono font-medium">{inv.order_number_ref as string}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex md:hidden gap-2">
-                          <button onClick={() => handleDownloadPdf(inv)} className="flex-1 px-3 py-2 rounded-xl text-sm font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors flex items-center justify-center gap-1.5"><Download size={14} /> Télécharger</button>
+                      </td>
+                      <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                          <button onClick={() => handleDownloadPdf(inv)} className="odoo-pager-btn" title="Télécharger PDF"><Download size={13} /></button>
                           {inv.status !== 'cancelled' && inv.status !== 'paid' && remaining > 0 && (
-                            <button onClick={() => { setShowPayModal(inv); setPayMethod('cash'); }} className="flex-1 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition-colors flex items-center justify-center gap-1.5"><Banknote size={14} /> Encaisser</button>
+                            <button onClick={() => { setShowPayModal(inv); setPayMethod('cash'); }} className="odoo-pager-btn" title="Encaisser" style={{ color: '#28a745' }}><Banknote size={13} /></button>
+                          )}
+                          {inv.status !== 'cancelled' && inv.status !== 'paid' && (
+                            <button onClick={() => cancelMutation.mutate(inv.id as string)} className="odoo-pager-btn" title="Annuler" style={{ color: '#dc3545' }}><X size={13} /></button>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/30 flex items-center justify-between">
-            <p className="text-xs text-gray-400">{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{searchQuery && ` pour "${searchQuery}"`}</p>
-            <p className="text-xs font-semibold text-gray-600">Total: {n(filteredInvoices.reduce((s, inv) => s + parseFloat(inv.total_amount as string), 0))} DH</p>
-          </div>
+                      </td>
+                    </tr>
+                    {isExpanded && inv.status !== 'cancelled' && (
+                      <tr>
+                        <td colSpan={6} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: 6 }}>
+                            <span style={{ color: 'var(--theme-text-muted)' }}>Progression encaissement</span>
+                            <span style={{ fontWeight: 700 }}>{Math.round(progressPct)}%</span>
+                          </div>
+                          <span style={{ display: 'block', width: '100%', height: 5, background: 'var(--theme-bg-separator)', borderRadius: 3, overflow: 'hidden' }}>
+                            <span style={{ display: 'block', height: '100%', background: progressPct >= 100 ? '#28a745' : 'var(--theme-accent)', width: `${progressPct}%` }} />
+                          </span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: '0.6875rem' }}>
+                            <span style={{ color: '#28a745', fontWeight: 600 }}>Encaissé : {n(paid)} DH</span>
+                            {remaining > 0 && <span style={{ color: '#b85d1a', fontWeight: 600 }}>Reste : {n(remaining)} DH</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td colSpan={4} style={{ padding: 12, fontWeight: 600 }}>
+                  {filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{searchQuery && ` pour "${searchQuery}"`}
+                </td>
+                <td colSpan={2} style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem' }}>
+                  Total : {n(filteredInvoices.reduce((s, inv) => s + parseFloat(inv.total_amount as string), 0))} DH
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
 
