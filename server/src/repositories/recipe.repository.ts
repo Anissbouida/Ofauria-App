@@ -24,56 +24,13 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 
 export const recipeRepository = {
   async findAll() {
-    // total_cost est recalcule a la volee pour ne pas dependre de la valeur stockee
-    // qui peut etre obsolete (recettes creees avant l'ajout de la conversion d'unite).
-    //
-    // Strategie : on calcule d'abord le cout "direct" de chaque recette (ingredients +
-    // emballages), puis les sous-recettes referencent ce cout direct au lieu du total_cost
-    // stocke. Ca corrige la cascade : si Biscuit a un total_cost stocke faux, le parent
-    // OFAURIA qui l'utilise comme sous-recette reflete quand meme le bon cout.
-    //
-    // Supporte 1 niveau de nesting (sous-recette plate). Pour les niveaux plus profonds
-    // il faudrait un CTE recursif.
+    // total_cost vient de la vue v_recipe_total_cost (recalcule a la volee).
+    // Le champ recipes.total_cost stocke n'est jamais lu — toujours obsolete potentiel.
     const result = await db.query(
-      `WITH ingredient_costs AS (
-         SELECT ri.recipe_id, SUM(
-           ri.quantity * COALESCE(ing.unit_cost, 0) *
-           CASE
-             WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
-             WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
-             WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
-             WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
-             ELSE 1
-           END
-         ) AS cost
-         FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-         GROUP BY ri.recipe_id
-       ),
-       packaging_costs AS (
-         SELECT rp.recipe_id, SUM(rp.quantity * COALESCE(pi.unit_cost, 0)) AS cost
-         FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
-         GROUP BY rp.recipe_id
-       ),
-       -- Cout direct de chaque recette = ingredients + emballages (sans sous-recettes).
-       -- Utilise ensuite comme source de verite pour le cout d'une sous-recette referencee.
-       direct_costs AS (
-         SELECT r.id, r.yield_quantity,
-                (COALESCE(ic.cost, 0) + COALESCE(pkc.cost, 0)) AS cost
-         FROM recipes r
-         LEFT JOIN ingredient_costs ic ON ic.recipe_id = r.id
-         LEFT JOIN packaging_costs pkc ON pkc.recipe_id = r.id
-       ),
-       sub_recipe_costs AS (
-         SELECT rsr.recipe_id,
-                SUM(rsr.quantity * COALESCE(dc.cost, 0) / NULLIF(dc.yield_quantity, 0)) AS cost
-         FROM recipe_sub_recipes rsr
-         JOIN direct_costs dc ON dc.id = rsr.sub_recipe_id
-         GROUP BY rsr.recipe_id
-       )
-       SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
               r.created_at, r.updated_at,
-              (COALESCE(ic.cost, 0) + COALESCE(src.cost, 0) + COALESCE(pkc.cost, 0)) AS total_cost,
+              vtc.total_cost,
               p.name as product_name, p.image_url as product_image, p.price as product_price,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
               pc.quantite_theorique as contenant_quantite_theorique,
@@ -83,21 +40,29 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
-       LEFT JOIN ingredient_costs ic ON ic.recipe_id = r.id
-       LEFT JOIN sub_recipe_costs src ON src.recipe_id = r.id
-       LEFT JOIN packaging_costs pkc ON pkc.recipe_id = r.id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
   },
 
   async findById(id: string) {
+    // total_cost vient de la vue v_recipe_total_cost. On override le champ stocke.
     const recipeResult = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price,
-              pc.nom as contenant_nom, pc.type_production as contenant_type, pc.quantite_theorique as contenant_quantite_theorique,
-              pc.pertes_fixes as contenant_pertes_fixes, pc.unite_lancement as contenant_unite_lancement, pc.poids_kg as contenant_poids_kg
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id
+      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.created_at, r.updated_at,
+              vtc.total_cost,
+              p.name as product_name, p.price as product_price,
+              pc.nom as contenant_nom, pc.type_production as contenant_type,
+              pc.quantite_theorique as contenant_quantite_theorique,
+              pc.pertes_fixes as contenant_pertes_fixes,
+              pc.unite_lancement as contenant_unite_lancement,
+              pc.poids_kg as contenant_poids_kg
+       FROM recipes r
+       LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        WHERE r.id = $1`,
       [id]
     );
@@ -110,39 +75,17 @@ export const recipeRepository = {
       [id]
     );
 
-    // Fetch sub-recipes — sub_total_cost est recalcule a la volee depuis les ingredients
-    // de la sous-recette (avec conversion d'unite g/kg, ml/l) pour ne pas refleter une
-    // valeur stockee obsolete. La sous-recette ne peut elle-meme avoir de sous-recettes
-    // dans la pratique (preparations de base = leaf nodes), donc ingredients + emballages
-    // suffit.
+    // sub_total_cost : direct_cost de la sous-recette (vue v_recipe_direct_cost).
+    // Sous-recette = preparation de base = pas de sous-sous-recettes en pratique, donc
+    // direct_cost suffit. Le frontend divise par sub_yield_quantity pour le cout/unite.
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
               sr.yield_unit as sub_yield_unit,
-              (
-                COALESCE((
-                  SELECT SUM(
-                    ri.quantity * COALESCE(ing.unit_cost, 0) *
-                    CASE
-                      WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
-                      WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
-                      WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
-                      WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
-                      ELSE 1
-                    END
-                  )
-                  FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-                  WHERE ri.recipe_id = sr.id
-                ), 0)
-                +
-                COALESCE((
-                  SELECT SUM(rp.quantity * COALESCE(pi.unit_cost, 0))
-                  FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
-                  WHERE rp.recipe_id = sr.id
-                ), 0)
-              ) AS sub_total_cost
+              vdc.direct_cost AS sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
+       LEFT JOIN v_recipe_direct_cost vdc ON vdc.id = sr.id
        WHERE rsr.recipe_id = $1`,
       [id]
     );
@@ -168,8 +111,15 @@ export const recipeRepository = {
   /** Find recipe by product ID (with ingredients & sub-recipes & packaging) */
   async findByProductId(productId: string) {
     const recipeResult = await db.query(
-      `SELECT r.*, r.is_base, p.name as product_name, p.price as product_price
-       FROM recipes r LEFT JOIN products p ON p.id = r.product_id WHERE r.product_id = $1`,
+      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.created_at, r.updated_at,
+              vtc.total_cost,
+              p.name as product_name, p.price as product_price
+       FROM recipes r
+       LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       WHERE r.product_id = $1`,
       [productId]
     );
     if (!recipeResult.rows[0]) return null;
@@ -184,9 +134,11 @@ export const recipeRepository = {
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.yield_unit as sub_yield_unit, sr.total_cost as sub_total_cost
+              sr.yield_unit as sub_yield_unit,
+              vdc.direct_cost AS sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
+       LEFT JOIN v_recipe_direct_cost vdc ON vdc.id = sr.id
        WHERE rsr.recipe_id = $1`,
       [recipeId]
     );
@@ -208,34 +160,12 @@ export const recipeRepository = {
   },
 
   /** List only base recipes (for sub-recipe picker).
-   *  total_cost recalcule a la volee (ingredients + emballages, avec conversion d'unite)
-   *  pour ne pas renvoyer une valeur stockee obsolete au formulaire de creation/edition. */
+   *  total_cost vient de la vue v_recipe_total_cost. */
   async findBaseRecipes() {
     const result = await db.query(
-      `SELECT r.id, r.name, r.yield_quantity, r.yield_unit,
-              (
-                COALESCE((
-                  SELECT SUM(
-                    ri.quantity * COALESCE(ing.unit_cost, 0) *
-                    CASE
-                      WHEN COALESCE(ri.unit, ing.unit) = 'g'  AND ing.unit = 'kg' THEN 0.001
-                      WHEN COALESCE(ri.unit, ing.unit) = 'kg' AND ing.unit = 'g'  THEN 1000
-                      WHEN COALESCE(ri.unit, ing.unit) = 'ml' AND ing.unit = 'l'  THEN 0.001
-                      WHEN COALESCE(ri.unit, ing.unit) = 'l'  AND ing.unit = 'ml' THEN 1000
-                      ELSE 1
-                    END
-                  )
-                  FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-                  WHERE ri.recipe_id = r.id
-                ), 0)
-                +
-                COALESCE((
-                  SELECT SUM(rp.quantity * COALESCE(pi.unit_cost, 0))
-                  FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
-                  WHERE rp.recipe_id = r.id
-                ), 0)
-              ) AS total_cost
+      `SELECT r.id, r.name, r.yield_quantity, r.yield_unit, vtc.total_cost
        FROM recipes r
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        WHERE r.is_base = true
        ORDER BY r.name`
     );
@@ -253,24 +183,25 @@ export const recipeRepository = {
     try {
       await client.query('BEGIN');
 
-      // Calculate ingredient cost (with unit conversion)
+      // Calcul du cout JS pour syncProductPrice uniquement (le champ recipes.total_cost
+      // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
       let totalCost = 0;
       for (const ing of data.ingredients) {
         const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
           const recipeUnit = ing.unit || ingBaseUnit;
-          // Convert recipe quantity to ingredient base unit for cost calculation
           const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
           totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
 
-      // Calculate sub-recipe cost
+      // Sous-recettes : on lit le direct_cost depuis la vue (jamais la valeur stockee)
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
-            'SELECT total_cost, yield_quantity FROM recipes WHERE id = $1', [sr.subRecipeId]
+            `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
+             FROM v_recipe_direct_cost vdc WHERE vdc.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
@@ -279,7 +210,7 @@ export const recipeRepository = {
         }
       }
 
-      // Calculate packaging cost (emballages)
+      // Emballages
       if (data.packaging && data.packaging.length > 0) {
         for (const pk of data.packaging) {
           const pkResult = await client.query('SELECT unit_cost FROM packaging_items WHERE id = $1', [pk.packagingId]);
@@ -290,10 +221,11 @@ export const recipeRepository = {
       }
 
       const margin = data.marginMultiplier && data.marginMultiplier > 0 ? data.marginMultiplier : 3;
+      // total_cost INSERT a 0 par defaut — la vraie valeur vient toujours de la vue.
       const recipeResult = await client.query(
         `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin]
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -417,7 +349,8 @@ export const recipeRepository = {
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
-            'SELECT total_cost, yield_quantity FROM recipes WHERE id = $1', [sr.subRecipeId]
+            `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
+             FROM v_recipe_direct_cost vdc WHERE vdc.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
@@ -439,10 +372,11 @@ export const recipeRepository = {
       const margin = data.marginMultiplier && data.marginMultiplier > 0
         ? data.marginMultiplier
         : parseFloat(currentRecipe?.margin_multiplier || '3');
+      // total_cost n'est plus stocke (vue v_recipe_total_cost gere) — on le force a 0.
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = $5, is_base = $6, contenant_id = $7, etapes = $8, margin_multiplier = $9, updated_at = NOW()
-         WHERE id = $10`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', totalCost, data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin, id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = 0, is_base = $5, contenant_id = $6, etapes = $7, margin_multiplier = $8, updated_at = NOW()
+         WHERE id = $9`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin, id]
       );
 
       // Re-insert ingredients
@@ -504,57 +438,26 @@ export const recipeRepository = {
     }
   },
 
-  /** Compute cost (ingredients + sub-recipes + packaging) for a recipe.
-   *  Centralise la formule pour eviter qu'elle drifte entre create / update / cascade. */
+  /** Compute cost for a recipe.
+   *  Lit directement la vue v_recipe_total_cost qui inclut ingredients + sous-recettes
+   *  + emballages avec conversion d'unite. Plus de duplication de formule en JS. */
   async computeFullCost(recipeId: string): Promise<number> {
-    // Ingredients cost
-    const ingResult = await db.query(
-      `SELECT ri.quantity, ri.unit, ing.unit_cost, ing.unit as base_unit
-       FROM recipe_ingredients ri
-       JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1`,
+    const result = await db.query(
+      `SELECT total_cost FROM v_recipe_total_cost WHERE id = $1`,
       [recipeId]
     );
-    let total = 0;
-    for (const r of ingResult.rows) {
-      const factor = unitConversionFactor(r.unit || r.base_unit, r.base_unit);
-      total += parseFloat(r.quantity) * parseFloat(r.unit_cost || '0') * factor;
-    }
-    // Sub-recipes
-    const srResult = await db.query(
-      `SELECT rsr.quantity, r2.total_cost, r2.yield_quantity
-       FROM recipe_sub_recipes rsr
-       JOIN recipes r2 ON r2.id = rsr.sub_recipe_id
-       WHERE rsr.recipe_id = $1`,
-      [recipeId]
-    );
-    for (const r of srResult.rows) {
-      const costPerUnit = parseFloat(r.total_cost) / (parseFloat(r.yield_quantity) || 1);
-      total += costPerUnit * parseFloat(r.quantity);
-    }
-    // Packaging
-    const pkResult = await db.query(
-      `SELECT rp.quantity, pi.unit_cost
-       FROM recipe_packaging rp
-       JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1`,
-      [recipeId]
-    );
-    for (const r of pkResult.rows) {
-      total += parseFloat(r.quantity) * parseFloat(r.unit_cost || '0');
-    }
-    return total;
+    return parseFloat(result.rows[0]?.total_cost || '0');
   },
 
-  /** When a packaging price changes, propagate to all recipes using it + their products */
+  /** When a packaging price changes, propagate price changes to products. */
   async recalcOnPackagingChange(packagingId: string) {
     const recipes = await db.query(
       `SELECT DISTINCT recipe_id FROM recipe_packaging WHERE packaging_id = $1`,
       [packagingId]
     );
     for (const row of recipes.rows) {
+      // total_cost vient de la vue (toujours a jour). Pas d'UPDATE recipes.total_cost.
       const totalCost = await this.computeFullCost(row.recipe_id);
-      await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
       const recipe = await this.findById(row.recipe_id);
       if (!recipe) continue;
       const margin = parseFloat(recipe.margin_multiplier || '3');
@@ -565,7 +468,7 @@ export const recipeRepository = {
     }
   },
 
-  /** When a base recipe cost changes, update all parent recipes that use it (recursive) */
+  /** When a base recipe cost changes, propagate price changes to parent recipes' products. */
   async recalcParents(subRecipeId: string, visited = new Set<string>()) {
     if (visited.has(subRecipeId)) return; // prevent infinite loop
     visited.add(subRecipeId);
@@ -577,12 +480,9 @@ export const recipeRepository = {
     for (const row of parents.rows) {
       const recipe = await this.findById(row.recipe_id);
       if (!recipe) continue;
-
-      // Utilise le helper centralise (inclut packaging)
+      // total_cost vient de la vue (auto-reflete les changements du sous-arbre).
+      // On ne touche plus recipes.total_cost — uniquement products.price via sync.
       const totalCost = await this.computeFullCost(row.recipe_id);
-
-      await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
-
       const margin = parseFloat(recipe.margin_multiplier || '3');
       const yieldQty = parseFloat(recipe.yield_quantity || '1');
       await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);

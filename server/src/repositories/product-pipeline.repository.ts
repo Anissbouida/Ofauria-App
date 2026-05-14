@@ -60,12 +60,13 @@ export const productPipelineRepository = {
               c.name as category_name,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name,
               cr.first_name as creator_first_name, cr.last_name as creator_last_name,
-              r.name as recipe_name, r.total_cost as recipe_total_cost
+              r.name as recipe_name, vtc.total_cost as recipe_total_cost
        FROM product_pipeline pp
        LEFT JOIN categories c ON c.id = pp.category_id
        LEFT JOIN users u ON u.id = pp.responsible_user_id
        LEFT JOIN users cr ON cr.id = pp.created_by
        LEFT JOIN recipes r ON r.id = pp.recipe_id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        ${where}
        ORDER BY pp.updated_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -82,7 +83,7 @@ export const productPipelineRepository = {
               c.name as category_name,
               u.first_name as responsible_first_name, u.last_name as responsible_last_name,
               cr.first_name as creator_first_name, cr.last_name as creator_last_name,
-              r.name as recipe_name, r.total_cost as recipe_total_cost,
+              r.name as recipe_name, vtc.total_cost as recipe_total_cost,
               r.yield_quantity as recipe_yield_quantity, r.instructions as recipe_instructions,
               cv.first_name as cost_validator_first_name, cv.last_name as cost_validator_last_name,
               tv.first_name as test_validator_first_name, tv.last_name as test_validator_last_name,
@@ -94,6 +95,7 @@ export const productPipelineRepository = {
        LEFT JOIN users u ON u.id = pp.responsible_user_id
        LEFT JOIN users cr ON cr.id = pp.created_by
        LEFT JOIN recipes r ON r.id = pp.recipe_id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN users cv ON cv.id = pp.cost_validated_by
        LEFT JOIN users tv ON tv.id = pp.test_validated_by
        LEFT JOIN users tav ON tav.id = pp.tasting_validated_by

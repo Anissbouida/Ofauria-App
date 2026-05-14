@@ -171,7 +171,8 @@ export const ingredientRepository = {
     values.push(id);
     const result = await db.query(`UPDATE ingredients SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
 
-    // When unit cost changes, cascade to all recipes using this ingredient
+    // When unit cost changes, cascade product price (price-only — recipe total_cost
+    // n'est plus stocke ; il est calcule a la volee via v_recipe_total_cost).
     if (data.unitCost !== undefined) {
       const recipes = await db.query(
         `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,
@@ -180,16 +181,8 @@ export const ingredientRepository = {
       for (const row of recipes.rows) {
         const recipe = await recipeRepository.findById(row.recipe_id);
         if (!recipe) continue;
-        let totalCost = 0;
-        for (const ing of recipe.ingredients) {
-          totalCost += parseFloat(ing.quantity) * parseFloat(ing.unit_cost || '0');
-        }
-        for (const sr of recipe.sub_recipes) {
-          const costPerUnit = parseFloat(sr.sub_total_cost) / (sr.sub_yield_quantity || 1);
-          totalCost += costPerUnit * parseFloat(sr.quantity);
-        }
-        await db.query('UPDATE recipes SET total_cost = $1, updated_at = NOW() WHERE id = $2', [totalCost, row.recipe_id]);
-        // Sync linked product price (cost_price + price = cost/unit * marginMultiplier)
+        // findById renvoie total_cost depuis la vue : a jour automatiquement.
+        const totalCost = parseFloat(recipe.total_cost || '0');
         const margin = parseFloat(recipe.margin_multiplier || '3');
         const yieldQty = parseFloat(recipe.yield_quantity || '1');
         await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);

@@ -230,11 +230,12 @@ export const productionCoutRepository = {
       });
     }
 
-    // Cout prevu (from recipes)
+    // Cout prevu (from recipes) — total_cost vient de la vue v_recipe_total_cost.
     const prevuResult = await db.query(
-      `SELECT SUM(COALESCE(r.total_cost, 0) * ppi.planned_quantity / NULLIF(r.yield_quantity, 0)) as total
+      `SELECT SUM(COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / NULLIF(r.yield_quantity, 0)) as total
        FROM production_plan_items ppi
        LEFT JOIN recipes r ON r.product_id = ppi.product_id
+       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
     );
