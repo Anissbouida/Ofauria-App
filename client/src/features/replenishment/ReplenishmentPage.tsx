@@ -795,7 +795,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
             <div className="flex gap-2">
               <button onClick={onClose} className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">Annuler</button>
               <button onClick={handleSubmit} disabled={createMutation.isPending || submitting || !totalSelected}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm flex items-center gap-2">
+                className="odoo-btn-primary">
                 {(createMutation.isPending || submitting) && <Loader2 size={14} className="animate-spin" />}
                 {createMutation.isPending || submitting ? 'Vérification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}
               </button>
