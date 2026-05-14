@@ -767,6 +767,7 @@ export function BonSortiePanel({
                 padding: '0.5rem 0.75rem',
                 borderBottom: '1px solid var(--theme-bg-separator)',
                 backgroundColor: 'var(--theme-bg-card)',
+                fontSize: '0.8125rem',
                 opacity: lotExpired ? 0.6 : 1,
               }}
             >
@@ -775,11 +776,12 @@ export function BonSortiePanel({
 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 500, color: 'var(--theme-text-strong)' }}>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--theme-text-strong)' }}>
                       {line.ingredient_name as string}
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      <strong style={{ color: 'var(--theme-text-strong)' }}>{displayedQty.toFixed(2)}</strong> {unit}
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      <strong style={{ color: 'var(--theme-text-strong)', fontWeight: 600 }}>{displayedQty.toFixed(2)}</strong>
+                      <span style={{ fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
                       {isMagasinier && actual !== null && actual !== allocated && (
                         <span style={{ color: '#b85d1a', fontWeight: 600, marginLeft: 4 }}>&rarr; {actual.toFixed(2)}</span>
                       )}
