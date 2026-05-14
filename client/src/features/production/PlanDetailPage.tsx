@@ -896,7 +896,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-purple-500 flex items-center justify-center">
             <Beaker size={18} className="text-white" />
           </div>
           <div>
@@ -1235,90 +1235,81 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
         return (
           <>
-            {/* ── Parent plan info card ── */}
-            <div className="bg-white rounded-2xl border border-purple-200 shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-5 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                    <Layers size={16} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-semibold text-sm">Plan parent</h3>
-                    <p className="text-white/70 text-xs">#{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMMM yyyy', { locale: fr })}</p>
-                  </div>
-                </div>
-                <button onClick={() => navigate(`/production/${parentPlanId}`)}
-                  className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-medium hover:bg-white/30 transition flex items-center gap-1.5">
-                  <Eye size={14} /> Voir le plan
+            {/* ── Parent plan section ── */}
+            <div className="odoo-section">
+              <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Layers size={12} /> Plan parent · #{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMM yyyy', { locale: fr })}
+                </span>
+                <button onClick={() => navigate(`/production/${parentPlanId}`)} className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                  <Eye size={11} /> Voir
                 </button>
               </div>
-              <div className="px-5 py-3 flex items-center gap-4 text-xs text-gray-600">
-                <span className={`px-2 py-0.5 rounded-full font-semibold text-[10px] ${
-                  dep.parent_status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                  dep.parent_status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
-                  dep.parent_status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+              <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--theme-bg-card)', fontSize: '0.75rem' }}>
+                <span className={`odoo-tag ${
+                  dep.parent_status === 'confirmed' ? 'odoo-tag-blue' :
+                  dep.parent_status === 'in_progress' ? 'odoo-tag-yellow' :
+                  dep.parent_status === 'completed' ? 'odoo-tag-green' : 'odoo-tag-grey'
                 }`}>
-                  {dep.parent_status === 'confirmed' ? 'Confirme' : dep.parent_status === 'in_progress' ? 'En cours' : dep.parent_status === 'completed' ? 'Termine' : dep.parent_status as string}
+                  {dep.parent_status === 'confirmed' ? 'Confirmé' : dep.parent_status === 'in_progress' ? 'En cours' : dep.parent_status === 'completed' ? 'Terminé' : dep.parent_status as string}
                 </span>
-                {parentNotes && <span className="text-gray-400 truncate">{parentNotes}</span>}
+                {parentNotes && <span style={{ color: 'var(--theme-text-muted)' }}>{parentNotes}</span>}
               </div>
             </div>
 
-            {/* ── Semi-fini production card ── */}
-            <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                    <Beaker size={20} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-bold text-lg">{recipeName}</h3>
-                    <p className="text-white/80 text-xs">Preparation de base</p>
-                  </div>
+            {/* ── Semi-fini production section ── */}
+            <div className="odoo-section">
+              <div className="odoo-section-header">
+                <Beaker size={12} /> {recipeName} — Préparation de base
+              </div>
+              <div className="odoo-smart-button-row" style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
+                <div className="odoo-smart-button">
+                  <div className="odoo-smart-button-value">{qtyNeeded.toFixed(2)}</div>
+                  <div className="odoo-smart-button-label">À produire ({yieldUnit})</div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white/15 rounded-xl p-3 text-center">
-                    <div className="text-white font-bold text-lg">{qtyNeeded.toFixed(2)}</div>
-                    <div className="text-white/70 text-[10px] uppercase">A produire ({yieldUnit})</div>
+                <div className="odoo-smart-button">
+                  <div className="odoo-smart-button-value" style={{ color: actualQty > 0 ? '#28a745' : undefined }}>{actualQty.toFixed(2)}</div>
+                  <div className="odoo-smart-button-label">Produit ({yieldUnit})</div>
+                </div>
+                <div className="odoo-smart-button">
+                  <div className="odoo-smart-button-value" style={{
+                    color: itemStatus === 'completed' ? '#28a745' : actualQty > 0 ? '#b85d1a' : undefined
+                  }}>
+                    {itemStatus === 'completed' ? '100%' : qtyNeeded > 0 ? `${Math.round(actualQty / qtyNeeded * 100)}%` : '0%'}
                   </div>
-                  <div className="bg-white/15 rounded-xl p-3 text-center">
-                    <div className="text-white font-bold text-lg">{actualQty.toFixed(2)}</div>
-                    <div className="text-white/70 text-[10px] uppercase">Produit ({yieldUnit})</div>
-                  </div>
-                  <div className="bg-white/15 rounded-xl p-3 text-center">
-                    <div className={`font-bold text-lg ${itemStatus === 'completed' ? 'text-green-200' : actualQty > 0 ? 'text-yellow-200' : 'text-white'}`}>
-                      {itemStatus === 'completed' ? '100%' : qtyNeeded > 0 ? `${Math.round(actualQty / qtyNeeded * 100)}%` : '0%'}
-                    </div>
-                    <div className="text-white/70 text-[10px] uppercase">Progression</div>
-                  </div>
+                  <div className="odoo-smart-button-label">Progression</div>
                 </div>
               </div>
 
               {/* Recipe instructions */}
               {instructions && (
-                <div className="px-5 py-4 border-b border-amber-100">
-                  <h4 className="text-xs font-semibold text-amber-700 uppercase mb-2 flex items-center gap-1.5">
-                    <BookOpen size={14} /> Instructions
-                  </h4>
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{instructions}</p>
+                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--theme-bg-card)' }}>
+                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <BookOpen size={11} /> Instructions
+                  </div>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
                 </div>
               )}
 
               {/* Recipe ingredients */}
               {recipeIngredients.length > 0 && (
-                <div className="px-5 py-4">
-                  <h4 className="text-xs font-semibold text-amber-700 uppercase mb-3 flex items-center gap-1.5">
-                    <Scale size={14} /> Ingredients (x{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit})
-                  </h4>
-                  <div className="space-y-2">
+                <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)' }}>
+                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Scale size={11} /> Ingrédients (×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {recipeIngredients.map((ri, idx) => {
                       const baseQty = parseFloat(ri.quantity as string || '0');
                       const scaledQty = baseQty * multiplier;
                       const unit = ri.unit as string || ri.base_unit as string || '';
                       return (
-                        <div key={idx} className="flex items-center justify-between py-1.5 px-3 bg-amber-50/50 rounded-lg">
-                          <span className="text-sm text-gray-800 font-medium">{ri.ingredient_name as string}</span>
-                          <span className="text-sm font-bold text-amber-700">{scaledQty.toFixed(3)} {unit}</span>
+                        <div key={idx} style={{
+                          display: 'flex', justifyContent: 'space-between',
+                          padding: '0.25rem 0.5rem', borderRadius: 3,
+                          backgroundColor: 'var(--theme-bg-secondary)', fontSize: '0.8125rem',
+                        }}>
+                          <span style={{ fontWeight: 500 }}>{ri.ingredient_name as string}</span>
+                          <span style={{ fontWeight: 600, color: 'var(--theme-accent)' }}>{scaledQty.toFixed(3)} {unit}</span>
                         </div>
                       );
                     })}
@@ -1342,39 +1333,22 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           plan.status === 'completed' ||
           !!bonNotNeededReason ||
           (activeBon?.status === 'cloture');
-        const prepBadgeColor = productionReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+        const prepBadgeTag = productionReady ? 'odoo-tag-green' : 'odoo-tag-yellow';
         const prepBadgeLabel = productionReady ? '\u2713 Pret' : 'En cours';
         return (
-          <div className="bg-white border border-gray-200 rounded-2xl p-1.5 flex items-center gap-1 shadow-sm w-fit">
-            <button
-              type="button"
-              onClick={() => setActivePlanTab('preparation')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                activePlanTab === 'preparation'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}>
-              <Truck size={16} />
+          <div className="odoo-tabs">
+            <button type="button" onClick={() => setActivePlanTab('preparation')}
+              className={`odoo-tab ${activePlanTab === 'preparation' ? 'active' : ''}`}>
+              <Truck size={13} />
               <span>1. Preparation</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                activePlanTab === 'preparation' ? 'bg-white/25 text-white' : prepBadgeColor
-              }`}>
-                {prepBadgeLabel}
-              </span>
+              <span className={`odoo-tag ${prepBadgeTag}`} style={{ marginLeft: 4 }}>{prepBadgeLabel}</span>
             </button>
-            <button
-              type="button"
-              onClick={() => productionReady && setActivePlanTab('production')}
+            <button type="button" onClick={() => productionReady && setActivePlanTab('production')}
               disabled={!productionReady}
               title={productionReady ? undefined : 'Disponible apres la cloture du bon de sortie'}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                activePlanTab === 'production'
-                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md'
-                  : productionReady
-                    ? 'text-gray-600 hover:bg-gray-50'
-                    : 'text-gray-300 cursor-not-allowed'
-              }`}>
-              {productionReady ? <Factory size={16} /> : <Lock size={16} />}
+              className={`odoo-tab ${activePlanTab === 'production' ? 'active' : ''}`}
+              style={{ opacity: productionReady ? 1 : 0.5, cursor: productionReady ? 'pointer' : 'not-allowed' }}>
+              {productionReady ? <Factory size={13} /> : <Lock size={13} />}
               <span>2. Production</span>
             </button>
           </div>
@@ -1383,37 +1357,21 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ SOUS-ONGLETS de l'onglet Preparation ══════════════ */}
       {!isSemiFini && plan.status !== 'draft' && activePlanTab === 'preparation' && (
-        <div className="flex items-center gap-1 border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setPrepSubTab('needs')}
-            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-              prepSubTab === 'needs'
-                ? 'border-amber-500 text-amber-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
-            <Beaker size={14} />
+        <div className="odoo-tabs" style={{ paddingLeft: '2.5rem' }}>
+          <button type="button" onClick={() => setPrepSubTab('needs')}
+            className={`odoo-tab ${prepSubTab === 'needs' ? 'active' : ''}`}>
+            <Beaker size={13} />
             <span>Besoins en ingredients &amp; FEFO</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setPrepSubTab('bsi')}
-            className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-              prepSubTab === 'bsi'
-                ? 'border-amber-500 text-amber-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
-            <Truck size={14} />
+          <button type="button" onClick={() => setPrepSubTab('bsi')}
+            className={`odoo-tab ${prepSubTab === 'bsi' ? 'active' : ''}`}>
+            <Truck size={13} />
             <span>Gestion du bon de sortie</span>
             {activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule' && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
-                En cours
-              </span>
+              <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 4 }}>En cours</span>
             )}
             {activeBon && activeBon.status === 'cloture' && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                &#10003;
-              </span>
+              <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
             )}
           </button>
         </div>
@@ -1423,7 +1381,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       <div className="flex flex-wrap gap-3">
         {plan.status === 'draft' && isChef && (
           <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
-            className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+            className="odoo-btn-primary">
             {confirmMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
           </button>
@@ -1463,7 +1421,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2 text-sm ${
                     hasPendingDeps || bsiBlocked
                       ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:shadow-lg'
+                      : 'bg-amber-600 hover:bg-amber-700'
                   }`}>
                   {(hasPendingDeps || bsiBlocked) ? <Lock size={16} /> : startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                   {blockLabel}
@@ -1486,12 +1444,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     await queryClient.invalidateQueries({ queryKey: ['production', id] });
                     notify.success(`${ids.length} production(s) lancee(s)`);
                   } catch (e: any) { notify.error(e?.response?.data?.error?.message || 'Erreur'); }
-                }} className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                }} className="odoo-btn-primary" style={{ backgroundColor: "#1f6391", borderColor: "#1f6391" }}>
                   <Play size={16} /> Lancer tout ({pendingItems.length})
                 </button>
               )}
               {inProgressItems.length > 0 && (
-                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="odoo-btn-primary" style={{ backgroundColor: "#28a745", borderColor: "#28a745" }}>
                   <Factory size={16} /> Enregistrer tout ({inProgressItems.length})
                 </button>
               )}
@@ -1507,7 +1465,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                       });
                     }
                   }}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm"
+                  className="odoo-btn-primary" style={{ backgroundColor: "#b85d1a", borderColor: "#b85d1a" }}
                 >
                   <CheckCircle size={16} /> Cloture partielle
                 </button>
@@ -1593,10 +1551,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {/* En-tete du BSI (statut + numero) — compact, pas de bouton "gerer" car la gestion
                 se fait inline juste en dessous via BonSortiePanel. */}
             <div className={`border rounded-2xl p-4 shadow-sm flex items-center gap-4 ${
-              isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
+              isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
             }`}>
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                isCloture ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-amber-500 to-orange-500'
+                isCloture ? 'bg-emerald-600' : 'bg-amber-500'
               }`}>
                 <Truck size={18} className="text-white" />
               </div>
@@ -1624,9 +1582,9 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ LINKED ORDER CARD ══════════════ */}
       {plan.order_number && (
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center">
               <Package size={18} className="text-white" />
             </div>
             <div>
@@ -1855,7 +1813,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ CALCUL INVERSE BANNER (onglet Production) ══════════════ */}
       {showProd && frigoItems.length > 0 && (
-        <div className="bg-gradient-to-r from-indigo-50 to-cyan-50 border border-indigo-200 rounded-xl p-4">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Layers size={16} className="text-indigo-600" />
             <span className="text-sm font-semibold text-indigo-800">Calcul inverse — Contenants</span>
@@ -1887,7 +1845,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
       {/* ══════════════ ROLE FILTER BANNER (onglet Production) ══════════════ */}
       {showProd && allowedSlugs && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
             <Filter size={16} className="text-amber-600" />
           </div>
@@ -1918,8 +1876,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {/* Stock items */}
             {hasStock && (
               <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden self-start">
-                <div className="bg-gradient-to-r from-emerald-50 to-green-50 px-5 py-4 border-b border-emerald-200 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
+                <div className="bg-emerald-50 px-5 py-4 border-b border-emerald-200 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
                     <Box size={18} className="text-white" />
                   </div>
                   <div>
@@ -2265,8 +2223,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         if (waitingItems.length === 0 && restoredItems.length === 0) return null;
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 border-b border-amber-200 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+            <div className="bg-amber-50 px-5 py-4 border-b border-amber-200 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
                 <Clock size={18} className="text-white" />
               </div>
               <div>
@@ -2347,7 +2305,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 <button
                   onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
                   disabled={restoreMutation.isPending}
-                  className="px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 rounded-xl flex items-center gap-2 transition-all shadow-md"
+                  className="px-5 py-2.5 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl flex items-center gap-2 transition-all shadow-md"
                 >
                   <RotateCcw size={14} /> Restaurer tous ({waitingItems.length})
                 </button>
@@ -2362,7 +2320,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-purple-500 flex items-center justify-center">
                 <Beaker size={18} className="text-white" />
               </div>
               <div>
@@ -2432,7 +2390,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, any>[]).length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
               <Layers size={18} className="text-white" />
             </div>
             <div>
@@ -2565,7 +2523,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="px-5 py-4 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-3">
+        <div className="px-5 py-4 border-b border-blue-100 bg-blue-50 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
             <Send size={18} className="text-white" />
           </div>
