@@ -112,11 +112,10 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
   const totalVersFrigo = rendements.reduce((s, r) => s + r.vers_frigo, 0);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
-        <Scale size={16} className="text-emerald-600" />
-        <h3 className="font-semibold text-gray-900 text-sm">Rendement de production</h3>
-        <span className="text-xs text-gray-400">{rendements.length}/{producedItems.length} enregistres</span>
+    <div className="odoo-section">
+      <div className="odoo-section-header">
+        <Scale size={12} /> Rendement de production
+        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{rendements.length}/{producedItems.length} enregistrés</span>
       </div>
 
       {/* Summary bar */}

@@ -71,76 +71,76 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const coutRevient = coutMat + coutMO + coutCharges;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
-        <Calculator size={16} className="text-amber-600" />
-        <h3 className="font-semibold text-gray-900 text-sm">Cout de revient</h3>
+    <div className="odoo-section">
+      <div className="odoo-section-header">
+        <Calculator size={12} /> Coût de revient
         {cout && (
-          <span className="ml-auto text-sm font-bold text-emerald-700">{formatDH(coutRevient)}</span>
+          <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', fontWeight: 600, color: '#28a745' }}>
+            {formatDH(coutRevient)}
+          </span>
         )}
       </div>
 
       {!cout && !isLoading && (
-        <div className="p-5 text-center">
-          <p className="text-sm text-gray-500 mb-3">Le cout de revient n'a pas encore ete calcule.</p>
+        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: 'var(--theme-bg-card)' }}>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', marginBottom: '0.5rem' }}>Le coût de revient n'a pas encore été calculé.</p>
           {isChef && planStatus === 'completed' && (
             <button onClick={() => calculateMutation.mutate()} disabled={calculateMutation.isPending}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition inline-flex items-center gap-2">
-              {calculateMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
-              Calculer le cout de revient
+              className="odoo-btn-primary">
+              {calculateMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Calculator size={13} />}
+              Calculer le coût de revient
             </button>
           )}
         </div>
       )}
 
       {isLoading && (
-        <div className="p-6 flex items-center justify-center gap-2 text-gray-400">
-          <Loader2 size={16} className="animate-spin" /> Chargement...
+        <div style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--theme-text-muted)' }}>
+          <Loader2 size={14} className="animate-spin" /> Chargement...
         </div>
       )}
 
       {cout && (
         <>
-          {/* Formula: Matieres + MO + Charges = Revient */}
-          <div className="flex items-center gap-2 justify-center p-4">
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-center flex-1">
-              <div className="flex items-center gap-1 justify-center mb-0.5">
-                <Package size={10} className="text-amber-500" />
-                <span className="text-[9px] font-bold text-gray-500 uppercase">Matieres</span>
+          {/* Breakdown : Matières + M.O. + Charges = Revient */}
+          <div className="odoo-stat-grid" style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
+            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+              <div className="odoo-stat-card-label">
+                <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Matières
               </div>
-              <div className="text-sm font-bold text-amber-700">{formatDH(coutMat)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutMat)}</div>
             </div>
-            <Plus size={12} className="text-gray-400 shrink-0" />
-            <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-center flex-1">
-              <div className="flex items-center gap-1 justify-center mb-0.5">
-                <Users size={10} className="text-blue-500" />
-                <span className="text-[9px] font-bold text-gray-500 uppercase">M.O.</span>
+            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+              <div className="odoo-stat-card-label">
+                <Users size={11} style={{ display: 'inline', marginRight: 4 }} />M.O.
               </div>
-              <div className="text-sm font-bold text-blue-700">{formatDH(coutMO)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutMO)}</div>
             </div>
-            <Plus size={12} className="text-gray-400 shrink-0" />
-            <div className="rounded-xl bg-violet-50 border border-violet-200 px-3 py-2 text-center flex-1">
-              <div className="flex items-center gap-1 justify-center mb-0.5">
-                <Building2 size={10} className="text-violet-500" />
-                <span className="text-[9px] font-bold text-gray-500 uppercase">Charges</span>
+            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+              <div className="odoo-stat-card-label">
+                <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges
               </div>
-              <div className="text-sm font-bold text-violet-700">{formatDH(coutCharges)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutCharges)}</div>
             </div>
-            <Equal size={12} className="text-gray-400 shrink-0" />
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-center flex-1">
-              <div className="flex items-center gap-1 justify-center mb-0.5">
-                <DollarSign size={10} className="text-emerald-500" />
-                <span className="text-[9px] font-bold text-gray-500 uppercase">Revient</span>
+            <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--theme-bg-secondary)' }}>
+              <div className="odoo-stat-card-label">
+                <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Revient
               </div>
-              <div className="text-sm font-bold text-emerald-700">{formatDH(coutRevient)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: '#28a745' }}>{formatDH(coutRevient)}</div>
             </div>
           </div>
 
           {/* Prix par unite */}
           {totalQuantity && totalQuantity > 0 && (
-            <div className="mx-4 mb-3 px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between">
-              <span className="text-xs text-gray-500">Prix de revient par unite ({totalQuantity} unites)</span>
-              <span className="text-sm font-bold text-gray-900">{(coutRevient / totalQuantity).toFixed(2)} DH</span>
+            <div style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: 'var(--theme-bg-card)',
+              borderBottom: '1px solid var(--theme-bg-separator)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              fontSize: '0.8125rem',
+            }}>
+              <span style={{ color: 'var(--theme-text-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
+              <span style={{ fontWeight: 600 }}>{(coutRevient / totalQuantity).toFixed(2)} DH</span>
             </div>
           )}
 

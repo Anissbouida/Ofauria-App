@@ -1467,16 +1467,15 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           );
         })()}
         {showProd && plan.status === 'completed' && isChef && (
-          <button onClick={() => printFicheProduction()} className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Printer size={16} className="text-emerald-600" /> Fiche de production
+          <button onClick={() => printFicheProduction()} className="odoo-btn-secondary">
+            <Printer size={13} /> Fiche de production
           </button>
         )}
         {/* Declarer une perte de production : visible pendant la production et a la cloture
             (cas brule, rate, panne machine, matiere defectueuse). Tracabilite via productionPlanId. */}
         {showProd && ['in_progress', 'completed'].includes(plan.status) && isChef && !isSemiFini && (
-          <button onClick={() => setShowLossModal(true)}
-            className="px-5 py-2.5 bg-white border border-red-200 text-red-700 rounded-xl font-medium hover:bg-red-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Trash2 size={16} className="text-red-600" /> Declarer une perte
+          <button onClick={() => setShowLossModal(true)} className="odoo-btn-danger">
+            <Trash2 size={13} /> Declarer une perte
           </button>
         )}
       </div>
@@ -1754,51 +1753,58 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       )}
 
       {/* ══════════════ ACTIVITY FEED ══════════════ */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <MessageSquare size={18} className="text-indigo-600" />
-          <h3 className="font-bold text-gray-800 text-sm">Notes de production</h3>
+      <div className="odoo-section">
+        <div className="odoo-section-header">
+          <MessageSquare size={12} /> Notes de production
           {(activities as Record<string, any>[]).length > 0 && (
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>
               {(activities as Record<string, any>[]).length}
             </span>
           )}
         </div>
-        {/* New note input */}
-        <div className="flex gap-2 mb-3">
-          <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
-            placeholder="Ajouter une note..."
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
-            disabled={addingNote} />
-          <button onClick={handleAddNote} disabled={!newNote.trim() || addingNote}
-            className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-            <Send size={16} />
-          </button>
-        </div>
-        {/* Activity list */}
-        {(activities as Record<string, any>[]).length > 0 ? (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {(activities as Record<string, any>[]).map((act: Record<string, any>) => (
-              <div key={act.id as string} className="flex gap-3 py-2 border-b border-gray-50 last:border-0">
-                <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                  {act.activity_type === 'note_added'
-                    ? <MessageSquare size={12} className="text-indigo-600" />
-                    : <Play size={12} className="text-indigo-600" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800">{act.message as string}</p>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
-                    {act.first_name && <span className="font-medium text-gray-500">{act.first_name as string} {act.last_name as string}</span>}
-                    <span>{format(new Date(act.created_at as string), 'dd/MM HH:mm', { locale: fr })}</span>
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: 'var(--theme-bg-card)' }}>
+          {/* New note input */}
+          <div style={{ display: 'flex', gap: '0.375rem', marginBottom: '0.5rem' }}>
+            <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+              placeholder="Ajouter une note..."
+              className="input" style={{ flex: 1 }}
+              disabled={addingNote} />
+            <button onClick={handleAddNote} disabled={!newNote.trim() || addingNote}
+              className="odoo-btn-primary" style={{ padding: '4px 10px' }}>
+              <Send size={13} />
+            </button>
+          </div>
+          {/* Activity list */}
+          {(activities as Record<string, any>[]).length > 0 ? (
+            <div style={{ maxHeight: '16rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {(activities as Record<string, any>[]).map((act: Record<string, any>, i: number) => (
+                <div key={act.id as string} style={{
+                  display: 'flex', gap: '0.5rem', padding: '0.375rem 0',
+                  borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none',
+                }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: '50%',
+                    backgroundColor: 'var(--theme-accent-light)',
+                    color: 'var(--theme-accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2,
+                  }}>
+                    {act.activity_type === 'note_added' ? <MessageSquare size={11} /> : <Play size={11} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)' }}>{act.message as string}</p>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 1, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                      {act.first_name && <span style={{ fontWeight: 500 }}>{act.first_name as string} {act.last_name as string}</span>}
+                      <span>{format(new Date(act.created_at as string), 'dd/MM HH:mm', { locale: fr })}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 text-center py-2">Aucune note pour le moment</p>
-        )}
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'center', padding: '0.5rem' }}>Aucune note pour le moment</p>
+          )}
+        </div>
       </div>
 
       {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
@@ -1865,26 +1871,25 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
             {/* Production items — simple table */}
             {hasProduction && (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden self-start">
-                <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
-                  <Factory size={16} className="text-blue-600" />
-                  <h3 className="font-semibold text-gray-900 text-sm">A produire</h3>
-                  <span className="text-xs text-gray-400">{items.length} article(s)</span>
+              <div className="odoo-section">
+                <div className="odoo-section-header">
+                  <Factory size={12} /> À produire
+                  <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{items.length} article(s)</span>
                 </div>
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <div style={{ overflowX: 'auto' }}>
+                <table className="odoo-table">
                   <thead>
-                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      <th className="text-left px-5 py-2.5">Produit</th>
-                      <th className="text-center px-3 py-2.5 w-14">Qte</th>
-                      <th className="text-center px-3 py-2.5 w-14">Fait</th>
-                      <th className="text-left px-3 py-2.5">N° Lot</th>
-                      <th className="text-center px-3 py-2.5">Date de production</th>
-                      <th className="text-left px-3 py-2.5">Produit par</th>
-                      <th className="text-center px-3 py-2.5">Date d'expiration</th>
-                      <th className="text-center px-3 py-2.5">Cycle de vie</th>
-                      <th className="text-center px-3 py-2.5 w-24">Statut</th>
-                      <th className="text-center px-3 py-2.5 w-24"></th>
+                    <tr>
+                      <th>Produit</th>
+                      <th style={{ textAlign: 'right' }}>Qté</th>
+                      <th style={{ textAlign: 'right' }}>Fait</th>
+                      <th>N° Lot</th>
+                      <th>Date de production</th>
+                      <th>Produit par</th>
+                      <th>Date d'expiration</th>
+                      <th>Cycle de vie</th>
+                      <th>Statut</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
