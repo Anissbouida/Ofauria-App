@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { bonSortieApi } from '../../api/bon-sortie.api';
@@ -413,64 +413,62 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
   const expiringSoonCount = enriched.filter(r => r._daysUntil !== null && (r._daysUntil as number) <= 7).length;
 
   return (
-    <div className="space-y-3">
-      {/* Barre d'outils : recherche + tri + filtres */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un ingredient..."
-            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 focus:bg-white outline-none transition"
-          />
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-          <ArrowUpDown size={12} />
-          <select
-            value={sortBy} onChange={(e) => setSortBy(e.target.value as PesageSort)}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 text-sm font-medium text-gray-700 focus:ring-2 focus:ring-amber-400 focus:bg-white outline-none cursor-pointer">
-            <option value="dlc_asc">DLC la plus proche</option>
-            <option value="name_asc">Nom A-Z</option>
-            <option value="qty_desc">Qty decroissante</option>
-            <option value="qty_asc">Qty croissante</option>
-          </select>
-        </div>
-        <button
-          onClick={() => setFilterExpiringSoon(!filterExpiringSoon)}
-          className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
-            filterExpiringSoon
-              ? 'bg-amber-100 text-amber-800 border-amber-300'
-              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-          }`}>
-          <CalendarClock size={12} />
-          Expirant ≤7j
+    <>
+      {/* ══════ SEARCH PANEL Odoo ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher un ingrédient..."
+          className="odoo-search-input" />
+        {search && (
+          <span className="odoo-filter-chip">
+            Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
+        {filterExpiringSoon && (
+          <span className="odoo-filter-chip">
+            Expirant ≤7j
+            <span className="odoo-filter-chip-remove" onClick={() => setFilterExpiringSoon(false)}>×</span>
+          </span>
+        )}
+        <button onClick={() => setFilterExpiringSoon(!filterExpiringSoon)}
+          className="odoo-filter-dropdown"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <CalendarClock size={11} /> Expirant ≤7j
           {expiringSoonCount > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              filterExpiringSoon ? 'bg-amber-200 text-amber-900' : 'bg-gray-200 text-gray-700'
-            }`}>
-              {expiringSoonCount}
-            </span>
+            <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 2 }}>{expiringSoonCount}</span>
           )}
         </button>
-        {(search || filterExpiringSoon || sortBy !== 'dlc_asc') && (
-          <button
-            onClick={() => { setSearch(''); setFilterExpiringSoon(false); setSortBy('dlc_asc'); }}
-            className="px-3 py-2 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 transition-colors">
-            Reinitialiser
-          </button>
-        )}
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as PesageSort)}
+          className="odoo-filter-dropdown"
+          style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          <option value="dlc_asc">▾ DLC proche</option>
+          <option value="name_asc">▾ Nom A-Z</option>
+          <option value="qty_desc">▾ Qty décroissante</option>
+          <option value="qty_asc">▾ Qty croissante</option>
+        </select>
       </div>
 
-      <div className="text-xs text-gray-500 px-1">
-        <strong className="text-gray-700">{sorted.length}</strong> sur <strong className="text-gray-700">{rows.length}</strong> ingredient{rows.length > 1 ? 's' : ''} affiche{sorted.length > 1 ? 's' : ''}
-        {(search || filterExpiringSoon) ? ' (filtres actifs)' : ''}
-      </div>
       {sorted.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 py-16 text-center text-sm text-gray-400 italic">
-          Aucun ingredient ne correspond aux filtres.
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Beaker size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun ingrédient ne correspond aux filtres.</p>
         </div>
       ) : (
-      <div className="space-y-2">
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead>
+            <tr>
+              <th style={{ width: 24 }}></th>
+              <th>Ingrédient</th>
+              <th>Lots ouverts</th>
+              <th>DLC</th>
+              <th style={{ textAlign: 'right' }}>Quantité au pesage</th>
+              <th style={{ width: 24 }}></th>
+            </tr>
+          </thead>
+          <tbody>
         {sorted.map((r) => {
           const ingredientId = r.ingredient_id as string;
           const isOpen = expanded === ingredientId;
@@ -479,157 +477,141 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
           const dlc = r.nearest_dlc_effective ? new Date(r.nearest_dlc_effective as string) : null;
           const daysUntil = dlc ? differenceInDays(dlc, new Date()) : null;
 
-          // Niveau d'urgence DLC -> theme couleur unifie (accent + dot + badge)
+          // Niveau d'urgence DLC
           const urgency: 'safe' | 'soon' | 'urgent' | 'expired' | 'none' =
             daysUntil === null ? 'none'
             : daysUntil < 0 ? 'expired'
             : daysUntil <= 3 ? 'urgent'
             : daysUntil <= 7 ? 'soon'
             : 'safe';
-
-          const theme = {
-            none:    { accent: 'bg-gray-200',     dot: 'bg-gray-300',     badge: 'bg-gray-100 text-gray-600 ring-gray-200', dayLabel: '' },
-            safe:    { accent: 'bg-emerald-200',  dot: 'bg-emerald-500',  badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dayLabel: daysUntil !== null ? `${daysUntil} j` : '' },
-            soon:    { accent: 'bg-amber-300',    dot: 'bg-amber-500',    badge: 'bg-amber-50 text-amber-800 ring-amber-200', dayLabel: daysUntil !== null ? `${daysUntil} j` : '' },
-            urgent:  { accent: 'bg-orange-400',   dot: 'bg-orange-500',   badge: 'bg-orange-50 text-orange-800 ring-orange-200', dayLabel: daysUntil === 0 ? "auj." : daysUntil !== null ? `${daysUntil} j` : '' },
-            expired: { accent: 'bg-red-400',      dot: 'bg-red-500',      badge: 'bg-red-50 text-red-700 ring-red-200', dayLabel: daysUntil !== null ? `-${Math.abs(daysUntil)} j` : '' },
-          }[urgency];
+          const dotClass = urgency === 'expired' || urgency === 'urgent' ? 'danger'
+            : urgency === 'soon' ? 'warning'
+            : urgency === 'safe' ? 'ok'
+            : 'neutral';
+          const dlcTagClass = urgency === 'expired' ? 'odoo-tag-red'
+            : urgency === 'urgent' ? 'odoo-tag-orange'
+            : urgency === 'soon' ? 'odoo-tag-yellow'
+            : urgency === 'safe' ? 'odoo-tag-green'
+            : 'odoo-tag-grey';
+          const dayLabel = daysUntil === null ? '—'
+            : daysUntil < 0 ? `-${Math.abs(daysUntil)}j`
+            : daysUntil === 0 ? 'auj.'
+            : `${daysUntil}j`;
 
           const lots = (r.lots as Record<string, any>[]) || [];
           return (
-            <div key={ingredientId}
-              className={`group bg-white rounded-2xl border border-gray-100 overflow-hidden transition-all hover:shadow-md hover:border-gray-200 ${isOpen ? 'shadow-md ring-1 ring-gray-100' : 'shadow-sm'}`}>
-              {/* Ruban d'urgence vertical a gauche */}
-              <div className="flex">
-                <div className={`w-1 shrink-0 ${theme.accent}`} aria-hidden="true" />
-                <div onClick={() => setExpanded(isOpen ? null : ingredientId)}
-                  className="flex-1 px-4 py-3.5 flex items-center gap-4 cursor-pointer">
-                  {/* Icone + dot d'urgence */}
-                  <div className="relative shrink-0">
-                    <div className="w-11 h-11 rounded-2xl bg-gray-50 border border-gray-200/70 flex items-center justify-center">
-                      <Beaker size={18} className="text-gray-500" />
-                    </div>
-                    {urgency !== 'none' && urgency !== 'safe' && (
-                      <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${theme.dot}`} aria-hidden="true" />
-                    )}
-                  </div>
+            <Fragment key={ingredientId}>
+              <tr onClick={() => setExpanded(isOpen ? null : ingredientId)} style={{ cursor: 'pointer' }}>
+                <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                <td><strong>{r.ingredient_name as string}</strong></td>
+                <td style={{ color: 'var(--theme-text-muted)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <PackageOpen size={11} /> {lotsCount} lot{lotsCount > 1 ? 's' : ''}
+                  </span>
+                </td>
+                <td>
+                  {dlc ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: 'var(--theme-text-muted)' }}>{format(dlc, 'dd MMM', { locale: fr })}</span>
+                      <span className={`odoo-tag ${dlcTagClass}`}>{dayLabel}</span>
+                    </span>
+                  ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <span style={{ fontWeight: 600 }}>{total.toFixed(2)}</span>
+                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{r.ingredient_unit as string}</span>
+                </td>
+                <td style={{ color: 'var(--theme-text-muted)' }}>
+                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </td>
+              </tr>
 
-                  {/* Nom + meta */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[15px] font-semibold text-gray-900 truncate tracking-tight">{r.ingredient_name as string}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-                      <PackageOpen size={11} className="text-gray-400" />
-                      <span>{lotsCount} lot{lotsCount > 1 ? 's' : ''} ouvert{lotsCount > 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-
-                  {/* DLC en bloc date */}
-                  {dlc && (
-                    <div className="hidden sm:flex flex-col items-center justify-center px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-100 shrink-0 min-w-[68px]">
-                      <span className="text-[10px] uppercase font-semibold text-gray-400 tracking-wider leading-none">
-                        {format(dlc, 'MMM', { locale: fr }).replace('.', '')}
-                      </span>
-                      <span className="text-lg font-bold text-gray-800 leading-tight tabular-nums">
-                        {format(dlc, 'dd')}
-                      </span>
-                      <span className={`mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ring-1 ring-inset ${theme.badge} leading-none`}>
-                        {theme.dayLabel}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Quantite : grand chiffre */}
-                  <div className="text-right shrink-0 min-w-[72px]">
-                    <div className="flex items-baseline gap-1 justify-end leading-none">
-                      <span className="text-2xl font-bold text-gray-900 tabular-nums tracking-tight">{total.toFixed(2)}</span>
-                      <span className="text-xs font-medium text-gray-400">{r.ingredient_unit as string}</span>
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-1.5 uppercase tracking-wider font-medium">au pesage</div>
-                  </div>
-
-                  {/* Chevron */}
-                  <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${isOpen ? 'bg-gray-900 text-white rotate-0' : 'bg-gray-50 text-gray-400 group-hover:bg-gray-100'}`}>
-                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </div>
-                </div>
-              </div>
-
-              {/* Lots developpes : timeline indentee */}
               {isOpen && lots.length > 0 && (
-                <div className="border-t border-gray-100 bg-gray-50/40 px-5 pt-3 pb-4 space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 mb-2 ml-1">Detail des lots</div>
-                  {lots.map((lot, i) => {
-                    const pq = parseFloat(lot.pesage_quantity as string || '0');
-                    const eq = parseFloat(lot.economat_quantity as string || '0');
-                    const lotDlc = (lot.effective_expiry_after_opening || lot.expiration_date) as string | null;
-                    const lotDays = lotDlc ? differenceInDays(new Date(lotDlc), new Date()) : null;
-                    const lotUrgency: 'safe' | 'soon' | 'urgent' | 'expired' | 'none' =
-                      lotDays === null ? 'none'
-                      : lotDays < 0 ? 'expired'
-                      : lotDays <= 3 ? 'urgent'
-                      : lotDays <= 7 ? 'soon'
-                      : 'safe';
-                    const lotTheme = {
-                      none:    { dot: 'bg-gray-300',     badge: 'bg-gray-100 text-gray-600 ring-gray-200',         label: '' },
-                      safe:    { dot: 'bg-emerald-500',  badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: lotDays !== null ? `${lotDays} j` : '' },
-                      soon:    { dot: 'bg-amber-500',    badge: 'bg-amber-50 text-amber-800 ring-amber-200',       label: lotDays !== null ? `${lotDays} j` : '' },
-                      urgent:  { dot: 'bg-orange-500',   badge: 'bg-orange-50 text-orange-800 ring-orange-200',    label: lotDays === 0 ? "auj." : lotDays !== null ? `${lotDays} j` : '' },
-                      expired: { dot: 'bg-red-500',      badge: 'bg-red-50 text-red-700 ring-red-200',             label: lotDays !== null ? `-${Math.abs(lotDays)} j` : '' },
-                    }[lotUrgency];
-                    const lotName = (lot.supplier_lot_number || lot.lot_number || '—') as string;
+                <tr className="odoo-subrow">
+                  <td colSpan={6} style={{ padding: 0, background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))' }}>
+                    <table className="odoo-table" style={{ margin: 0, boxShadow: 'none' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 24 }}></th>
+                          <th>Lot</th>
+                          <th>Fournisseur</th>
+                          <th>Ouvert le</th>
+                          <th>DLC</th>
+                          <th style={{ textAlign: 'right' }}>Pesage</th>
+                          <th style={{ textAlign: 'right' }}>Économat</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lots.map((lot, i) => {
+                          const pq = parseFloat(lot.pesage_quantity as string || '0');
+                          const eq = parseFloat(lot.economat_quantity as string || '0');
+                          const lotDlc = (lot.effective_expiry_after_opening || lot.expiration_date) as string | null;
+                          const lotDays = lotDlc ? differenceInDays(new Date(lotDlc), new Date()) : null;
+                          const lotUrgency: 'safe' | 'soon' | 'urgent' | 'expired' | 'none' =
+                            lotDays === null ? 'none'
+                            : lotDays < 0 ? 'expired'
+                            : lotDays <= 3 ? 'urgent'
+                            : lotDays <= 7 ? 'soon'
+                            : 'safe';
+                          const lotDotClass = lotUrgency === 'expired' || lotUrgency === 'urgent' ? 'danger'
+                            : lotUrgency === 'soon' ? 'warning'
+                            : lotUrgency === 'safe' ? 'ok'
+                            : 'neutral';
+                          const lotTagClass = lotUrgency === 'expired' ? 'odoo-tag-red'
+                            : lotUrgency === 'urgent' ? 'odoo-tag-orange'
+                            : lotUrgency === 'soon' ? 'odoo-tag-yellow'
+                            : lotUrgency === 'safe' ? 'odoo-tag-green'
+                            : 'odoo-tag-grey';
+                          const lotDayLabel = lotDays === null ? ''
+                            : lotDays < 0 ? `-${Math.abs(lotDays)}j`
+                            : lotDays === 0 ? 'auj.'
+                            : `${lotDays}j`;
+                          const lotName = (lot.supplier_lot_number || lot.lot_number || '—') as string;
 
-                    return (
-                      <div key={i} className="bg-white rounded-xl border border-gray-150 px-3.5 py-2.5 flex items-center gap-3 hover:border-gray-200 transition-colors" style={{ borderColor: 'rgb(243 244 246)' }}>
-                        <div className="relative shrink-0">
-                          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                            <Package size={14} className="text-gray-500" />
-                          </div>
-                          {lotUrgency !== 'none' && lotUrgency !== 'safe' && (
-                            <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white ${lotTheme.dot}`} aria-hidden="true" />
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-mono font-semibold text-gray-800 truncate">{lotName}</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                            {lot.supplier_name ? <span>{lot.supplier_name as string}</span> : null}
-                            {lot.first_opened_at && (
-                              <span className="inline-flex items-center gap-1">
-                                <span className="w-1 h-1 rounded-full bg-gray-300" aria-hidden="true" />
-                                Ouvert {format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy')}
-                              </span>
-                            )}
-                            {eq > 0 && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">
-                                +{eq.toFixed(2)} {r.ingredient_unit as string} economat
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <div className="flex items-baseline gap-1 justify-end leading-none">
-                            <span className="text-base font-bold text-gray-900 tabular-nums">{pq.toFixed(2)}</span>
-                            <span className="text-[10px] text-gray-400">{r.ingredient_unit as string}</span>
-                          </div>
-                          {lotDlc && lotTheme.label && (
-                            <span className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full ring-1 ring-inset text-[10px] font-semibold ${lotTheme.badge}`}>
-                              <CalendarClock size={9} />
-                              {format(new Date(lotDlc), 'dd/MM')} · {lotTheme.label}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                          return (
+                            <tr key={i}>
+                              <td><span className={`odoo-status-dot ${lotDotClass}`} /></td>
+                              <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{lotName}</td>
+                              <td style={{ color: 'var(--theme-text-muted)' }}>{(lot.supplier_name as string) || '—'}</td>
+                              <td style={{ color: 'var(--theme-text-muted)' }}>
+                                {lot.first_opened_at ? format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy') : '—'}
+                              </td>
+                              <td>
+                                {lotDlc ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(lotDlc), 'dd/MM')}</span>
+                                    {lotDayLabel && <span className={`odoo-tag ${lotTagClass}`}>{lotDayLabel}</span>}
+                                  </span>
+                                ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <span style={{ fontWeight: 600 }}>{pq.toFixed(2)}</span>
+                                <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{r.ingredient_unit as string}</span>
+                              </td>
+                              <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                                {eq > 0 ? (
+                                  <>
+                                    <span>{eq.toFixed(2)}</span>
+                                    <span style={{ fontSize: '0.6875rem', marginLeft: 2 }}>{r.ingredient_unit as string}</span>
+                                  </>
+                                ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
               )}
-            </div>
+            </Fragment>
           );
         })}
+          </tbody>
+        </table>
       </div>
       )}
-    </div>
+    </>
   );
 }
 
