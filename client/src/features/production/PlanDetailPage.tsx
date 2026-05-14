@@ -1804,38 +1804,6 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
       {semiFinishedDepsBlock}
 
-      {/* ══════════════ CALCUL INVERSE BANNER (onglet Production) ══════════════ */}
-      {showProd && frigoItems.length > 0 && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers size={16} className="text-indigo-600" />
-            <span className="text-sm font-semibold text-indigo-800">Calcul inverse — Contenants</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white/70 rounded-lg p-2.5 text-center">
-              <div className="text-lg font-bold text-indigo-700">{totalContenants}</div>
-              <div className="text-[10px] text-gray-500 uppercase">Contenants</div>
-            </div>
-            <div className="bg-white/70 rounded-lg p-2.5 text-center">
-              <div className="text-lg font-bold text-indigo-700">{frigoItems.length}</div>
-              <div className="text-[10px] text-gray-500 uppercase">Produits concernes</div>
-            </div>
-            {totalFrigoIn > 0 && (
-              <div className="bg-white/70 rounded-lg p-2.5 text-center">
-                <div className="text-lg font-bold text-cyan-700">-{totalFrigoIn}</div>
-                <div className="text-[10px] text-gray-500 uppercase">Depuis frigo</div>
-              </div>
-            )}
-            {totalSurplus > 0 && (
-              <div className="bg-white/70 rounded-lg p-2.5 text-center">
-                <div className="text-lg font-bold text-amber-700">+{totalSurplus}</div>
-                <div className="text-[10px] text-gray-500 uppercase">Surplus → frigo</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ══════════════ ROLE FILTER BANNER (onglet Production) ══════════════ */}
       {showProd && allowedSlugs && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
