@@ -148,6 +148,16 @@ function CatalogueTab() {
       notify.success(editingProduct ? 'Produit mis à jour' : 'Produit créé');
       setShowForm(false); setEditingProduct(null);
     },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: { message?: string; details?: Record<string, string[]> } } }; message?: string };
+      const details = e?.response?.data?.error?.details;
+      let msg = e?.response?.data?.error?.message || e?.message || 'Erreur lors de l\'enregistrement';
+      if (details) {
+        const first = Object.entries(details)[0];
+        if (first) msg = `${first[0]}: ${first[1].join(', ')}`;
+      }
+      notify.error(msg);
+    },
   });
 
   const products = productsData?.data || [];
