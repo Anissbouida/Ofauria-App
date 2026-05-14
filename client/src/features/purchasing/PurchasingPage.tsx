@@ -10,6 +10,7 @@ import {
   Loader2, Search, Coins, ArrowDownRight,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -34,39 +35,39 @@ export default function PurchasingPage() {
     { key: 'invoices', label: 'Factures reçues', icon: FileText },
   ];
 
+  const currentTab = allTabs.find(t => t.key === tab);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Achats</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Fournisseurs, commandes et facturation</p>
+    <div className="odoo-scope" style={{ minHeight: '100%' }}>
+      {/* Control bar */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ShoppingCart size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Achats</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">{currentTab?.label}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-        <div className="flex gap-1 overflow-x-auto">
-          {allTabs.map(t => {
-            const Icon = t.icon;
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                  tab === t.key
-                    ? 'bg-white text-gray-800 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                <Icon size={16} /> {t.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="odoo-tabs">
+        {allTabs.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
+              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      {tab === 'waiting_list' && <PurchaseRequestsPage />}
-      {tab === 'suppliers' && <SuppliersTab />}
-      {tab === 'purchase_orders' && <PurchaseOrdersTab />}
-      {tab === 'invoices' && <InvoicesTab />}
+      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {tab === 'waiting_list' && <PurchaseRequestsPage />}
+        {tab === 'suppliers' && <SuppliersTab />}
+        {tab === 'purchase_orders' && <PurchaseOrdersTab />}
+        {tab === 'invoices' && <InvoicesTab />}
+      </div>
     </div>
   );
 }
@@ -90,117 +91,147 @@ function SuppliersTab() {
     onError: () => notify.error('Erreur'),
   });
 
+  const suppliersList = suppliers as Record<string, any>[];
+  const activeCount = suppliersList.filter(s => s.is_active).length;
+
   return (
     <>
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-            <Truck size={14} className="text-white" />
-          </div>
-          <p className="text-sm font-medium text-gray-600">{(suppliers as Record<string, any>[]).length} fournisseur{(suppliers as Record<string, any>[]).length > 1 ? 's' : ''}</p>
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Fournisseurs</div>
+          <div className="odoo-stat-card-value">{suppliersList.length}</div>
+          <div className="odoo-stat-card-sub">total</div>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-          <Plus size={16} /> Ajouter un fournisseur
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
+          <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
+          <div className="odoo-stat-card-sub">en activité</div>
+        </div>
+      </div>
+
+      {/* Search panel + action */}
+      <div className="odoo-search-panel">
+        <div style={{ flex: 1 }} />
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouveau fournisseur
         </button>
       </div>
 
+      {/* Table */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-blue-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des fournisseurs...</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement des fournisseurs...</p>
         </div>
-      ) : (suppliers as Record<string, any>[]).length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
-            <Truck size={28} className="text-blue-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucun fournisseur</p>
+      ) : suppliersList.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun fournisseur</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {(suppliers as Record<string, any>[]).map(s => (
-            <div key={s.id as string} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center flex-shrink-0">
-                    <Truck size={16} className="text-white" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-gray-800">{s.name as string}</p>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {s.is_active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
-                      {s.contact_name && <span>{s.contact_name as string}</span>}
-                      {s.phone && <><span className="text-gray-200">|</span><span>{s.phone as string}</span></>}
-                      {s.city && <><span className="text-gray-200">|</span><span>{s.city as string}</span></>}
-                      {s.ice && <span className="font-mono text-gray-300 text-[10px]">ICE: {s.ice as string}</span>}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => { setEditing(s); setShowForm(true); }}
-                  className="p-2.5 hover:bg-blue-50 rounded-xl text-blue-400 hover:text-blue-600 transition-colors ml-3">
-                  <Pencil size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>Nom</th>
+                <th>Contact</th>
+                <th>Téléphone</th>
+                <th>Ville</th>
+                <th>ICE</th>
+                <th>Statut</th>
+                <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {suppliersList.map(s => (
+                <tr key={s.id as string} onClick={() => { setEditing(s); setShowForm(true); }} style={{ cursor: 'pointer' }}>
+                  <td><span className={`odoo-status-dot ${s.is_active ? 'ok' : 'neutral'}`} /></td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
+                      {s.name as string}
+                    </span>
+                  </td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.contact_name as string) || '—'}</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.phone as string) || '—'}</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.city as string) || '—'}</td>
+                  <td style={{ color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem' }}>
+                    {(s.ice as string) || '—'}
+                  </td>
+                  <td>
+                    <span className={`odoo-tag ${s.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
+                      {s.is_active ? 'Actif' : 'Inactif'}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setEditing(s); setShowForm(true); }}
+                      className="odoo-pager-btn" title="Modifier">
+                      <Pencil size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Truck size={18} className="text-white" />
-                </div>
-                <h2 className="text-lg font-bold text-white">{editing ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
+        <ModalBackdrop onClose={() => { setShowForm(false); setEditing(null); }}
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+            <div className="odoo-control-bar">
+              <div className="odoo-breadcrumb">
+                <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
+                <span>Fournisseur</span>
+                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-current">{editing ? (editing.name as string) : 'Nouveau'}</span>
               </div>
-              <button onClick={() => { setShowForm(false); setEditing(null); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
+              <div style={{ flex: 1 }} />
+              <button onClick={() => { setShowForm(false); setEditing(null); }} className="odoo-pager-btn" title="Fermer">
+                <X size={14} />
               </button>
             </div>
             <form onSubmit={e => {
               e.preventDefault();
               saveMutation.mutate(Object.fromEntries(new FormData(e.currentTarget)));
-            }} className="p-5 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Nom *</label>
-                <input name="name" defaultValue={editing?.name as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Contact</label>
-                  <input name="contactName" defaultValue={editing?.contact_name as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Téléphone</label>
-                  <input name="phone" defaultValue={editing?.phone as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+            }} className="flex-1 overflow-y-auto">
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom *</label>
+                  <input name="name" defaultValue={editing?.name as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Contact</label>
+                    <input name="contactName" defaultValue={editing?.contact_name as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Téléphone</label>
+                    <input name="phone" defaultValue={editing?.phone as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Email</label>
+                    <input name="email" type="email" defaultValue={editing?.email as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Ville</label>
+                    <input name="city" defaultValue={editing?.city as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                </div>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Adresse</label>
+                  <input name="address" defaultValue={editing?.address as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>ICE</label>
+                  <input name="ice" defaultValue={editing?.ice as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
+                  <textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-                  <input name="email" type="email" defaultValue={editing?.email as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ville</label>
-                  <input name="city" defaultValue={editing?.city as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Adresse</label>
-                <input name="address" defaultValue={editing?.address as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">ICE</label>
-                <input name="ice" defaultValue={editing?.ice as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                <textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={saveMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {saveMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+              <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="odoo-btn-secondary">Annuler</button>
+                <button type="submit" disabled={saveMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}
                   Enregistrer
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </>
   );
@@ -276,136 +307,174 @@ function ReceivedInvoicesSection() {
     .filter(inv => inv.status !== 'paid' && inv.status !== 'cancelled')
     .reduce((sum, inv) => sum + parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string), 0);
 
+  const invoicesList = invoices as Record<string, any>[];
+  const totalFacture = invoicesList.reduce((s, inv) => s + parseFloat(inv.total_amount as string || '0'), 0);
+  const totalPaid = invoicesList.reduce((s, inv) => s + parseFloat(inv.paid_amount as string || '0'), 0);
+
   return (
     <>
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
-            <option value="">Tous les statuts</option>
-            <option value="pending">En attente</option>
-            <option value="partial">Partiel</option>
-            <option value="paid">Payée</option>
-            <option value="overdue">En retard</option>
-          </select>
-          {totalPending > 0 && (
-            <div className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-                <AlertTriangle size={12} className="text-white" />
-              </div>
-              <span className="text-red-700">Reste à payer: <span className="font-bold">{n(totalPending)} DH</span></span>
-            </div>
-          )}
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Total facturé</div>
+          <div className="odoo-stat-card-value">{n(totalFacture)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{invoicesList.length} facture{invoicesList.length > 1 ? 's' : ''}</div>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-          <Plus size={16} /> Nouvelle facture
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Payé</div>
+          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totalPaid)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">réglé</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Reste à payer</div>
+          <div className="odoo-stat-card-value" style={{ color: totalPending > 0 ? '#dc3545' : undefined }}>{n(totalPending)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">en attente</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Taux paiement</div>
+          <div className="odoo-stat-card-value">{totalFacture > 0 ? Math.round((totalPaid / totalFacture) * 100) : 0}%</div>
+          <div className="odoo-stat-card-sub">progression</div>
+        </div>
+      </div>
+
+      {/* Search panel */}
+      <div className="odoo-search-panel">
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="odoo-filter-dropdown">
+          <option value="">Tous les statuts</option>
+          <option value="pending">En attente</option>
+          <option value="partial">Partiel</option>
+          <option value="paid">Payée</option>
+          <option value="overdue">En retard</option>
+        </select>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouvelle facture
         </button>
       </div>
 
+      {/* Table */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-amber-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des factures...</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement des factures...</p>
         </div>
-      ) : (invoices as Record<string, any>[]).length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
-            <FileText size={28} className="text-amber-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucune facture reçue</p>
+      ) : invoicesList.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <FileText size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucune facture reçue</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {(invoices as Record<string, any>[]).map(inv => {
-            const total = parseFloat(inv.total_amount as string);
-            const paid = parseFloat(inv.paid_amount as string);
-            const remaining = total - paid;
-            const hasAttachment = !!(inv.attachment_url as string);
-            const progressPct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;
-            const statusColor = INVOICE_STATUS_COLORS[inv.status as string] || 'bg-gray-100 text-gray-500';
-            return (
-              <div key={inv.id as string} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center flex-shrink-0">
-                      <FileText size={16} className="text-white" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="font-bold text-gray-800 font-mono">{inv.invoice_number as string}</p>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>
-                          {INVOICE_STATUS_LABELS[inv.status as string]}
-                        </span>
-                        {hasAttachment && <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-500"><Paperclip size={10} /></span>}
-                        {inv.purchase_order_number && (
-                          <span className="px-2 py-0.5 rounded bg-slate-50 text-slate-500 text-[10px] font-mono">BC {inv.purchase_order_number as string}</span>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>N° Facture</th>
+                <th>Fournisseur</th>
+                <th>Date</th>
+                <th>BC</th>
+                <th>Catégorie</th>
+                <th>Statut</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th style={{ textAlign: 'right', width: 160 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoicesList.map(inv => {
+                const total = parseFloat(inv.total_amount as string);
+                const paid = parseFloat(inv.paid_amount as string);
+                const remaining = total - paid;
+                const hasAttachment = !!(inv.attachment_url as string);
+                const statusTag = inv.status === 'paid' ? 'odoo-tag-green'
+                  : inv.status === 'partial' ? 'odoo-tag-blue'
+                  : inv.status === 'overdue' ? 'odoo-tag-red'
+                  : inv.status === 'cancelled' ? 'odoo-tag-grey'
+                  : 'odoo-tag-yellow';
+                const dotClass = inv.status === 'paid' ? 'ok'
+                  : inv.status === 'overdue' ? 'danger'
+                  : inv.status === 'cancelled' ? 'neutral'
+                  : 'warning';
+                return (
+                  <tr key={inv.id as string}>
+                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
+                        {hasAttachment && <Paperclip size={10} style={{ color: 'var(--theme-accent)' }} />}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 500 }}>{inv.supplier_name as string}</td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(inv.invoice_date as string), 'dd/MM/yyyy')}</td>
+                    <td>
+                      {inv.purchase_order_number ? (
+                        <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>{inv.purchase_order_number as string}</span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                    </td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{(inv.category_name as string) || '—'}</td>
+                    <td><span className={`odoo-tag ${statusTag}`}>{INVOICE_STATUS_LABELS[inv.status as string]}</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 700 }}>{n(total)}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                      {remaining > 0 && inv.status !== 'cancelled' && (
+                        <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(remaining)}</div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
+                        {hasAttachment ? (
+                          <>
+                            <a href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer"
+                              className="odoo-pager-btn" title="Voir la pièce jointe">
+                              <Eye size={13} />
+                            </a>
+                            <button onClick={() => removeAttachMutation.mutate(inv.id as string)}
+                              className="odoo-pager-btn" title="Supprimer la pièce jointe" style={{ color: '#dc3545' }}>
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={() => handleAttachFile(inv.id as string)} className="odoo-pager-btn" title="Joindre">
+                            <Upload size={13} />
+                          </button>
+                        )}
+                        {inv.status !== 'paid' && inv.status !== 'cancelled' && (
+                          <button onClick={() => { setShowPayForm(inv); setPayMethod('cash'); }}
+                            className="odoo-btn-primary"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            <Banknote size={11} /> Payer
+                          </button>
+                        )}
+                        {inv.status !== 'cancelled' && inv.status !== 'paid' && (
+                          <button onClick={() => cancelMutation.mutate(inv.id as string)}
+                            className="odoo-pager-btn" title="Annuler" style={{ color: '#dc3545' }}>
+                            <X size={13} />
+                          </button>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-400">
-                        <span className="font-medium text-gray-600">{inv.supplier_name as string}</span>
-                        <span className="text-gray-200">|</span>
-                        <span>{format(new Date(inv.invoice_date as string), 'dd/MM/yyyy')}</span>
-                        {inv.category_name && <><span className="text-gray-200">|</span><span>{inv.category_name as string}</span></>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 ml-3">
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-gray-800">{n(total)} <span className="text-xs font-normal text-gray-400">DH</span></p>
-                      {remaining > 0 && <p className="text-xs text-red-500 font-medium">Reste: {n(remaining)} DH</p>}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {hasAttachment ? (
-                        <>
-                          <a href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer"
-                            className="p-2 hover:bg-blue-50 rounded-xl text-blue-500 hover:text-blue-700 transition-colors" title="Voir"><Eye size={14} /></a>
-                          <button onClick={() => removeAttachMutation.mutate(inv.id as string)}
-                            className="p-2 hover:bg-red-50 rounded-xl text-red-400 hover:text-red-600 transition-colors" title="Supprimer pièce jointe"><Trash2 size={14} /></button>
-                        </>
-                      ) : (
-                        <button onClick={() => handleAttachFile(inv.id as string)}
-                          className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors" title="Joindre facture"><Upload size={14} /></button>
-                      )}
-                      {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                        <button onClick={() => { setShowPayForm(inv); setPayMethod('cash'); }}
-                          className="px-3 py-1.5 rounded-xl text-xs font-medium bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-sm hover:shadow-md transition-all">Payer</button>
-                      )}
-                      {inv.status !== 'cancelled' && inv.status !== 'paid' && (
-                        <button onClick={() => cancelMutation.mutate(inv.id as string)}
-                          className="p-2 hover:bg-red-50 rounded-xl text-red-400 hover:text-red-600 transition-colors"><X size={14} /></button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {inv.status !== 'cancelled' && (
-                  <div className="mt-2">
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${progressPct >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`}
-                        style={{ width: `${progressPct}%` }} />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-                      <span>Payé: {n(paid)} DH</span>
-                      <span>{Math.round(progressPct)}%</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Create invoice modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><FileText size={18} className="text-white" /></div>
-                <h2 className="text-lg font-bold text-white">Nouvelle facture fournisseur</h2>
+        <ModalBackdrop onClose={() => setShowForm(false)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+            <div className="odoo-control-bar">
+              <div className="odoo-breadcrumb">
+                <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
+                <span>Facture fournisseur</span>
+                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-current">Nouvelle</span>
               </div>
-              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setShowForm(false)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
             </div>
             <form onSubmit={e => {
               e.preventDefault();
@@ -414,66 +483,67 @@ function ReceivedInvoicesSection() {
               fd.taxAmount = parseFloat(fd.taxAmount as string) || 0;
               fd.totalAmount = (fd.amount as number) + (fd.taxAmount as number);
               createMutation.mutate(fd);
-            }} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">N° Facture *</label>
-                  <input name="invoiceNumber" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="invoiceDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+            }} className="flex-1 overflow-y-auto">
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Facture *</label>
+                    <input name="invoiceNumber" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
+                    <input name="invoiceDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur *</label>
+                    <select name="supplierId" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required>
+                      <option value="">Choisir...</option>
+                      {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
+                        <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
+                      ))}
+                    </select></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
+                    <select name="categoryId" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                      <option value="">Choisir...</option>
+                      {(categories as Record<string, any>[]).filter(c => c.type === 'expense').map(c => (
+                        <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                      ))}
+                    </select></div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Montant HT *</label>
+                    <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>TVA</label>
+                    <input name="taxAmount" type="number" step="0.01" defaultValue="0" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Échéance</label>
+                    <input name="dueDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                </div>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
+                  <textarea name="notes" rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur *</label>
-                  <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required>
-                    <option value="">Choisir...</option>
-                    {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
-                      <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                    ))}
-                  </select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie</label>
-                  <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-                    <option value="">Choisir...</option>
-                    {(categories as Record<string, any>[]).filter(c => c.type === 'expense').map(c => (
-                      <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
-                    ))}
-                  </select></div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant HT *</label>
-                  <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" required /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">TVA</label>
-                  <input name="taxAmount" type="number" step="0.01" defaultValue="0" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Échéance</label>
-                  <input name="dueDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-              </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                <textarea name="notes" rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" /></div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {createMutation.isPending && <Loader2 size={14} className="animate-spin" />} Enregistrer
+              <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => setShowForm(false)} className="odoo-btn-secondary">Annuler</button>
+                <button type="submit" disabled={createMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {createMutation.isPending && <Loader2 size={12} className="animate-spin" />} Enregistrer
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Pay invoice modal */}
       {showPayForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-emerald-500 to-green-500 p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><Banknote size={18} className="text-white" /></div>
-                <h2 className="text-lg font-bold text-white">Payer la facture</h2>
+        <ModalBackdrop onClose={() => setShowPayForm(null)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 480, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+            <div className="odoo-control-bar">
+              <div className="odoo-breadcrumb">
+                <Banknote size={14} style={{ color: 'var(--theme-accent)' }} />
+                <span>Payer</span>
+                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{showPayForm.invoice_number as string}</span>
               </div>
-              <div className="bg-white/20 rounded-xl p-3 flex items-center justify-between">
-                <span className="text-white/80 text-sm font-mono">{showPayForm.invoice_number as string}</span>
-                <span className="text-white font-bold">
-                  {n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH
-                </span>
-              </div>
+              <div style={{ flex: 1 }} />
+              <span className="odoo-tag odoo-tag-orange">Reste {n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH</span>
+              <button onClick={() => setShowPayForm(null)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
             </div>
             <form onSubmit={e => {
               e.preventDefault();
@@ -486,45 +556,46 @@ function ReceivedInvoicesSection() {
               fd.description = `Paiement facture ${showPayForm.invoice_number}`;
               if (payMethod !== 'check') { fd.checkNumber = undefined; fd.checkDate = undefined; }
               payMutation.mutate(fd);
-            }} className="p-5 space-y-4">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-                <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required
-                  defaultValue={(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string)).toFixed(2)} /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Méthode *</label>
-                  <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    {paymentMethods.map(pm => (
-                      <option key={pm.code} value={pm.code}>{pm.label}</option>
-                    ))}
-                  </select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>
-              </div>
-              {payMethod === 'check' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Détails du chèque</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label className="block text-xs font-medium text-blue-700 mb-1">N° Chèque *</label>
-                      <input name="checkNumber" className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" required /></div>
-                    <div><label className="block text-xs font-medium text-blue-700 mb-1">Date du chèque</label>
-                      <input name="checkDate" type="date" className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
-                  </div>
+            }} className="flex-1 overflow-y-auto">
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Montant *</label>
+                  <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required
+                    defaultValue={(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string)).toFixed(2)} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Méthode *</label>
+                    <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                      {paymentMethods.map(pm => (
+                        <option key={pm.code} value={pm.code}>{pm.label}</option>
+                      ))}
+                    </select></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
+                    <input name="paymentDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>
                 </div>
-              )}
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Référence / Notes</label>
-                <input name="reference" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Optionnel" /></div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setShowPayForm(null)} className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={payMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
-                  {payMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  <Check size={16} /> Payer
+                {payMethod === 'check' && (
+                  <div className="odoo-alert" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <strong style={{ fontSize: '0.75rem' }}>Détails du chèque</strong>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Chèque *</label>
+                        <input name="checkNumber" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date du chèque</label>
+                        <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+                    </div>
+                  </div>
+                )}
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Référence / Notes</label>
+                  <input name="reference" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Optionnel" /></div>
+              </div>
+              <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => setShowPayForm(null)} className="odoo-btn-secondary">Annuler</button>
+                <button type="submit" disabled={payMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {payMutation.isPending && <Loader2 size={12} className="animate-spin" />}
+                  <Check size={13} /> Payer
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </>
   );

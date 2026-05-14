@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { suppliersApi } from '../../api/accounting.api';
@@ -11,6 +11,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -155,278 +156,220 @@ export default function PurchaseOrdersTab() {
     { key: 'annule', label: 'Annulés', icon: Ban, color: 'text-gray-400' },
   ];
 
+  const overdueList = overdue as Record<string, any>[];
+
   return (
-    <div className="space-y-5">
-      {/* Overdue alerts */}
-      {overdue.length > 0 && (
-        <div className="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4">
-          <div className="flex items-center gap-2.5 text-red-700 font-semibold mb-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <AlertTriangle size={14} className="text-white" />
-            </div>
-            {overdue.length} bon{overdue.length > 1 ? 's' : ''} en retard de livraison
-          </div>
-          <div className="grid gap-2">
-            {(overdue as Record<string, any>[]).map((po) => (
-              <div key={po.id as string}
-                className="flex items-center justify-between bg-white/60 rounded-lg px-3 py-2 text-sm">
-                <div className="flex items-center gap-3">
-                  <span className="font-mono font-bold text-red-700">{po.order_number as string}</span>
-                  <span className="text-gray-600">{po.supplier_name as string}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-red-600 text-xs">
-                    Attendu le {po.expected_delivery_date ? format(new Date(po.expected_delivery_date as string), 'dd/MM/yyyy') : '—'}
-                  </span>
-                  <button onClick={() => setShowDelivery(po.id as string)}
-                    className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200">
-                    Confirmer réception
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+    <>
+      {/* Overdue alert */}
+      {overdueList.length > 0 && (
+        <div className="odoo-alert danger">
+          <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
+          <strong>{overdueList.length} bon{overdueList.length > 1 ? 's' : ''} en retard de livraison.</strong>
+          <span style={{ marginLeft: 6, color: 'var(--theme-text-muted)' }}>Consulte la liste ci-dessous pour confirmer la réception.</span>
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-600 to-gray-700 flex items-center justify-center">
-              <ShoppingBag size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total BC</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-800">{stats.totalCount}</p>
-          <p className="text-xs text-gray-400 mt-1">{n(stats.totalAmount)} DH</p>
-        </div>
-        {[
-          { key: 'en_attente', gradient: 'from-amber-500 to-yellow-500' },
-          { key: 'envoye', gradient: 'from-blue-500 to-indigo-500' },
-          { key: 'livre_complet', gradient: 'from-emerald-500 to-green-500' },
-        ].map(({ key: s, gradient }) => {
-          const Icon = STATUS_ICONS[s];
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setStatusFilter('')} className={`odoo-stat-card ${statusFilter === '' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label"><ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total BC</div>
+          <div className="odoo-stat-card-value">{stats.totalCount}</div>
+          <div className="odoo-stat-card-sub">{n(stats.totalAmount)} DH</div>
+        </button>
+        {(['en_attente', 'envoye', 'livre_complet'] as const).map((s) => {
+          const Icon = STATUS_ICONS[s] || Clock;
           const data = stats.byStatus[s] || { count: 0, total: 0 };
           return (
-            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
-              className={`bg-white rounded-2xl shadow-sm border p-4 text-left transition-all hover:shadow-md ${statusFilter === s ? 'ring-2 ring-offset-1 ring-slate-400 border-slate-300' : 'border-gray-100'}`}>
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                  <Icon size={16} className="text-white" />
-                </div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{STATUS_LABELS[s]}</p>
-              </div>
-              <p className="text-2xl font-bold text-gray-800">{data.count}</p>
-              <p className="text-xs text-gray-400 mt-1">{n(data.total)} DH</p>
+            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)} className={`odoo-stat-card ${statusFilter === s ? 'active' : ''}`}>
+              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{STATUS_LABELS[s]}</div>
+              <div className="odoo-stat-card-value">{data.count}</div>
+              <div className="odoo-stat-card-sub">{n(data.total)} DH</div>
             </button>
           );
         })}
       </div>
 
-      {/* Toolbar: status tabs + actions */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1 bg-gray-50 rounded-xl p-1 flex-1 flex-wrap">
-          {statusTabs.map((tab) => {
-            const Icon = tab.icon;
-            const count = tab.key === '' ? stats.totalCount : (stats.byStatus[tab.key]?.count || 0);
-            return (
-              <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                  statusFilter === tab.key
-                    ? 'bg-white text-slate-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                <Icon size={13} />
-                {tab.label}
-                {count > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    statusFilter === tab.key ? 'bg-slate-100 text-slate-600' : 'bg-gray-200 text-gray-500'
-                  }`}>{count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={() => setShowCreate(true)}
-          className="px-4 py-2 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-          <Plus size={16} /> Nouveau BC
+      {/* Search panel: status chips + filters + action */}
+      <div className="odoo-search-panel">
+        {statusTabs.map((tab) => {
+          const Icon = tab.icon;
+          const count = tab.key === '' ? stats.totalCount : (stats.byStatus[tab.key]?.count || 0);
+          return (
+            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                backgroundColor: statusFilter === tab.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+                color: statusFilter === tab.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+                fontWeight: statusFilter === tab.key ? 600 : 400,
+              }}>
+              <Icon size={11} /> {tab.label}
+              {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+            </button>
+          );
+        })}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouveau BC
         </button>
       </div>
 
-      {/* Search + Supplier filter */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Rechercher par N° ou fournisseur..."
-            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent" />
-        </div>
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher par N° ou fournisseur..."
+          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
         {orderSuppliers.length > 1 && (
-          <div className="relative">
-            <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
-              className="pl-9 pr-8 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
+          <>
+            <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
+            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
               <option value="">Tous les fournisseurs</option>
               {orderSuppliers.map(([id, name]) => (
                 <option key={id} value={id}>{name}</option>
               ))}
             </select>
-          </div>
+          </>
         )}
       </div>
 
-      {/* Orders list */}
+      {/* Orders table */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-slate-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des bons de commande...</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement des bons de commande...</p>
         </div>
       ) : displayed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-            <Truck size={28} className="text-gray-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucun bon de commande</p>
-          <p className="text-gray-400 text-sm mt-1">
-            {statusFilter || searchTerm || supplierFilter
-              ? 'Aucun résultat pour ces filtres'
-              : 'Créez votre premier bon de commande'}
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun bon de commande</p>
+          <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
+            {statusFilter || searchTerm || supplierFilter ? 'Aucun résultat pour ces filtres' : 'Créez votre premier bon de commande'}
           </p>
           {!statusFilter && !searchTerm && (
-            <button onClick={() => setShowCreate(true)}
-              className="mt-4 px-4 py-2 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2 text-sm">
-              <Plus size={16} /> Créer un BC
+            <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
+              style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Plus size={13} /> Créer un BC
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-2">
-          {displayed.map((po) => {
-            const isExpanded = expandedRow === (po.id as string);
-            const StatusIcon = STATUS_ICONS[po.status as string] || Clock;
-            const totalAmount = parseFloat(po.total_amount as string) || 0;
-            const deliveredAmount = parseFloat(po.delivered_amount as string) || 0;
-            const deliveryPct = totalAmount > 0 ? Math.min(100, (deliveredAmount / totalAmount) * 100) : 0;
-
-            return (
-              <div key={po.id as string}
-                className={`bg-white rounded-2xl shadow-sm border transition-all hover:shadow-md ${
-                  isExpanded ? 'shadow-md border-slate-300' : 'border-gray-100'
-                }`}>
-                {/* Main row */}
-                <div className="flex items-center px-4 py-3 gap-4 cursor-pointer"
-                  onClick={() => setExpandedRow(isExpanded ? null : po.id as string)}>
-                  {/* Expand arrow */}
-                  <div className="text-gray-400">
-                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-
-                  {/* Order number + supplier */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sm text-gray-800">{po.order_number as string}</span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[po.status as string] || ''}`}>
-                        <StatusIcon size={12} />
-                        {STATUS_LABELS[po.status as string]}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500 mt-0.5 truncate">
-                      <Truck size={12} className="inline mr-1" />
-                      {po.supplier_name as string}
-                      {po.notes && <span className="ml-2 text-gray-400">— {po.notes as string}</span>}
-                    </p>
-                  </div>
-
-                  {/* Date */}
-                  <div className="text-right hidden md:block">
-                    <p className="text-xs text-gray-400">Commande</p>
-                    <p className="text-sm text-gray-600">{format(new Date(po.order_date as string), 'dd MMM yyyy', { locale: fr })}</p>
-                  </div>
-
-                  {/* Delivery date */}
-                  <div className="text-right hidden md:block">
-                    <p className="text-xs text-gray-400">Livraison</p>
-                    <p className="text-sm text-gray-600">
-                      {po.expected_delivery_date
-                        ? format(new Date(po.expected_delivery_date as string), 'dd MMM yyyy', { locale: fr })
-                        : '—'}
-                    </p>
-                  </div>
-
-                  {/* Items count */}
-                  <div className="text-center hidden sm:block">
-                    <p className="text-xs text-gray-400">Articles</p>
-                    <p className="text-sm font-semibold text-gray-700">{po.item_count as number}</p>
-                  </div>
-
-                  {/* Amount + delivery progress */}
-                  <div className="text-right w-36">
-                    <p className="text-sm font-bold text-gray-800">{n(totalAmount)} DH</p>
-                    {(po.status === 'livre_partiel' || po.status === 'livre_complet') && (
-                      <div className="flex items-center gap-1.5 mt-1 justify-end">
-                        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${deliveryPct >= 100 ? 'bg-emerald-500' : 'bg-orange-400'}`}
-                            style={{ width: `${deliveryPct}%` }} />
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>N° BC</th>
+                <th>Fournisseur</th>
+                <th>Statut</th>
+                <th>Commande</th>
+                <th>Livraison prévue</th>
+                <th style={{ textAlign: 'right' }}>Articles</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th style={{ textAlign: 'right', width: 130 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayed.map((po) => {
+                const isExpanded = expandedRow === (po.id as string);
+                const totalAmount = parseFloat(po.total_amount as string) || 0;
+                const deliveredAmount = parseFloat(po.delivered_amount as string) || 0;
+                const deliveryPct = totalAmount > 0 ? Math.min(100, (deliveredAmount / totalAmount) * 100) : 0;
+                const status = po.status as string;
+                const statusTag = status === 'livre_complet' ? 'odoo-tag-green'
+                  : status === 'livre_partiel' ? 'odoo-tag-orange'
+                  : status === 'envoye' ? 'odoo-tag-blue'
+                  : status === 'en_attente' ? 'odoo-tag-yellow'
+                  : status === 'non_livre' ? 'odoo-tag-red'
+                  : 'odoo-tag-grey';
+                const dotClass = status === 'livre_complet' ? 'ok'
+                  : status === 'non_livre' ? 'danger'
+                  : status === 'annule' ? 'neutral'
+                  : 'warning';
+                return (
+                  <Fragment key={po.id as string}>
+                    <tr onClick={() => setExpandedRow(isExpanded ? null : po.id as string)} style={{ cursor: 'pointer' }}>
+                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{po.order_number as string}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
+                          {po.supplier_name as string}
+                        </span>
+                      </td>
+                      <td><span className={`odoo-tag ${statusTag}`}>{STATUS_LABELS[status]}</span></td>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>
+                        {format(new Date(po.order_date as string), 'dd MMM yyyy', { locale: fr })}
+                      </td>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>
+                        {po.expected_delivery_date
+                          ? format(new Date(po.expected_delivery_date as string), 'dd MMM yyyy', { locale: fr })
+                          : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{po.item_count as number}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700 }}>{n(totalAmount)}</span>
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                        {(status === 'livre_partiel' || status === 'livre_complet') && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginTop: 2 }}>
+                            <span style={{ width: 50, height: 3, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+                              <span style={{ display: 'block', height: '100%', background: deliveryPct >= 100 ? '#28a745' : '#b85d1a', width: `${deliveryPct}%` }} />
+                            </span>
+                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{deliveryPct.toFixed(0)}%</span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                          {status === 'en_attente' && (
+                            <button onClick={() => sendMutation.mutate(po.id as string)} title="Envoyer" className="odoo-pager-btn">
+                              <Send size={13} />
+                            </button>
+                          )}
+                          {(status === 'envoye' || status === 'livre_partiel') && (
+                            <button onClick={() => setShowDelivery(po.id as string)} title="Confirmer réception" className="odoo-pager-btn" style={{ color: '#28a745' }}>
+                              <PackageCheck size={13} />
+                            </button>
+                          )}
+                          {status !== 'en_attente' && (
+                            <button onClick={() => handleDownloadPoPdf(po)} title="Télécharger PDF" className="odoo-pager-btn">
+                              <Download size={13} />
+                            </button>
+                          )}
+                          <button onClick={() => setShowDetail(po.id as string)} title="Voir détails" className="odoo-pager-btn">
+                            <Eye size={13} />
+                          </button>
                         </div>
-                        <span className="text-xs text-gray-400">{deliveryPct.toFixed(0)}%</span>
-                      </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={9} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                          <ExpandedPORow poId={po.id as string} status={status}
+                            onSend={() => sendMutation.mutate(po.id as string)}
+                            onDelivery={() => setShowDelivery(po.id as string)}
+                            onNotDelivered={() => notDeliveredMutation.mutate(po.id as string)}
+                            onCancel={() => cancelMutation.mutate(po.id as string)}
+                            onDelete={() => { if (confirm('Supprimer ce bon de commande ?')) deleteMutation.mutate(po.id as string); }}
+                          />
+                        </td>
+                      </tr>
                     )}
-                  </div>
-
-                  {/* Quick actions */}
-                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                    {po.status === 'en_attente' && (
-                      <button onClick={() => sendMutation.mutate(po.id as string)}
-                        title="Envoyer au fournisseur"
-                        className="p-2 hover:bg-blue-50 rounded-lg transition-colors group">
-                        <Send size={16} className="text-blue-400 group-hover:text-blue-600" />
-                      </button>
-                    )}
-                    {(po.status === 'envoye' || po.status === 'livre_partiel') && (
-                      <button onClick={() => setShowDelivery(po.id as string)}
-                        title="Confirmer réception"
-                        className="p-2 hover:bg-green-50 rounded-lg transition-colors group">
-                        <PackageCheck size={16} className="text-green-500 group-hover:text-green-700" />
-                      </button>
-                    )}
-                    {po.status !== 'en_attente' && (
-                      <button onClick={() => handleDownloadPoPdf(po)}
-                        title="Télécharger PDF"
-                        className="p-2 hover:bg-violet-50 rounded-lg transition-colors group">
-                        <Download size={16} className="text-violet-400 group-hover:text-violet-600" />
-                      </button>
-                    )}
-                    <button onClick={() => setShowDetail(po.id as string)}
-                      title="Voir détails"
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors group">
-                      <Eye size={16} className="text-gray-400 group-hover:text-gray-600" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded content */}
-                {isExpanded && (
-                  <div className="border-t bg-gray-50/50 px-4 py-3">
-                    <ExpandedPORow poId={po.id as string} status={po.status as string}
-                      onSend={() => sendMutation.mutate(po.id as string)}
-                      onDelivery={() => setShowDelivery(po.id as string)}
-                      onNotDelivered={() => notDeliveredMutation.mutate(po.id as string)}
-                      onCancel={() => cancelMutation.mutate(po.id as string)}
-                      onDelete={() => { if (confirm('Supprimer ce bon de commande ?')) deleteMutation.mutate(po.id as string); }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {showCreate && <CreatePOModal onClose={() => setShowCreate(false)} />}
       {showDetail && <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)} />}
       {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
-    </div>
+    </>
   );
 }
 
@@ -640,8 +583,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 flex items-center justify-between rounded-t-2xl z-10">
           <div className="flex items-center gap-3">
@@ -845,7 +788,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
@@ -857,12 +800,12 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <Loader2 className="animate-spin text-slate-400 mx-auto mb-3" size={28} />
         <p className="text-sm text-gray-400">Chargement...</p>
       </div>
-    </div>
+    </ModalBackdrop>
   );
   if (!po) return null;
 
@@ -873,8 +816,8 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   const StatusIcon = STATUS_ICONS[po.status] || Clock;
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 rounded-t-2xl">
           <div className="flex items-center justify-between">
@@ -991,7 +934,7 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
@@ -1022,12 +965,12 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <Loader2 className="animate-spin text-emerald-400 mx-auto mb-3" size={28} />
         <p className="text-sm text-gray-400">Chargement...</p>
       </div>
-    </div>
+    </ModalBackdrop>
   );
   if (!po) return null;
 
