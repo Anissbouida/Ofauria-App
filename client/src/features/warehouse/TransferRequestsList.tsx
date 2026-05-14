@@ -290,7 +290,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-5 flex items-center justify-between">
+        <div className="bg-amber-500 p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
               <PackageOpen size={20} className="text-white" />
@@ -380,7 +380,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             </button>
             <button onClick={() => onConfirm(qty, note.trim() || undefined)}
               disabled={!isValid || isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-gradient-to-r from-amber-500 to-orange-600 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
+              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-amber-600 hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
               {isLoading ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}
               {isLoading ? 'Transfert...' : 'Confirmer le transfert'}
             </button>

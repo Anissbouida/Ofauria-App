@@ -237,17 +237,17 @@ export default function WarehousePage() {
   // Resume des statuts pour les badges des onglets
   const activeCount = bons.length;
 
+  const tabLabel = tab === 'active' ? 'File active' : tab === 'pesage' ? 'Stock pesage' : 'Historique';
+
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Truck size={24} className="text-amber-600" />
-            Pesage — Stock en cours
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            BSI à préparer + sacs/contenants ouverts en cours d'utilisation. Source FEFO de la production.
-          </p>
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Pesage</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">{tabLabel}</span>
         </div>
         <button
           onClick={() => (
@@ -256,73 +256,48 @@ export default function WarehousePage() {
             refetchHistory()
           )}
           disabled={isRefetching}
-          className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5 disabled:opacity-60">
-          {isRefetching ? <Loader2 size={14} className="animate-spin" /> : <ClipboardList size={14} />}
-          Rafraichir
+          className="odoo-btn-secondary">
+          {isRefetching ? <Loader2 size={13} className="animate-spin" /> : <ClipboardList size={13} />}
+          Rafraîchir
         </button>
+        <div style={{ flex: 1 }} />
+        <span className="odoo-pager">
+          <strong>{tab === 'active' ? activeCount : tab === 'pesage' ? pesageStock.length : historyTotal}</strong>
+        </span>
       </div>
 
-      {/* Barre d'onglets : File active / Historique */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        <button
-          type="button"
-          onClick={() => changeTab('active')}
-          className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-            tab === 'active'
-              ? 'border-amber-500 text-amber-700'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}>
-          <ClipboardList size={14} />
+      {/* ══════ TABS Odoo ══════ */}
+      <div className="odoo-tabs">
+        <button type="button" onClick={() => changeTab('active')}
+          className={`odoo-tab ${tab === 'active' ? 'active' : ''}`}>
+          <ClipboardList size={13} />
           <span>File active</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-            tab === 'active' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-          }`}>
-            {activeCount}
-          </span>
+          <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{activeCount}</span>
         </button>
-        <button
-          type="button"
-          onClick={() => changeTab('pesage')}
-          className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-            tab === 'pesage'
-              ? 'border-amber-500 text-amber-700'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}>
-          <Beaker size={14} />
+        <button type="button" onClick={() => changeTab('pesage')}
+          className={`odoo-tab ${tab === 'pesage' ? 'active' : ''}`}>
+          <Beaker size={13} />
           <span>Stock pesage</span>
           {pesageStock.length > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              tab === 'pesage' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-            }`}>
-              {pesageStock.length}
-            </span>
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{pesageStock.length}</span>
           )}
         </button>
-        <button
-          type="button"
-          onClick={() => changeTab('history')}
-          className={`flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm font-semibold transition-all ${
-            tab === 'history'
-              ? 'border-amber-500 text-amber-700'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}>
-          <Archive size={14} />
+        <button type="button" onClick={() => changeTab('history')}
+          className={`odoo-tab ${tab === 'history' ? 'active' : ''}`}>
+          <Archive size={13} />
           <span>Historique</span>
           {historyTotal > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              tab === 'history' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-            }`}>
-              {historyTotal}
-            </span>
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{historyTotal}</span>
           )}
         </button>
       </div>
 
-      {/* Contenu selon l'onglet */}
+      {/* ══════ CONTENT ══════ */}
+      <div style={{ padding: '1rem' }}>
       {tab === 'active' ? (
         isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={32} className="animate-spin text-amber-500" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+            <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
           </div>
         ) : (
           <div className="flex flex-col md:flex-row gap-4">
@@ -362,6 +337,7 @@ export default function WarehousePage() {
           onOpen={(planId) => navigate(`/warehouse/bsi/${planId}`)}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -530,7 +506,7 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
                   className="flex-1 px-4 py-3.5 flex items-center gap-4 cursor-pointer">
                   {/* Icone + dot d'urgence */}
                   <div className="relative shrink-0">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200/70 flex items-center justify-center">
+                    <div className="w-11 h-11 rounded-2xl bg-gray-50 border border-gray-200/70 flex items-center justify-center">
                       <Beaker size={18} className="text-gray-500" />
                     </div>
                     {urgency !== 'none' && urgency !== 'safe' && (
@@ -580,7 +556,7 @@ function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isL
 
               {/* Lots developpes : timeline indentee */}
               {isOpen && lots.length > 0 && (
-                <div className="border-t border-gray-100 bg-gradient-to-b from-gray-50/40 to-white px-5 pt-3 pb-4 space-y-2">
+                <div className="border-t border-gray-100 bg-gray-50/40 px-5 pt-3 pb-4 space-y-2">
                   <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 mb-2 ml-1">Detail des lots</div>
                   {lots.map((lot, i) => {
                     const pq = parseFloat(lot.pesage_quantity as string || '0');
