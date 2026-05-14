@@ -129,149 +129,137 @@ export default function LossesTab() {
 
   return (
     <>
-      {/* Month selector + actions */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={month} onChange={e => setMonth(+e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 w-auto">
-            {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 w-24" />
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleExport}
-            className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Download size={14} /> Exporter
-          </button>
-          <button onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-            <Plus size={16} /> Declarer une perte
-          </button>
-        </div>
+      {/* Search panel : period + actions */}
+      <div className="odoo-search-panel">
+        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
+          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <div style={{ flex: 1 }} />
+        <button onClick={handleExport} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={13} /> Exporter
+        </button>
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={14} /> Déclarer une perte
+        </button>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <TrendingDown size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total pertes</p>
-          </div>
-          <p className="text-2xl font-bold text-red-700">{n(totalsByType.totalCost)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{totalsByType.totalCount} declaration{totalsByType.totalCount > 1 ? 's' : ''}</p>
+      {/* KPI tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><TrendingDown size={11} style={{ display: 'inline', marginRight: 4 }} />Total pertes</div>
+          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totalsByType.totalCost)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{totalsByType.totalCount} déclaration{totalsByType.totalCount > 1 ? 's' : ''}</div>
         </div>
         {Object.keys(LOSS_TYPE_CONFIG).map(type => {
           const config = LOSS_TYPE_CONFIG[type];
           const data = totalsByType.map[type] || { count: 0, quantity: 0, cost: 0 };
           const Icon = config.icon;
           return (
-            <div key={type} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center`}>
-                  <Icon size={16} className="text-white" />
-                </div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{config.label}</p>
-              </div>
-              <p className={`text-2xl font-bold ${config.color}`}>{n(data.cost)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-              <p className="text-xs text-gray-400 mt-1">{data.count} perte{data.count > 1 ? 's' : ''} — {data.quantity} unites</p>
+            <div key={type} className="odoo-stat-card">
+              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{config.label}</div>
+              <div className="odoo-stat-card-value">{n(data.cost)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+              <div className="odoo-stat-card-sub">{data.count} perte{data.count > 1 ? 's' : ''} · {data.quantity} unités</div>
             </div>
           );
         })}
       </div>
 
-      {/* Filter tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2">
-        <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
-          {[
-            { key: 'all', label: 'Tout', count: totalsByType.totalCount },
-            ...Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => ({
-              key, label: cfg.label, count: totalsByType.map[key]?.count || 0,
-            })),
-          ].map(f => (
-            <button key={f.key} onClick={() => setTypeFilter(f.key)}
-              className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                typeFilter === f.key ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {f.label}
-              {f.count > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  typeFilter === f.key ? 'bg-red-100 text-red-600' : 'bg-gray-200 text-gray-500'
-                }`}>{f.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Filter chips */}
+      <div className="odoo-search-panel">
+        {[
+          { key: 'all', label: 'Tout', count: totalsByType.totalCount },
+          ...Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => ({
+            key, label: cfg.label, count: totalsByType.map[key]?.count || 0,
+          })),
+        ].map(f => (
+          <button key={f.key} onClick={() => setTypeFilter(f.key)}
+            className="odoo-filter-dropdown"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              backgroundColor: typeFilter === f.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: typeFilter === f.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: typeFilter === f.key ? 600 : 400,
+            }}>
+            {f.label}
+            {f.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{f.count}</span>}
+          </button>
+        ))}
       </div>
 
       {/* Losses table */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-red-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des pertes...</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
+          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
         </div>
       ) : lossList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-            <TrendingDown size={28} className="text-gray-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucune perte declaree pour cette periode</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <TrendingDown size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucune perte déclarée pour cette période</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
             <thead>
-              <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Produit</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Motif</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Qte</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Cout</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Declare par</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+              <tr>
+                <th>Date</th>
+                <th>Produit</th>
+                <th>Type</th>
+                <th>Motif</th>
+                <th style={{ textAlign: 'right' }}>Qté</th>
+                <th style={{ textAlign: 'right' }}>Coût</th>
+                <th>Déclaré par</th>
+                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {lossList.map(l => {
-                const cfg = LOSS_TYPE_CONFIG[l.loss_type as string] || LOSS_TYPE_CONFIG.casse;
+                const lossType = l.loss_type as string;
+                const tagClass = lossType === 'casse' ? 'odoo-tag-red'
+                  : lossType === 'perimee' ? 'odoo-tag-orange'
+                  : lossType === 'invendu' ? 'odoo-tag-yellow'
+                  : lossType === 'erreur' ? 'odoo-tag-blue'
+                  : 'odoo-tag-grey';
+                const cfg = LOSS_TYPE_CONFIG[lossType] || LOSS_TYPE_CONFIG.casse;
                 return (
-                  <tr key={l.id as string} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 text-xs">{format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm')}</td>
-                    <td className="px-4 py-3 font-medium text-gray-700">{l.product_name as string}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.color}`}>
-                        {cfg.label}
-                      </span>
+                  <tr key={l.id as string}>
+                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                      {format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm')}
                     </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">
+                    <td style={{ fontWeight: 500 }}>{l.product_name as string}</td>
+                    <td><span className={`odoo-tag ${tagClass}`}>{cfg.label}</span></td>
+                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                       {REASON_LABELS[l.reason as string] || String(l.reason)}
-                      {l.reason_note ? <span className="text-gray-400 ml-1">— {String(l.reason_note)}</span> : null}
+                      {l.reason_note ? <span style={{ marginLeft: 4, color: 'var(--theme-bg-separator)' }}>— {String(l.reason_note)}</span> : null}
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-700">{parseFloat(l.quantity as string)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-600">{n(parseFloat(l.total_cost as string) || 0)} DH</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{parseFloat(l.quantity as string)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>
+                      {n(parseFloat(l.total_cost as string) || 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+                    </td>
+                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                       {l.declared_by_first_name ? `${l.declared_by_first_name} ${l.declared_by_last_name}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'inline-flex', gap: 4 }}>
                         {l.photo_url && (
                           <button onClick={() => setViewPhoto({
                             url: serverUrl(l.photo_url as string),
                             productName: l.product_name as string,
                             date: format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm'),
                           })}
-                            className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-400 hover:text-blue-600 transition-colors"
+                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
                             title="Voir la photo">
-                            <Camera size={14} />
+                            <Camera size={13} />
                           </button>
                         )}
                         <button onClick={() => deleteMutation.mutate(l.id as string)}
-                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 transition-colors"
+                          style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}
                           title="Supprimer">
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -281,15 +269,17 @@ export default function LossesTab() {
             </tbody>
             {lossList.length > 0 && (
               <tfoot>
-                <tr className="bg-gradient-to-r from-red-500 to-rose-500 text-white">
-                  <td colSpan={4} className="px-4 py-3 font-medium rounded-bl-2xl">Total ({lossList.length} perte{lossList.length > 1 ? 's' : ''})</td>
-                  <td className="px-4 py-3 text-right font-bold">
+                <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
+                  <td colSpan={4} style={{ padding: 12, fontWeight: 600 }}>
+                    Total ({lossList.length} perte{lossList.length > 1 ? 's' : ''})
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>
                     {lossList.reduce((s, l) => s + parseFloat(l.quantity as string), 0)}
                   </td>
-                  <td className="px-4 py-3 text-right text-lg font-bold">
+                  <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
                     {n(lossList.reduce((s, l) => s + (parseFloat(l.total_cost as string) || 0), 0))} DH
                   </td>
-                  <td colSpan={2} className="rounded-br-2xl"></td>
+                  <td colSpan={2}></td>
                 </tr>
               </tfoot>
             )}

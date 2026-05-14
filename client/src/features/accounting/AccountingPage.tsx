@@ -1,15 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi } from '../../api/accounting.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
-import { useAuth } from '../../context/AuthContext';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, Banknote, BarChart3,
-  X, Check, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
+  Plus, Pencil, BarChart3,
+  X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
-  Loader2, Calculator, CreditCard, Coins, Scale,
+  Loader2, Coins, Scale,
   ArrowUpRight, ArrowDownRight, Upload,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
@@ -172,38 +171,35 @@ export default function AccountingPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Comptabilité</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestion financière et trésorerie</p>
+    <div className="odoo-scope" style={{ minHeight: '100%' }}>
+      {/* Control bar */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <span>Comptabilité</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">{allTabs.find(t => t.key === tab)?.label}</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5 overflow-x-auto">
-          {allTabs.map(t => {
-            const Icon = t.icon;
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
-                  tab === t.key
-                    ? 'bg-white text-gray-800 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                <Icon size={15} /> {t.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="odoo-tabs">
+        {allTabs.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
+              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      {tab === 'caisse' && <CaisseTab />}
-      {tab === 'charges' && <ChargesTab />}
-      {tab === 'resume' && <ResumeTab />}
-      {tab === 'losses' && <LossesTab />}
+      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {tab === 'caisse' && <CaisseTab />}
+        {tab === 'charges' && <ChargesTab />}
+        {tab === 'resume' && <ResumeTab />}
+        {tab === 'losses' && <LossesTab />}
+      </div>
     </div>
   );
 }
@@ -278,298 +274,244 @@ function CaisseTab() {
 
   return (
     <>
-      {/* Month selector + export */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={month} onChange={e => setMonth(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
-            {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-24" />
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="px-4 py-2 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm"
-          >
-            <Upload size={14} /> Importer Excel caisse
-          </button>
-          <button onClick={handleExport} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Download size={14} /> Exporter
-          </button>
-        </div>
+      {/* Search panel : period + actions */}
+      <div className="odoo-search-panel">
+        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
+          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowImportModal(true)} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Upload size={13} /> Importer Excel
+        </button>
+        <button onClick={handleExport} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={13} /> Exporter
+        </button>
       </div>
 
       {showImportModal && <CaisseImportModal onClose={() => setShowImportModal(false)} />}
 
       {/* Report line */}
       {data && (data.previousBalance.cashNet !== 0 || data.previousBalance.cardCumul !== 0) && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl px-5 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-              <ArrowUpRight size={16} className="text-amber-600" />
-            </div>
-            <span className="text-amber-800 font-medium text-sm">Report mois précédent</span>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-gray-600">Cash: <span className="font-bold text-amber-900">{n(data.previousBalance.cashNet)} DH</span></span>
-            <span className="text-gray-600">Carte: <span className="font-bold text-amber-900">{n(data.previousBalance.cardCumul)} DH</span></span>
-            <span className="text-gray-600">Total: <span className="font-bold text-amber-900 text-base">{n(data.previousBalance.cashNet + data.previousBalance.cardCumul)} DH</span></span>
-          </div>
+        <div className="odoo-alert warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <ArrowUpRight size={14} /> Report mois précédent
+          </span>
+          <span style={{ display: 'inline-flex', gap: 16, fontSize: '0.75rem' }}>
+            <span>Cash: <strong>{n(data.previousBalance.cashNet)} DH</strong></span>
+            <span>Carte: <strong>{n(data.previousBalance.cardCumul)} DH</strong></span>
+            <span>Total: <strong>{n(data.previousBalance.cashNet + data.previousBalance.cardCumul)} DH</strong></span>
+          </span>
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 overflow-hidden relative">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center">
-              <ShoppingCart size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Ventes du mois</p>
-          </div>
-          <p className="text-2xl font-bold text-purple-700">{n(monthTotals.totalSales)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{monthTotals.saleCount} vente{monthTotals.saleCount > 1 ? 's' : ''}</p>
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Ventes du mois</div>
+          <div className="odoo-stat-card-value">{n(monthTotals.totalSales)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{monthTotals.saleCount} vente{monthTotals.saleCount > 1 ? 's' : ''}</div>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 overflow-hidden relative">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
-              <Coins size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Recettes</p>
-          </div>
-          <p className="text-2xl font-bold text-emerald-700">{n(monthTotals.totalRecettes)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <div className="flex gap-3 text-xs text-gray-400 mt-1">
-            <span>Cash: {n(monthTotals.cashCaissiere)}</span>
-            <span>Carte: {n(monthTotals.cardReceipts)}</span>
-            {monthTotals.entries > 0 && <span>Autres: {n(monthTotals.entries)}</span>}
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
+          <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">
+            Cash {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
+            {monthTotals.entries > 0 && ` · Autres ${n(monthTotals.entries)}`}
           </div>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 overflow-hidden relative">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-              <Scale size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Écart caisse</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Écart caisse</div>
+          <div className="odoo-stat-card-value" style={{ color: monthTotals.ecart === 0 ? 'var(--theme-text-muted)' : monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
+            {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
           </div>
-          <p className={`text-2xl font-bold ${monthTotals.ecart === 0 ? 'text-gray-400' : monthTotals.ecart > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span className="text-sm font-normal text-gray-400">DH</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-1">Caissière vs Système</p>
+          <div className="odoo-stat-card-sub">Caissière vs Système</div>
         </div>
-        <div className={`rounded-2xl shadow-sm border p-4 overflow-hidden relative ${monthTotals.solde >= 0 ? 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200' : 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'}`}>
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${monthTotals.solde >= 0 ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-red-500 to-red-600'}`}>
-              <Wallet size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Solde actuel</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde actuel</div>
+          <div className="odoo-stat-card-value" style={{ color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>
+            {n(monthTotals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
           </div>
-          <p className={`text-2xl font-bold ${monthTotals.solde >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{n(monthTotals.solde)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <div className="flex gap-3 text-xs text-gray-400 mt-1">
-            <span>Cash: {n(monthTotals.cashNet)}</span>
-            <span>Carte: {n(monthTotals.cardCumul)}</span>
-          </div>
+          <div className="odoo-stat-card-sub">Cash {n(monthTotals.cashNet)} · Carte {n(monthTotals.cardCumul)}</div>
         </div>
       </div>
 
       {/* Écart caisse alert */}
       {monthTotals.ecart !== 0 && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm ${monthTotals.ecart > 0 ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${monthTotals.ecart > 0 ? 'bg-emerald-100' : 'bg-red-100'}`}>
-            <AlertTriangle size={16} />
-          </div>
-          <span>Écart caisse du mois : <span className="font-bold">{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</span> (Cash caissière vs Cash système)</span>
+        <div className={`odoo-alert ${monthTotals.ecart > 0 ? 'warning' : 'danger'}`}>
+          <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
+          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Cash caissière vs Cash système)
         </div>
       )}
 
       {/* Reconciliation alerts — significant daily discrepancies */}
       {(data as Record<string, any>)?.reconciliationAlerts && ((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
-          <div className="flex items-center gap-2 text-red-800 font-semibold text-sm">
-            <AlertTriangle size={16} />
+        <div className="odoo-section">
+          <div className="odoo-section-header">
+            <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6, color: '#dc3545' }} />
             {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 DH)
           </div>
-          <div className="space-y-1">
-            {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
-              <div key={a.date} className="flex items-center justify-between text-xs text-red-700 bg-red-100/50 rounded-lg px-3 py-1.5">
-                <span>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</span>
-                <span>Caissière: {n(a.cashCaissiere)} — Système: {n(a.cashSysteme)} — <span className="font-bold">Écart: {a.ecart > 0 ? '+' : ''}{n(a.ecart)} DH</span></span>
-              </div>
-            ))}
-          </div>
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <tbody>
+              {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
+                <tr key={a.date}>
+                  <td><span className="odoo-status-dot danger" /></td>
+                  <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Système {n(a.cashSysteme)}</td>
+                  <td style={{ textAlign: 'right' }}><span className="odoo-tag odoo-tag-red">{a.ecart > 0 ? '+' : ''}{n(a.ecart)} DH</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Daily sections */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 size={28} className="animate-spin text-slate-500" />
-            <span className="text-gray-500 text-sm">Chargement...</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
+          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
         </div>
       ) : days.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
-            <Wallet size={28} className="text-gray-400" />
-          </div>
-          <p className="text-gray-500">Aucune activité pour ce mois</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Wallet size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucune activité pour ce mois</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {days.map(day => {
-            const expanded = expandedDays.has(day.dayNum);
-            const dateLabel = format(parseLocalDate(day.date), 'EEEE dd MMMM yyyy', { locale: fr });
-            const dayRecettes = day.cashCaissiere + day.cardReceipt + day.entries;
-            return (
-              <div key={day.dayNum} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                {/* Day header */}
-                <button onClick={() => toggleDay(day.dayNum)}
-                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    {expanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-                    <span className="font-semibold text-gray-800 capitalize">{dateLabel}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    {day.totalSales > 0 && <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-lg font-medium">{day.saleCount} vente{day.saleCount > 1 ? 's' : ''}</span>}
-                    {dayRecettes > 0 && <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg font-medium">+{n(dayRecettes)}</span>}
-                    <span className={`px-2.5 py-1 rounded-lg font-bold ${day.solde >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{n(day.solde)}</span>
-                  </div>
-                </button>
-
-                {/* Expanded day detail — entries only */}
-                {expanded && (
-                  <div className="border-t border-gray-100 px-5 py-4 space-y-3">
-                    {/* Ventes */}
-                    {day.totalSales > 0 && (
-                      <div className="bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                            <ShoppingCart size={14} className="text-purple-600" />
-                          </div>
-                          <span className="text-sm font-medium text-purple-800">Ventes du jour ({day.saleCount})</span>
-                        </div>
-                        <span className="font-bold text-purple-700 text-lg">{n(day.totalSales)} DH</span>
-                      </div>
-                    )}
-
-                    {/* Recettes caisse */}
-                    {(day.cashCaissiere > 0 || day.cardReceipt > 0) && (
-                      <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl p-4 space-y-3">
-                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Recettes encaissées</p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                          <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Cash système</p>
-                            <p className="font-bold text-gray-700">{n(day.cashSysteme)} DH</p>
-                          </div>
-                          <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Cash caissière</p>
-                            <p className="font-bold text-emerald-700">{n(day.cashCaissiere)} DH</p>
-                          </div>
-                          <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Carte</p>
-                            <p className="font-bold text-blue-600">{n(day.cardReceipt)} DH</p>
-                          </div>
-                          <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase">Ecart</p>
-                            <p className={`font-bold ${day.ecart === 0 ? 'text-gray-400' : day.ecart > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {day.ecart > 0 ? '+' : ''}{n(day.ecart)} DH
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Autres entrées (type income) */}
-                    {day.entries > 0 && (
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
-                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Autres entrées</p>
-                        {day.payments.filter(p => p.type === 'income').map((p, idx) => {
-                          const amount = parseFloat(p.amount as string) || 0;
-                          return (
-                            <div key={idx} className="flex items-center justify-between text-sm py-1.5">
-                              <span className="text-gray-600">{(p.description as string) || (p.category_name as string) || 'Revenu'}</span>
-                              <span className="font-bold text-emerald-600">+{n(amount)} DH</span>
+        <div className="odoo-section">
+          <div className="odoo-section-header">Journal quotidien</div>
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 20 }}></th>
+                <th>Date</th>
+                <th style={{ textAlign: 'right' }}>Ventes</th>
+                <th style={{ textAlign: 'right' }}>Cash caissière</th>
+                <th style={{ textAlign: 'right' }}>Carte</th>
+                <th style={{ textAlign: 'right' }}>Écart</th>
+                <th style={{ textAlign: 'right' }}>Solde cumulé</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map(day => {
+                const expanded = expandedDays.has(day.dayNum);
+                const dateLabel = format(parseLocalDate(day.date), 'EEEE dd MMM', { locale: fr });
+                const ecartTagClass = day.ecart === 0 ? 'odoo-tag-grey'
+                  : day.ecart > 0 ? 'odoo-tag-green' : 'odoo-tag-red';
+                return (
+                  <Fragment key={day.dayNum}>
+                    <tr onClick={() => toggleDay(day.dayNum)} style={{ cursor: 'pointer' }}>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>
+                        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      </td>
+                      <td style={{ textTransform: 'capitalize', fontWeight: 600 }}>{dateLabel}</td>
+                      <td style={{ textAlign: 'right' }}>{day.totalSales > 0 ? n(day.totalSales) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right' }}>{day.cashCaissiere > 0 ? n(day.cashCaissiere) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right' }}>{day.cardReceipt > 0 ? n(day.cardReceipt) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {day.ecart !== 0 ? <span className={`odoo-tag ${ecartTagClass}`}>{day.ecart > 0 ? '+' : ''}{n(day.ecart)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: day.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(day.solde)}</td>
+                    </tr>
+                    {expanded && (
+                      <tr>
+                        <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                            <div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash système</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashSysteme)} DH</div>
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash caissière</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashCaissiere)} DH</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardReceipt)} DH</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde cash</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashNetCumul)} DH</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde carte</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardCumul)} DH</div>
+                            </div>
+                          </div>
+                          {day.entries > 0 && day.payments.filter(p => p.type === 'income').length > 0 && (
+                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>Autres entrées</div>
+                              {day.payments.filter(p => p.type === 'income').map((p, idx) => {
+                                const amount = parseFloat(p.amount as string) || 0;
+                                return (
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
+                                    <span style={{ color: 'var(--theme-text-muted)' }}>{(p.description as string) || (p.category_name as string) || 'Revenu'}</span>
+                                    <span style={{ fontWeight: 600, color: '#28a745' }}>+{n(amount)} DH</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
                     )}
-
-                    {/* Solde cumulé */}
-                    <div className={`rounded-xl p-4 ${day.solde >= 0 ? 'bg-gradient-to-r from-emerald-50 to-green-50' : 'bg-gradient-to-r from-red-50 to-orange-50'}`}>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Solde cumulé</p>
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                          <p className="text-[10px] text-gray-400 uppercase">Cash</p>
-                          <p className="font-bold text-gray-700">{n(day.cashNetCumul)} DH</p>
-                        </div>
-                        <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                          <p className="text-[10px] text-gray-400 uppercase">Carte</p>
-                          <p className="font-bold text-gray-700">{n(day.cardCumul)} DH</p>
-                        </div>
-                        <div className="bg-white/60 rounded-lg p-2.5 text-center">
-                          <p className="text-[10px] text-gray-400 uppercase">Total</p>
-                          <p className={`font-bold text-lg ${day.solde >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{n(day.solde)} DH</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Monthly recap */}
       {days.length > 0 && (
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-          <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <BarChart3 size={18} className="text-white" />
-            </div>
-            <h3 className="font-bold text-white">Recap {MONTH_NAMES[month - 1]} {year}</h3>
+        <div className="odoo-section">
+          <div className="odoo-section-header">
+            <BarChart3 size={13} style={{ display: 'inline', marginRight: 6 }} />
+            Récap {MONTH_NAMES[month - 1]} {year}
           </div>
-          <div className="p-4">
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-gray-100">
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <tbody>
+              <tr>
+                <td style={{ color: 'var(--theme-text-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.totalSales)} DH</td>
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--theme-text-muted)' }}>Cash Caissière</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cashCaissiere)} DH</td>
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cardReceipts)} DH</td>
+              </tr>
+              {monthTotals.entries > 0 && (
                 <tr>
-                  <td className="py-2 text-gray-500">Total Ventes ({monthTotals.saleCount})</td>
-                  <td className="py-2 text-right font-bold text-purple-700">{n(monthTotals.totalSales)} DH</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Autres Entrées</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.entries)} DH</td>
                 </tr>
+              )}
+              <tr>
+                <td style={{ fontWeight: 600 }}>Total Recettes</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{n(monthTotals.totalRecettes)} DH</td>
+              </tr>
+              {monthTotals.ecart !== 0 && (
                 <tr>
-                  <td className="py-2 text-gray-500">Cash Caissiere</td>
-                  <td className="py-2 text-right font-bold text-green-700">{n(monthTotals.cashCaissiere)} DH</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
+                    {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH
+                  </td>
                 </tr>
-                <tr>
-                  <td className="py-2 text-gray-500">Carte Encaissée</td>
-                  <td className="py-2 text-right font-bold text-blue-700">{n(monthTotals.cardReceipts)} DH</td>
-                </tr>
-                {monthTotals.entries > 0 && (
-                  <tr>
-                    <td className="py-2 text-gray-500">Autres Entrees</td>
-                    <td className="py-2 text-right font-bold text-green-700">{n(monthTotals.entries)} DH</td>
-                  </tr>
-                )}
-                <tr>
-                  <td className="py-2 text-gray-500 font-medium">Total Recettes</td>
-                  <td className="py-2 text-right font-bold text-green-700 text-base">{n(monthTotals.totalRecettes)} DH</td>
-                </tr>
-                {monthTotals.ecart !== 0 && (
-                  <tr>
-                    <td className="py-2 text-gray-500">Ecart Caisse</td>
-                    <td className={`py-2 text-right font-bold ${monthTotals.ecart > 0 ? 'text-green-600' : 'text-red-600'}`}>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</td>
-                  </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-gray-300">
-                  <td className="py-3 font-bold text-gray-800 text-base">Solde Final</td>
-                  <td className={`py-3 text-right font-bold text-xl ${monthTotals.solde >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{n(monthTotals.solde)} DH</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+              )}
+              <tr style={{ borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Solde Final</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(monthTotals.solde)} DH</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </>
@@ -707,94 +649,72 @@ function ChargesTab() {
 
   return (
     <>
-      {/* Month selector + actions */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={month} onChange={e => setMonth(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
-            {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-24" />
+      {/* Search panel : period + actions */}
+      <div className="odoo-search-panel">
+        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
+          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <div style={{ flex: 1 }} />
+        <button onClick={handleExport} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={13} /> Exporter
+        </button>
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={14} /> Nouvelle dépense
+        </button>
+      </div>
+
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
+          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.total)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{outgoing.length} opération{outgoing.length > 1 ? 's' : ''}</div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleExport} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Download size={14} /> Exporter
-          </button>
-          <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
-            <Plus size={16} /> Nouvelle dépense
-          </button>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Achats</div>
+          <div className="odoo-stat-card-value">{n(totals.invoiceTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{invoicePayments.length} facture{invoicePayments.length > 1 ? 's' : ''}</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Salaires</div>
+          <div className="odoo-stat-card-value">{n(totals.salaryTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{salaryPayments.length} employé{salaryPayments.length > 1 ? 's' : ''}</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Receipt size={11} style={{ display: 'inline', marginRight: 4 }} />Autres</div>
+          <div className="odoo-stat-card-value">{n(totals.expenseTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{expensePayments.length} dépense{expensePayments.length > 1 ? 's' : ''}</div>
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <ArrowDownRight size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total sorties</p>
-          </div>
-          <p className="text-2xl font-bold text-red-700">{n(totals.total)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{outgoing.length} opération{outgoing.length > 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
-              <ShoppingCart size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Achats</p>
-          </div>
-          <p className="text-2xl font-bold text-orange-700">{n(totals.invoiceTotal)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{invoicePayments.length} facture{invoicePayments.length > 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center">
-              <Users size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Salaires</p>
-          </div>
-          <p className="text-2xl font-bold text-purple-700">{n(totals.salaryTotal)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{salaryPayments.length} employe{salaryPayments.length > 1 ? 's' : ''}</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-gray-500 to-slate-500 flex items-center justify-center">
-              <Receipt size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Autres</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-700">{n(totals.expenseTotal)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1">{expensePayments.length} dépense{expensePayments.length > 1 ? 's' : ''}</p>
-        </div>
-      </div>
-
-      {/* Filter tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex flex-wrap items-center gap-1">
-        <div className="flex gap-1 bg-gray-50 rounded-xl p-1 flex-1">
-          {[
-            { key: 'all', label: 'Tout', count: outgoing.length },
-            { key: 'invoice', label: 'Achats', count: invoicePayments.length },
-            { key: 'salary', label: 'Salaires', count: salaryPayments.length },
-            { key: 'expense', label: 'Depenses', count: expensePayments.length },
-          ].map(f => (
-            <button key={f.key} onClick={() => { setTypeFilter(f.key); setCategoryFilter('all'); }}
-              className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                typeFilter === f.key ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              {f.label}
-              {f.count > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  typeFilter === f.key ? 'bg-red-100 text-red-600' : 'bg-gray-200 text-gray-500'
-                }`}>{f.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Filter chips */}
+      <div className="odoo-search-panel">
+        {[
+          { key: 'all', label: 'Tout', count: outgoing.length },
+          { key: 'invoice', label: 'Achats', count: invoicePayments.length },
+          { key: 'salary', label: 'Salaires', count: salaryPayments.length },
+          { key: 'expense', label: 'Dépenses', count: expensePayments.length },
+        ].map(f => (
+          <button key={f.key} onClick={() => { setTypeFilter(f.key); setCategoryFilter('all'); }}
+            className="odoo-filter-dropdown"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              backgroundColor: typeFilter === f.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+              color: typeFilter === f.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+              fontWeight: typeFilter === f.key ? 600 : 400,
+            }}>
+            {f.label}
+            {f.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{f.count}</span>}
+          </button>
+        ))}
         {availableCategories.length > 1 && (
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto ml-2">
-            <option value="all">Toutes categories ({typeFiltered.length})</option>
+            className="odoo-filter-dropdown" style={{ marginLeft: 'auto' }}>
+            <option value="all">Toutes catégories ({typeFiltered.length})</option>
             {availableCategories.map(c => (
               <option key={c} value={c}>{c} ({typeFiltered.filter(p => (p.category_name as string) === c).length})</option>
             ))}
@@ -804,81 +724,83 @@ function ChargesTab() {
 
       {/* Expenses table */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-red-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement des sorties...</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
+          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
         </div>
       ) : displayed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-            <Receipt size={28} className="text-gray-300" />
-          </div>
-          <p className="text-gray-400 font-medium">Aucune sortie pour cette période</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucune sortie pour cette période</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
             <thead>
-              <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ref.</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Categorie</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Beneficiaire</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">BC</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Methode</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Montant</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+              <tr>
+                <th>Date</th>
+                <th>Réf.</th>
+                <th>Type</th>
+                <th>Catégorie</th>
+                <th>Bénéficiaire</th>
+                <th>BC</th>
+                <th>Méthode</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {displayed.map(p => {
-                const typeColor = p.type === 'invoice' ? 'bg-orange-100 text-orange-700'
-                  : p.type === 'salary' ? 'bg-purple-100 text-purple-700'
-                  : 'bg-gray-100 text-gray-700';
+                const typeTagClass = p.type === 'invoice' ? 'odoo-tag-orange'
+                  : p.type === 'salary' ? 'odoo-tag-purple'
+                  : 'odoo-tag-grey';
                 return (
-                  <tr key={p.id as string} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500">{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-400">{p.reference as string || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${typeColor}`}>
-                        {PAYMENT_TYPE_LABELS[p.type as string] || p.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{p.category_name as string || '—'}</td>
-                    <td className="px-4 py-3 font-medium text-gray-700">
+                  <tr key={p.id as string}>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{p.reference as string || '—'}</td>
+                    <td><span className={`odoo-tag ${typeTagClass}`}>{PAYMENT_TYPE_LABELS[p.type as string] || p.type}</span></td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{p.category_name as string || '—'}</td>
+                    <td style={{ fontWeight: 500 }}>
                       {p.supplier_name as string || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : p.description as string || '—')}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       {p.purchase_order_number ? (
-                        <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-mono">{p.purchase_order_number as string}</span>
-                      ) : <span className="text-gray-300">—</span>}
+                        <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>{p.purchase_order_number as string}</span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{getPaymentLabel(p.payment_method as string)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-600">{n(parseFloat(p.amount as string))} <span className="text-xs font-normal text-gray-400">DH</span></td>
-                    <td className="px-4 py-3 text-center">
+                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{getPaymentLabel(p.payment_method as string)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>
+                      {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
                       {p.type !== 'salary' ? (
-                        <div className="flex items-center justify-center gap-1">
+                        <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button onClick={() => setEditingPayment(p)}
-                            className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-400 hover:text-blue-600 transition-colors">
-                            <Pencil size={14} />
+                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
+                            title="Modifier">
+                            <Pencil size={13} />
                           </button>
                           <button onClick={() => deleteMutation.mutate(p.id as string)}
-                            className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 transition-colors">
-                            <X size={14} />
+                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}
+                            title="Supprimer">
+                            <X size={13} />
                           </button>
                         </div>
-                      ) : <span className="text-[10px] text-gray-300">auto</span>}
+                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }}>auto</span>}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-gradient-to-r from-red-500 to-rose-500 text-white">
-                <td colSpan={7} className="px-4 py-3 font-medium rounded-bl-2xl">Total ({displayed.length} opération{displayed.length > 1 ? 's' : ''})</td>
-                <td className="px-4 py-3 text-right text-lg font-bold">{n(displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0))} DH</td>
-                <td className="rounded-br-2xl"></td>
+              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td colSpan={7} style={{ padding: 12, fontWeight: 600 }}>
+                  Total ({displayed.length} opération{displayed.length > 1 ? 's' : ''})
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
+                  {n(displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0))} DH
+                </td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -1132,132 +1054,101 @@ function ResumeTab() {
 
   return (
     <>
-      {/* Month selector + export */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={month} onChange={e => setMonth(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-auto">
-            {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 w-24" />
-        </div>
-        <button onClick={handleExport} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-          <Download size={14} /> Exporter
+      {/* Search panel : period + actions */}
+      <div className="odoo-search-panel">
+        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
+          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <div style={{ flex: 1 }} />
+        <button onClick={handleExport} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={13} /> Exporter
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
-              <ArrowUpRight size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total entrees</p>
-          </div>
-          <p className="text-2xl font-bold text-emerald-700">{n(totals.totalEntrees)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <div className="flex gap-3 text-xs text-gray-400 mt-1.5">
-            <span>Cash: {n(totals.cashR)}</span>
-            <span>Carte: {n(totals.cardR)}</span>
-            {totals.entries > 0 && <span>Autres: {n(totals.entries)}</span>}
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
+          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">
+            Cash {n(totals.cashR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
           </div>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <ArrowDownRight size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Total sorties</p>
-          </div>
-          <p className="text-2xl font-bold text-red-700">{n(totals.exits)} <span className="text-sm font-normal text-gray-400">DH</span></p>
-          <p className="text-xs text-gray-400 mt-1.5">Achats + Salaires + Depenses</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
+          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.exits)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">Achats + Salaires + Dépenses</div>
         </div>
-        <div className={`bg-white rounded-2xl shadow-sm border p-4 ${totals.resultat >= 0 ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'}`}>
-          <div className="flex items-center gap-2.5 mb-2">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${totals.resultat >= 0 ? 'bg-gradient-to-br from-emerald-500 to-teal-500' : 'bg-gradient-to-br from-red-500 to-rose-500'}`}>
-              <Scale size={16} className="text-white" />
-            </div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Resultat net du mois</p>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Résultat net du mois</div>
+          <div className="odoo-stat-card-value" style={{ color: totals.resultat >= 0 ? '#28a745' : '#dc3545' }}>
+            {totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
           </div>
-          <p className={`text-2xl font-bold ${totals.resultat >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-            {totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <span className="text-sm font-normal text-gray-400">DH</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-1.5">Entrees - Sorties</p>
+          <div className="odoo-stat-card-sub">Entrées − Sorties</div>
         </div>
-      </div>
-
-      {/* Solde cumulé banner */}
-      <div className={`rounded-2xl p-4 ${totals.solde >= 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
-        <div className="flex items-center justify-between text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Wallet size={18} className="text-white" />
-            </div>
-            <span className="font-medium">Solde cumulé (depuis le debut)</span>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde cumulé</div>
+          <div className="odoo-stat-card-value" style={{ color: totals.solde >= 0 ? '#28a745' : '#dc3545' }}>
+            {n(totals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="text-center">
-              <p className="text-xs text-white/70">Cash</p>
-              <p className="font-bold">{n(totals.cashNet)} DH</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs text-white/70">Carte</p>
-              <p className="font-bold">{n(totals.cardCumul)} DH</p>
-            </div>
-            <div className="text-center bg-white/20 rounded-xl px-4 py-2">
-              <p className="text-xs text-white/70">Total</p>
-              <p className="font-bold text-lg">{n(totals.solde)} DH</p>
-            </div>
-          </div>
+          <div className="odoo-stat-card-sub">Cash {n(totals.cashNet)} · Carte {n(totals.cardCumul)}</div>
         </div>
       </div>
 
       {/* Daily grid */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="animate-spin text-slate-400 mb-3" size={32} />
-          <p className="text-sm text-gray-400">Chargement du resume...</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
+          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement du résumé...</span>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
-          <table className="w-full text-sm">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
             <thead>
-              <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs uppercase tracking-wide">Date</th>
-                <th className="text-right px-4 py-3 font-semibold text-purple-600 text-xs uppercase tracking-wide">Ventes</th>
-                <th className="text-right px-4 py-3 font-semibold text-emerald-600 text-xs uppercase tracking-wide">Entrees</th>
-                <th className="text-right px-4 py-3 font-semibold text-red-600 text-xs uppercase tracking-wide">Sorties</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wide bg-emerald-50/50">Cash</th>
-                <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wide bg-blue-50/50">Carte</th>
-                <th className="text-right px-4 py-3 font-bold text-gray-800 text-xs uppercase tracking-wide bg-amber-50/50">Solde</th>
+              <tr>
+                <th>Date</th>
+                <th style={{ textAlign: 'right' }}>Ventes</th>
+                <th style={{ textAlign: 'right' }}>Entrées</th>
+                <th style={{ textAlign: 'right' }}>Sorties</th>
+                <th style={{ textAlign: 'right' }}>Cash cumul</th>
+                <th style={{ textAlign: 'right' }}>Carte cumul</th>
+                <th style={{ textAlign: 'right' }}>Solde</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {allDays.map(d => {
                 if (!d) return null;
                 const dayEntrees = d.cashCaissiere + d.cardReceipt + d.entries;
                 const hasActivity = dayEntrees > 0 || d.exits > 0;
                 return (
-                  <tr key={d.dayNum} className={`transition-colors ${hasActivity ? 'hover:bg-gray-50' : 'text-gray-300'}`}>
-                    <td className="px-4 py-2.5 font-medium">{format(parseLocalDate(d.date), 'dd/MM EEE', { locale: fr })}</td>
-                    <td className="px-4 py-2.5 text-right">{d.totalSales > 0 ? <span className="text-purple-600 font-semibold">{n(d.totalSales)}</span> : <span className="text-gray-200">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right">{dayEntrees > 0 ? <span className="text-emerald-600 font-semibold">{n(dayEntrees)}</span> : <span className="text-gray-200">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right">{d.exits > 0 ? <span className="text-red-600 font-semibold">{n(d.exits)}</span> : <span className="text-gray-200">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right bg-emerald-50/30 font-medium">{n(d.cashNetCumul)}</td>
-                    <td className="px-4 py-2.5 text-right bg-blue-50/30 font-medium">{n(d.cardCumul)}</td>
-                    <td className={`px-4 py-2.5 text-right bg-amber-50/30 font-bold ${d.solde >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{n(d.solde)}</td>
+                  <tr key={d.dayNum} style={{ opacity: hasActivity ? 1 : 0.4 }}>
+                    <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(d.date), 'dd/MM EEE', { locale: fr })}</td>
+                    <td style={{ textAlign: 'right' }}>{d.totalSales > 0 ? <span style={{ fontWeight: 600 }}>{n(d.totalSales)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                    <td style={{ textAlign: 'right', color: dayEntrees > 0 ? '#28a745' : 'var(--theme-bg-separator)' }}>
+                      {dayEntrees > 0 ? n(dayEntrees) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', color: d.exits > 0 ? '#dc3545' : 'var(--theme-bg-separator)' }}>
+                      {d.exits > 0 ? n(d.exits) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(d.cashNetCumul)}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(d.cardCumul)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: d.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(d.solde)}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-gradient-to-r from-slate-100 to-gray-100 border-t-2 border-gray-200 font-bold text-sm">
-                <td className="px-4 py-3 text-gray-700">TOTAL</td>
-                <td className="px-4 py-3 text-right text-purple-700">{n(totals.sales)}</td>
-                <td className="px-4 py-3 text-right text-emerald-700">{n(totals.totalEntrees)}</td>
-                <td className="px-4 py-3 text-right text-red-700">{n(totals.exits)}</td>
-                <td className="px-4 py-3 text-right bg-emerald-50">{n(totals.cashNet)}</td>
-                <td className="px-4 py-3 text-right bg-blue-50">{n(totals.cardCumul)}</td>
-                <td className={`px-4 py-3 text-right bg-amber-50 text-lg ${totals.solde >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{n(totals.solde)}</td>
+              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td style={{ padding: 12, fontWeight: 700 }}>TOTAL</td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.sales)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{n(totals.totalEntrees)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>{n(totals.exits)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.cashNet)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.cardCumul)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: totals.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(totals.solde)}</td>
               </tr>
             </tfoot>
           </table>
