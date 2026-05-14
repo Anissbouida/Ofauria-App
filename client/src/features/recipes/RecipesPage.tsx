@@ -1128,8 +1128,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setContenantId(existingRecipe.contenant_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
     setYieldUnit(existingRecipe.yield_unit || 'unit');
-    setMarginMultiplier(String(existingRecipe.margin_multiplier ?? 3));
-    setSalePrice(existingRecipe.product_price ? String(existingRecipe.product_price) : '');
+    // Normalise a 2 decimales pour eviter "3.0400" stocke en NUMERIC SQL.
+    setMarginMultiplier(parseFloat(String(existingRecipe.margin_multiplier ?? 3)).toFixed(2));
+    setSalePrice(existingRecipe.product_price ? parseFloat(String(existingRecipe.product_price)).toFixed(2) : '');
     setInstructions(existingRecipe.instructions || '');
     setIsBase(existingRecipe.is_base || false);
     setFormIngredients(
