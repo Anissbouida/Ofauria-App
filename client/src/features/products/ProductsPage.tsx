@@ -399,124 +399,116 @@ function CatalogueTab() {
           <table className="odoo-table">
             <thead>
               <tr>
+                <th style={{ width: 24 }}></th>
                 <SortHeader label="Produit" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Responsable" sortKey="responsible" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Prix" sortKey="price" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Stock" sortKey="stock_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Statut" sortKey="is_available" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                <th style={{ textAlign: 'center' }}>Cycle de vie</th>
+                <SortHeader label="Statut" sortKey="is_available" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <th>Cycle de vie</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sortedProducts.map((p: Record<string, any>) => {
+              {sortedProducts.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                  Aucun produit trouvé
+                </td></tr>
+              ) : sortedProducts.map((p: Record<string, any>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
                 const isOut = stock <= 0;
+                const dotClass = isOut ? 'danger' : isLow ? 'warning' : 'ok';
 
                 return (
-                  <tr key={p.id as string} className="hover:bg-amber-50/30 transition-colors cursor-pointer" onClick={() => { setEditingProduct(p); setShowForm(true); }}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
+                  <tr key={p.id as string} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
+                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                         {p.image_url ? (
-                          <img src={serverUrl(p.image_url as string)} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100" />
+                          <img src={serverUrl(p.image_url as string)} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                         ) : (
-                          <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-xl border border-amber-100">🥖</div>
+                          <ShoppingBag size={13} style={{ color: 'var(--theme-accent)' }} />
                         )}
-                        <div className="min-w-0">
-                          <span className="font-semibold text-gray-900 text-sm block truncate">{p.name as string}</span>
-                          {p.description && (
-                            <span className="text-xs text-gray-400 truncate block max-w-[200px]">{p.description as string}</span>
-                          )}
-                        </div>
-                      </div>
+                        {p.name as string}
+                      </span>
                     </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">{p.category_name as string}</span>
+                    <td>
+                      {p.category_name ? (
+                        <span className="odoo-tag odoo-tag-grey">{p.category_name as string}</span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td className="px-5 py-3">
+                    <td style={{ color: 'var(--theme-text-muted)' }}>
                       {p.responsible_first_name ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
-                            <ChefHat size={12} className="text-amber-600" />
-                          </div>
-                          <span className="text-sm text-gray-700">{p.responsible_first_name as string} {(p.responsible_last_name as string)?.[0]}.</span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <ChefHat size={11} /> {p.responsible_first_name as string} {(p.responsible_last_name as string)?.[0]}.
+                        </span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <span className="text-sm font-bold text-gray-900">{parseFloat(p.price as string).toFixed(2)}</span>
-                      <span className="text-xs text-gray-400 ml-0.5">DH</span>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 600 }}>{parseFloat(p.price as string).toFixed(2)}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td style={{ textAlign: 'right' }}>
                       {isOut ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 inline-flex items-center gap-1">
-                          <AlertTriangle size={11} /> Rupture
-                        </span>
+                        <span className="odoo-tag odoo-tag-red">Rupture</span>
                       ) : isLow ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 inline-flex items-center gap-1">
-                          <AlertTriangle size={11} /> {stock}
-                        </span>
+                        <span className="odoo-tag odoo-tag-orange">{stock}</span>
                       ) : (
-                        <span className="text-sm font-semibold text-gray-700">{stock}</span>
+                        <span style={{ fontWeight: 500 }}>{stock}</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td>
                       {p.is_available ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 inline-flex items-center gap-1">
-                          <Eye size={11} /> Actif
-                        </span>
+                        <span className="odoo-tag odoo-tag-green">Actif</span>
                       ) : (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 inline-flex items-center gap-1">
-                          <EyeOff size={11} /> Inactif
-                        </span>
+                        <span className="odoo-tag odoo-tag-grey">Inactif</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                    <td>
+                      <div style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
                         {p.sale_type === 'jour' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700" title="Vente du jour">JOUR</span>
+                          <span className="odoo-tag odoo-tag-yellow" title="Vente du jour">JOUR</span>
                         )}
                         {p.sale_type === 'dlv' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700" title="Date limite de vente">DLV</span>
+                          <span className="odoo-tag odoo-tag-green" title="Date limite de vente">DLV</span>
                         )}
                         {p.sale_type === 'commande' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700" title="Sur commande">CMD</span>
+                          <span className="odoo-tag odoo-tag-blue" title="Sur commande">CMD</span>
                         )}
                         {Boolean(p.shelf_life_days) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title={`DLV: ${p.shelf_life_days} jour(s) depuis production`}>DLV {String(p.shelf_life_days)}j</span>
+                          <span className="odoo-tag odoo-tag-grey" title={`DLV: ${p.shelf_life_days} jour(s) depuis production`}>DLV {String(p.shelf_life_days)}j</span>
                         )}
                         {Boolean(p.display_life_hours) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700" title={`DDE: ${p.display_life_hours}h depuis transfert vitrine`}>DDE {String(p.display_life_hours)}h</span>
+                          <span className="odoo-tag odoo-tag-orange" title={`DDE: ${p.display_life_hours}h depuis transfert vitrine`}>DDE {String(p.display_life_hours)}h</span>
                         )}
                         {Boolean(p.is_recyclable) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700" title="Recyclable">♻️</span>
+                          <span className="odoo-tag odoo-tag-blue" title="Recyclable">REC</span>
                         )}
                         {Boolean(p.is_reexposable) && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700" title="Re-exposable">RE</span>
+                          <span className="odoo-tag odoo-tag-purple" title="Re-exposable">RE</span>
                         )}
                         {!p.shelf_life_days && !p.sale_type && (
-                          <span className="text-xs text-gray-300">—</span>
+                          <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
+                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
                         <button onClick={() => { setEditingProduct(p); setShowForm(true); }}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
-                          <Pencil size={15} className="text-gray-500" />
+                          className="odoo-pager-btn" title="Modifier">
+                          <Pencil size={13} />
                         </button>
                         <button onClick={() => toggleMutation.mutate(p.id as string)}
-                          className="p-2 hover:bg-amber-50 rounded-lg transition-colors" title={p.is_available ? 'Désactiver' : 'Activer'}>
-                          {p.is_available ? <EyeOff size={15} className="text-amber-500 hover:text-amber-600" /> : <Eye size={15} className="text-green-500 hover:text-green-600" />}
+                          className="odoo-pager-btn" title={p.is_available ? 'Désactiver' : 'Activer'}>
+                          {p.is_available ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
                         <button onClick={() => { if (confirm('Supprimer définitivement ce produit ? Cette action est irréversible.')) deleteMutation.mutate(p.id as string); }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer">
-                          <Trash2 size={15} className="text-red-400 hover:text-red-600" />
+                          className="odoo-pager-btn" title="Supprimer"
+                          style={{ color: '#dc3545' }}>
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -525,13 +517,6 @@ function CatalogueTab() {
               })}
             </tbody>
           </table>
-          {filteredProducts.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <ShoppingBag size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucun produit trouve</p>
-              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
-            </div>
-          )}
         </div>
       )}
 
