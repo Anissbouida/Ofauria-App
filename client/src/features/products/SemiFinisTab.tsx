@@ -6,7 +6,7 @@ import { storesApi } from '../../api/stores.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   Layers, Search, ChevronDown, ChevronRight, Snowflake,
-  AlertTriangle, Package, BookOpen, Clock, ArrowUp, ArrowDown, ArrowUpDown,
+  AlertTriangle, Package, Clock, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -52,16 +52,12 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-3 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors`}
-      onClick={() => onSort(sk)}>
+    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
       <span className="inline-flex items-center gap-1">
-        {align === 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
         {label}
-        {align !== 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
+        <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
+          {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+        </span>
       </span>
     </th>
   );
@@ -176,24 +172,50 @@ export default function SemiFinisTab() {
     return d <= tomorrow;
   }).length;
 
+  const totalLotsActifs = (summary as SummaryEntry[]).reduce((sum, s) => sum + (typeof s.nb_lots === 'number' ? s.nb_lots : parseInt(s.nb_lots)), 0);
+
   return (
-    <div className="space-y-5">
-      {/* ─── Header ─── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-            <Layers size={20} className="text-amber-700" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Semi-finis & Produits de base</h2>
-            <p className="text-xs text-gray-500">Recettes de base et stock intermediaire</p>
-          </div>
+    <>
+      {/* ─── Stat tiles ─── */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">Produits de base</div>
+          <div className="odoo-stat-card-value">{baseRecipes.length}</div>
+          <div className="odoo-stat-card-sub">recettes</div>
         </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">En stock</div>
+          <div className="odoo-stat-card-value">{totalWithStock}</div>
+          <div className="odoo-stat-card-sub">au frigo</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">Lots actifs</div>
+          <div className="odoo-stat-card-value">{totalLotsActifs}</div>
+          <div className="odoo-stat-card-sub">en cours</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">Expiration ≤24h</div>
+          <div className="odoo-stat-card-value" style={{ color: expiringCount > 0 ? '#dc3545' : undefined }}>{expiringCount}</div>
+          <div className="odoo-stat-card-sub">imminents</div>
+        </div>
+      </div>
+
+      {/* ─── Search panel ─── */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher un produit de base..."
+          className="odoo-search-input"
+        />
         {stores.length > 1 && (
           <select
             value={storeId}
             onChange={e => setSelectedStoreId(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+            className="odoo-filter-dropdown"
+            style={{ marginLeft: 'auto' }}
           >
             {(stores as Record<string, any>[]).map(s => (
               <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
@@ -202,74 +224,34 @@ export default function SemiFinisTab() {
         )}
       </div>
 
-      {/* ─── Summary cards ─── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <div className="text-2xl font-bold text-amber-700">{baseRecipes.length}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Recettes de base</div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <div className="text-2xl font-bold text-cyan-700">{totalWithStock}</div>
-          <div className="text-xs text-gray-500 mt-0.5">En stock</div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <div className="text-2xl font-bold text-gray-700">
-            {(summary as SummaryEntry[]).reduce((sum, s) => sum + (typeof s.nb_lots === 'number' ? s.nb_lots : parseInt(s.nb_lots)), 0)}
-          </div>
-          <div className="text-xs text-gray-500 mt-0.5">Lots actifs</div>
-        </div>
-        {expiringCount > 0 ? (
-          <div className="bg-red-50 rounded-xl border border-red-200 p-4 text-center">
-            <div className="text-2xl font-bold text-red-700">{expiringCount}</div>
-            <div className="text-xs text-red-500 mt-0.5">Expiration imminente</div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <div className="text-2xl font-bold text-gray-300">0</div>
-            <div className="text-xs text-gray-500 mt-0.5">Expiration imminente</div>
-          </div>
-        )}
-      </div>
-
-      {/* ─── Search ─── */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher un semi-fini..."
-          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm"
-        />
-      </div>
-
       {/* ─── List ─── */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-400 text-sm">Chargement...</div>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+          Chargement...
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <Layers size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">Aucun semi-fini</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Creez des recettes marquees comme &quot;recette de base&quot; dans le module Recettes
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Layers size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun produit de base</p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>
+            Créez des recettes marquées comme &quot;recette de base&quot; dans le module Recettes
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-4 py-2.5 w-8"></th>
-                  <SortHeader label="Nom" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                  <SortHeader label="Rendement" sortKey="yield" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Cout" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Stock frigo" sortKey="stock" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Lots" sortKey="lots" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Proche exp." sortKey="expiry" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                </tr>
-              </thead>
-              <tbody>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <SortHeader label="Nom" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Rendement" sortKey="yield" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Coût" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Stock frigo" sortKey="stock" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Lots" sortKey="lots" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Proche exp." sortKey="expiry" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+              </tr>
+            </thead>
+            <tbody>
                 {sortedFiltered.map(recipe => {
                   const stock = stockByRecipe[recipe.id];
                   const lots = recipe.product_id ? (lotsByProduct[recipe.product_id] ?? []) : [];
@@ -302,10 +284,9 @@ export default function SemiFinisTab() {
                 })}
               </tbody>
             </table>
-          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -387,80 +368,74 @@ function SemiFiniRow({
     ? (typeof recipe.total_cost === 'string' ? parseFloat(recipe.total_cost) : recipe.total_cost)
     : null;
 
+  const dotClass = isExpiring ? 'danger' : stockQty > 0 ? 'ok' : 'neutral';
+
   return (
     <>
-      <tr
-        onClick={onToggle}
-        className="border-b border-gray-50 hover:bg-amber-50/30 cursor-pointer transition-colors"
-      >
-        <td className="px-4 py-3">
-          {isExpanded
-            ? <ChevronDown size={16} className="text-gray-400" />
-            : <ChevronRight size={16} className="text-gray-400" />}
+      <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
+        <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+            {isExpanded
+              ? <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />
+              : <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+            <Layers size={13} style={{ color: 'var(--theme-accent)' }} />
+            {recipe.name}
+            {recipe.product_name && recipe.product_name !== recipe.name && (
+              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>· {recipe.product_name}</span>
+            )}
+          </span>
         </td>
-        <td className="px-3 py-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <BookOpen size={14} className="text-amber-700" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-medium text-gray-900 truncate">{recipe.name}</div>
-              {recipe.product_name && recipe.product_name !== recipe.name && (
-                <div className="text-xs text-gray-500 truncate">{recipe.product_name}</div>
+        <td style={{ textAlign: 'right' }}>
+          <span style={{ fontWeight: 500 }}>{yieldQty}</span>
+          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{recipe.yield_unit}</span>
+        </td>
+        <td style={{ textAlign: 'right' }}>
+          {cost != null ? (
+            <>
+              <span style={{ fontWeight: 600 }}>{cost.toFixed(2)}</span>
+              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+            </>
+          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+        </td>
+        <td style={{ textAlign: 'right' }}>
+          {stockQty > 0 ? (
+            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, justifyContent: 'flex-end' }}>
+              <Snowflake size={11} style={{ color: 'var(--theme-accent)' }} />
+              <span style={{ fontWeight: 600 }}>{stockQty.toFixed(2)}</span>
+              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{recipe.yield_unit}</span>
+              {reservedQty > 0 && (
+                <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }} title={`Réservé: ${reservedQty.toFixed(2)} ${recipe.yield_unit}`}>
+                  −{reservedQty.toFixed(2)}
+                </span>
               )}
-            </div>
-          </div>
+            </span>
+          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>
-        <td className="text-center px-3 py-3 text-gray-700 whitespace-nowrap">
-          {yieldQty} {recipe.yield_unit}
+        <td style={{ textAlign: 'right' }}>
+          {nbLots > 0 ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', color: 'var(--theme-text-muted)' }}>
+              <Package size={11} /> {nbLots}
+            </span>
+          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>
-        <td className="text-center px-3 py-3 text-gray-700 whitespace-nowrap">
-          {cost != null ? `${cost.toFixed(2)} MAD` : '—'}
-        </td>
-        <td className="text-center px-3 py-3">
-          <div className="flex flex-col items-center gap-0.5">
-            {stockQty > 0 ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-xs font-semibold">
-                <Snowflake size={12} />
-                {stockQty.toFixed(2)} {recipe.yield_unit}
+        <td style={{ textAlign: 'right' }}>
+          {earliestExpiry ? (
+            isExpiring ? (
+              <span className="odoo-tag odoo-tag-red" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <AlertTriangle size={10} /> {format(earliestExpiry, 'dd/MM', { locale: fr })}
               </span>
             ) : (
-              <span className="text-xs text-gray-400">—</span>
-            )}
-            {reservedQty > 0 && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
-                <Clock size={10} />
-                {reservedQty.toFixed(2)} reserve
-              </span>
-            )}
-          </div>
-        </td>
-        <td className="text-center px-3 py-3">
-          {nbLots > 0 ? (
-            <span className="inline-flex items-center gap-1 text-xs text-gray-700">
-              <Package size={12} className="text-gray-400" />
-              {nbLots}
-            </span>
-          ) : (
-            <span className="text-xs text-gray-400">—</span>
-          )}
-        </td>
-        <td className="text-center px-3 py-3">
-          {earliestExpiry ? (
-            <span className={`inline-flex items-center gap-1 text-xs ${isExpiring ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-              {isExpiring && <AlertTriangle size={12} />}
-              {format(earliestExpiry, 'dd/MM', { locale: fr })}
-            </span>
-          ) : (
-            <span className="text-xs text-gray-400">—</span>
-          )}
+              <span style={{ color: 'var(--theme-text-muted)' }}>{format(earliestExpiry, 'dd/MM', { locale: fr })}</span>
+            )
+          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>
       </tr>
 
       {/* Expanded panel */}
       {isExpanded && (
         <tr>
-          <td colSpan={7} className="bg-gray-50 px-6 py-4">
+          <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '16px 20px' }}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {/* Ingredients */}
               <div>

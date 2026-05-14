@@ -22,7 +22,7 @@ export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline' | 'semi-finis'>('pipeline');
 
   const tabLabel = activeTab === 'pipeline' ? 'Pipeline'
-    : activeTab === 'catalogue' ? 'Catalogue' : 'Semi-finis';
+    : activeTab === 'catalogue' ? 'Catalogue' : 'Produits de base';
 
   return (
     <div className="odoo-scope">
@@ -42,13 +42,13 @@ export default function ProductsPage() {
           className={`odoo-tab ${activeTab === 'pipeline' ? 'active' : ''}`}>
           <GitBranch size={13} /> Pipeline
         </button>
+        <button onClick={() => setActiveTab('semi-finis')}
+          className={`odoo-tab ${activeTab === 'semi-finis' ? 'active' : ''}`}>
+          <Layers size={13} /> Produits de base
+        </button>
         <button onClick={() => setActiveTab('catalogue')}
           className={`odoo-tab ${activeTab === 'catalogue' ? 'active' : ''}`}>
           <ShoppingBag size={13} /> Catalogue
-        </button>
-        <button onClick={() => setActiveTab('semi-finis')}
-          className={`odoo-tab ${activeTab === 'semi-finis' ? 'active' : ''}`}>
-          <Layers size={13} /> Semi-finis
         </button>
       </div>
 
@@ -59,7 +59,7 @@ export default function ProductsPage() {
           <CatalogueTab />
         </>
       ) : activeTab === 'semi-finis' ? (
-        <div style={{ padding: '1rem' }}><SemiFinisTab /></div>
+        <SemiFinisTab />
       ) : (
         <div style={{ padding: '1rem' }}><ProductPipelineTab /></div>
       )}
