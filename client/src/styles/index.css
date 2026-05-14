@@ -569,6 +569,8 @@
 }
 .odoo-sort-arrow.active { opacity: 1; color: var(--odoo-purple); }
 
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ── Kanban view ── */
 .odoo-kanban {
   padding: 1rem;

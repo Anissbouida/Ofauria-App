@@ -516,251 +516,235 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   })();
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className={`p-6 border-b bg-gradient-to-r ${recipe?.is_base ? 'from-amber-50 to-yellow-50' : 'from-orange-50 to-amber-50'}`}>
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${recipe?.is_base ? 'bg-amber-100' : 'bg-white/80 shadow-sm'}`}>
-                {recipe?.is_base ? <Layers size={28} className="text-amber-600" /> : <ChefHat size={28} className="text-amber-700" />}
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">{recipe?.name || 'Chargement...'}</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {recipe?.is_base
-                    ? <span className="text-amber-600 font-medium">Preparation de base</span>
-                    : recipe?.product_name}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={onEdit} className="px-3 py-2 bg-white/70 hover:bg-white rounded-lg text-sm font-medium text-gray-600 transition-colors flex items-center gap-1.5">
-                <Pencil size={14} /> Modifier
-              </button>
-              <button onClick={onClose} className="w-9 h-9 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center transition-colors">
-                <X size={18} className="text-gray-500" />
-              </button>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
+      <div className="odoo-scope" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        {/* Control bar (header with breadcrumb + actions) */}
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            {recipe?.is_base ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
+            <span>{recipe?.is_base ? 'Préparation de base' : 'Recette produit fini'}</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">{recipe?.name || 'Chargement...'}</span>
           </div>
-
-          {/* Key stats */}
-          {recipe && (
-            <div className={`grid ${recipe.is_base ? 'grid-cols-3' : 'grid-cols-4'} gap-3 mt-5`}>
-              <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
-                <Scale size={16} className="mx-auto text-amber-600 mb-1" />
-                <p className="text-[11px] text-gray-400 uppercase tracking-wider">Rendement</p>
-                <p className="font-bold text-lg text-gray-900">{yieldQty} <span className="text-xs font-normal">{recipe.yield_unit || 'u.'}</span></p>
-              </div>
-              <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
-                <DollarSign size={16} className="mx-auto text-green-600 mb-1" />
-                <p className="text-[11px] text-gray-400 uppercase tracking-wider">Cout total</p>
-                <p className="font-bold text-lg text-gray-900">{totalCost.toFixed(2)} <span className="text-xs font-normal">DH</span></p>
-              </div>
-              <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
-                <DollarSign size={16} className="mx-auto text-blue-600 mb-1" />
-                <p className="text-[11px] text-gray-400 uppercase tracking-wider">
-                  {recipe.contenant_unite_lancement
-                    ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire
-                    : 'Cout/unite'}
-                </p>
-                <p className="font-bold text-lg text-gray-900">{costPerUnit.toFixed(2)} <span className="text-xs font-normal">DH</span></p>
-              </div>
-              {!recipe.is_base && (
-                <div className="bg-white/80 backdrop-blur rounded-xl p-3 text-center shadow-sm">
-                  <TrendingUp size={16} className={`mx-auto mb-1 ${margin >= 50 ? 'text-green-600' : margin >= 30 ? 'text-amber-600' : 'text-red-600'}`} />
-                  <p className="text-[11px] text-gray-400 uppercase tracking-wider">Marge</p>
-                  <p className={`font-bold text-lg ${margin >= 50 ? 'text-green-700' : margin >= 30 ? 'text-amber-700' : 'text-red-700'}`}>{margin.toFixed(1)}%</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Contenant info */}
-          {recipe?.contenant_nom && (() => {
-            const cMode = getModeCalcul(recipe.contenant_unite_lancement || 'unit');
-            const cLabels = MODE_LABELS[cMode];
-            const qteTheo = parseFloat(recipe.contenant_quantite_theorique || '0');
-            const pertes = parseFloat(recipe.contenant_pertes_fixes || '0');
-            const net = qteTheo - pertes;
-            return (
-              <div className="mt-4 bg-white/80 backdrop-blur rounded-xl p-3 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <Box size={16} className="text-blue-500" />
-                  <span className="font-semibold text-gray-900 text-sm">{recipe.contenant_nom}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    cMode === 'poids' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                  }`}>{cMode === 'poids' ? 'POIDS' : 'PIECES'}</span>
-                </div>
-                <div className="flex items-center gap-4 mt-2 text-xs ml-7">
-                  <div>
-                    <span className="text-gray-400">{cLabels.quantiteTheorique}: </span>
-                    <span className="font-bold text-blue-700">{qteTheo}</span>
-                  </div>
-                  {pertes > 0 && <div>
-                    <span className="text-gray-400">{cLabels.pertesFixes}: </span>
-                    <span className="font-bold text-red-500">-{pertes}</span>
-                  </div>}
-                  <div>
-                    <span className="text-gray-400">{cLabels.netCible}: </span>
-                    <span className="font-bold text-green-600">{net}</span>
-                  </div>
-                  {cMode === 'pieces' && recipe.contenant_poids_kg && <div>
-                    <span className="text-gray-400">Poids: </span>
-                    <span className="font-bold text-blue-600">{recipe.contenant_poids_kg} kg</span>
-                  </div>}
-                </div>
-              </div>
-            );
-          })()}
+          <button onClick={onEdit} className="odoo-btn-secondary">
+            <Pencil size={13} /> Modifier
+          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
 
+        {/* Smart buttons row (KPI tiles Odoo) */}
+        {recipe && (
+          <div className="odoo-smart-button-row">
+            <div className="odoo-smart-button">
+              <div className="odoo-smart-button-value">{yieldQty}</div>
+              <div className="odoo-smart-button-label"><Scale size={11} /> Rendement ({recipe.yield_unit || 'u.'})</div>
+            </div>
+            <div className="odoo-smart-button">
+              <div className="odoo-smart-button-value">{totalCost.toFixed(2)}</div>
+              <div className="odoo-smart-button-label"><DollarSign size={11} /> Coût total (DH)</div>
+            </div>
+            <div className="odoo-smart-button">
+              <div className="odoo-smart-button-value">{costPerUnit.toFixed(2)}</div>
+              <div className="odoo-smart-button-label">
+                <DollarSign size={11} /> {recipe.contenant_unite_lancement ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire : 'Coût/unité'}
+              </div>
+            </div>
+            {!recipe.is_base && (
+              <div className="odoo-smart-button">
+                <div className="odoo-smart-button-value" style={{
+                  color: margin >= 50 ? '#28a745' : margin >= 30 ? '#b85d1a' : '#dc3545',
+                }}>
+                  {margin.toFixed(1)}%
+                </div>
+                <div className="odoo-smart-button-label"><TrendingUp size={11} /> Marge</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Form header (title + status tags + contenant) */}
+        {recipe && (
+          <div className="odoo-form-header">
+            <h1 className="odoo-form-title">{recipe.name}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6, flexWrap: 'wrap' }}>
+              <span className={`odoo-tag ${recipe.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
+                {recipe.is_base ? 'Base' : 'Produit'}
+              </span>
+              {recipe.product_name && !recipe.is_base && (
+                <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{recipe.product_name}</span>
+              )}
+              {recipe.contenant_nom && (() => {
+                const cMode = getModeCalcul(recipe.contenant_unite_lancement || 'unit');
+                const cLabels = MODE_LABELS[cMode];
+                const qteTheo = parseFloat(recipe.contenant_quantite_theorique || '0');
+                const pertes = parseFloat(recipe.contenant_pertes_fixes || '0');
+                const net = qteTheo - pertes;
+                return (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginLeft: 4 }}>
+                    <Box size={12} />
+                    <strong style={{ color: 'var(--theme-text-strong)' }}>{recipe.contenant_nom}</strong>
+                    <span className={`odoo-tag ${cMode === 'poids' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>{cMode === 'poids' ? 'POIDS' : 'PIÈCES'}</span>
+                    <span>· {cLabels.quantiteTheorique}: <strong>{qteTheo}</strong></span>
+                    {pertes > 0 && <span>· {cLabels.pertesFixes}: <strong style={{ color: '#dc3545' }}>-{pertes}</strong></span>}
+                    <span>· {cLabels.netCible}: <strong style={{ color: '#28a745' }}>{net}</strong></span>
+                    {cMode === 'pieces' && recipe.contenant_poids_kg && <span>· Poids: <strong>{recipe.contenant_poids_kg} kg</strong></span>}
+                  </span>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div style={{ flex: 1, overflowY: 'auto', backgroundColor: 'var(--theme-bg-page)' }}>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+              <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
             </div>
           ) : recipe ? (
             <>
               {/* Portions calculator */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <h3 className="font-semibold text-sm text-blue-800 mb-2 flex items-center gap-2">
-                  <Scale size={16} /> Calculateur de portions
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-blue-700">Quantite souhaitee :</span>
+              <div className="odoo-section">
+                <div className="odoo-section-header"><Scale size={12} /> Calculateur de portions</div>
+                <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', backgroundColor: 'var(--theme-bg-card)' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Quantité souhaitée :</span>
                   <input type="number" min={0.1} step="0.1" value={targetPortions} onChange={(e) => setPortions(parseFloat(e.target.value) || 1)}
-                    className="w-24 text-center font-bold px-3 py-2 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-                  <span className="text-sm text-blue-700">{recipe.yield_unit || 'unites'}</span>
+                    className="input" style={{ width: 100, textAlign: 'center', fontWeight: 600 }} />
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{recipe.yield_unit || 'unités'}</span>
                   {portions !== null && portions !== yieldQty && (
-                    <button onClick={() => setPortions(null)} className="text-xs text-blue-500 hover:text-blue-700 underline">Reinitialiser ({yieldQty})</button>
+                    <button onClick={() => setPortions(null)} className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>
+                      Réinitialiser ({yieldQty})
+                    </button>
+                  )}
+                  {multiplier !== 1 && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 500 }}>
+                      Quantités × <strong>{multiplier.toFixed(2)}</strong>
+                    </span>
                   )}
                 </div>
-                {multiplier !== 1 && <p className="text-xs text-blue-600 mt-2">Quantites multipliees par <strong>{multiplier.toFixed(2)}x</strong></p>}
               </div>
 
               {/* Sub-recipes */}
               {recipe.sub_recipes && recipe.sub_recipes.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                    <Layers size={18} className="text-amber-600" /> Preparations de base
-                    <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{recipe.sub_recipes.length}</span>
-                  </h3>
-                  <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-amber-50">
-                        <tr>
-                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">Preparation</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">Quantite</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">Rendement</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">Cout unit.</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">Sous-total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-amber-50">
-                        {recipe.sub_recipes.map((sr, idx) => {
-                          const costPerU = parseFloat(sr.sub_total_cost || '0') / (sr.sub_yield_quantity || 1);
-                          const qty = sr.quantity * multiplier;
-                          const cost = costPerU * qty;
-                          return (
-                            <tr key={idx} className="hover:bg-amber-50/50">
-                              <td className="px-4 py-2.5 text-sm font-medium flex items-center gap-2">
-                                <Layers size={14} className="text-amber-500" /> {sr.sub_recipe_name}
-                              </td>
-                              <td className="px-4 py-2.5 text-sm text-right font-semibold text-amber-700">{qty.toFixed(2)}</td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{sr.sub_yield_quantity} {sr.sub_yield_unit || 'u.'}</td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{costPerU.toFixed(2)} DH</td>
-                              <td className="px-4 py-2.5 text-sm text-right font-bold">{cost.toFixed(2)} DH</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-amber-50 font-bold">
-                        <tr>
-                          <td colSpan={4} className="px-4 py-2.5 text-sm text-right">Sous-total preparations</td>
-                          <td className="px-4 py-2.5 text-sm text-right text-amber-700">{subRecipeCost.toFixed(2)} DH</td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                <div className="odoo-section">
+                  <div className="odoo-section-header">
+                    <Layers size={12} /> Préparations de base ({recipe.sub_recipes.length})
                   </div>
+                  <table className="odoo-table">
+                    <thead>
+                      <tr>
+                        <th>Préparation</th>
+                        <th style={{ textAlign: 'right' }}>Quantité</th>
+                        <th style={{ textAlign: 'right' }}>Rendement</th>
+                        <th style={{ textAlign: 'right' }}>Coût unit.</th>
+                        <th style={{ textAlign: 'right' }}>Sous-total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recipe.sub_recipes.map((sr, idx) => {
+                        const costPerU = parseFloat(sr.sub_total_cost || '0') / (sr.sub_yield_quantity || 1);
+                        const qty = sr.quantity * multiplier;
+                        const cost = costPerU * qty;
+                        return (
+                          <tr key={idx} style={{ cursor: 'default' }}>
+                            <td>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <Layers size={11} style={{ color: 'var(--theme-accent)' }} />
+                                <strong>{sr.sub_recipe_name}</strong>
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--theme-accent)' }}>{qty.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{sr.sub_yield_quantity} {sr.sub_yield_unit || 'u.'}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{costPerU.toFixed(2)} DH</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{cost.toFixed(2)} DH</td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ backgroundColor: 'var(--theme-bg-page)', fontWeight: 700, cursor: 'default' }}>
+                        <td colSpan={4} style={{ textAlign: 'right' }}>Sous-total préparations</td>
+                        <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>{subRecipeCost.toFixed(2)} DH</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               )}
 
               {/* Ingredients */}
-              <div>
-                <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                  <Scale size={18} className="text-amber-700" /> Ingredients
-                  <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{recipe.ingredients?.length || 0}</span>
-                </h3>
+              <div className="odoo-section">
+                <div className="odoo-section-header">
+                  <Scale size={12} /> Ingrédients ({recipe.ingredients?.length || 0})
+                </div>
                 {recipe.ingredients && recipe.ingredients.length > 0 ? (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingredient</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantite</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unite</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cout unit.</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sous-total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {recipe.ingredients.map((ing, idx) => {
-                          const qty = ing.quantity * multiplier;
-                          // Cout par unite stocke en DH/{ingredient_base_unit}.
-                          // On convertit la qty de l'unite recette vers l'unite de base
-                          // de l'ingredient avant de multiplier (ex: 600 g de beurre @ 64 DH/kg
-                          // = 0.6 × 64 = 38.40 DH, pas 600 × 64).
-                          const factor = unitConversionFactor(ing.unit || ing.ingredient_base_unit, ing.ingredient_base_unit);
-                          const cost = qty * factor * parseFloat(ing.unit_cost || '0');
-                          return (
-                            <tr key={idx} className="hover:bg-gray-50">
-                              <td className="px-4 py-2.5 text-sm font-medium">{ing.ingredient_name}</td>
-                              <td className="px-4 py-2.5 text-sm text-right font-semibold text-amber-700">
-                                {qty < 0.01 ? qty.toFixed(4) : qty < 1 ? qty.toFixed(3) : qty.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">{ing.unit}</td>
-                              <td className="px-4 py-2.5 text-sm text-right text-gray-500">
-                                {parseFloat(ing.unit_cost).toFixed(2)} DH/{ing.ingredient_base_unit}
-                              </td>
-                              <td className="px-4 py-2.5 text-sm text-right font-bold">{cost.toFixed(2)} DH</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-gray-50 font-bold">
-                        <tr>
-                          <td colSpan={4} className="px-4 py-2.5 text-sm text-right">Sous-total ingredients</td>
-                          <td className="px-4 py-2.5 text-sm text-right text-amber-700">{ingredientCost.toFixed(2)} DH</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <table className="odoo-table">
+                    <thead>
+                      <tr>
+                        <th>Ingrédient</th>
+                        <th style={{ textAlign: 'right' }}>Quantité</th>
+                        <th style={{ textAlign: 'right' }}>Unité</th>
+                        <th style={{ textAlign: 'right' }}>Coût unit.</th>
+                        <th style={{ textAlign: 'right' }}>Sous-total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recipe.ingredients.map((ing, idx) => {
+                        const qty = ing.quantity * multiplier;
+                        const factor = unitConversionFactor(ing.unit || ing.ingredient_base_unit, ing.ingredient_base_unit);
+                        const cost = qty * factor * parseFloat(ing.unit_cost || '0');
+                        return (
+                          <tr key={idx} style={{ cursor: 'default' }}>
+                            <td><strong>{ing.ingredient_name}</strong></td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--theme-accent)' }}>
+                              {qty < 0.01 ? qty.toFixed(4) : qty < 1 ? qty.toFixed(3) : qty.toFixed(2)}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{ing.unit}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                              {parseFloat(ing.unit_cost).toFixed(2)} DH/{ing.ingredient_base_unit}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{cost.toFixed(2)} DH</td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ backgroundColor: 'var(--theme-bg-page)', fontWeight: 700, cursor: 'default' }}>
+                        <td colSpan={4} style={{ textAlign: 'right' }}>Sous-total ingrédients</td>
+                        <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>{ingredientCost.toFixed(2)} DH</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 ) : (
-                  <p className="text-gray-400 text-sm">Aucun ingredient associe</p>
+                  <p style={{ padding: '1rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+                    Aucun ingrédient associé
+                  </p>
                 )}
               </div>
 
-              {/* Total cost */}
+              {/* Total cost combined */}
               {recipe.sub_recipes && recipe.sub_recipes.length > 0 && recipe.ingredients && recipe.ingredients.length > 0 && (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 flex justify-between items-center">
-                  <span className="font-semibold text-gray-700">Cout total (preparations + ingredients)</span>
-                  <span className="text-xl font-bold text-amber-700">{totalCost.toFixed(2)} DH</span>
+                <div className="odoo-section">
+                  <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--theme-bg-card)' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>Coût total (préparations + ingrédients)</span>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--theme-accent)' }}>{totalCost.toFixed(2)} DH</span>
+                  </div>
                 </div>
               )}
 
               {/* Instructions */}
               {recipe.instructions && (
-                <div>
-                  <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                    <BookOpen size={18} className="text-amber-700" /> Guide de production
-                  </h3>
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-3">
+                <div className="odoo-section">
+                  <div className="odoo-section-header"><BookOpen size={12} /> Guide de production</div>
+                  <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {steps.map((step, idx) => (
-                      <div key={idx} className="flex gap-3">
-                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center text-sm font-bold">{idx + 1}</span>
-                        <p className="text-sm text-amber-900 pt-1">{step.endsWith('.') ? step : `${step}.`}</p>
+                      <div key={idx} style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
+                        <span style={{
+                          flexShrink: 0, width: 22, height: 22, borderRadius: '50%',
+                          backgroundColor: 'var(--theme-accent-light)', color: 'var(--theme-accent)',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.75rem', fontWeight: 700,
+                        }}>{idx + 1}</span>
+                        <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', paddingTop: 2 }}>
+                          {step.endsWith('.') ? step : `${step}.`}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -769,52 +753,39 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
               {/* Étapes de production */}
               {recipe.etapes && recipe.etapes.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-base mb-3 flex items-center gap-2">
-                    <ListChecks size={18} className="text-indigo-600" /> Etapes de production
-                    <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{recipe.etapes.length}</span>
-                  </h3>
-                  <div className="space-y-2">
+                <div className="odoo-section">
+                  <div className="odoo-section-header"><ListChecks size={12} /> Étapes de production ({recipe.etapes.length})</div>
+                  <div>
                     {recipe.etapes.sort((a, b) => a.ordre - b.ordre).map((etape, idx) => (
-                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">
-                          {etape.ordre}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-gray-900">{etape.nom}</span>
-                            {etape.est_bloquante && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">BLOQUANTE</span>
-                            )}
-                            {etape.timer_auto && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 flex items-center gap-0.5">
-                                <Timer size={10} /> AUTO
-                              </span>
-                            )}
-                            {etape.controle_qualite && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 flex items-center gap-0.5">
-                                <ShieldCheck size={10} /> QC
-                              </span>
-                            )}
-                            {etape.est_repetable && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 flex items-center gap-0.5">
-                                <Repeat size={10} /> x{etape.nb_repetitions}
-                              </span>
-                            )}
+                      <div key={idx} style={{
+                        padding: '0.625rem 1rem', borderTop: idx > 0 ? '1px solid var(--theme-bg-separator)' : 'none',
+                        display: 'flex', gap: '0.625rem', alignItems: 'flex-start', backgroundColor: 'var(--theme-bg-card)',
+                      }}>
+                        <span style={{
+                          flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                          backgroundColor: 'var(--theme-accent-light)', color: 'var(--theme-accent)',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.8125rem', fontWeight: 700,
+                        }}>{etape.ordre}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '0.8125rem' }}>{etape.nom}</strong>
+                            {etape.est_bloquante && <span className="odoo-tag odoo-tag-red">BLOQUANTE</span>}
+                            {etape.timer_auto && <span className="odoo-tag odoo-tag-blue"><Timer size={9} /> AUTO</span>}
+                            {etape.controle_qualite && <span className="odoo-tag odoo-tag-green"><ShieldCheck size={9} /> QC</span>}
+                            {etape.est_repetable && <span className="odoo-tag odoo-tag-purple"><Repeat size={9} /> x{etape.nb_repetitions}</span>}
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 4, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                             {etape.duree_estimee_min && (
-                              <span className="flex items-center gap-1"><Clock size={12} /> {etape.duree_estimee_min} min</span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Clock size={10} /> {etape.duree_estimee_min} min</span>
                             )}
-                            {etape.responsable_role && (
-                              <span>Role: {etape.responsable_role}</span>
-                            )}
+                            {etape.responsable_role && <span>Rôle : {etape.responsable_role}</span>}
                           </div>
                           {etape.checklist_items && etape.checklist_items.length > 0 && (
-                            <div className="mt-2 space-y-1">
+                            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                               {etape.checklist_items.map((item, ci) => (
-                                <div key={ci} className="flex items-center gap-2 text-xs text-gray-500">
-                                  <div className="w-3.5 h-3.5 rounded border border-gray-300 flex-shrink-0" />
+                                <div key={ci} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                                  <div style={{ width: 12, height: 12, borderRadius: 2, border: '1px solid var(--theme-bg-separator)', flexShrink: 0 }} />
                                   {item}
                                 </div>
                               ))}
@@ -828,66 +799,72 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               )}
 
               {/* Production summary */}
-              <div className="bg-green-50 border border-green-200 rounded-xl p-5">
-                <h3 className="font-semibold text-sm text-green-800 mb-3">Resume de production</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="odoo-section">
+                <div className="odoo-section-header">Résumé de production</div>
+                <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
                   <div>
-                    <p className="text-green-600 text-xs">Quantite a produire</p>
-                    <p className="font-bold text-lg text-green-800">{targetPortions} u.</p>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Quantité à produire</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{targetPortions} u.</div>
                   </div>
                   <div>
-                    <p className="text-green-600 text-xs">Cout total matieres</p>
-                    <p className="font-bold text-lg text-green-800">{totalCost.toFixed(2)} DH</p>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût total matières</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{totalCost.toFixed(2)} DH</div>
                   </div>
                   <div>
-                    <p className="text-green-600 text-xs">Cout par unite</p>
-                    <p className="font-bold text-lg text-green-800">{costPerUnit.toFixed(2)} DH</p>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût par unité</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{costPerUnit.toFixed(2)} DH</div>
                   </div>
                   {!recipe.is_base && (
                     <div>
-                      <p className="text-green-600 text-xs">Prix de vente</p>
-                      <p className="font-bold text-lg text-green-800">{sellingPrice.toFixed(2)} DH</p>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Prix de vente</div>
+                      <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{sellingPrice.toFixed(2)} DH</div>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Version history */}
-              <div className="border-t border-gray-100 pt-4">
+              <div className="odoo-section">
                 <button onClick={() => setShowVersions(!showVersions)}
-                  className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">
-                  <History size={16} /> Historique des modifications
-                  <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">{versions.length}</span>
-                  <ChevronRight size={14} className={`transition-transform ${showVersions ? 'rotate-90' : ''}`} />
+                  className="odoo-section-header"
+                  style={{ width: '100%', cursor: 'pointer', border: 'none', textAlign: 'left' }}>
+                  <History size={12} /> Historique des modifications ({versions.length})
+                  <ChevronRight size={12} style={{ marginLeft: 'auto', transform: showVersions ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
                 </button>
-                {showVersions && versions.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {versions.map((v) => (
-                      <div key={v.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-semibold text-gray-700">Version {v.version_number}</span>
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
-                            <Clock size={12} />
-                            {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                {showVersions && (
+                  versions.length > 0 ? (
+                    <div>
+                      {versions.map((v, idx) => (
+                        <div key={v.id} style={{
+                          padding: '0.625rem 1rem', borderTop: idx > 0 ? '1px solid var(--theme-bg-separator)' : 'none',
+                          fontSize: '0.75rem', backgroundColor: 'var(--theme-bg-card)',
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                            <strong>Version {v.version_number}</strong>
+                            <span style={{ color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <Clock size={10} />
+                              {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div style={{ color: 'var(--theme-text-muted)' }}>
+                            <div>Nom : {v.name} · Rendement : {v.yield_quantity} · Coût : {parseFloat(v.total_cost || '0').toFixed(2)} DH</div>
+                            <div>{(v.ingredients as unknown[]).length} ingrédient(s), {(v.sub_recipes as unknown[]).length} sous-recette(s)</div>
+                            {v.changed_by_name && <div>Par : {v.changed_by_name}</div>}
+                            {v.change_note && <div style={{ fontStyle: 'italic' }}>Note : {v.change_note}</div>}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 space-y-0.5">
-                          <p>Nom: {v.name} · Rendement: {v.yield_quantity} · Cout: {parseFloat(v.total_cost || '0').toFixed(2)} DH</p>
-                          <p>{(v.ingredients as unknown[]).length} ingredient(s), {(v.sub_recipes as unknown[]).length} sous-recette(s)</p>
-                          {v.changed_by_name && <p className="text-gray-400">Par: {v.changed_by_name}</p>}
-                          {v.change_note && <p className="italic text-gray-400">Note: {v.change_note}</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {showVersions && versions.length === 0 && (
-                  <p className="mt-2 text-sm text-gray-400 italic">Aucune modification enregistree</p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)', fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>
+                      Aucune modification enregistrée
+                    </p>
+                  )
                 )}
               </div>
             </>
           ) : (
-            <p className="text-red-500 text-center py-8">Recette introuvable</p>
+            <p style={{ padding: '2rem', textAlign: 'center', color: '#dc3545' }}>Recette introuvable</p>
           )}
         </div>
       </div>
@@ -1333,33 +1310,28 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl ${isBase ? 'bg-amber-100' : 'bg-orange-50'}`}>
-              {isBase ? <Layers size={22} className="text-amber-600" /> : <ChefHat size={22} className="text-amber-700" />}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">{isEdit ? (isBase ? 'Modifier la preparation' : 'Modifier la recette') : (defaultIsBase ? 'Nouvelle preparation de base' : 'Nouvelle recette')}</h2>
-              {name && <p className="text-xs text-gray-400 mt-0.5">{name}</p>}
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
+      <div className="odoo-scope" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 880, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        {/* Control bar */}
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            {isBase ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
+            <span>{isBase ? 'Préparation de base' : 'Recette'}</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">
+              {isEdit ? (name || 'Modifier') : (defaultIsBase ? 'Nouvelle préparation' : 'Nouvelle recette')}
+            </span>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
-            <X size={18} className="text-gray-500" />
-          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-5">
+        <div className="odoo-tabs">
           {tabs.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeTab === tab.key
-                  ? 'border-amber-500 text-amber-700'
-                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-200'
-              }`}>
+            <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
+              className={`odoo-tab ${activeTab === tab.key ? 'active' : ''}`}>
               {tab.icon}
               {tab.label}
             </button>
@@ -1772,32 +1744,42 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                 </div>
 
                 {/* Live cost — split alimentaires / emballages / preparations de base */}
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                <div style={{
+                  border: '1px solid var(--theme-bg-separator)',
+                  backgroundColor: 'var(--theme-bg-secondary)',
+                  borderRadius: 4, padding: '0.625rem 0.875rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.375rem',
+                }}>
                   {subRecipeCost > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-amber-600">Preparations de base</span>
-                      <span className="font-semibold text-amber-700">{subRecipeCost.toFixed(2)} DH</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem' }}>
+                      <span style={{ color: 'var(--theme-text-muted)' }}>Préparations de base</span>
+                      <span style={{ fontWeight: 600, color: 'var(--theme-accent)' }}>{subRecipeCost.toFixed(2)} DH</span>
                     </div>
                   )}
                   {foodCost > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 flex items-center gap-1.5">
-                        <Scale size={12} className="text-amber-500" /> Ingredients alimentaires
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--theme-text-muted)' }}>
+                        <Scale size={11} style={{ color: 'var(--theme-accent)' }} /> Ingrédients alimentaires
                       </span>
-                      <span className="font-semibold text-gray-700">{foodCost.toFixed(2)} DH</span>
+                      <span style={{ fontWeight: 600 }}>{foodCost.toFixed(2)} DH</span>
                     </div>
                   )}
                   {packagingCost > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600 flex items-center gap-1.5">
-                        <Package size={12} className="text-blue-500" /> Emballages
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--theme-text-muted)' }}>
+                        <Package size={11} style={{ color: '#1f6391' }} /> Emballages
                       </span>
-                      <span className="font-semibold text-blue-700">{packagingCost.toFixed(2)} DH</span>
+                      <span style={{ fontWeight: 600, color: '#1f6391' }}>{packagingCost.toFixed(2)} DH</span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center pt-1 border-t border-amber-200">
-                    <span className="font-semibold text-gray-700">Cout total estime</span>
-                    <span className="font-bold text-amber-700 text-xl">{liveCost.toFixed(2)} DH</span>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)',
+                  }}>
+                    <span style={{ fontWeight: 600 }}>Coût total estimé</span>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--theme-accent)' }}>
+                      {liveCost.toFixed(2)} DH
+                    </span>
                   </div>
                 </div>
               </>
@@ -1960,19 +1942,27 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-white border-t border-gray-100 px-5 py-4 flex items-center justify-between">
-            <button type="button" onClick={onClose}
-              className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
+          <div style={{
+            position: 'sticky', bottom: 0,
+            backgroundColor: 'var(--theme-bg-card)',
+            borderTop: '1px solid var(--theme-bg-separator)',
+            padding: '0.625rem 1rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem',
+          }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">
               Annuler
             </button>
-            <button type="submit" disabled={isPending}
-              className="px-6 py-2.5 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-2">
+            <button type="submit" disabled={isPending} className="odoo-btn-primary">
               {isPending ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div style={{ width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                   Enregistrement...
                 </>
-              ) : isEdit ? 'Mettre a jour' : 'Creer la recette'}
+              ) : (
+                <>
+                  <Pencil size={13} /> {isEdit ? 'Mettre à jour' : 'Créer la recette'}
+                </>
+              )}
             </button>
           </div>
         </form>
