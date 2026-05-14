@@ -49,16 +49,12 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th className={`${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors`}
-      onClick={() => onSort(sk)}>
+    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
       <span className="inline-flex items-center gap-1">
-        {align === 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
         {label}
-        {align !== 'right' && (active
-          ? (currentDir === 'asc' ? <ArrowUp size={12} className="text-amber-500" /> : <ArrowDown size={12} className="text-amber-500" />)
-          : <ArrowUpDown size={11} className="opacity-30" />)}
+        <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
+          {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+        </span>
       </span>
     </th>
   );
@@ -66,7 +62,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 export default function ProductionPage() {
   return (
-    <div className="space-y-5">
+    <div className="odoo-scope">
       <ProductionPlansView />
     </div>
   );
@@ -168,134 +164,138 @@ function ProductionPlansView() {
   ];
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Production</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Planification et suivi de la production</p>
+    <>
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Production</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">Plans</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowResumePicker(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
-            <RotateCcw size={16} /> Reprendre
-          </button>
-          <button onClick={() => { setResumePrefill(null); setShowForm(true); }}
-            className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
-            <Plus size={18} /> Nouveau plan
-          </button>
-        </div>
+        <button onClick={() => { setResumePrefill(null); setShowForm(true); }} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
+        </button>
+        <button onClick={() => setShowResumePicker(true)} className="odoo-btn-secondary">
+          <RotateCcw size={13} /> Reprendre
+        </button>
+        <div style={{ flex: 1 }} />
+        <span className="odoo-pager">
+          <strong>{filteredPlans.length}</strong> / {(data as Record<string, any>[] | undefined)?.length || 0}
+        </span>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Brouillons', value: stats.draft, icon: FileText, gradient: 'from-gray-400 to-gray-500' },
-          { label: 'Confirmés', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
-          { label: 'En cours', value: stats.in_progress, icon: Play, gradient: 'from-amber-500 to-amber-600' },
-          { label: 'Terminés', value: stats.completed, icon: Flag, gradient: 'from-emerald-500 to-emerald-600' },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${stat.gradient} flex items-center justify-center`}>
-                <stat.icon size={18} className="text-white" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{stat.label}</p>
+      {/* ══════ STAT TILES (sober) ══════ */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setStatusFilter('')}
+          className={`odoo-stat-card ${statusFilter === '' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Brouillons
           </div>
-        ))}
+          <div className="odoo-stat-card-value">{stats.draft}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'confirmed' ? '' : 'confirmed')}
+          className={`odoo-stat-card ${statusFilter === 'confirmed' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4, color: '#1f6391' }} />Confirmés
+          </div>
+          <div className="odoo-stat-card-value">{stats.confirmed}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'in_progress' ? '' : 'in_progress')}
+          className={`odoo-stat-card ${statusFilter === 'in_progress' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Play size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />En cours
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: stats.in_progress > 0 ? '#b85d1a' : undefined }}>{stats.in_progress}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'completed' ? '' : 'completed')}
+          className={`odoo-stat-card ${statusFilter === 'completed' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Flag size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Terminés
+          </div>
+          <div className="odoo-stat-card-value">{stats.completed}</div>
+        </button>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
-        {/* Role filter for admin */}
-        {isAdmin && (
-          <>
-            <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
-              <button onClick={() => setRoleFilter('')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  roleFilter === '' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                Tous
-              </button>
-              {CHEF_ROLES.map(role => {
-                const cfg = roleConfig[role] || roleConfig.baker;
-                return (
-                  <button key={role} onClick={() => setRoleFilter(role)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                      roleFilter === role ? `bg-white ${cfg.color} shadow-sm` : 'text-gray-500 hover:text-gray-700'
-                    }`}>
-                    {ROLE_LABELS[role]}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="w-px h-6 bg-gray-200" />
-          </>
+      {/* ══════ SEARCH PANEL avec filtres role + statut ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Rechercher par date, chef, commande..."
+          className="odoo-search-input" />
+        {searchQuery && (
+          <span className="odoo-filter-chip">
+            Recherche: {searchQuery}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearchQuery('')}>×</span>
+          </span>
         )}
+        {statusFilter && (
+          <span className="odoo-filter-chip">
+            {tabs.find(t => t.key === statusFilter)?.label}
+            <span className="odoo-filter-chip-remove" onClick={() => setStatusFilter('')}>×</span>
+          </span>
+        )}
+        {roleFilter && (
+          <span className="odoo-filter-chip">
+            {ROLE_LABELS[roleFilter]}
+            <span className="odoo-filter-chip-remove" onClick={() => setRoleFilter('')}>×</span>
+          </span>
+        )}
+        {isAdmin && (
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
+            className="odoo-filter-dropdown"
+            style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+            <option value="">▾ Chef</option>
+            {CHEF_ROLES.map(role => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+          </select>
+        )}
+      </div>
 
-        {/* Status tabs */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
-                statusFilter === tab.key
-                  ? 'bg-white text-amber-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              <tab.icon size={13} />
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  statusFilter === tab.key ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-500'
-                }`}>{tab.count}</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative flex-1 min-w-[180px] ml-auto">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par date, chef, commande..."
-            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400" />
-        </div>
+      {/* Tabs status secondaires (Odoo notebook) */}
+      <div className="odoo-tabs">
+        {tabs.map((tab) => (
+          <button key={tab.key} onClick={() => setStatusFilter(statusFilter === tab.key ? '' : tab.key)}
+            className={`odoo-tab ${statusFilter === tab.key ? 'active' : ''}`}>
+            <tab.icon size={13} />
+            {tab.label}
+            {tab.count > 0 && (
+              <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{tab.count}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Plans table */}
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <div className="w-8 h-8 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-400">Chargement des plans...</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
       ) : filteredPlans.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <Factory size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">Aucun plan de production</p>
-          <p className="text-xs text-gray-300 mt-1">
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Factory size={40} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucun plan de production</p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>
             {searchQuery ? 'Essayez une autre recherche' : 'Créez votre premier plan de production'}
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50/60">
-                  <th className="text-left px-5 py-3">N° Plan</th>
-                  <SortHeader label="Date" sortKey="plan_date" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                  <SortHeader label="Statut" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Type" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  {isAdmin && <SortHeader label="Chef" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
-                  <SortHeader label="Produits" sortKey="item_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Créé par" sortKey="created_by_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                  <SortHeader label="Commande liée" sortKey="order_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                  <th className="text-center px-4 py-3 w-20"></th>
-                </tr>
-              </thead>
-              <tbody>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>N° Plan</th>
+                <SortHeader label="Date" sortKey="plan_date" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Statut" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Type" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                {isAdmin && <SortHeader label="Chef" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
+                <SortHeader label="Produits" sortKey="item_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Créé par" sortKey="created_by_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Commande liée" sortKey="order_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
                 {sortedPlans.map((p: Record<string, any>, idx: number) => {
                   const status = p.status as string;
                   const sCfg = statusConfig[status] || statusConfig.draft;
@@ -305,99 +305,91 @@ function ProductionPlansView() {
                   const planDate = new Date(p.plan_date as string);
                   const planNumber = (p.id as string).slice(0, 8).toUpperCase();
 
+                  const dotClass = status === 'completed' ? 'ok'
+                    : status === 'in_progress' ? 'warning'
+                    : status === 'confirmed' ? 'ok' : 'neutral';
                   return (
-                    <tr key={p.id as string}
-                      onClick={() => navigate(`/production/${p.id}`)}
-                      className={`border-b border-gray-50 transition-colors hover:bg-amber-50/40 cursor-pointer ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-semibold text-gray-700">{planNumber}</span>
-                          {p.is_semi_finished_plan && (
-                            <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
-                              Semi-fini
+                    <tr key={p.id as string} onClick={() => navigate(`/production/${p.id}`)}>
+                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{planNumber}</span>
+                        {p.is_semi_finished_plan && (
+                          <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Semi-fini</span>
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
+                          <span style={{ fontWeight: 500 }}>{format(planDate, 'dd MMM yyyy', { locale: fr })}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`odoo-tag ${
+                          status === 'completed' ? 'odoo-tag-green'
+                          : status === 'in_progress' ? 'odoo-tag-yellow'
+                          : status === 'confirmed' ? 'odoo-tag-blue'
+                          : 'odoo-tag-grey'
+                        }`}>
+                          <StatusIcon size={10} />
+                          {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
+                        </span>
+                        {Number(p.dep_total) > 0 && (() => {
+                          const depTotal = Number(p.dep_total);
+                          const depFulfilled = Number(p.dep_fulfilled);
+                          const allDone = depFulfilled === depTotal;
+                          return (
+                            <span className={`odoo-tag ${allDone ? 'odoo-tag-green' : 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>
+                              <Layers size={9} /> SF {depFulfilled}/{depTotal}
                             </span>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Calendar size={14} className="text-gray-400 flex-shrink-0" />
-                          <span className="font-medium text-gray-800">{format(planDate, 'dd MMM yyyy', { locale: fr })}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
-                            <StatusIcon size={12} />
-                            {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
-                          </span>
-                          {Number(p.dep_total) > 0 && (() => {
-                            const depTotal = Number(p.dep_total);
-                            const depFulfilled = Number(p.dep_fulfilled);
-                            const allDone = depFulfilled === depTotal;
-                            return (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                allDone ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
-                              }`}>
-                                <Layers size={9} />
-                                SF {depFulfilled}/{depTotal}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 text-center">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <td>
+                        <span className="odoo-tag odoo-tag-grey">
                           {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
                         </span>
                       </td>
                       {isAdmin && (
-                        <td className="px-4 py-3.5">
+                        <td>
                           {p.target_role ? (
-                            <div className="flex items-center gap-2">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${rCfg.bg}`}>
-                                <User size={11} className={rCfg.color} />
-                              </div>
-                              <span className={`font-medium ${rCfg.color}`}>{ROLE_LABELS[p.target_role as string]}</span>
-                            </div>
-                          ) : <span className="text-gray-300">—</span>}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <User size={11} style={{ color: 'var(--theme-accent)' }} />
+                              <span style={{ fontWeight: 500 }}>{ROLE_LABELS[p.target_role as string]}</span>
+                            </span>
+                          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                         </td>
                       )}
-                      <td className="px-4 py-3.5 text-center">
-                        <span className="inline-flex items-center gap-1.5 font-semibold text-gray-700">
-                          <Package size={14} className="text-gray-400" />
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                          <Package size={12} style={{ color: 'var(--theme-text-muted)' }} />
                           {p.item_count as number}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5 text-gray-600">
-                          <User size={13} className="text-gray-400" />
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
+                          <User size={11} />
                           {p.created_by_name as string}
-                        </div>
+                        </span>
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td>
                         {hasOrder ? (
-                          <div className="inline-flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-full">
-                            <ShoppingBag size={12} className="text-blue-500" />
-                            <span className="font-medium text-blue-700">{p.order_number as string}</span>
-                            {p.order_customer_name && (
-                              <span className="text-blue-400">— {p.order_customer_name as string}</span>
-                            )}
-                          </div>
-                        ) : <span className="text-gray-300">—</span>}
+                          <span className="odoo-tag odoo-tag-blue">
+                            <ShoppingBag size={10} /> {p.order_number as string}
+                            {p.order_customer_name && <span style={{ opacity: 0.7 }}> — {p.order_customer_name as string}</span>}
+                          </span>
+                        ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
                           {status === 'draft' && (
-                            <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer ce plan ?')) deleteMutation.mutate(p.id as string); }}
-                              className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
-                              title="Supprimer">
-                              <Trash2 size={15} />
+                            <button onClick={() => { if (confirm('Supprimer ce plan ?')) deleteMutation.mutate(p.id as string); }}
+                              className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}>
+                              <Trash2 size={13} />
                             </button>
                           )}
-                          <div className="w-8 h-8 rounded-lg hover:bg-amber-50 flex items-center justify-center text-gray-300 hover:text-amber-500 transition-colors">
-                            <Eye size={15} />
-                          </div>
+                          <button className="odoo-pager-btn" title="Voir">
+                            <Eye size={13} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -405,7 +397,6 @@ function ProductionPlansView() {
                 })}
               </tbody>
             </table>
-          </div>
         </div>
       )}
 
@@ -420,20 +411,17 @@ function ProductionPlansView() {
 
       {/* Resume picker modal */}
       {showResumePicker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="bg-gradient-to-r from-violet-500 to-purple-600 px-5 py-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <RotateCcw size={20} />
-                </div>
-                <div>
-                  <h3 className="font-bold">Reprendre un plan</h3>
-                  <p className="text-sm text-white/70">Plans d'hier — {format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}</p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+          <div className="odoo-scope" style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+            <div className="odoo-control-bar">
+              <div className="odoo-breadcrumb">
+                <RotateCcw size={14} style={{ color: 'var(--theme-accent)' }} />
+                <span>Reprendre un plan</span>
+                <span className="odoo-breadcrumb-separator">›</span>
+                <span className="odoo-breadcrumb-current">{format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}</span>
               </div>
-              <button onClick={() => setShowResumePicker(false)}
-                className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center text-xl leading-none">&times;</button>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setShowResumePicker(false)} className="odoo-pager-btn" title="Fermer">&times;</button>
             </div>
             <div className="p-4 max-h-80 overflow-y-auto">
               {(() => {
@@ -498,7 +486,7 @@ function ProductionPlansView() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -618,20 +606,18 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:max-h-full">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-5 py-4 sm:rounded-t-2xl text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Factory size={22} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Nouveau plan de production</h2>
-              <p className="text-sm text-white/70">Sélectionnez les produits à produire</p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        {/* Control bar */}
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Production</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">Nouveau plan</span>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors text-xl leading-none">&times;</button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer">&times;</button>
         </div>
 
         {/* Settings bar */}

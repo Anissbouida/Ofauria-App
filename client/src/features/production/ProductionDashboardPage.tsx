@@ -50,22 +50,24 @@ export default function ProductionDashboardPage() {
   const isLoading = loadingRendement || loadingCout;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard Production</h1>
-          <p className="text-sm text-gray-500">Rendement et couts de production</p>
+    <div className="odoo-scope">
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <BarChart3 size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Production</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">Dashboard</span>
         </div>
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+        <div style={{ flex: 1 }} />
+        <div className="odoo-view-switcher">
           {(['7d', '30d', '90d'] as const).map(p => (
-            <button key={p} onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${period === p ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-              {p === '7d' ? '7 jours' : p === '30d' ? '30 jours' : '90 jours'}
+            <button key={p} onClick={() => setPeriod(p)} className={period === p ? 'active' : ''}>
+              {p === '7d' ? '7j' : p === '30d' ? '30j' : '90j'}
             </button>
           ))}
         </div>
       </div>
+      <div style={{ padding: '1rem' }}>
 
       {isLoading && (
         <div className="flex items-center justify-center py-12 text-gray-400">
@@ -195,6 +197,7 @@ export default function ProductionDashboardPage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }
