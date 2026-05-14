@@ -660,8 +660,27 @@ export function BonSortiePanel({
         </button>
       )}
 
-      {/* Lines list */}
-      <div className="space-y-2">
+      {/* Lines list — table-like layout (header strip + rows) */}
+      <div className="odoo-section">
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMagasinier ? '24px 1fr auto auto auto' : '24px 1fr auto auto',
+          gap: '0.625rem',
+          padding: '0.5rem 0.75rem',
+          backgroundColor: 'var(--theme-bg-page)',
+          borderBottom: '1px solid var(--theme-bg-separator)',
+          fontSize: '0.6875rem',
+          fontWeight: 600,
+          color: 'var(--theme-text-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+        }}>
+          <span />
+          <span>Ingrédient</span>
+          <span style={{ textAlign: 'right' }}>Quantité</span>
+          {isMagasinier && <span style={{ textAlign: 'right' }}>Source</span>}
+          <span style={{ textAlign: 'right' }}>Statut</span>
+        </div>
         {(() => {
           // Pour le chef : on agrege par ingredient (un sac de farine peut etre
           // pris sur plusieurs lots → le chef veut juste voir le total commande).
