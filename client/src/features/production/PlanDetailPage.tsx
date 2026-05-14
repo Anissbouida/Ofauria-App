@@ -1529,36 +1529,32 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         const bsc = bonStatusConfig[bon.status as string] || bonStatusConfig.genere;
         const isCloture = bon.status === 'cloture';
         return (
-          <div className="space-y-4">
-            {/* En-tete du BSI (statut + numero) — compact, pas de bouton "gerer" car la gestion
-                se fait inline juste en dessous via BonSortiePanel. */}
-            <div className={`border rounded-2xl p-4 shadow-sm flex items-center gap-4 ${
-              isCloture ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
-            }`}>
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                isCloture ? 'bg-emerald-600' : 'bg-amber-500'
-              }`}>
-                <Truck size={18} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold text-gray-800 text-sm">Bon de sortie</h3>
-                  <span className="text-xs text-gray-500 font-mono">{bon.numero as string}</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${bsc.bg} ${bsc.text}`}>
+          <>
+            {/* En-tete BSI compact (banniere Odoo style) */}
+            <div className={`odoo-alert ${isCloture ? 'warning' : 'warning'}`}
+              style={isCloture
+                ? { backgroundColor: '#e8f5e9', color: '#155724', borderBottomColor: '#c5e1a5' }
+                : undefined}>
+              <Truck size={14} style={{ color: isCloture ? '#28a745' : '#856404', marginTop: 2, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span className="odoo-alert-title">Bon de sortie</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', opacity: 0.85 }}>{bon.numero as string}</span>
+                  <span className={`odoo-tag ${isCloture ? 'odoo-tag-green' : 'odoo-tag-yellow'}`}>
                     {bsc.icon} {bsc.label}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <div style={{ fontSize: '0.75rem', marginTop: 2, opacity: 0.9 }}>
                   {isCloture
-                    ? 'Ingredients livres — vous pouvez passer a l\'onglet Production'
-                    : 'Prelevement des ingredients — gerez les lignes ci-dessous'}
-                </p>
+                    ? 'Ingrédients livrés — vous pouvez passer à l\'onglet Production'
+                    : 'Prélèvement des ingrédients — gérez les lignes ci-dessous'}
+                </div>
               </div>
             </div>
 
-            {/* Panneau de prelevement inline — remplace la navigation vers /production/:id/bon-sortie */}
+            {/* Panneau de prelevement inline */}
             <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
-          </div>
+          </>
         );
       })()}
 

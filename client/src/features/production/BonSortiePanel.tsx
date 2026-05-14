@@ -297,16 +297,14 @@ export function BonSortiePanel({
 
   return (
     <div className={containerClass}>
-      {/* En-tete compact (variant=page uniquement, la page wrapper fournit son propre header) */}
+      {/* En-tete compact (la banniere globale est rendue dans PlanDetailPage) */}
       {variant === 'inline' && (
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-gray-800">Bon de sortie</h3>
-            <p className="text-xs text-gray-400 font-mono">{bon.numero as string}</p>
-          </div>
+        <div className="odoo-section-header" style={{ borderRadius: 4, border: '1px solid var(--theme-bg-separator)' }}>
+          <Truck size={12} /> Bon de sortie
+          <span style={{ marginLeft: 4, fontFamily: 'monospace', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{bon.numero as string}</span>
           {isClosed && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-              <CheckCircle size={12} /> Cloture
+            <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 'auto' }}>
+              <CheckCircle size={10} /> Clôturé
             </span>
           )}
         </div>
@@ -739,49 +737,50 @@ export function BonSortiePanel({
             ? { label: 'Rupture', cls: 'bg-red-50 text-red-700 border-red-200', Icon: AlertTriangle }
             : null;
 
+          const rowDot = isDone ? 'ok'
+            : hasEcart ? 'warning'
+            : lotExpired ? 'danger'
+            : 'neutral';
           return (
             <div
               key={line.id as string}
-              className={`bg-white rounded-xl border p-3.5 transition-all ${
-                isDone ? 'border-emerald-200 bg-emerald-50/30' :
-                hasEcart ? 'border-amber-200 bg-amber-50/30' :
-                lotExpired ? 'border-red-200 bg-red-50/20 opacity-60' :
-                'border-gray-100'
-              }`}
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderBottom: '1px solid var(--theme-bg-separator)',
+                backgroundColor: 'var(--theme-bg-card)',
+                opacity: lotExpired ? 0.6 : 1,
+              }}
             >
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                  isDone ? 'bg-emerald-500 text-white' :
-                  hasEcart ? 'bg-amber-500 text-white' :
-                  lotExpired ? 'bg-red-100 text-red-400' :
-                  'bg-gray-100 text-gray-400'
-                }`}>
-                  {isDone ? <Check size={16} /> :
-                   hasEcart ? <AlertTriangle size={14} /> :
-                   lotExpired ? <AlertTriangle size={14} /> :
-                   <Package size={14} />}
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <span className={`odoo-status-dot ${rowDot}`} />
 
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${isDone ? 'text-emerald-800' : 'text-gray-800'}`}>
-                    {line.ingredient_name as string}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {displayedQty.toFixed(2)} {unit}
-                    {isMagasinier && actual !== null && actual !== allocated && (
-                      <span className="text-amber-600 font-medium ml-1">&rarr; {actual.toFixed(2)}</span>
-                    )}
-                    {isMagasinier && lotExpired && <span className="text-red-500 font-bold ml-1">Lot expire</span>}
-                  </p>
-                  {sourceBadge && !isDone && isMagasinier && (
-                    <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sourceBadge.cls}`}>
-                      <sourceBadge.Icon size={10} />
-                      {sourceBadge.label}
-                      {isToOpenFromEconomat && line.lot_number && (
-                        <span className="font-mono opacity-70">· {line.lot_number as string}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 500, color: 'var(--theme-text-strong)' }}>
+                      {line.ingredient_name as string}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <strong style={{ color: 'var(--theme-text-strong)' }}>{displayedQty.toFixed(2)}</strong> {unit}
+                      {isMagasinier && actual !== null && actual !== allocated && (
+                        <span style={{ color: '#b85d1a', fontWeight: 600, marginLeft: 4 }}>&rarr; {actual.toFixed(2)}</span>
                       )}
                     </span>
-                  )}
+                    {isMagasinier && lotExpired && <span className="odoo-tag odoo-tag-red">Lot expiré</span>}
+                    {sourceBadge && !isDone && isMagasinier && (
+                      <span className={`odoo-tag ${
+                        isTransferRequired ? 'odoo-tag-yellow'
+                        : isToOpenFromEconomat ? 'odoo-tag-blue'
+                        : sourceLocation === 'PESAGE' ? 'odoo-tag-green'
+                        : 'odoo-tag-red'
+                      }`}>
+                        <sourceBadge.Icon size={10} />
+                        {sourceBadge.label}
+                        {isToOpenFromEconomat && line.lot_number && (
+                          <span style={{ fontFamily: 'monospace', opacity: 0.7 }}>· {line.lot_number as string}</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Boutons "Modifier qty" / "Confirmer" : magasinier seul, et uniquement
