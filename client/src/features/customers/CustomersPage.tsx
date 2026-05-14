@@ -8,6 +8,7 @@ import {
   Building2, MapPin, Cake, Heart, MessageSquare,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -321,7 +322,7 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
   const [tab, setTab] = useState<'orders' | 'sales'>('sales');
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end z-50" onClick={onClose}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end z-50">
       <div className="bg-white w-full max-w-lg shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
         {isLoading || !customer ? (
           <div className="flex items-center justify-center h-full">
@@ -493,7 +494,7 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
           </>
         )}
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
@@ -509,7 +510,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   const inputClass = "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-5 flex items-center justify-between flex-shrink-0">
@@ -687,6 +688,6 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

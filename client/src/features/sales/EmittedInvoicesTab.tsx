@@ -12,6 +12,7 @@ import {
   BarChart3, Users, Banknote,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(val: number): string {
@@ -452,7 +453,7 @@ export default function EmittedInvoicesTab() {
 
       {/* Create Invoice Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setShowCreateModal(false); resetManualForm(); }}>
+        <ModalBackdrop onClose={() => { setShowCreateModal(false); resetManualForm(); }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100">
               <div className="flex items-center justify-between">
@@ -565,7 +566,7 @@ export default function EmittedInvoicesTab() {
               )}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Pay Modal */}
@@ -575,7 +576,7 @@ export default function EmittedInvoicesTab() {
         const paid = parseFloat(inv.paid_amount as string);
         const remaining = total - paid;
         return (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPayModal(null)}>
+          <ModalBackdrop onClose={() => setShowPayModal(null)} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
               <div className="p-5 border-b border-gray-100">
                 <div className="flex items-center justify-between">
@@ -634,7 +635,7 @@ export default function EmittedInvoicesTab() {
                 </button>
               </form>
             </div>
-          </div>
+          </ModalBackdrop>
         );
       })()}
     </>

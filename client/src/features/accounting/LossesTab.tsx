@@ -11,6 +11,7 @@ import {
   Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download, Camera,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -289,7 +290,7 @@ export default function LossesTab() {
 
       {/* Photo viewer overlay */}
       {viewPhoto && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setViewPhoto(null)}>
+        <ModalBackdrop onClose={() => setViewPhoto(null)} className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
               <div>
@@ -305,7 +306,7 @@ export default function LossesTab() {
                 className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg" />
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Add loss modal */}

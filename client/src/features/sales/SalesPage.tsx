@@ -6,6 +6,7 @@ import { returnsApi } from '../../api/returns.api';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { getApiErrorMessage } from '../../utils/api-error';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
@@ -448,7 +449,7 @@ export default function SalesPage() {
 
       {/* Import results modal */}
       {importResults && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setImportResults(null)}>
+        <ModalBackdrop onClose={() => setImportResults(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4">Résultats de l'import</h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -485,7 +486,7 @@ export default function SalesPage() {
               Fermer
             </button>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
       {/* Main tabs */}

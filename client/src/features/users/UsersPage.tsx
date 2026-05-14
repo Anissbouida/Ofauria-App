@@ -4,6 +4,7 @@ import { usersApi } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
 import { Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, X, Check, MapPin } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES } from '@ofauria/shared';
 import type { AppModule, UserPermission } from '@ofauria/shared';
 
@@ -383,7 +384,7 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
 
   if (userRole === 'admin') {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
           <h2 className="text-xl font-bold mb-4">Permissions — {userName}</h2>
           <p className="text-gray-500">L'administrateur a acces a tous les modules par defaut.</p>
@@ -391,12 +392,12 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
             <button onClick={onClose} className="btn-secondary">Fermer</button>
           </div>
         </div>
-      </div>
+      </ModalBackdrop>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b flex items-center justify-between">
           <div>
@@ -494,6 +495,6 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

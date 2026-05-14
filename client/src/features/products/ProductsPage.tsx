@@ -10,6 +10,7 @@ import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, Aler
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 import ProductionProfileTab from './ProductionProfileTab';
 import SemiFinisTab from './SemiFinisTab';
@@ -598,9 +599,6 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   // Prevent backdrop click from closing the modal on mount (mobile touch event propagation)
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(t); }, []);
-  // Ne ferme que si le mousedown ET le mouseup ont eu lieu sur le backdrop.
-  // Sinon un drag depuis l'interieur du modal vers le backdrop (ou inversement) le fermait.
-  const mouseDownOnBackdrop = useRef(false);
 
   // Smart recipe search state
   const [recipeSearch, setRecipeSearch] = useState('');
@@ -799,10 +797,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
-      onMouseDown={(e) => { mouseDownOnBackdrop.current = e.target === e.currentTarget; }}
-      onClick={(e) => { if (mounted && e.target === e.currentTarget && mouseDownOnBackdrop.current) onClose(); }}>
+    <ModalBackdrop onClose={() => { if (mounted) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar */}
@@ -1282,6 +1279,6 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

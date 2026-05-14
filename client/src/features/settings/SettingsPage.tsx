@@ -13,6 +13,7 @@ import {
   Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -1633,7 +1634,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
 
       {/* Add/Edit form — Modal overlay */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={resetForm}>
+        <ModalBackdrop onClose={resetForm} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h3 className="font-bold text-gray-800">
@@ -1704,7 +1705,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
               </button>
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

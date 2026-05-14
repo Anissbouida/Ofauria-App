@@ -10,6 +10,7 @@ import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pe
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 interface RecipeIngredient {
@@ -528,7 +529,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   })();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={e => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar (header with breadcrumb + actions) */}
@@ -880,7 +881,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
           )}
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
 
@@ -1323,7 +1324,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }} onClick={onClose}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={e => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 880, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar */}
@@ -1980,6 +1981,6 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
