@@ -552,7 +552,7 @@ function CatalogueTab() {
    Product Form Modal — Redesigned with tabs
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type FormTab = 'general' | 'production' | 'lifecycle' | 'profil_production';
+type FormTab = 'general' | 'production' | 'lifecycle';
 
 function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   product: Record<string, any> | null;
@@ -808,7 +808,6 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
     { key: 'production', label: 'Production', icon: <Factory size={16} /> },
     { key: 'lifecycle', label: 'Cycle de vie', icon: <Clock size={16} /> },
-    { key: 'profil_production', label: 'Profil contenant', icon: <Layers size={16} /> },
   ];
 
   return (
@@ -1172,13 +1171,6 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             )}
 
             {/* ═══ Tab: Cycle de vie ═══ */}
-            {/* ═══ Tab: Profil contenant ═══ */}
-            {activeTab === 'profil_production' && (
-              product
-                ? <ProductionProfileTab productId={product.id as string} onChange={setPendingProfile} />
-                : <ProductionProfileTab onChange={setPendingProfile} />
-            )}
-
             {activeTab === 'lifecycle' && (
               <>
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
