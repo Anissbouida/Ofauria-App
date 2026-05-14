@@ -12,6 +12,7 @@ import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   ClipboardCheck, AlertTriangle, XCircle, PackageCheck,
   Loader2, User, Calendar, Hash, ChefHat, Layers, ArrowRight,
+  ShoppingBag,
 } from 'lucide-react';
 
 /* ─── Constants ─── */
@@ -309,84 +310,87 @@ function SubRequestDetailView({
 
   /* ─── Render ─── */
 
+  const statusTagClass = displayStatus === 'closed' ? 'odoo-tag-green'
+    : displayStatus === 'closed_with_discrepancy' ? 'odoo-tag-orange'
+    : displayStatus === 'cancelled' ? 'odoo-tag-grey'
+    : displayStatus === 'submitted' ? 'odoo-tag-yellow'
+    : displayStatus === 'transferred' ? 'odoo-tag-purple'
+    : 'odoo-tag-blue';
+  const priorityTagClass = request.priority === 'urgent' ? 'odoo-tag-red'
+    : request.priority === 'high' ? 'odoo-tag-orange'
+    : request.priority === 'low' ? 'odoo-tag-blue'
+    : 'odoo-tag-grey';
+
   return (
-    <div className="space-y-6">
-      {/* ══════════════ HEADER CARD ══════════════ */}
-      <div className={`bg-gradient-to-br ${gradient} rounded-2xl p-6 text-white shadow-lg relative overflow-hidden`}>
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white rounded-full" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white rounded-full" />
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <button onClick={() => navigate('/replenishment')} className="odoo-pager-btn" title="Retour">
+          <ArrowLeft size={14} />
+        </button>
+        <div className="odoo-breadcrumb">
+          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/replenishment')}>Approvisionnement</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">
+            #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
+          </span>
         </div>
-        <div className="relative">
-          <div className="flex items-start gap-4">
-            <button onClick={() => navigate('/replenishment')} className="p-2 hover:bg-white/20 rounded-xl transition-colors mt-0.5">
-              <ArrowLeft size={20} />
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold">
-                  Demande #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
-                </h1>
-                <span className="px-3 py-1 rounded-full text-sm font-medium bg-white/20 backdrop-blur-sm">
-                  {STATUS_LABELS[displayStatus] || displayStatus}
-                </span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-white/15">
-                  {PRIORITY_LABELS[request.priority as string] || request.priority}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 mt-2 text-white/80 text-sm flex-wrap">
-                {request.requested_by_name && (
-                  <span className="flex items-center gap-1.5">
-                    <User size={14} /> {request.requested_by_name as string}
-                  </span>
-                )}
-                {request.created_at && (
-                  <span className="flex items-center gap-1.5">
-                    <Calendar size={14} /> {format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
-                  </span>
-                )}
-                {rc && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 flex items-center gap-1">
-                    <ChefHat size={12} /> {ASSIGNED_ROLE_LABELS[assignedRole]}
-                  </span>
-                )}
-                {isPartialTransfer && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20">
-                    {receivedItems.length}/{items.length} recu(s)
-                  </span>
-                )}
-              </div>
-            </div>
+        <span className={`odoo-tag ${statusTagClass}`}>{STATUS_LABELS[displayStatus] || displayStatus}</span>
+        <span className={`odoo-tag ${priorityTagClass}`}>{PRIORITY_LABELS[request.priority as string] || request.priority}</span>
+        <div style={{ flex: 1 }} />
+        {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
+          <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="odoo-btn-danger">
+            <XCircle size={13} /> Annuler
+          </button>
+        )}
+      </div>
 
-            {/* Cancel button */}
-            {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
-              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}
-                className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-medium flex items-center gap-2 transition-colors">
-                <XCircle size={16} /> Annuler
-              </button>
-            )}
-          </div>
-
-          {/* Stats row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold">{items.length}</div>
-              <div className="text-xs text-white/70">Articles</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold">{receivedItems.length}</div>
-              <div className="text-xs text-white/70">Reçus</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold">{readyItems.length}</div>
-              <div className="text-xs text-white/70">Prets</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
-              <div className="text-2xl font-bold">{pendingItems.length}</div>
-              <div className="text-xs text-white/70">En attente</div>
-            </div>
-          </div>
+      {/* ══════ STAT TILES sobres ══════ */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">Articles</div>
+          <div className="odoo-stat-card-value">{items.length}</div>
         </div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">Reçus</div>
+          <div className="odoo-stat-card-value" style={{ color: receivedItems.length > 0 ? '#28a745' : undefined }}>{receivedItems.length}</div>
+        </div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">Prêts</div>
+          <div className="odoo-stat-card-value">{readyItems.length}</div>
+        </div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">En attente</div>
+          <div className="odoo-stat-card-value" style={{ color: pendingItems.length > 0 ? '#b85d1a' : undefined }}>{pendingItems.length}</div>
+        </div>
+      </div>
+
+      {/* ══════ METADATA STRIP ══════ */}
+      <div style={{
+        padding: '0.5rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)',
+        backgroundColor: 'var(--theme-bg-card)',
+        display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+        fontSize: '0.75rem', color: 'var(--theme-text-muted)',
+      }}>
+        {request.requested_by_name && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <User size={11} /> {request.requested_by_name as string}
+          </span>
+        )}
+        {request.created_at && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Calendar size={11} /> {format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
+          </span>
+        )}
+        {rc && (
+          <span className="odoo-tag odoo-tag-purple">
+            <ChefHat size={10} /> {ASSIGNED_ROLE_LABELS[assignedRole]}
+          </span>
+        )}
+        {isPartialTransfer && (
+          <span className="odoo-tag odoo-tag-blue">{receivedItems.length}/{items.length} reçu(s)</span>
+        )}
       </div>
 
       {/* ══════════════ STEPPER ══════════════ */}
@@ -429,7 +433,7 @@ function SubRequestDetailView({
 
       {/* Cancelled banner */}
       {status === 'cancelled' && (
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-2xl p-5 flex items-center gap-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-gray-200 flex items-center justify-center flex-shrink-0">
             <XCircle size={22} className="text-gray-500" />
           </div>
@@ -443,7 +447,7 @@ function SubRequestDetailView({
       {/* Production status banner */}
       {hasProductionItems && !['cancelled', 'closed', 'closed_with_discrepancy'].includes(status) && (
         <div className={`rounded-2xl p-4 flex items-center gap-4 ${
-          productionComplete ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200'
+          productionComplete ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'
         }`}>
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
             productionComplete ? 'bg-emerald-100' : 'bg-blue-100'
@@ -532,14 +536,14 @@ function SubRequestDetailView({
 
       {/* SUBMITTED: Responsable can acknowledge */}
       {status === 'submitted' && isResponsable && isMyRequest && (
-        <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center mx-auto mb-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-yellow-500 flex items-center justify-center mx-auto mb-4">
             <Clock size={28} className="text-white" />
           </div>
           <h3 className="font-bold text-yellow-800 text-lg mb-1">Nouvelle demande en attente</h3>
           <p className="text-sm text-yellow-700 mb-5">Prenez en charge cette demande pour commencer le traitement.</p>
           <button onClick={() => acknowledgeMutation.mutate()} disabled={acknowledgeMutation.isPending}
-            className="px-8 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
+            className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
             {acknowledgeMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <ClipboardCheck size={18} />}
             {acknowledgeMutation.isPending ? 'Prise en charge...' : 'Prendre en charge'}
           </button>
@@ -547,7 +551,7 @@ function SubRequestDetailView({
       )}
 
       {status === 'submitted' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-5 flex items-center gap-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
             <Clock size={22} className="text-yellow-600" />
           </div>
@@ -561,9 +565,9 @@ function SubRequestDetailView({
       {/* ACKNOWLEDGED: Responsable fills preparation form */}
       {(status === 'acknowledged' || status === 'partially_received') && isResponsable && isMyRequest && (
         <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
+          <div className="bg-blue-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center">
                 <PackageCheck size={20} className="text-white" />
               </div>
               <div>
@@ -578,7 +582,7 @@ function SubRequestDetailView({
               </div>
             </div>
             <button onClick={handleStartPreparing} disabled={prepareMutation.isPending || !hasPreparableItems}
-              className={`px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              className={`px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {prepareMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
               {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente' : pendingProductionItems.length > 0 ? 'Préparer le lot disponible' : 'Commencer la préparation'}
             </button>
@@ -662,7 +666,7 @@ function SubRequestDetailView({
       )}
 
       {(status === 'acknowledged' || status === 'partially_received') && (!isResponsable || !isMyRequest) && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
             <ClipboardCheck size={22} className="text-blue-600" />
           </div>
@@ -675,14 +679,14 @@ function SubRequestDetailView({
 
       {/* PREPARING: Responsable can validate transfer */}
       {status === 'preparing' && isResponsable && isMyRequest && (
-        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mx-auto mb-4">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center mx-auto mb-4">
             <Truck size={28} className="text-white" />
           </div>
           <h3 className="font-bold text-indigo-800 text-lg mb-1">Préparation en cours</h3>
           <p className="text-sm text-indigo-600 mb-5">Une fois les articles prets, validez le transfert vers le magasin.</p>
           <button onClick={() => transferMutation.mutate()} disabled={transferMutation.isPending}
-            className="px-8 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
+            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
             {transferMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Truck size={18} />}
             {transferMutation.isPending ? 'Transfert en cours...' : 'Valider le transfert'}
           </button>
@@ -690,7 +694,7 @@ function SubRequestDetailView({
       )}
 
       {status === 'preparing' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-5 flex items-center gap-4">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
             <PackageCheck size={22} className="text-indigo-600" />
           </div>
@@ -704,9 +708,9 @@ function SubRequestDetailView({
       {/* TRANSFERRED: Cashier confirms reception */}
       {status === 'transferred' && isStoreStaff && (
         <div className="bg-white rounded-2xl shadow-sm border border-purple-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-50 to-violet-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+          <div className="bg-purple-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-purple-500 flex items-center justify-center">
                 <Truck size={20} className="text-white" />
               </div>
               <div>
@@ -719,7 +723,7 @@ function SubRequestDetailView({
               </div>
             </div>
             <button onClick={handleConfirmReception} disabled={receptionMutation.isPending}
-              className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
               {receptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               {receptionMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
             </button>
@@ -771,7 +775,7 @@ function SubRequestDetailView({
       )}
 
       {status === 'transferred' && !isStoreStaff && (
-        <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-5 flex items-center gap-4">
+        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
             <Truck size={22} className="text-purple-600" />
           </div>
@@ -785,7 +789,7 @@ function SubRequestDetailView({
       {/* CLOSED: Summary */}
       {(status === 'closed' || status === 'closed_with_discrepancy') && (
         <div className={`rounded-2xl overflow-hidden ${status === 'closed_with_discrepancy' ? 'border border-orange-200' : 'border border-emerald-200'}`}>
-          <div className={`px-6 py-4 flex items-center gap-4 ${status === 'closed_with_discrepancy' ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-200' : 'bg-gradient-to-r from-emerald-50 to-green-50 border-b border-emerald-200'}`}>
+          <div className={`px-6 py-4 flex items-center gap-4 ${status === 'closed_with_discrepancy' ? 'bg-orange-50 border-b border-orange-200' : 'bg-emerald-50 border-b border-emerald-200'}`}>
             <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${status === 'closed_with_discrepancy' ? 'bg-orange-100' : 'bg-emerald-100'}`}>
               {status === 'closed_with_discrepancy' ? <AlertTriangle size={22} className="text-orange-600" /> : <CheckCircle2 size={22} className="text-emerald-600" />}
             </div>
@@ -806,7 +810,7 @@ function SubRequestDetailView({
       {/* ══════════════ ITEMS TABLE (always visible) ══════════════ */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center">
             <Layers size={18} className="text-white" />
           </div>
           <div>

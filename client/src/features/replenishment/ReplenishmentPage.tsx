@@ -118,183 +118,202 @@ export default function ReplenishmentPage() {
     return num.toLowerCase().includes(q) || name.toLowerCase().includes(q);
   });
 
-  const statsCards = [
-    { label: 'En attente', value: statCounts.submitted, gradient: 'from-yellow-500 to-amber-500', icon: <Clock size={20} /> },
-    { label: 'En cours', value: statCounts.acknowledged + statCounts.preparing, gradient: 'from-blue-500 to-indigo-500', icon: <PackageCheck size={20} /> },
-    { label: 'Transférées', value: statCounts.transferred, gradient: 'from-purple-500 to-violet-500', icon: <Truck size={20} /> },
-    { label: 'Clôturées', value: statCounts.closed, gradient: 'from-emerald-500 to-green-500', icon: <CheckCircle size={20} /> },
-  ];
-
   return (
-    <div className="space-y-6">
-      {/* ══════════════ HEADER ══════════════ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Approvisionnement</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{allRequests.length} demande(s) au total</p>
+    <div className="odoo-scope">
+      {/* ══════ CONTROL BAR ══════ */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Approvisionnement</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">Demandes</span>
         </div>
         {(isStoreStaff || isAdmin) && (
-          <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
-            <Plus size={16} /> Nouvelle demande
+          <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau
           </button>
+        )}
+        <div style={{ flex: 1 }} />
+        <span className="odoo-pager">
+          <strong>{filtered.length}</strong> / {allRequests.length}
+        </span>
+      </div>
+
+      {/* ══════ STAT TILES sobres ══════ */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setStatusFilter(statusFilter === 'submitted' ? '' : 'submitted')}
+          className={`odoo-stat-card ${statusFilter === 'submitted' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Clock size={11} style={{ display: 'inline', marginRight: 4, color: '#856404' }} />En attente
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: statCounts.submitted > 0 ? '#856404' : undefined }}>{statCounts.submitted}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'acknowledged' ? '' : 'acknowledged')}
+          className={`odoo-stat-card ${(statusFilter === 'acknowledged' || statusFilter === 'preparing') ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <PackageCheck size={11} style={{ display: 'inline', marginRight: 4, color: '#1f6391' }} />En cours
+          </div>
+          <div className="odoo-stat-card-value">{statCounts.acknowledged + statCounts.preparing}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'transferred' ? '' : 'transferred')}
+          className={`odoo-stat-card ${statusFilter === 'transferred' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Transférées
+          </div>
+          <div className="odoo-stat-card-value">{statCounts.transferred}</div>
+        </button>
+        <button onClick={() => setStatusFilter(statusFilter === 'closed' ? '' : 'closed')}
+          className={`odoo-stat-card ${statusFilter === 'closed' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <CheckCircle size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Clôturées
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: statCounts.closed > 0 ? '#28a745' : undefined }}>{statCounts.closed}</div>
+        </button>
+      </div>
+
+      {/* ══════ SEARCH PANEL ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Rechercher par numéro ou demandeur..."
+          className="odoo-search-input" />
+        {searchQuery && (
+          <span className="odoo-filter-chip">
+            Recherche: {searchQuery}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearchQuery('')}>×</span>
+          </span>
+        )}
+        {statusFilter && (
+          <span className="odoo-filter-chip">
+            {tabs.find(t => t.key === statusFilter)?.label}
+            <span className="odoo-filter-chip-remove" onClick={() => setStatusFilter('')}>×</span>
+          </span>
         )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {statsCards.map(s => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center text-white`}>
-                {s.icon}
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{s.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
-          </div>
+      {/* ══════ TABS Odoo (statut) ══════ */}
+      <div className="odoo-tabs">
+        {tabs.map(tab => (
+          <button key={tab.key} type="button" onClick={() => setStatusFilter(tab.key)}
+            className={`odoo-tab ${statusFilter === tab.key ? 'active' : ''}`}>
+            {tab.label}
+            {tab.count > 0 && (
+              <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{tab.count}</span>
+            )}
+          </button>
         ))}
       </div>
 
-      {/* ══════════════ FILTER BAR ══════════════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
-        <div className="flex items-center gap-3">
-          {/* Status tabs */}
-          <div className="flex-1 flex gap-1 overflow-x-auto bg-gray-50 rounded-xl p-1">
-            {tabs.map(tab => (
-              <button key={tab.key} onClick={() => setStatusFilter(tab.key)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                  statusFilter === tab.key
-                    ? 'bg-white text-gray-800 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                {tab.label}
-                {tab.count > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    statusFilter === tab.key ? 'bg-gray-200 text-gray-700' : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          {/* Search */}
-          <div className="relative w-56">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Rechercher..." className="input pl-9" />
-            {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
-          </div>
-        </div>
-      </div>
-
-      {/* ══════════════ REQUEST LIST ══════════════ */}
+      {/* ══════ REQUEST TABLE (.odoo-table) ══════ */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-40">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 size={28} className="animate-spin text-indigo-500" />
-            <span className="text-gray-500 text-sm">Chargement...</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-            <PackageOpen size={32} className="text-gray-400" />
-          </div>
-          <p className="text-gray-500 font-medium">Aucune demande d'approvisionnement</p>
-          <p className="text-gray-400 text-sm mt-1">Les demandes apparaîtront ici</p>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <PackageOpen size={40} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucune demande d'approvisionnement</p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Les demandes apparaîtront ici</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((r) => {
-            const effectiveStatus = (r.display_status as string) || (r.status as string);
-            const sc = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.submitted;
-            const itemCount = (r.item_count as number) || 0;
-            const completedCount = (r.completed_count as number) || 0;
-            const progress = itemCount > 0 ? Math.round((completedCount / itemCount) * 100) : 0;
-            const rc = ROLE_CONFIG[r.assigned_role as string];
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>N° Demande</th>
+                <th>Statut</th>
+                <th>Priorité</th>
+                <th>Rôle</th>
+                <th>Date</th>
+                <th>Demandeur</th>
+                <th style={{ textAlign: 'right' }}>Progression</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const effectiveStatus = (r.display_status as string) || (r.status as string);
+                const sc = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.submitted;
+                const itemCount = (r.item_count as number) || 0;
+                const completedCount = (r.completed_count as number) || 0;
+                const progress = itemCount > 0 ? Math.round((completedCount / itemCount) * 100) : 0;
 
-            // Left bar color
-            const barColor = effectiveStatus === 'submitted' ? 'bg-yellow-400'
-              : effectiveStatus === 'acknowledged' ? 'bg-blue-500'
-              : effectiveStatus === 'preparing' ? 'bg-indigo-500'
-              : effectiveStatus === 'transferred' ? 'bg-purple-500'
-              : effectiveStatus === 'partially_delivered' ? 'bg-teal-500'
-              : effectiveStatus === 'closed' ? 'bg-emerald-500'
-              : effectiveStatus === 'closed_with_discrepancy' ? 'bg-orange-500'
-              : 'bg-gray-400';
+                const dotClass = effectiveStatus === 'closed' ? 'ok'
+                  : effectiveStatus === 'closed_with_discrepancy' ? 'warning'
+                  : effectiveStatus === 'cancelled' ? 'neutral'
+                  : effectiveStatus === 'submitted' ? 'warning'
+                  : 'ok';
+                const statusTag = effectiveStatus === 'closed' ? 'odoo-tag-green'
+                  : effectiveStatus === 'closed_with_discrepancy' ? 'odoo-tag-orange'
+                  : effectiveStatus === 'cancelled' ? 'odoo-tag-grey'
+                  : effectiveStatus === 'submitted' ? 'odoo-tag-yellow'
+                  : effectiveStatus === 'transferred' ? 'odoo-tag-purple'
+                  : 'odoo-tag-blue';
+                const priorityTag = r.priority === 'urgent' ? 'odoo-tag-red'
+                  : r.priority === 'high' ? 'odoo-tag-orange'
+                  : r.priority === 'low' ? 'odoo-tag-blue'
+                  : 'odoo-tag-grey';
 
-            return (
-              <div key={r.id as string}
-                onClick={() => navigate(`/replenishment/${r.id}`)}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer overflow-hidden flex group">
-                {/* Left color bar */}
-                <div className={`w-1.5 ${barColor} flex-shrink-0 rounded-l-2xl`} />
-
-                <div className="flex-1 p-4 flex items-center gap-4">
-                  {/* Icon */}
-                  <div className={`w-11 h-11 rounded-xl ${sc.bg} flex items-center justify-center flex-shrink-0`}>
-                    <Package size={20} className={sc.text} />
-                  </div>
-
-                  {/* Main info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-sm text-gray-900">
+                return (
+                  <tr key={r.id as string} onClick={() => navigate(`/replenishment/${r.id}`)}>
+                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         #{r.request_number || (r.id as string).slice(0, 8)}
                       </span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${sc.bg} ${sc.text}`}>
+                    </td>
+                    <td>
+                      <span className={`odoo-tag ${statusTag}`}>
                         {sc.icon} {STATUS_LABELS[effectiveStatus] || effectiveStatus}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${PRIORITY_COLORS[r.priority as string] || PRIORITY_COLORS.normal}`}>
+                    </td>
+                    <td>
+                      <span className={`odoo-tag ${priorityTag}`}>
                         {PRIORITY_LABELS[r.priority as string] || r.priority}
                       </span>
-                      {rc && (
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${rc.bg} ${rc.text}`}>
+                    </td>
+                    <td>
+                      {r.assigned_role ? (
+                        <span className="odoo-tag odoo-tag-purple">
                           {ASSIGNED_ROLE_LABELS[r.assigned_role as string] || r.assigned_role}
                         </span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar size={11} />
+                        {format(new Date(r.created_at as string), 'dd MMM HH:mm', { locale: fr })}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <User size={11} />
+                        {r.requested_by_name as string || '—'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.75rem' }}>{completedCount}/{itemCount}</span>
+                      <div style={{ width: 60, height: 3, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 3, marginLeft: 'auto' }}>
+                        <div style={{
+                          height: '100%', width: `${progress}%`,
+                          backgroundColor: progress >= 100 ? '#28a745' : 'var(--theme-accent)',
+                        }} />
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                      {['submitted', 'acknowledged'].includes(r.status as string) && (isAdmin || (isStoreStaff && r.requested_by === user?.id)) && (
+                        <button onClick={() => cancelMutation.mutate(r.id as string)}
+                          className="odoo-pager-btn" title="Annuler" style={{ color: '#dc3545' }}>
+                          <Trash2 size={13} />
+                        </button>
                       )}
-                    </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-                      <span className="flex items-center gap-1">
-                        <Calendar size={12} /> {format(new Date(r.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User size={12} /> {r.requested_by_name as string || '—'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Articles progress */}
-                  <div className="flex items-center gap-4 flex-shrink-0">
-                    <div className="text-center">
-                      <div className="flex items-center gap-1.5 text-sm">
-                        <Layers size={14} className="text-gray-400" />
-                        <span className="font-bold text-gray-700">{completedCount}/{itemCount}</span>
-                      </div>
-                      <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
-                        <div className={`h-full rounded-full transition-all ${progress >= 100 ? 'bg-emerald-500' : 'bg-indigo-400'}`} style={{ width: `${progress}%` }} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    {['submitted', 'acknowledged'].includes(r.status as string) && (isAdmin || (isStoreStaff && r.requested_by === user?.id)) && (
-                      <button
-                        onClick={() => cancelMutation.mutate(r.id as string)}
-                        className="p-2 hover:bg-red-50 rounded-xl text-red-400 hover:text-red-600 transition-colors" title="Annuler">
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Chevron */}
-                  <ChevronRight size={18} className="text-gray-300 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -488,23 +507,21 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:h-[calc(100vh-2rem)] sm:max-w-5xl shadow-2xl">
-
-        {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-500 to-blue-600 px-6 py-5 text-white sm:rounded-t-2xl shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-                <Package size={22} />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold">Nouvelle demande d'approvisionnement</h2>
-                <p className="text-indigo-200 text-xs mt-0.5">{hasHistory ? `Suggestions pour ${getTargetDayName()} basees sur l'historique du meme jour (+10%)` : 'Aucun historique — saisie manuelle'}</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors text-xl leading-none">&times;</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        {/* Control bar */}
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Approvisionnement</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">Nouvelle demande</span>
           </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            {hasHistory ? `Suggestions pour ${getTargetDayName()} basées sur l'historique du même jour (+10%)` : 'Aucun historique — saisie manuelle'}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer">&times;</button>
         </div>
 
         {/* Per-item warnings are shown inline below each product */}
