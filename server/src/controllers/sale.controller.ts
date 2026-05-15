@@ -4,6 +4,7 @@ import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
+import { attendanceRepository } from '../repositories/employee.repository.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -44,7 +45,7 @@ export const saleController = {
   },
 
   async checkout(req: AuthRequest, res: Response) {
-    const { customerId, items, paymentMethod, notes, discountAmount = 0, paymentStatus = 'paid', unpaidCustomerName } = req.body;
+    const { customerId, items, paymentMethod, notes, discountAmount = 0, paymentStatus = 'paid', unpaidCustomerName, employeeId: explicitEmployeeId } = req.body;
 
     // POS strictly consumes from vitrine (product_store_stock). Cashier must be
     // rattached to a store — otherwise we risk silently decrementing the global
@@ -110,11 +111,20 @@ export const saleController = {
     // (le mode reel sera renseigne lors du pay).
     const effectivePaymentMethod = paymentStatus === 'unpaid' ? 'credit' : paymentMethod;
 
+    // Attribution a un employe : selection explicite > dernier pointage actif du store > null.
+    // Ce champ sert aux rapports CA/employe et au calcul de commission.
+    let employeeId: string | null = explicitEmployeeId || null;
+    if (!employeeId) {
+      const active = await attendanceRepository.findLastActiveEmployee(req.user!.storeId);
+      if (active) employeeId = active.id;
+    }
+
     const sale = await saleRepository.create({
       customerId, userId: req.user!.userId,
       subtotal, taxAmount, discountAmount, total, paymentMethod: effectivePaymentMethod, notes, items: saleItems,
       sessionId: activeSession.id, storeId: req.user!.storeId,
       paymentStatus, unpaidCustomerName: unpaidCustomerName?.trim() || undefined,
+      employeeId: employeeId || undefined,
     });
 
     res.status(201).json({ success: true, data: sale });

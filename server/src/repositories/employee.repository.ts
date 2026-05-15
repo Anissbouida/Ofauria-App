@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
+import { comparePin, hashPin } from '../utils/hash.js';
 
 export const employeeRepository = {
   async findAll(storeId?: string) {
@@ -71,6 +72,22 @@ export const employeeRepository = {
   async delete(id: string) {
     await db.query('UPDATE employees SET is_active = false WHERE id = $1', [id]);
   },
+
+  async setPin(id: string, pin: string) {
+    const hash = pin ? await hashPin(pin) : null;
+    await db.query('UPDATE employees SET pin_code = $1 WHERE id = $2', [hash, id]);
+  },
+
+  async findByPin(pin: string, storeId?: string) {
+    const where = storeId ? 'WHERE store_id = $1 AND pin_code IS NOT NULL AND is_active = true'
+                          : 'WHERE pin_code IS NOT NULL AND is_active = true';
+    const params = storeId ? [storeId] : [];
+    const result = await db.query(`SELECT * FROM employees ${where}`, params);
+    for (const emp of result.rows) {
+      if (await comparePin(pin, emp.pin_code)) return emp;
+    }
+    return null;
+  },
 };
 
 export const scheduleRepository = {
@@ -139,21 +156,73 @@ export const attendanceRepository = {
   async upsert(data: {
     employeeId: string; date: string; checkIn?: string; checkOut?: string;
     status: string; overtimeMinutes?: number; notes?: string;
+    checkInMethod?: string; checkInTerminal?: string;
+    checkOutMethod?: string; checkOutTerminal?: string;
   }) {
     const result = await db.query(
-      `INSERT INTO attendance (employee_id, date, check_in, check_out, status, overtime_minutes, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO attendance (employee_id, date, check_in, check_out, status, overtime_minutes, notes,
+                               check_in_method, check_in_terminal, check_out_method, check_out_terminal)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (employee_id, date) DO UPDATE SET
          check_in = COALESCE(EXCLUDED.check_in, attendance.check_in),
          check_out = COALESCE(EXCLUDED.check_out, attendance.check_out),
          status = EXCLUDED.status,
          overtime_minutes = EXCLUDED.overtime_minutes,
-         notes = EXCLUDED.notes
+         notes = EXCLUDED.notes,
+         check_in_method = COALESCE(EXCLUDED.check_in_method, attendance.check_in_method),
+         check_in_terminal = COALESCE(EXCLUDED.check_in_terminal, attendance.check_in_terminal),
+         check_out_method = COALESCE(EXCLUDED.check_out_method, attendance.check_out_method),
+         check_out_terminal = COALESCE(EXCLUDED.check_out_terminal, attendance.check_out_terminal)
        RETURNING *`,
       [data.employeeId, data.date, data.checkIn || null, data.checkOut || null,
-       data.status, data.overtimeMinutes || 0, data.notes || null]
+       data.status, data.overtimeMinutes || 0, data.notes || null,
+       data.checkInMethod || null, data.checkInTerminal || null,
+       data.checkOutMethod || null, data.checkOutTerminal || null]
     );
     return result.rows[0];
+  },
+
+  async findToday(employeeId: string) {
+    const result = await db.query(
+      `SELECT * FROM attendance WHERE employee_id = $1 AND date = CURRENT_DATE`,
+      [employeeId]
+    );
+    return result.rows[0] || null;
+  },
+
+  async findActiveOnStore(storeId: string) {
+    // Employes ayant pointe leur arrivee aujourd'hui mais pas encore leur depart.
+    // Sert a determiner qui est "en service" pour attribuer une vente.
+    const result = await db.query(
+      `SELECT a.*, e.first_name, e.last_name, e.role
+         FROM attendance a
+         JOIN employees e ON e.id = a.employee_id
+        WHERE a.date = CURRENT_DATE
+          AND a.check_in IS NOT NULL
+          AND a.check_out IS NULL
+          AND e.store_id = $1
+        ORDER BY a.check_in DESC`,
+      [storeId]
+    );
+    return result.rows;
+  },
+
+  async findLastActiveEmployee(storeId: string) {
+    // Le dernier employe ayant pointe son arrivee sans depart sur ce store.
+    // Utilise comme fallback pour sales.employee_id si pas de selection explicite.
+    const result = await db.query(
+      `SELECT e.id, e.first_name, e.last_name
+         FROM attendance a
+         JOIN employees e ON e.id = a.employee_id
+        WHERE a.date = CURRENT_DATE
+          AND a.check_in IS NOT NULL
+          AND a.check_out IS NULL
+          AND e.store_id = $1
+        ORDER BY a.check_in DESC
+        LIMIT 1`,
+      [storeId]
+    );
+    return result.rows[0] || null;
   },
 
   async bulkUpsert(records: {

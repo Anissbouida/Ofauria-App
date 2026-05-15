@@ -6,6 +6,15 @@ export const employeesApi = {
   create: (data: Record<string, any>) => api.post('/employees', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/employees/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/employees/${id}`),
+  setPin: (id: string, pin: string) => api.put(`/employees/${id}/pin`, { pin }).then(r => r.data.data),
+  clearPin: (id: string) => api.delete(`/employees/${id}/pin`).then(r => r.data.data),
+};
+
+export const kioskApi = {
+  clock: (pin: string, opts?: { terminal?: string; storeId?: string }) =>
+    api.post('/attendance/kiosk/clock', { pin, ...opts }).then(r => r.data.data),
+  active: (storeId: string) =>
+    api.get('/attendance/kiosk/active', { params: { storeId } }).then(r => r.data.data),
 };
 
 export const schedulesApi = {

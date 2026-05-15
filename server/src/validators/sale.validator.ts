@@ -28,6 +28,9 @@ export const checkoutSchema = z.object({
   paymentStatus: z.enum(['paid', 'unpaid']).optional().default('paid'),
   // Nom libre du beneficiaire quand customerId n'est pas fourni (ex: personnel).
   unpaidCustomerName: z.string().trim().min(1).max(120).optional(),
+  // Employe qui realise la vente (selecteur explicite au POS). Si absent, le
+  // controller utilise le dernier pointage actif du store comme fallback.
+  employeeId: uuid.optional(),
 });
 
 export const paySaleSchema = z.object({
