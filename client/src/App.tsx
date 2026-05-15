@@ -8,7 +8,6 @@ import { ProductionTimerProvider } from './context/ProductionTimerContext';
 import ProductionTimerWidget from './components/ui/ProductionTimerWidget';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './features/auth/LoginPage';
-import ClockInTerminal from './features/employees/ClockInTerminal';
 import HomePage from './features/dashboard/HomePage';
 import ProductsPage from './features/products/ProductsPage';
 import OrdersPage from './features/orders/OrdersPage';
@@ -52,7 +51,6 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/badgeuse" element={<ClockInTerminal />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/products" element={<ProductsPage />} />

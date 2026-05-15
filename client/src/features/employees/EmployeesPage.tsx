@@ -7,7 +7,7 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
-  ArrowUpDown, ArrowUp, ArrowDown, FileText, Lock,
+  ArrowUpDown, ArrowUp, ArrowDown, FileText,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
@@ -78,8 +78,6 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [viewDetail, setViewDetail] = useState<Record<string, any> | null>(null);
-  const [pinTarget, setPinTarget] = useState<Record<string, any> | null>(null);
-  const [pinValue, setPinValue] = useState('');
   const [searchEmp, setSearchEmp] = useState('');
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -246,9 +244,6 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                       <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
                         <Pencil size={15} className="text-gray-500" />
                       </button>
-                      <button onClick={() => { setPinTarget(e); setPinValue(''); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={e.has_pin ? 'PIN defini — modifier' : 'Definir PIN de pointage'}>
-                        <Lock size={15} className={e.has_pin ? 'text-emerald-500' : 'text-gray-400'} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -400,55 +395,6 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                 <button type="submit" disabled={saveMutation.isPending} className="btn-primary">Enregistrer</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* PIN modal — definir/changer le PIN de pointage */}
-      {pinTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setPinTarget(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6" onClick={ev => ev.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <Lock size={20} className="text-teal-500" />
-              <h2 className="text-lg font-bold">PIN de pointage</h2>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              {pinTarget.first_name} {pinTarget.last_name}
-              {pinTarget.has_pin && <span className="ml-2 inline-flex items-center gap-1 text-xs text-emerald-600"><Check size={12} /> PIN actuel defini</span>}
-            </p>
-            <input
-              type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6}
-              value={pinValue} onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ''))}
-              placeholder="4 a 6 chiffres" autoFocus
-              className="input text-center text-2xl tracking-widest font-mono"
-            />
-            <p className="text-xs text-gray-400 mt-2">L'employe utilisera ce code sur la badgeuse pour pointer.</p>
-            <div className="flex gap-3 justify-between pt-4">
-              {pinTarget.has_pin ? (
-                <button type="button" onClick={async () => {
-                  await employeesApi.clearPin(pinTarget.id as string);
-                  queryClient.invalidateQueries({ queryKey: ['employees'] });
-                  notify.success('PIN supprime');
-                  setPinTarget(null);
-                }} className="text-sm text-red-500 hover:text-red-700">
-                  Supprimer le PIN
-                </button>
-              ) : <span />}
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setPinTarget(null)} className="btn-secondary">Annuler</button>
-                <button type="button" disabled={pinValue.length < 4} onClick={async () => {
-                  try {
-                    await employeesApi.setPin(pinTarget.id as string, pinValue);
-                    queryClient.invalidateQueries({ queryKey: ['employees'] });
-                    notify.success('PIN enregistre');
-                    setPinTarget(null);
-                  } catch (err: unknown) {
-                    const e = err as { response?: { data?: { error?: { message?: string } } } };
-                    notify.error(e?.response?.data?.error?.message || 'Echec de l\'enregistrement');
-                  }
-                }} className="btn-primary">Enregistrer</button>
-              </div>
-            </div>
           </div>
         </div>
       )}

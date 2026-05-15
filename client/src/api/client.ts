@@ -32,10 +32,8 @@ api.interceptors.response.use(
       // Plus de tokens en localStorage, mais on nettoie les legacy au cas ou.
       localStorage.removeItem('ofauria_token');
       localStorage.removeItem('ofauria_user');
-      // Pas de redirection si on est deja sur une page publique (sinon boucle).
-      const path = window.location.pathname;
-      const isPublicPage = path.startsWith('/login') || path.startsWith('/badgeuse');
-      if (!isPublicPage) {
+      // Don't redirect if already on login page (prevents infinite reload loop)
+      if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
     }
