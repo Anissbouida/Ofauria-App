@@ -3,6 +3,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Printer, X } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
+import { salePrintApi } from '../../api/printer.api';
+import { notify } from '../../components/ui/InlineNotification';
 
 interface ReceiptItem {
   name: string;
@@ -12,6 +14,7 @@ interface ReceiptItem {
 }
 
 interface ReceiptData {
+  saleId?: string;          // requis pour impression backend ESC/POS
   saleNumber: string;
   date: string;
   cashierName: string;
@@ -87,7 +90,35 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
   // Use base64 for display too (ensures it works everywhere)
   const displayLogo = logoBase64 || logoSrc;
 
-  const handlePrint = useCallback(() => {
+  // Tente d'abord l'impression backend (ESC/POS direct + tiroir si cash).
+  // Si pas de saleId ou erreur backend, retombe sur l'impression navigateur.
+  const handlePrint = useCallback(async () => {
+    // Voie 1 : backend ESC/POS si saleId connu
+    if (receipt.saleId) {
+      try {
+        await salePrintApi.printSale(receipt.saleId, {
+          cashGiven: receipt.cashGiven,
+          changeAmount: receipt.changeAmount,
+          openDrawer: settings.receiptOpenDrawer && receipt.paymentMethod === 'cash',
+        });
+        notify.success('Ticket imprime');
+        setHasPrinted(true);
+        return;
+      } catch (err: unknown) {
+        const code = (err as { response?: { status?: number } })?.response?.status;
+        const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+        // 502 = imprimante injoignable / non configuree → fallback navigateur
+        // Sinon (404 sale, 403, etc) on remonte l'erreur.
+        if (code !== 502) {
+          notify.error(msg || 'Erreur impression');
+          return;
+        }
+        // Continue vers la voie 2 (browser print) sans bruit — message info
+        console.warn('Backend printer unavailable, falling back to browser print:', msg);
+      }
+    }
+
+    // Voie 2 : impression navigateur (legacy fallback, sans tiroir)
     const content = receiptRef.current?.innerHTML || '';
     if (!content) return;
 

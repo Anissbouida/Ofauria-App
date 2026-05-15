@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import PrinterSettingsCard from './PrinterSettingsCard';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -670,6 +671,9 @@ function PrintTab() {
       <div className="grid lg:grid-cols-[1fr_320px] gap-6">
         {/* Settings panel */}
         <div className="space-y-6">
+          {/* Imprimantes physiques ESC/POS */}
+          <PrinterSettingsCard />
+
           {/* Logo */}
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <div className="flex items-center gap-3 mb-6">
