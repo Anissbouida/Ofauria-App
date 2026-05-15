@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { saleController } from '../controllers/sale.controller.js';
+import { printerController } from '../controllers/printer.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -27,5 +28,6 @@ router.post(
   saleController.pay,
 );
 router.post('/import', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.importCSV);
+router.post('/:id/print', authenticate, authorize(...ROLE_GROUPS.SALES), printerController.printSale);
 
 export default router;

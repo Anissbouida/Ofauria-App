@@ -33,6 +33,7 @@ interface CartItem {
 }
 
 interface ReceiptData {
+  saleId?: string;
   saleNumber: string;
   date: string;
   cashierName: string;
@@ -462,6 +463,7 @@ export default function POSPage() {
         ? customerSearch
         : (sale.unpaid_customer_name as string | undefined);
       const receipt: ReceiptData = {
+        saleId: sale.id as string,
         saleNumber: sale.sale_number as string,
         date: sale.created_at as string,
         cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
