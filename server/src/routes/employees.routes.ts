@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { employeeController, scheduleController, attendanceController, leaveController, payrollController, attendanceKioskController, employeePinController } from '../controllers/employee.controller.js';
+import { employeeController, scheduleController, attendanceController, leaveController, payrollController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -12,10 +12,6 @@ router.post('/', authenticate, authorize(ROLES.ADMIN), employeeController.create
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), employeeController.update);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), employeeController.remove);
 
-// PIN de pointage — admin uniquement
-router.put('/:id/pin', authenticate, authorize(ROLES.ADMIN), employeePinController.setPin);
-router.delete('/:id/pin', authenticate, authorize(ROLES.ADMIN), employeePinController.clearPin);
-
 export default router;
 
 // Schedules
@@ -27,11 +23,6 @@ schedulesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANA
 
 // Attendance
 export const attendanceRouter = Router();
-// Kiosque self-service — PUBLIQUES (PIN = seul credential). A monter avant les
-// routes admin pour eviter que /kiosk/* ne soit capture par /:id du delete.
-attendanceRouter.post('/kiosk/clock', attendanceKioskController.clock);
-attendanceRouter.get('/kiosk/active', attendanceKioskController.listActive);
-
 attendanceRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), attendanceController.list);
 attendanceRouter.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), attendanceController.monthlySummary);
 attendanceRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), attendanceController.upsert);

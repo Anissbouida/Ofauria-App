@@ -1,7 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
-import { comparePin, hashPin } from '../utils/hash.js';
 
 export const employeeRepository = {
   async findAll(storeId?: string) {
@@ -71,22 +70,6 @@ export const employeeRepository = {
 
   async delete(id: string) {
     await db.query('UPDATE employees SET is_active = false WHERE id = $1', [id]);
-  },
-
-  async setPin(id: string, pin: string) {
-    const hash = pin ? await hashPin(pin) : null;
-    await db.query('UPDATE employees SET pin_code = $1 WHERE id = $2', [hash, id]);
-  },
-
-  async findByPin(pin: string, storeId?: string) {
-    const where = storeId ? 'WHERE store_id = $1 AND pin_code IS NOT NULL AND is_active = true'
-                          : 'WHERE pin_code IS NOT NULL AND is_active = true';
-    const params = storeId ? [storeId] : [];
-    const result = await db.query(`SELECT * FROM employees ${where}`, params);
-    for (const emp of result.rows) {
-      if (await comparePin(pin, emp.pin_code)) return emp;
-    }
-    return null;
   },
 };
 
