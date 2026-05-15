@@ -573,10 +573,12 @@ export default function EmittedInvoicesTab() {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
                 const amount = parseFloat(fd.get('amount') as string);
+                const paymentDate = (fd.get('paymentDate') as string) || format(new Date(), 'yyyy-MM-dd');
                 if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
                 if (amount > remaining) { notify.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
                 payMutation.mutate({
                   invoiceId: inv.id as string, type: 'income', amount, paymentMethod: payMethod,
+                  paymentDate,
                   description: `Encaissement facture ${inv.invoice_number}`,
                   ...(payMethod === 'check' ? { checkNumber: fd.get('checkNumber') as string, checkDate: fd.get('checkDate') as string } : {}),
                 });
@@ -589,6 +591,9 @@ export default function EmittedInvoicesTab() {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Montant</label>
                   <input name="amount" type="number" step="0.01" defaultValue={remaining} max={remaining}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 text-lg font-semibold text-center" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Date d'encaissement</label>
+                  <input name="paymentDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30" /></div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
                   <div className="flex gap-2">
