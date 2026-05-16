@@ -15,7 +15,7 @@ import {
   User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
   ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
   ShoppingCart, Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
-  MessageSquare, Send, Droplets, Info, Trash2
+  MessageSquare, Send, Info, Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -88,12 +88,8 @@ export default function PlanDetailPage() {
     enabled: !!id && (plan?.status === 'completed' || plan?.status === 'in_progress'),
   });
 
-  // FEFO preview: which lots will be used (read-only preview before production)
-  const { data: fefoPreview = [] } = useQuery({
-    queryKey: ['fefo-preview', id],
-    queryFn: () => ingredientLotsApi.fefoPreview(id!),
-    enabled: !!id && ['confirmed', 'in_progress'].includes(plan?.status),
-  });
+  // Note : l'apercu FEFO a ete retire de cette page. La selection des lots se
+  // fait maintenant dans le module Warehouse / BSI (transfert Economat -> Pesage).
 
   // Activity feed
   const { data: activities = [], refetch: refetchActivities } = useQuery({
@@ -329,13 +325,11 @@ export default function PlanDetailPage() {
     const hour = new Date().getHours();
     const shift = hour < 14 ? 'Matin' : 'Apres-midi';
 
-    // Build ingredient rows from fefoPreview data (FEFO lot allocation)
-    const fefoItems = (fefoPreview as Record<string, any>[]) || [];
-
-    // Aggregate needs (same as the needs variable) for ingredients without FEFO lots
+    // Build ingredient rows — l'allocation par lot (FEFO) est maintenant geree
+    // dans le BSI / module Warehouse. Ici on imprime juste la liste des besoins
+    // bruts du plan, sans info de lot.
     const needsForPrint = needs;
 
-    // Build rows: one row per ingredient, with FEFO lot info when available
     type BsiRow = {
       ingredientName: string;
       neededQty: number;
@@ -349,36 +343,10 @@ export default function PlanDetailPage() {
     const rows: BsiRow[] = [];
 
     for (const need of needsForPrint) {
-      const ingredientId = need.ingredient_id as string;
       const ingredientName = need.ingredient_name as string;
       const neededQty = parseFloat(need.needed_quantity as string);
       const unit = (need.unit as string) || '';
-
-      // Find matching FEFO preview entry
-      const fefoEntry = fefoItems.find((f) => (f.ingredientId as string) === ingredientId);
-      const lots = fefoEntry ? (fefoEntry.lots as Record<string, any>[]) || [] : [];
-
-      if (lots.length > 0) {
-        // One row per lot used for this ingredient
-        for (const lot of lots) {
-          const expDate = lot.expirationDate as string | null;
-          const daysLeft = lot.daysUntilExpiry as number | null;
-          let urgency: 'urgent' | 'priority' | 'normal' = 'normal';
-          if (daysLeft !== null && daysLeft < 3) urgency = 'urgent';
-          else if (daysLeft !== null && daysLeft < 7) urgency = 'priority';
-
-          rows.push({
-            ingredientName,
-            neededQty: parseFloat((lot.quantityToUse as number).toFixed(2)),
-            unit,
-            lotNumber: (lot.supplierLotNumber as string) || '—',
-            expirationDate: expDate ? format(new Date(expDate), 'dd/MM/yyyy') : '—',
-            daysUntilExpiry: daysLeft,
-            urgency,
-          });
-        }
-      } else {
-        // No FEFO lot data — show ingredient without lot info
+      {
         rows.push({
           ingredientName,
           neededQty,
@@ -1357,7 +1325,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           <button type="button" onClick={() => setPrepSubTab('needs')}
             className={`odoo-tab ${prepSubTab === 'needs' ? 'active' : ''}`}>
             <Beaker size={13} />
-            <span>Besoins en ingredients &amp; FEFO</span>
+            <span>Besoins en ingrédients</span>
           </button>
           <button type="button" onClick={() => setPrepSubTab('bsi')}
             className={`odoo-tab ${prepSubTab === 'bsi' ? 'active' : ''}`}>
@@ -1673,83 +1641,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* Besoins en ingredients — rendu en premier dans le sous-onglet "Besoins & FEFO" */}
+      {/* Besoins en ingredients — l'apercu FEFO a ete retire :
+          la selection des lots est maintenant geree dans le workflow de
+          transfert Economat -> Pesage (cf module Warehouse / BSI), pas ici. */}
       {ingredientNeedsBlock}
-
-      {/* ══════════════ FEFO LOT PREVIEW (sous-onglet Besoins) ══════════════
-          Option B : visible uniquement par le magasinier — c'est lui qui pilote l'allocation
-          FEFO et la dispo des lots. Le chef voit uniquement la liste des ingredients via
-          le BSI, sans aucune info de lot/dispo. */}
-      {showPrepNeeds && fefoPreview.length > 0 && ['confirmed', 'in_progress'].includes(plan.status) && isMagasinier && (
-        <div className="bg-white rounded-xl border border-cyan-200 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Droplets size={18} className="text-cyan-600" />
-            <h3 className="font-bold text-gray-800 text-sm">Apercu lots ingredients (FEFO)</h3>
-            <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full font-semibold">
-              {fefoPreview.length} ingredient(s)
-            </span>
-          </div>
-          <div className="space-y-3">
-            {(fefoPreview as Record<string, any>[]).map((item: Record<string, any>) => {
-              const lots = (item.lots || []) as Record<string, any>[];
-              const shortfall = parseFloat(item.shortfall as string) || 0;
-              return (
-                <div key={item.ingredientId as string} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <div className={`px-3 py-2 flex items-center justify-between ${shortfall > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                    <span className="font-semibold text-sm text-gray-800">{item.ingredientName as string}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">
-                        Besoin: <strong>{parseFloat(item.neededQuantity as string).toFixed(2)}</strong> {item.ingredientUnit as string}
-                      </span>
-                      {shortfall > 0 && (
-                        <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <AlertTriangle size={10} /> Manque {shortfall.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {lots.length > 0 && (
-                    <div className="divide-y divide-gray-50">
-                      {lots.map((lot: Record<string, any>, idx: number) => {
-                        const daysLeft = lot.daysUntilExpiry as number | null;
-                        const isExpiringSoon = lot.isExpiringSoon as boolean;
-                        const isExpired = daysLeft !== null && daysLeft < 0;
-                        return (
-                          <div key={idx} className="px-3 py-1.5 flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-gray-600">{lot.lotNumber as string}</span>
-                              {lot.supplierLotNumber && (
-                                <span className="text-gray-400">({lot.supplierLotNumber as string})</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-gray-600">
-                                {parseFloat(lot.quantityToUse as string).toFixed(2)} / {parseFloat(lot.quantityAvailable as string).toFixed(2)}
-                              </span>
-                              {lot.expirationDate && (
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                                  isExpired ? 'bg-red-100 text-red-700' :
-                                  isExpiringSoon ? 'bg-orange-100 text-orange-700' :
-                                  daysLeft !== null && daysLeft < 7 ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-green-100 text-green-700'
-                                }`}>
-                                  {isExpired ? 'EXPIRE' :
-                                   daysLeft !== null ? `J-${daysLeft}` :
-                                   format(new Date(lot.expirationDate as string), 'dd/MM')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ══════════════ ACTIVITY FEED ══════════════ */}
       <div className="odoo-section">
@@ -2418,7 +2313,6 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           targetItemId={launchTargetItemId}
           initialStepName={timerStepName}
           needs={needs}
-          fefoPreview={fefoPreview}
           onClose={() => { setShowProductionLaunch(false); setLaunchTargetItemId(null); setTimerStepName(null); }}
           onCompleted={() => {}}
         />

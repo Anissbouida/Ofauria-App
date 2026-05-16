@@ -26,7 +26,6 @@ interface ProductionLaunchModalProps {
   targetItemId?: string | null;
   initialStepName?: string | null; // jump to this étape by name (from timer notification)
   needs: Record<string, any>[];
-  fefoPreview: Record<string, any>[];
   onClose: () => void;
   onCompleted: () => void;
 }
@@ -82,7 +81,6 @@ export default function ProductionLaunchModal({
   targetItemId,
   initialStepName,
   needs,
-  fefoPreview,
   onClose,
   onCompleted,
 }: ProductionLaunchModalProps) {
