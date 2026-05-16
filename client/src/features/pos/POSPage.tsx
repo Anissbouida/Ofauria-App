@@ -16,7 +16,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, CheckCircle, XCircle, ShoppingCart, ClipboardList, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -1780,7 +1780,7 @@ export default function POSPage() {
       {/* Close Register Modal */}
       {showCloseModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`bg-white rounded-2xl p-6 w-full ${closeStep === 'choose-type' ? 'max-w-md max-h-[90vh]' : closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : closeStep === 'input' ? (closeInputMode === 'counting' ? 'max-w-2xl h-[95vh]' : 'max-w-lg max-h-[90vh]') : 'max-w-lg max-h-[90vh]'} overflow-y-auto transition-all flex flex-col`}>
+          <div className={`bg-white rounded-2xl w-full ${closeStep === 'inventory' ? 'p-0' : 'p-6'} ${closeStep === 'choose-type' ? 'max-w-md max-h-[90vh]' : closeStep === 'inventory' ? 'max-w-5xl max-h-[95vh]' : closeStep === 'input' ? (closeInputMode === 'counting' ? 'max-w-2xl h-[95vh]' : 'max-w-lg max-h-[90vh]') : 'max-w-lg max-h-[90vh]'} overflow-y-auto transition-all flex flex-col`}>
 
             {/* ═══ Choix du type de fermeture ═══ */}
             {closeStep === 'choose-type' ? (
@@ -1893,28 +1893,33 @@ export default function POSPage() {
                 </div>
               </>
             ) : closeStep === 'inventory' && closeResult ? (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">
+              <div className="odoo-scope flex flex-col h-full">
+                {/* Control bar */}
+                <div className="odoo-control-bar">
+                  <div className="odoo-breadcrumb">
+                    <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+                    <span>Caisse</span>
+                    <span className="odoo-breadcrumb-separator">/</span>
+                    <span className="odoo-breadcrumb-current">
                       {closeType === 'passation' ? 'Inventaire de passation' : 'Inventaire de fin de journee'}
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {closeType === 'passation'
-                        ? 'Comptez les quantites restantes en vitrine pour le prochain shift.'
-                        : 'Verifiez les quantites et decidez du devenir de chaque produit invendu.'}
-                    </p>
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setShowAddInvProduct(v => !v); setAddInvSearch(''); }}
-                      className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors flex items-center gap-1.5">
-                      <Plus size={14} /> Ajouter un produit
-                    </button>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Package size={18} />
-                      <span className="font-semibold">{inventoryItems.length} articles</span>
-                    </div>
-                  </div>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Package size={13} />
+                    {inventoryItems.length} article{inventoryItems.length > 1 ? 's' : ''}
+                  </span>
+                  <button type="button" onClick={() => { setShowAddInvProduct(v => !v); setAddInvSearch(''); }}
+                    className="odoo-btn-secondary">
+                    <Plus size={13} /> Ajouter un produit
+                  </button>
+                </div>
+
+                {/* Description */}
+                <div style={{ padding: '0.5rem 1rem 0', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+                  {closeType === 'passation'
+                    ? 'Comptez les quantites restantes en vitrine pour le prochain shift.'
+                    : 'Verifiez les quantites et decidez du devenir de chaque produit invendu.'}
                 </div>
 
                 {/* Panneau d'ajout manuel (pour produits en vitrine non tracks dans product_store_stock) */}
@@ -1928,16 +1933,18 @@ export default function POSPage() {
                     .filter(p => !q || normalize((p.name as string) || '').includes(q))
                     .slice(0, 20);
                   return (
-                    <div className="mb-4 bg-indigo-50/40 border border-indigo-200 rounded-xl p-3">
-                      <div className="relative mb-2">
-                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <div className="odoo-section">
+                      <div className="odoo-search-panel">
+                        <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
                         <input type="text" value={addInvSearch} onChange={(e) => setAddInvSearch(e.target.value)} autoFocus
                           placeholder="Rechercher un produit du catalogue..."
-                          className="w-full pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          className="odoo-search-input" />
+                        <button type="button" onClick={() => setShowAddInvProduct(false)}
+                          style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Fermer</button>
                       </div>
-                      <div className="max-h-56 overflow-y-auto space-y-1">
+                      <div style={{ maxHeight: '14rem', overflowY: 'auto' }}>
                         {candidates.length === 0 ? (
-                          <div className="px-2 py-3 text-center text-xs text-gray-400">
+                          <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
                             {allCatalogProducts.length === 0 ? 'Chargement du catalogue...' : 'Aucun produit (deja dans l\'inventaire ou pas de correspondance)'}
                           </div>
                         ) : candidates.map(p => (
@@ -1967,17 +1974,19 @@ export default function POSPage() {
                               };
                               setInventoryItems(prev => [...prev, newItem]);
                               setAddInvSearch('');
-                              // Garde le panneau ouvert pour permettre d'ajouter plusieurs produits d'affilee
                             }}
-                            className="w-full flex items-center justify-between gap-3 px-3 py-2 bg-white hover:bg-indigo-50 rounded-lg text-left transition-colors border border-transparent hover:border-indigo-200">
-                            <span className="text-sm font-medium text-gray-800 truncate">{p.name as string}</span>
-                            {p.category_name ? <span className="text-[10px] text-gray-400 shrink-0">{p.category_name as string}</span> : null}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              gap: '0.75rem', padding: '0.5rem 1rem', textAlign: 'left',
+                              borderBottom: '1px solid var(--odoo-border)',
+                              fontSize: '0.8125rem', color: 'var(--odoo-text)',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
+                            <span style={{ fontWeight: 500 }}>{p.name as string}</span>
+                            {p.category_name ? <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{p.category_name as string}</span> : null}
                           </button>
                         ))}
-                      </div>
-                      <div className="flex justify-end mt-2">
-                        <button type="button" onClick={() => setShowAddInvProduct(false)}
-                          className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">Fermer</button>
                       </div>
                     </div>
                   );
@@ -2011,55 +2020,54 @@ export default function POSPage() {
                     }
                   });
                   // Carte cliquable : clic active le filtre, re-clic le desactive.
-                  // Feedback visuel : ring + shadow quand la carte est active.
                   const toggleFilter = (f: InvFilter) => setInventoryFilter(prev => prev === f ? null : f);
-                  const activeClass = (f: InvFilter) => inventoryFilter === f
-                    ? 'ring-2 ring-offset-1 shadow-md scale-[1.02]'
-                    : 'hover:shadow-sm hover:scale-[1.01]';
+                  const isActive = (f: InvFilter) => inventoryFilter === f ? 'active' : '';
+                  const ecartColor = closeType === 'passation' ? undefined
+                    : totalDiscrepancySum === 0 ? '#28a745'
+                    : totalDiscrepancySum > 0 ? '#b85d1a' : '#dc3545';
                   return (
-                    <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-5">
+                    <div className="odoo-stat-grid">
                       <button type="button" onClick={() => toggleFilter('replenished')}
-                        className={`bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('replenished')} ${inventoryFilter === 'replenished' ? 'ring-indigo-400' : ''}`}>
-                        <div className="text-2xl font-bold text-indigo-700">{totalReplenished}</div>
-                        <div className="text-xs text-indigo-600 font-medium">Approvisionne</div>
+                        className={`odoo-stat-card ${isActive('replenished')}`}>
+                        <div className="odoo-stat-card-label">Approvisionne</div>
+                        <div className="odoo-stat-card-value">{totalReplenished}</div>
+                        <div className="odoo-stat-card-sub">unites recues</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('sold')}
-                        className={`bg-blue-50 border border-blue-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('sold')} ${inventoryFilter === 'sold' ? 'ring-blue-400' : ''}`}>
-                        <div className="text-2xl font-bold text-blue-700">{totalSold}</div>
-                        <div className="text-xs text-blue-600 font-medium">Vendus</div>
+                        className={`odoo-stat-card ${isActive('sold')}`}>
+                        <div className="odoo-stat-card-label">Vendus</div>
+                        <div className="odoo-stat-card-value">{totalSold}</div>
+                        <div className="odoo-stat-card-sub">unites ecoulees</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('theoretical')}
-                        className={`bg-purple-50 border border-purple-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('theoretical')} ${inventoryFilter === 'theoretical' ? 'ring-purple-400' : ''}`}>
-                        <div className="text-2xl font-bold text-purple-700">{totalTheoreticalRemaining}</div>
-                        <div className="text-xs text-purple-600 font-medium">Theorique</div>
+                        className={`odoo-stat-card ${isActive('theoretical')}`}>
+                        <div className="odoo-stat-card-label">Theorique</div>
+                        <div className="odoo-stat-card-value">{totalTheoreticalRemaining}</div>
+                        <div className="odoo-stat-card-sub">restant attendu</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('counted')}
-                        className={`bg-gray-50 border border-gray-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('counted')} ${inventoryFilter === 'counted' ? 'ring-gray-400' : ''}`}>
-                        <div className="text-2xl font-bold text-gray-700">{totalCounted}</div>
-                        <div className="text-xs text-gray-600 font-medium">Saisi</div>
+                        className={`odoo-stat-card ${isActive('counted')}`}>
+                        <div className="odoo-stat-card-label">Saisi</div>
+                        <div className="odoo-stat-card-value">{totalCounted}</div>
+                        <div className="odoo-stat-card-sub">compte physique</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('discrepancy')}
-                        className={`rounded-xl p-3 text-center border transition-all cursor-pointer ${activeClass('discrepancy')} ${
-                          closeType === 'passation'
-                            ? 'bg-blue-50 border-blue-200'
-                            : totalDiscrepancySum === 0 ? 'bg-green-50 border-green-200' : totalDiscrepancySum > 0 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'
-                        } ${inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'ring-blue-400' : totalDiscrepancySum === 0 ? 'ring-green-400' : totalDiscrepancySum > 0 ? 'ring-orange-400' : 'ring-red-400') : ''}`}>
-                        <div className={`text-2xl font-bold ${
-                          closeType === 'passation'
-                            ? 'text-blue-700'
-                            : totalDiscrepancySum === 0 ? 'text-green-700' : totalDiscrepancySum > 0 ? 'text-orange-700' : 'text-red-700'
-                        }`}>{closeType === 'passation' ? totalCounted : totalDiscrepancySum}</div>
-                        <div className={`text-xs font-medium ${
-                          closeType === 'passation'
-                            ? 'text-blue-600'
-                            : totalDiscrepancySum === 0 ? 'text-green-600' : totalDiscrepancySum > 0 ? 'text-orange-600' : 'text-red-600'
-                        }`}>{closeType === 'passation' ? 'Reste' : 'Ecart'}</div>
+                        className={`odoo-stat-card ${isActive('discrepancy')}`}>
+                        <div className="odoo-stat-card-label">{closeType === 'passation' ? 'Reste' : 'Ecart'}</div>
+                        <div className="odoo-stat-card-value" style={ecartColor ? { color: ecartColor } : undefined}>
+                          {closeType === 'passation' ? totalCounted : (totalDiscrepancySum > 0 ? `+${totalDiscrepancySum}` : totalDiscrepancySum)}
+                        </div>
+                        <div className="odoo-stat-card-sub">
+                          {closeType === 'passation' ? 'a transmettre'
+                            : totalDiscrepancySum === 0 ? 'aucun' : totalDiscrepancySum > 0 ? 'manquant' : 'surplus'}
+                        </div>
                       </button>
                       {closeType !== 'passation' && (totalKeep > 0 || totalRecycle > 0 || totalDestroy > 0) && (
                         <button type="button" onClick={() => toggleFilter('unsold')}
-                          className={`bg-amber-50 border border-amber-200 rounded-xl p-3 text-center transition-all cursor-pointer ${activeClass('unsold')} ${inventoryFilter === 'unsold' ? 'ring-amber-400' : ''}`}>
-                          <div className="text-2xl font-bold text-amber-700">{totalKeep + totalRecycle + totalDestroy}</div>
-                          <div className="text-xs text-amber-600 font-medium">Invendus</div>
+                          className={`odoo-stat-card ${isActive('unsold')}`}>
+                          <div className="odoo-stat-card-label">Invendus</div>
+                          <div className="odoo-stat-card-value">{totalKeep + totalRecycle + totalDestroy}</div>
+                          <div className="odoo-stat-card-sub">a decider</div>
                         </button>
                       )}
                     </div>
@@ -2068,30 +2076,27 @@ export default function POSPage() {
 
                 {/* Banniere filtre actif */}
                 {inventoryFilter && (
-                  <div className="mb-3 flex items-center gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-medium">
-                      Filtre actif : {inventoryFilter === 'replenished' ? 'Approvisionnes (> 0)'
+                  <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', borderBottom: '1px solid var(--odoo-border)' }}>
+                    <span className="odoo-filter-chip">
+                      Filtre : {inventoryFilter === 'replenished' ? 'Approvisionnes (> 0)'
                         : inventoryFilter === 'sold' ? 'Vendus (> 0)'
                         : inventoryFilter === 'theoretical' ? 'Reste theorique (> 0)'
                         : inventoryFilter === 'counted' ? 'Saisis (> 0)'
                         : inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'Reste (> 0)' : 'Ecart (\u2260 0)')
                         : 'Invendus a decider (> 0)'}
+                      <span className="odoo-filter-chip-remove" onClick={() => setInventoryFilter(null)}>\u00d7</span>
                     </span>
-                    <button type="button" onClick={() => setInventoryFilter(null)}
-                      className="text-gray-500 hover:text-gray-700 underline">Tout afficher</button>
                   </div>
                 )}
 
                 {/* Items grouped by category */}
                 {(() => {
-                  const destStyles: Record<string, { bg: string; text: string; label: string; icon: string }> = {
-                    reexpose: { bg: 'bg-green-100 border-green-300', text: 'text-green-800', label: 'Vitrine J+1', icon: '✓' },
-                    retour_stock: { bg: 'bg-emerald-100 border-emerald-300', text: 'text-emerald-800', label: 'Retour reserve', icon: '⤴' },
-                    recycle: { bg: 'bg-cyan-100 border-cyan-300', text: 'text-cyan-800', label: 'Recycler', icon: '♻' },
-                    waste: { bg: 'bg-red-100 border-red-300', text: 'text-red-800', label: 'Detruire', icon: '✗' },
+                  const destConf: Record<string, { label: string; icon: string; tag: string }> = {
+                    reexpose:     { label: 'Vitrine J+1', icon: '✓', tag: 'odoo-tag-green' },
+                    retour_stock: { label: 'Retour reserve', icon: '⤴', tag: 'odoo-tag-green' },
+                    recycle:      { label: 'Recycler', icon: '♻', tag: 'odoo-tag-blue' },
+                    waste:        { label: 'Detruire', icon: '✗', tag: 'odoo-tag-red' },
                   };
-                  // Applique le filtre actif sur les cartes de resume (clic sur une carte).
-                  // Chaque critere mappe sur la meme derivation que le total affiche sur la carte.
                   const filteredItems = inventoryItems.filter((it) => {
                     if (!inventoryFilter) return true;
                     const pid = it.product_id as string;
@@ -2108,12 +2113,11 @@ export default function POSPage() {
                       case 'counted': return counted > 0;
                       case 'discrepancy':
                         return closeType === 'passation' ? counted > 0 : discrepancy !== 0;
-                      case 'unsold': return counted > 0; // Invendus = produits restants comptes avec destination
+                      case 'unsold': return counted > 0;
                       default: return true;
                     }
                   });
 
-                  // Group items by category
                   const grouped: Record<string, typeof inventoryItems> = {};
                   filteredItems.forEach((it) => {
                     const cat = (it.category_name as string) || 'Sans categorie';
@@ -2123,214 +2127,220 @@ export default function POSPage() {
                   const categoryNames = Object.keys(grouped).sort();
 
                   return (
-                    <div className="space-y-3 mb-4 max-h-[50vh] overflow-y-auto">
+                    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                       {categoryNames.length === 0 && inventoryFilter && (
-                        <div className="px-4 py-8 text-center text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                        <div style={{ margin: '1rem', padding: '2rem', textAlign: 'center', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', border: '1px dashed var(--odoo-border)', borderRadius: '4px' }}>
                           Aucun produit ne correspond a ce filtre.{' '}
                           <button type="button" onClick={() => setInventoryFilter(null)}
-                            className="text-indigo-600 hover:text-indigo-800 underline font-medium">Effacer le filtre</button>
+                            style={{ color: 'var(--odoo-purple)', textDecoration: 'underline', fontWeight: 500 }}>Effacer le filtre</button>
                         </div>
                       )}
                       {categoryNames.map((catName) => {
                         const catItems = grouped[catName];
-                        const catCount = catItems.reduce((sum, it) => {
-                          const pid = it.product_id as string;
-                          return sum + (inventoryQtys[pid] ?? 0);
-                        }, 0);
+                        const catCount = catItems.reduce((sum, it) => sum + (inventoryQtys[(it.product_id as string)] ?? 0), 0);
 
                         return (
-                          <div key={catName} className="border border-gray-200 rounded-xl overflow-hidden">
-                            {/* Category header */}
-                            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-gray-800">{catName}</span>
-                                <span className="text-[11px] font-medium text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">{catItems.length} article{catItems.length > 1 ? 's' : ''}</span>
+                          <div key={catName} className="odoo-section">
+                            <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span>{catName}</span>
+                                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
+                                  {catItems.length} article{catItems.length > 1 ? 's' : ''}
+                                </span>
                               </div>
-                              <span className="text-xs font-semibold text-gray-500">{catCount} restant{catCount > 1 ? 's' : ''}</span>
+                              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                                {catCount} restant{catCount > 1 ? 's' : ''}
+                              </span>
                             </div>
 
-                            {/* Column headers */}
-                            <div className={`grid ${closeType === 'passation' ? 'grid-cols-8' : 'grid-cols-12'} gap-2 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider`}>
-                              <span className="col-span-2">Produit</span>
-                              <span className="col-span-1 text-center">Approv.</span>
-                              <span className="col-span-1 text-center">Vendu</span>
-                              <span className="col-span-1 text-center">Theor.</span>
-                              <span className="col-span-2 text-center">Saisi</span>
-                              <span className="col-span-1 text-center">{closeType === 'passation' ? 'Reste' : 'Ecart'}</span>
-                              {closeType !== 'passation' && <span className="col-span-4 text-center">Decision</span>}
-                            </div>
+                            <table className="odoo-table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: closeType === 'passation' ? '45%' : '22%' }}>Produit</th>
+                                  <th style={{ textAlign: 'center', width: '8%' }}>Approv.</th>
+                                  <th style={{ textAlign: 'center', width: '8%' }}>Vendu</th>
+                                  <th style={{ textAlign: 'center', width: '8%' }}>Theor.</th>
+                                  <th style={{ textAlign: 'center', width: '14%' }}>Saisi</th>
+                                  <th style={{ textAlign: 'center', width: '8%' }}>{closeType === 'passation' ? 'Reste' : 'Ecart'}</th>
+                                  {closeType !== 'passation' && <th style={{ textAlign: 'center', width: '32%' }}>Decision</th>}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {catItems.map((it) => {
+                                  const pid = it.product_id as string;
+                                  const initial = parseInt(it.initial_stock as string) || 0;
+                                  const replenished = parseInt(it.replenished_today_qty as string) || 0;
+                                  const sold = parseInt(it.sold_qty as string) || 0;
+                                  const theoreticalRemaining = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
+                                  const countedRaw = inventoryQtys[pid];
+                                  const hasBeenCounted = countedRaw !== undefined;
+                                  const counted = countedRaw ?? 0;
+                                  const discrepancy = theoreticalRemaining - counted;
 
-                            {/* Items */}
-                            <div className="divide-y divide-gray-100">
-                              {catItems.map((it) => {
-                                const pid = it.product_id as string;
-                                const initial = parseInt(it.initial_stock as string) || 0;
-                                const replenished = parseInt(it.replenished_today_qty as string) || 0;
-                                const sold = parseInt(it.sold_qty as string) || 0;
-                                // Theorique = current_stock (source de verite), fallback derive si absent
-                                const theoreticalRemaining = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
-                                const countedRaw = inventoryQtys[pid];
-                                const hasBeenCounted = countedRaw !== undefined;
-                                const counted = countedRaw ?? 0;
-                                const discrepancy = theoreticalRemaining - counted;
+                                  const sugDest = (it.suggested_destination as string) || 'waste';
+                                  const sugReason = (it.suggested_reason as string) || '';
+                                  const finalDest = inventoryDestinations[pid] || sugDest;
+                                  const isOverride = finalDest !== sugDest;
 
-                                const sugDest = (it.suggested_destination as string) || 'waste';
-                                const sugReason = (it.suggested_reason as string) || '';
-                                const finalDest = inventoryDestinations[pid] || sugDest;
-                                const isOverride = finalDest !== sugDest;
+                                  if (counted > 0 && !inventoryDestinations[pid]) {
+                                    inventoryDestinations[pid] = sugDest;
+                                  }
 
-                                if (counted > 0 && !inventoryDestinations[pid]) {
-                                  inventoryDestinations[pid] = sugDest;
-                                }
+                                  const rowClass = !hasBeenCounted ? 'row-warning'
+                                    : closeType !== 'passation' && finalDest === 'waste' ? 'row-danger'
+                                    : discrepancy !== 0 ? (discrepancy < 0 ? 'row-danger' : 'row-warning') : '';
 
-                                return (
-                                  <div key={pid} className={`grid ${closeType === 'passation' ? 'grid-cols-8' : 'grid-cols-12'} gap-2 items-center px-4 py-3 transition-colors ${
-                                    !hasBeenCounted ? 'bg-yellow-50/60 ring-1 ring-inset ring-yellow-200' :
-                                    closeType !== 'passation' && finalDest === 'waste' ? 'bg-red-50/30' : closeType !== 'passation' && finalDest === 'recycle' ? 'bg-cyan-50/30' : discrepancy !== 0 ? 'bg-amber-50/50' : 'hover:bg-gray-50'
-                                  }`}>
-                                    {/* Product */}
-                                    <div className="col-span-2 min-w-0">
-                                      <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name as string}>
-                                        {it.product_name as string}
-                                      </span>
-                                      {sugReason && counted > 0 && (
-                                        <span className="text-[10px] text-blue-500 block mt-0.5 truncate" title={sugReason}>{sugReason}</span>
-                                      )}
-                                    </div>
-                                    {/* Approvisionné = stock initial du shift (carryover passation) + nouveaux approvs */}
-                                    <div className="col-span-1 text-center">
-                                      <span className="text-sm font-bold text-indigo-700">{initial + replenished}</span>
-                                    </div>
-                                    {/* Vendu */}
-                                    <div className="col-span-1 text-center">
-                                      <span className="text-sm font-bold text-blue-700">{sold}</span>
-                                    </div>
-                                    {/* Restant théorique */}
-                                    <div className="col-span-1 text-center">
-                                      <span className="text-sm font-bold text-purple-700">{theoreticalRemaining}</span>
-                                    </div>
-                                    {/* Restant saisi */}
-                                    <div className="col-span-2 flex justify-center">
-                                      <div className="flex items-center gap-1">
-                                        <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
-                                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
-                                          <Minus size={12} />
-                                        </button>
-                                        <input type="number" min={0}
-                                          value={hasBeenCounted ? counted : ''}
-                                          placeholder="?"
-                                          onChange={(e) => {
-                                            const v = e.target.value;
-                                            if (v === '') {
-                                              setInventoryQtys(prev => { const n = { ...prev }; delete n[pid]; return n; });
-                                            } else {
-                                              setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(v) || 0) }));
-                                            }
-                                          }}
-                                          className={`w-14 h-7 text-center text-sm font-bold border rounded-lg focus:ring-2 focus:ring-amber-500 ${
-                                            hasBeenCounted ? 'border-gray-300' : 'border-yellow-400 bg-yellow-50 placeholder-yellow-500'
-                                          }`} />
-                                        <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
-                                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
-                                          <Plus size={12} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                    {/* Passation: Reste (saisi) | Fin journée: Écart (théorique - saisi) */}
-                                    <div className="col-span-1 text-center">
-                                      {!hasBeenCounted ? (
-                                        <span className="text-sm font-bold text-yellow-600">—</span>
-                                      ) : closeType === 'passation' ? (
-                                        <span className={`text-sm font-bold ${counted > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{counted}</span>
-                                      ) : discrepancy !== 0 ? (
-                                        <span className={`text-sm font-bold ${discrepancy > 0 ? 'text-orange-600' : 'text-red-600'}`}>
-                                          {discrepancy > 0 ? `+${discrepancy}` : discrepancy}
+                                  const dotClass = !hasBeenCounted ? 'warning'
+                                    : closeType !== 'passation' && finalDest === 'waste' ? 'danger'
+                                    : discrepancy !== 0 ? (discrepancy < 0 ? 'danger' : 'warning') : 'ok';
+
+                                  return (
+                                    <tr key={pid} className={rowClass} style={{ cursor: 'default' }}>
+                                      <td>
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                          <span className={`odoo-status-dot ${dotClass}`} />
+                                          <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+                                            <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{it.product_name as string}</span>
+                                            {sugReason && counted > 0 && (
+                                              <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', marginTop: 1 }} title={sugReason}>{sugReason}</span>
+                                            )}
+                                          </span>
                                         </span>
-                                      ) : <span className="text-sm text-green-500">0</span>}
-                                    </div>
-                                    {/* Decision buttons — hidden in passation mode */}
-                                    {closeType !== 'passation' && (
-                                    <div className="col-span-4">
-                                      {counted > 0 ? (
-                                        <div className="flex items-center gap-1 justify-center flex-wrap">
-                                          {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => {
-                                            const dConf = destStyles[d];
-                                            const isActive = finalDest === d;
-                                            // Strict : on ne contourne pas is_reexposable=false meme si le serveur suggerait reexpose.
-                                            const canReexpose = !!it.is_reexposable;
-                                            // retour_stock dispo uniquement si DLV restante > 24h (saleType dlv ou multi-jours)
-                                            const canRetourStock = (it.sale_type as string) === 'dlv' || ((it.shelf_life_days as number) ?? 0) > 1;
-                                            const canRecycle = it.is_recyclable && it.recycle_ingredient_id;
-                                            const disabled =
-                                              (d === 'reexpose' && !canReexpose) ||
-                                              (d === 'retour_stock' && !canRetourStock) ||
-                                              (d === 'recycle' && !canRecycle);
-                                            const ringColor = d === 'reexpose' ? 'ring-green-400'
-                                              : d === 'retour_stock' ? 'ring-emerald-400'
-                                              : d === 'recycle' ? 'ring-cyan-400'
-                                              : 'ring-red-400';
-                                            const tipDisabled = d === 'reexpose' ? 'Non re-exposable'
-                                              : d === 'retour_stock' ? 'DLV trop courte pour retour reserve'
-                                              : d === 'recycle' ? 'Non recyclable'
-                                              : '';
-                                            return (
-                                              <button key={d}
-                                                onClick={() => !disabled && setInventoryDestinations(prev => ({ ...prev, [pid]: d }))}
-                                                disabled={disabled as boolean}
-                                                title={disabled ? tipDisabled : dConf.label}
-                                                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                                                  isActive ? `${dConf.bg} ${dConf.text} ring-2 ring-offset-1 ${ringColor}` :
-                                                  disabled ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' :
-                                                  'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                                                }`}>
-                                                {dConf.icon} {dConf.label}
-                                              </button>
-                                            );
-                                          })}
-                                          {isOverride && <span className="text-amber-500 text-[10px] font-semibold ml-1">modifie</span>}
+                                      </td>
+                                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{initial + replenished}</td>
+                                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{sold}</td>
+                                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{theoreticalRemaining}</td>
+                                      <td style={{ textAlign: 'center' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                          <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
+                                            className="odoo-pager-btn" title="Diminuer">
+                                            <Minus size={12} />
+                                          </button>
+                                          <input type="number" min={0}
+                                            value={hasBeenCounted ? counted : ''}
+                                            placeholder="?"
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              if (v === '') {
+                                                setInventoryQtys(prev => { const n = { ...prev }; delete n[pid]; return n; });
+                                              } else {
+                                                setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, parseInt(v) || 0) }));
+                                              }
+                                            }}
+                                            style={{
+                                              width: '52px', height: '26px', textAlign: 'center',
+                                              fontSize: '0.8125rem', fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                                              border: hasBeenCounted ? '1px solid var(--odoo-border-strong)' : '1px solid #ffc107',
+                                              borderRadius: '3px',
+                                              backgroundColor: hasBeenCounted ? 'var(--odoo-bg)' : '#fff8e8',
+                                              color: 'var(--odoo-text)', outline: 'none',
+                                            }} />
+                                          <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
+                                            className="odoo-pager-btn" title="Augmenter">
+                                            <Plus size={12} />
+                                          </button>
                                         </div>
-                                      ) : (
-                                        <span className="text-xs text-gray-300 text-center block">Tout vendu</span>
+                                      </td>
+                                      <td style={{
+                                        textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
+                                        color: !hasBeenCounted ? '#856404'
+                                          : closeType === 'passation' ? (counted > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)')
+                                          : discrepancy !== 0 ? (discrepancy < 0 ? '#dc3545' : '#b85d1a') : 'var(--odoo-text-light)',
+                                      }}>
+                                        {!hasBeenCounted ? '—'
+                                          : closeType === 'passation' ? counted
+                                          : discrepancy === 0 ? '0' : (discrepancy > 0 ? `+${discrepancy}` : discrepancy)}
+                                      </td>
+                                      {closeType !== 'passation' && (
+                                        <td>
+                                          {counted > 0 ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+                                              {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => {
+                                                const conf = destConf[d];
+                                                const active = finalDest === d;
+                                                const canReexpose = !!it.is_reexposable;
+                                                const canRetourStock = (it.sale_type as string) === 'dlv' || ((it.shelf_life_days as number) ?? 0) > 1;
+                                                const canRecycle = it.is_recyclable && it.recycle_ingredient_id;
+                                                const disabled =
+                                                  (d === 'reexpose' && !canReexpose) ||
+                                                  (d === 'retour_stock' && !canRetourStock) ||
+                                                  (d === 'recycle' && !canRecycle);
+                                                const tipDisabled = d === 'reexpose' ? 'Non re-exposable'
+                                                  : d === 'retour_stock' ? 'DLV trop courte pour retour reserve'
+                                                  : d === 'recycle' ? 'Non recyclable' : '';
+                                                return (
+                                                  <button key={d}
+                                                    onClick={() => !disabled && setInventoryDestinations(prev => ({ ...prev, [pid]: d }))}
+                                                    disabled={disabled as boolean}
+                                                    title={disabled ? tipDisabled : conf.label}
+                                                    style={{
+                                                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                      padding: '0.1875rem 0.5rem', fontSize: '0.6875rem', fontWeight: 600,
+                                                      borderRadius: '3px',
+                                                      border: active ? '1.5px solid var(--odoo-purple)' : '1px solid var(--odoo-border-strong)',
+                                                      backgroundColor: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                                                      color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                                                      cursor: disabled ? 'not-allowed' : 'pointer',
+                                                      opacity: disabled ? 0.4 : 1,
+                                                    }}>
+                                                    <span>{conf.icon}</span> {conf.label}
+                                                  </button>
+                                                );
+                                              })}
+                                              {isOverride && (
+                                                <span style={{ fontSize: '0.625rem', color: '#b85d1a', fontWeight: 600, marginLeft: 2 }}>modifie</span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-light)', textAlign: 'center', display: 'block' }}>Tout vendu</span>
+                                          )}
+                                          {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, any>[]).length > 1 && (
+                                            <div style={{ marginTop: 4, display: 'flex', justifyContent: 'center' }}>
+                                              <select
+                                                value={inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || ''}
+                                                onChange={(e) => setInventoryRecycleDest(prev => ({ ...prev, [pid]: e.target.value }))}
+                                                style={{
+                                                  fontSize: '0.6875rem', padding: '0.125rem 0.375rem',
+                                                  border: '1px solid var(--odoo-border-strong)', borderRadius: '3px',
+                                                  backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)', outline: 'none',
+                                                }}>
+                                                {(it.recycle_destinations as { ingredient_id: string; ingredient_name: string; label?: string }[]).map(rd => (
+                                                  <option key={rd.ingredient_id} value={rd.ingredient_id}>
+                                                    {rd.label || rd.ingredient_name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          )}
+                                          {closeType === 'fin_journee' && discrepancy < 0 && (
+                                            <div style={{ marginTop: 4 }}>
+                                              <select
+                                                value={inventoryMotifs[pid] || ''}
+                                                onChange={(e) => setInventoryMotifs(prev => ({ ...prev, [pid]: e.target.value }))}
+                                                style={{
+                                                  width: '100%', fontSize: '0.6875rem', padding: '0.125rem 0.375rem',
+                                                  border: inventoryMotifs[pid] ? '1px solid var(--odoo-border-strong)' : '1px solid #dc3545',
+                                                  borderRadius: '3px',
+                                                  backgroundColor: inventoryMotifs[pid] ? 'var(--odoo-bg)' : '#fdf0ed',
+                                                  color: inventoryMotifs[pid] ? 'var(--odoo-text)' : '#721c24',
+                                                  fontWeight: inventoryMotifs[pid] ? 400 : 500, outline: 'none',
+                                                }}>
+                                                <option value="">Motif d'ecart obligatoire ({Math.abs(discrepancy)} manquant)</option>
+                                                <option value="casse">Casse non declaree</option>
+                                                <option value="vol">Vol / disparition</option>
+                                                <option value="erreur_declaration">Erreur de declaration ant.</option>
+                                                <option value="degustation">Degustation interne</option>
+                                                <option value="autre">Autre</option>
+                                              </select>
+                                            </div>
+                                          )}
+                                        </td>
                                       )}
-                                      {/* Dropdown multi-destinations quand recyclage choisi et plusieurs options configurees */}
-                                      {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, any>[]).length > 1 && (
-                                        <div className="mt-1.5 flex justify-center">
-                                          <select
-                                            value={inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || ''}
-                                            onChange={(e) => setInventoryRecycleDest(prev => ({ ...prev, [pid]: e.target.value }))}
-                                            className="text-[11px] px-2 py-1 rounded-md border border-cyan-200 bg-cyan-50 text-cyan-800 font-medium focus:ring-1 focus:ring-cyan-400"
-                                          >
-                                            {(it.recycle_destinations as { ingredient_id: string; ingredient_name: string; label?: string }[]).map(rd => (
-                                              <option key={rd.ingredient_id} value={rd.ingredient_id}>
-                                                {rd.label || rd.ingredient_name}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                      )}
-                                      {/* Phase 5 : motif obligatoire pour ecart d'inventaire (theorique > comptage physique) */}
-                                      {closeType === 'fin_journee' && discrepancy < 0 && (
-                                        <div className="mt-1.5">
-                                          <select
-                                            value={inventoryMotifs[pid] || ''}
-                                            onChange={(e) => setInventoryMotifs(prev => ({ ...prev, [pid]: e.target.value }))}
-                                            className={`w-full text-[11px] px-2 py-1 rounded-md border font-medium focus:ring-1 ${inventoryMotifs[pid] ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400' : 'border-red-300 bg-red-50 text-red-700 focus:ring-red-400 animate-pulse'}`}
-                                          >
-                                            <option value="">⚠ Motif d'ecart obligatoire ({Math.abs(discrepancy)} manquant)</option>
-                                            <option value="casse">Casse non declaree</option>
-                                            <option value="vol">Vol / disparition</option>
-                                            <option value="erreur_declaration">Erreur de declaration ant.</option>
-                                            <option value="degustation">Degustation interne</option>
-                                            <option value="autre">Autre</option>
-                                          </select>
-                                        </div>
-                                      )}
-                                    </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                         );
                       })}
@@ -2355,30 +2365,30 @@ export default function POSPage() {
 
                   if (closeType === 'passation') {
                     return (
-                      <div className="rounded-xl p-4 flex items-center gap-3 text-sm mb-4 bg-blue-50 border border-blue-200">
-                        <Package size={20} className="text-blue-500" />
-                        <span className="text-blue-700 font-medium">
+                      <div className="odoo-alert" style={{ backgroundColor: '#e8f3fc', color: '#1f6391', borderBottomColor: '#d6e9f8', borderTop: '1px solid #d6e9f8' }}>
+                        <Package size={16} className="flex-shrink-0" />
+                        <div>
                           {totalCounted > 0
                             ? `${totalCounted} article(s) restant(s) a transmettre au prochain shift.`
                             : 'Aucun article restant — vitrine vide.'}
-                        </span>
+                        </div>
                       </div>
                     );
                   }
 
                   return totalDiscrepancy !== 0 ? (
-                    <div className={`rounded-xl p-4 flex items-center gap-3 text-sm mb-4 ${totalDiscrepancy > 0 ? 'bg-orange-50 border border-orange-200' : 'bg-red-50 border border-red-200'}`}>
-                      <AlertTriangle size={20} className={totalDiscrepancy > 0 ? 'text-orange-500' : 'text-red-500'} />
-                      <span className={`font-medium ${totalDiscrepancy > 0 ? 'text-orange-700' : 'text-red-700'}`}>
+                    <div className={`odoo-alert ${totalDiscrepancy > 0 ? 'warning' : 'danger'}`} style={{ borderTop: '1px solid var(--odoo-border)' }}>
+                      <AlertTriangle size={16} className="flex-shrink-0" />
+                      <div>
                         {totalDiscrepancy > 0
                           ? `Ecart : ${totalDiscrepancy} unite(s) manquante(s) (perte/casse)`
                           : `Ecart : ${Math.abs(totalDiscrepancy)} unite(s) en surplus (anomalie)`}
-                      </span>
+                      </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl p-4 flex items-center gap-3 text-sm mb-4 bg-green-50 border border-green-200">
-                      <CheckCircle size={20} className="text-green-500" />
-                      <span className="text-green-700 font-medium">Inventaire coherent — aucun ecart.</span>
+                    <div className="odoo-alert" style={{ backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb', borderTop: '1px solid #c3e6cb' }}>
+                      <CheckCircle size={16} className="flex-shrink-0" />
+                      <div>Inventaire coherent — aucun ecart.</div>
                     </div>
                   );
                 })()}
@@ -2397,16 +2407,17 @@ export default function POSPage() {
                   return (
                 <>
                 {uncountedCount > 0 && (
-                  <div className="rounded-xl p-3 flex items-center gap-2 text-sm mb-3 bg-yellow-50 border border-yellow-200">
-                    <AlertTriangle size={18} className="text-yellow-600" />
-                    <span className="text-yellow-800 font-medium">
-                      {uncountedCount} / {totalItems} produit(s) pas encore compte(s). Saisis une quantite (0 si aucun en vitrine) pour chaque produit avant de valider.
-                    </span>
+                  <div className="odoo-alert warning">
+                    <AlertTriangle size={16} className="flex-shrink-0" />
+                    <div>
+                      <span className="odoo-alert-title">{uncountedCount} / {totalItems} produit(s) pas encore compte(s).</span>{' '}
+                      Saisis une quantite (0 si aucun en vitrine) pour chaque produit avant de valider.
+                    </div>
                   </div>
                 )}
-                <div className="flex gap-3">
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)' }}>
                   <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
-                    className="btn-secondary flex-1 py-3 text-base">Annuler</button>
+                    className="odoo-btn-secondary">Annuler</button>
                   <button onClick={async () => {
                     if (cannotValidate) return;
                     try {
@@ -2489,14 +2500,14 @@ export default function POSPage() {
                     }
                   }}
                     disabled={cannotValidate}
-                    className={`btn-primary flex-1 py-3 text-base font-semibold ${cannotValidate ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    className="odoo-btn-primary">
                     {closeType === 'passation' ? 'Valider l\'inventaire' : 'Valider les decisions'}
                   </button>
                 </div>
                 </>
                   );
                 })()}
-              </>
+              </div>
             ) : closeStep === 'input' ? (
               <>
                 <h2 className="text-xl font-bold mb-1">Fermeture de caisse</h2>
