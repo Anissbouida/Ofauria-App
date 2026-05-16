@@ -20,6 +20,7 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { smartFormatQuantity, formatQty } from '../../utils/units';
 import ProductionLaunchModal from './ProductionLaunchModal';
 import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
@@ -957,13 +958,25 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                   </td>
                 )}
                 <td style={{ textAlign: 'right' }}>
-                  <span style={{ fontWeight: 600 }}>{needed.toFixed(2)}</span>
-                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{need.unit as string}</span>
+                  {(() => {
+                    const f = smartFormatQuantity(needed, need.unit as string);
+                    const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
+                    return <>
+                      <span style={{ fontWeight: 600 }}>{f.value.toFixed(digits)}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
+                    </>;
+                  })()}
                 </td>
                 {isMagasinier && (
                   <td style={{ textAlign: 'right' }}>
-                    <span style={{ fontWeight: 500 }}>{available.toFixed(2)}</span>
-                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{need.unit as string}</span>
+                    {(() => {
+                      const f = smartFormatQuantity(available, need.unit as string);
+                      const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
+                      return <>
+                        <span style={{ fontWeight: 500 }}>{f.value.toFixed(digits)}</span>
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
+                      </>;
+                    })()}
                   </td>
                 )}
                 {isMagasinier && (
@@ -2286,39 +2299,48 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 <div key={need.id as string} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${!sufficient ? 'bg-red-50/30' : ''}`}>
                   {/* Left color bar */}
                   <div className={`w-1 h-10 rounded-full flex-shrink-0 ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                  {/* Name + unit */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
-                    <div className="text-xs text-gray-400">{need.unit as string}</div>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="w-24 flex-shrink-0">
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
-                  </div>
-                  {/* Quantities */}
-                  <div className="flex items-center gap-4 flex-shrink-0">
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
-                      <div className="text-sm font-bold text-gray-700">{needed.toFixed(2)}</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
-                      <div className="text-sm font-bold text-gray-700">{available.toFixed(2)}</div>
-                    </div>
-                  </div>
+                  {/* Name + unit (smart : affiche l'unité réelle d'affichage, g ou kg) */}
+                  {(() => {
+                    const fNeed = smartFormatQuantity(needed, need.unit as string);
+                    const fDispo = smartFormatQuantity(available, need.unit as string);
+                    const digits = fNeed.unit === 'g' || fNeed.unit === 'ml' ? 0 : 2;
+                    return <>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
+                        <div className="text-xs text-gray-400">{fNeed.unit}</div>
+                      </div>
+                      <div className="w-24 flex-shrink-0">
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
+                      </div>
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <div className="text-center">
+                          <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
+                          <div className="text-sm font-bold text-gray-700">{fNeed.value.toFixed(digits)}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
+                          <div className="text-sm font-bold text-gray-700">{fDispo.value.toFixed(digits)}</div>
+                        </div>
+                      </div>
+                    </>;
+                  })()}
                   {/* Status */}
                   {sufficient ? (
                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
                       <CheckCircle size={10} /> OK
                     </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
-                      <AlertTriangle size={10} /> -{(needed - available).toFixed(2)}
-                    </span>
-                  )}
+                  ) : (() => {
+                    const f = smartFormatQuantity(needed - available, need.unit as string);
+                    const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
+                    return (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
+                        <AlertTriangle size={10} /> -{f.value.toFixed(d)} {f.unit}
+                      </span>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -2485,12 +2507,12 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Besoin / Dispo</span>
               <span className="font-mono text-xs text-gray-700">
-                {needed.toFixed(2)} / {available.toFixed(2)} {need.unit as string}
+                {formatQty(needed, need.unit as string)} / {formatQty(available, need.unit as string)}
               </span>
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-gray-200">
               <span className="text-gray-500">Manque</span>
-              <span className="font-bold text-red-700">{deficit.toFixed(2)} {need.unit as string}</span>
+              <span className="font-bold text-red-700">{formatQty(deficit, need.unit as string)}</span>
             </div>
           </div>
 
