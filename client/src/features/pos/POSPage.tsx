@@ -16,7 +16,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import OrderFormModal from '../../components/orders/OrderFormModal';
@@ -1901,7 +1901,7 @@ export default function POSPage() {
                     <span>Caisse</span>
                     <span className="odoo-breadcrumb-separator">/</span>
                     <span className="odoo-breadcrumb-current">
-                      {closeType === 'passation' ? 'Inventaire de passation' : 'Inventaire de fin de journee'}
+                      {closeType === 'passation' ? 'Inventaire de passation' : 'Inventaire de fin de journée'}
                     </span>
                   </div>
                   <div style={{ flex: 1 }} />
@@ -1918,8 +1918,8 @@ export default function POSPage() {
                 {/* Description */}
                 <div style={{ padding: '0.5rem 1rem 0', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
                   {closeType === 'passation'
-                    ? 'Comptez les quantites restantes en vitrine pour le prochain shift.'
-                    : 'Verifiez les quantites et decidez du devenir de chaque produit invendu.'}
+                    ? 'Comptez les quantités restantes en vitrine pour le prochain shift.'
+                    : 'Vérifiez les quantités et décidez du devenir de chaque produit invendu.'}
                 </div>
 
                 {/* Panneau d'ajout manuel (pour produits en vitrine non tracks dans product_store_stock) */}
@@ -1945,7 +1945,7 @@ export default function POSPage() {
                       <div style={{ maxHeight: '14rem', overflowY: 'auto' }}>
                         {candidates.length === 0 ? (
                           <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
-                            {allCatalogProducts.length === 0 ? 'Chargement du catalogue...' : 'Aucun produit (deja dans l\'inventaire ou pas de correspondance)'}
+                            {allCatalogProducts.length === 0 ? 'Chargement du catalogue...' : 'Aucun produit (déjà dans l\'inventaire ou pas de correspondance)'}
                           </div>
                         ) : candidates.map(p => (
                           <button key={p.id as string} type="button"
@@ -1956,7 +1956,7 @@ export default function POSPage() {
                                 product_image: p.image_url,
                                 cost_price: p.cost_price || 0,
                                 price: p.price || 0,
-                                category_name: (p.category_name as string) || 'Ajoute manuellement',
+                                category_name: (p.category_name as string) || 'Ajouté manuellement',
                                 category_slug: p.category_slug,
                                 shelf_life_days: p.shelf_life_days,
                                 display_life_hours: p.display_life_hours,
@@ -1970,7 +1970,7 @@ export default function POSPage() {
                                 replenished_today_qty: 0,
                                 reexposition_count: 0,
                                 suggested_destination: closeType === 'passation' ? 'reexpose' : 'waste',
-                                suggested_reason: 'Ajoute manuellement a l\'inventaire',
+                                suggested_reason: 'Ajouté manuellement à l\'inventaire',
                               };
                               setInventoryItems(prev => [...prev, newItem]);
                               setAddInvSearch('');
@@ -2029,45 +2029,58 @@ export default function POSPage() {
                     <div className="odoo-stat-grid">
                       <button type="button" onClick={() => toggleFilter('replenished')}
                         className={`odoo-stat-card ${isActive('replenished')}`}>
-                        <div className="odoo-stat-card-label">Approvisionne</div>
+                        <div className="odoo-stat-card-label">
+                          <Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Approvisionné
+                        </div>
                         <div className="odoo-stat-card-value">{totalReplenished}</div>
-                        <div className="odoo-stat-card-sub">unites recues</div>
+                        <div className="odoo-stat-card-sub">unités reçues</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('sold')}
                         className={`odoo-stat-card ${isActive('sold')}`}>
-                        <div className="odoo-stat-card-label">Vendus</div>
+                        <div className="odoo-stat-card-label">
+                          <ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Vendus
+                        </div>
                         <div className="odoo-stat-card-value">{totalSold}</div>
-                        <div className="odoo-stat-card-sub">unites ecoulees</div>
+                        <div className="odoo-stat-card-sub">unités écoulées</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('theoretical')}
                         className={`odoo-stat-card ${isActive('theoretical')}`}>
-                        <div className="odoo-stat-card-label">Theorique</div>
+                        <div className="odoo-stat-card-label">
+                          <Layers size={11} style={{ display: 'inline', marginRight: 4 }} />Théorique
+                        </div>
                         <div className="odoo-stat-card-value">{totalTheoreticalRemaining}</div>
                         <div className="odoo-stat-card-sub">restant attendu</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('counted')}
                         className={`odoo-stat-card ${isActive('counted')}`}>
-                        <div className="odoo-stat-card-label">Saisi</div>
+                        <div className="odoo-stat-card-label">
+                          <ClipboardCheck size={11} style={{ display: 'inline', marginRight: 4 }} />Saisi
+                        </div>
                         <div className="odoo-stat-card-value">{totalCounted}</div>
-                        <div className="odoo-stat-card-sub">compte physique</div>
+                        <div className="odoo-stat-card-sub">compté physique</div>
                       </button>
                       <button type="button" onClick={() => toggleFilter('discrepancy')}
                         className={`odoo-stat-card ${isActive('discrepancy')}`}>
-                        <div className="odoo-stat-card-label">{closeType === 'passation' ? 'Reste' : 'Ecart'}</div>
+                        <div className="odoo-stat-card-label">
+                          <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />
+                          {closeType === 'passation' ? 'Reste' : 'Écart'}
+                        </div>
                         <div className="odoo-stat-card-value" style={ecartColor ? { color: ecartColor } : undefined}>
                           {closeType === 'passation' ? totalCounted : (totalDiscrepancySum > 0 ? `+${totalDiscrepancySum}` : totalDiscrepancySum)}
                         </div>
                         <div className="odoo-stat-card-sub">
-                          {closeType === 'passation' ? 'a transmettre'
+                          {closeType === 'passation' ? 'à transmettre'
                             : totalDiscrepancySum === 0 ? 'aucun' : totalDiscrepancySum > 0 ? 'manquant' : 'surplus'}
                         </div>
                       </button>
                       {closeType !== 'passation' && (totalKeep > 0 || totalRecycle > 0 || totalDestroy > 0) && (
                         <button type="button" onClick={() => toggleFilter('unsold')}
                           className={`odoo-stat-card ${isActive('unsold')}`}>
-                          <div className="odoo-stat-card-label">Invendus</div>
+                          <div className="odoo-stat-card-label">
+                            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Invendus
+                          </div>
                           <div className="odoo-stat-card-value">{totalKeep + totalRecycle + totalDestroy}</div>
-                          <div className="odoo-stat-card-sub">a decider</div>
+                          <div className="odoo-stat-card-sub">à décider</div>
                         </button>
                       )}
                     </div>
@@ -2078,12 +2091,12 @@ export default function POSPage() {
                 {inventoryFilter && (
                   <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', borderBottom: '1px solid var(--odoo-border)' }}>
                     <span className="odoo-filter-chip">
-                      Filtre : {inventoryFilter === 'replenished' ? 'Approvisionnes (> 0)'
+                      Filtre : {inventoryFilter === 'replenished' ? 'Approvisionn\u00e9s (> 0)'
                         : inventoryFilter === 'sold' ? 'Vendus (> 0)'
-                        : inventoryFilter === 'theoretical' ? 'Reste theorique (> 0)'
+                        : inventoryFilter === 'theoretical' ? 'Reste th\u00e9orique (> 0)'
                         : inventoryFilter === 'counted' ? 'Saisis (> 0)'
-                        : inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'Reste (> 0)' : 'Ecart (\u2260 0)')
-                        : 'Invendus a decider (> 0)'}
+                        : inventoryFilter === 'discrepancy' ? (closeType === 'passation' ? 'Reste (> 0)' : '\u00c9cart (\u2260 0)')
+                        : 'Invendus \u00e0 d\u00e9cider (> 0)'}
                       <span className="odoo-filter-chip-remove" onClick={() => setInventoryFilter(null)}>\u00d7</span>
                     </span>
                   </div>
@@ -2091,11 +2104,13 @@ export default function POSPage() {
 
                 {/* Items grouped by category */}
                 {(() => {
-                  const destConf: Record<string, { label: string; icon: string; tag: string }> = {
-                    reexpose:     { label: 'Vitrine J+1', icon: '✓', tag: 'odoo-tag-green' },
-                    retour_stock: { label: 'Retour reserve', icon: '⤴', tag: 'odoo-tag-green' },
-                    recycle:      { label: 'Recycler', icon: '♻', tag: 'odoo-tag-blue' },
-                    waste:        { label: 'Detruire', icon: '✗', tag: 'odoo-tag-red' },
+                  // Couleur d'accent par destination — applique uniquement quand le
+                  // bouton est actif, pour garder une lisibilite immediate du choix.
+                  const destConf: Record<string, { label: string; Icon: typeof Check; accent: string; bg: string }> = {
+                    reexpose:     { label: 'Vitrine J+1',    Icon: Check,         accent: '#28a745', bg: '#e9f7ef' },
+                    retour_stock: { label: 'Retour réserve', Icon: ArrowLeftRight, accent: '#1e7e34', bg: '#dff4e3' },
+                    recycle:      { label: 'Recycler',       Icon: RotateCcw,     accent: '#1f6391', bg: '#e8f3fc' },
+                    waste:        { label: 'Détruire',       Icon: Trash2,        accent: '#dc3545', bg: '#fdf0ed' },
                   };
                   const filteredItems = inventoryItems.filter((it) => {
                     if (!inventoryFilter) return true;
@@ -2159,10 +2174,10 @@ export default function POSPage() {
                                   <th style={{ width: closeType === 'passation' ? '45%' : '22%' }}>Produit</th>
                                   <th style={{ textAlign: 'center', width: '8%' }}>Approv.</th>
                                   <th style={{ textAlign: 'center', width: '8%' }}>Vendu</th>
-                                  <th style={{ textAlign: 'center', width: '8%' }}>Theor.</th>
+                                  <th style={{ textAlign: 'center', width: '8%' }}>Théor.</th>
                                   <th style={{ textAlign: 'center', width: '14%' }}>Saisi</th>
-                                  <th style={{ textAlign: 'center', width: '8%' }}>{closeType === 'passation' ? 'Reste' : 'Ecart'}</th>
-                                  {closeType !== 'passation' && <th style={{ textAlign: 'center', width: '32%' }}>Decision</th>}
+                                  <th style={{ textAlign: 'center', width: '8%' }}>{closeType === 'passation' ? 'Reste' : 'Écart'}</th>
+                                  {closeType !== 'passation' && <th style={{ textAlign: 'center', width: '32%' }}>Décision</th>}
                                 </tr>
                               </thead>
                               <tbody>
@@ -2211,9 +2226,25 @@ export default function POSPage() {
                                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{sold}</td>
                                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{theoreticalRemaining}</td>
                                       <td style={{ textAlign: 'center' }}>
-                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                        {/* Stepper unifie : 3 elements colles dans une bordure commune.
+                                            Visuellement plus net qu'un trio d'elements separes par 4px. */}
+                                        <div style={{
+                                          display: 'inline-flex', alignItems: 'stretch',
+                                          border: hasBeenCounted ? '1px solid var(--odoo-border-strong)' : '1px solid #ffc107',
+                                          borderRadius: '4px', overflow: 'hidden',
+                                          backgroundColor: hasBeenCounted ? 'var(--odoo-bg)' : '#fff8e8',
+                                          boxShadow: hasBeenCounted ? 'none' : '0 0 0 2px rgba(255, 193, 7, 0.15)',
+                                        }}>
                                           <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
-                                            className="odoo-pager-btn" title="Diminuer">
+                                            title="Diminuer"
+                                            style={{
+                                              width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                              color: 'var(--odoo-text-muted)',
+                                              borderRight: '1px solid var(--odoo-border)',
+                                              cursor: 'pointer', transition: 'background-color 0.1s',
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
                                             <Minus size={12} />
                                           </button>
                                           <input type="number" min={0}
@@ -2228,15 +2259,21 @@ export default function POSPage() {
                                               }
                                             }}
                                             style={{
-                                              width: '52px', height: '26px', textAlign: 'center',
-                                              fontSize: '0.8125rem', fontWeight: 500, fontVariantNumeric: 'tabular-nums',
-                                              border: hasBeenCounted ? '1px solid var(--odoo-border-strong)' : '1px solid #ffc107',
-                                              borderRadius: '3px',
-                                              backgroundColor: hasBeenCounted ? 'var(--odoo-bg)' : '#fff8e8',
-                                              color: 'var(--odoo-text)', outline: 'none',
+                                              width: 46, textAlign: 'center',
+                                              fontSize: '0.8125rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                                              border: 'none', backgroundColor: 'transparent',
+                                              color: hasBeenCounted ? 'var(--odoo-text)' : '#a07900', outline: 'none',
                                             }} />
                                           <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
-                                            className="odoo-pager-btn" title="Augmenter">
+                                            title="Augmenter"
+                                            style={{
+                                              width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                              color: 'var(--odoo-text-muted)',
+                                              borderLeft: '1px solid var(--odoo-border)',
+                                              cursor: 'pointer', transition: 'background-color 0.1s',
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
                                             <Plus size={12} />
                                           </button>
                                         </div>
@@ -2257,6 +2294,7 @@ export default function POSPage() {
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
                                               {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => {
                                                 const conf = destConf[d];
+                                                const Icon = conf.Icon;
                                                 const active = finalDest === d;
                                                 const canReexpose = !!it.is_reexposable;
                                                 const canRetourStock = (it.sale_type as string) === 'dlv' || ((it.shelf_life_days as number) ?? 0) > 1;
@@ -2265,8 +2303,8 @@ export default function POSPage() {
                                                   (d === 'reexpose' && !canReexpose) ||
                                                   (d === 'retour_stock' && !canRetourStock) ||
                                                   (d === 'recycle' && !canRecycle);
-                                                const tipDisabled = d === 'reexpose' ? 'Non re-exposable'
-                                                  : d === 'retour_stock' ? 'DLV trop courte pour retour reserve'
+                                                const tipDisabled = d === 'reexpose' ? 'Non ré-exposable'
+                                                  : d === 'retour_stock' ? 'DLV trop courte pour retour réserve'
                                                   : d === 'recycle' ? 'Non recyclable' : '';
                                                 return (
                                                   <button key={d}
@@ -2274,21 +2312,23 @@ export default function POSPage() {
                                                     disabled={disabled as boolean}
                                                     title={disabled ? tipDisabled : conf.label}
                                                     style={{
-                                                      display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                      padding: '0.1875rem 0.5rem', fontSize: '0.6875rem', fontWeight: 600,
-                                                      borderRadius: '3px',
-                                                      border: active ? '1.5px solid var(--odoo-purple)' : '1px solid var(--odoo-border-strong)',
-                                                      backgroundColor: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                                                      color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                                                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                      padding: '0.25rem 0.5rem', fontSize: '0.6875rem', fontWeight: 600,
+                                                      borderRadius: '4px',
+                                                      border: active ? `1.5px solid ${conf.accent}` : '1px solid var(--odoo-border-strong)',
+                                                      backgroundColor: active ? conf.bg : 'var(--odoo-bg)',
+                                                      color: active ? conf.accent : 'var(--odoo-text-muted)',
                                                       cursor: disabled ? 'not-allowed' : 'pointer',
-                                                      opacity: disabled ? 0.4 : 1,
+                                                      opacity: disabled ? 0.35 : 1,
+                                                      boxShadow: active ? `inset 0 -2px 0 ${conf.accent}` : 'none',
+                                                      transition: 'all 0.12s',
                                                     }}>
-                                                    <span>{conf.icon}</span> {conf.label}
+                                                    <Icon size={11} strokeWidth={2.5} /> {conf.label}
                                                   </button>
                                                 );
                                               })}
                                               {isOverride && (
-                                                <span style={{ fontSize: '0.625rem', color: '#b85d1a', fontWeight: 600, marginLeft: 2 }}>modifie</span>
+                                                <span style={{ fontSize: '0.625rem', color: '#b85d1a', fontWeight: 600, marginLeft: 2 }}>modifié</span>
                                               )}
                                             </div>
                                           ) : (
@@ -2325,11 +2365,11 @@ export default function POSPage() {
                                                   color: inventoryMotifs[pid] ? 'var(--odoo-text)' : '#721c24',
                                                   fontWeight: inventoryMotifs[pid] ? 400 : 500, outline: 'none',
                                                 }}>
-                                                <option value="">Motif d'ecart obligatoire ({Math.abs(discrepancy)} manquant)</option>
-                                                <option value="casse">Casse non declaree</option>
+                                                <option value="">Motif d'écart obligatoire ({Math.abs(discrepancy)} manquant)</option>
+                                                <option value="casse">Casse non déclarée</option>
                                                 <option value="vol">Vol / disparition</option>
-                                                <option value="erreur_declaration">Erreur de declaration ant.</option>
-                                                <option value="degustation">Degustation interne</option>
+                                                <option value="erreur_declaration">Erreur de déclaration ant.</option>
+                                                <option value="degustation">Dégustation interne</option>
                                                 <option value="autre">Autre</option>
                                               </select>
                                             </div>
@@ -2369,7 +2409,7 @@ export default function POSPage() {
                         <Package size={16} className="flex-shrink-0" />
                         <div>
                           {totalCounted > 0
-                            ? `${totalCounted} article(s) restant(s) a transmettre au prochain shift.`
+                            ? `${totalCounted} article(s) restant(s) à transmettre au prochain shift.`
                             : 'Aucun article restant — vitrine vide.'}
                         </div>
                       </div>
@@ -2381,14 +2421,14 @@ export default function POSPage() {
                       <AlertTriangle size={16} className="flex-shrink-0" />
                       <div>
                         {totalDiscrepancy > 0
-                          ? `Ecart : ${totalDiscrepancy} unite(s) manquante(s) (perte/casse)`
-                          : `Ecart : ${Math.abs(totalDiscrepancy)} unite(s) en surplus (anomalie)`}
+                          ? `Écart : ${totalDiscrepancy} unité(s) manquante(s) (perte/casse)`
+                          : `Écart : ${Math.abs(totalDiscrepancy)} unité(s) en surplus (anomalie)`}
                       </div>
                     </div>
                   ) : (
                     <div className="odoo-alert" style={{ backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb', borderTop: '1px solid #c3e6cb' }}>
                       <CheckCircle size={16} className="flex-shrink-0" />
-                      <div>Inventaire coherent — aucun ecart.</div>
+                      <div>Inventaire cohérent — aucun écart.</div>
                     </div>
                   );
                 })()}
@@ -2410,8 +2450,8 @@ export default function POSPage() {
                   <div className="odoo-alert warning">
                     <AlertTriangle size={16} className="flex-shrink-0" />
                     <div>
-                      <span className="odoo-alert-title">{uncountedCount} / {totalItems} produit(s) pas encore compte(s).</span>{' '}
-                      Saisis une quantite (0 si aucun en vitrine) pour chaque produit avant de valider.
+                      <span className="odoo-alert-title">{uncountedCount} / {totalItems} produit(s) pas encore compté(s).</span>{' '}
+                      Saisissez une quantité (0 si aucun en vitrine) pour chaque produit avant de valider.
                     </div>
                   </div>
                 )}
@@ -2501,7 +2541,7 @@ export default function POSPage() {
                   }}
                     disabled={cannotValidate}
                     className="odoo-btn-primary">
-                    {closeType === 'passation' ? 'Valider l\'inventaire' : 'Valider les decisions'}
+                    {closeType === 'passation' ? 'Valider l\'inventaire' : 'Valider les décisions'}
                   </button>
                 </div>
                 </>
