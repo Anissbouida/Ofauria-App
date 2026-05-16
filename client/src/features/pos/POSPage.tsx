@@ -2212,15 +2212,100 @@ export default function POSPage() {
                                   return (
                                     <tr key={pid} className={rowClass} style={{ cursor: 'default' }}>
                                       <td>
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                                          <span className={`odoo-status-dot ${dotClass}`} />
-                                          <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                          <span className={`odoo-status-dot ${dotClass}`} style={{ marginTop: 6 }} />
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                                             <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{it.product_name as string}</span>
+
+                                            {/* Info temps restant en vitrine — toujours visible si tracking actif.
+                                                Permet a la caissiere de decider sans recalculer mentalement DLV vs DLV vitrine. */}
+                                            {(() => {
+                                              const dispExp = it.display_expires_at as string | null;
+                                              const dispLife = it.display_life_hours as number | null;
+                                              const dlcExp = it.expires_at as string | null;
+                                              const reexpoCount = (it.reexposition_count as number) ?? 0;
+                                              const maxReexpo = (it.max_reexpositions as number) ?? 0;
+
+                                              const chips: JSX.Element[] = [];
+
+                                              // Chip 1 : duree restante en vitrine
+                                              if (dispExp) {
+                                                const ms = new Date(dispExp).getTime() - Date.now();
+                                                const h = ms / 3_600_000;
+                                                if (h <= 0) {
+                                                  chips.push(
+                                                    <span key="v" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color: '#dc3545', fontWeight: 600 }}>
+                                                      <Clock size={10} /> Vitrine expirée
+                                                    </span>
+                                                  );
+                                                } else {
+                                                  const color = h < 4 ? '#dc3545' : h < 12 ? '#b85d1a' : '#1f6391';
+                                                  const txt = h < 1 ? `${Math.round(h * 60)} min`
+                                                    : h < 48 ? `${Math.round(h)}h`
+                                                    : `${Math.round(h / 24 * 10) / 10}j`;
+                                                  chips.push(
+                                                    <span key="v" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color, fontWeight: 500 }} title={`Doit etre retire le ${new Date(dispExp).toLocaleString('fr-FR')}`}>
+                                                      <Clock size={10} /> Vitrine : {txt}
+                                                      {dispLife ? <span style={{ color: 'var(--odoo-text-light)', fontWeight: 400 }}> / {dispLife}h</span> : null}
+                                                    </span>
+                                                  );
+                                                }
+                                              } else if (dispLife) {
+                                                chips.push(
+                                                  <span key="v" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>
+                                                    <Clock size={10} /> Exposition max : {dispLife}h
+                                                  </span>
+                                                );
+                                              }
+
+                                              // Chip 2 : DLC (date limite de consommation produit)
+                                              if (dlcExp) {
+                                                const days = (new Date(dlcExp).getTime() - Date.now()) / 86_400_000;
+                                                if (days <= 0) {
+                                                  chips.push(
+                                                    <span key="d" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color: '#dc3545', fontWeight: 600 }}>
+                                                      <AlertCircle size={10} /> DLC expirée
+                                                    </span>
+                                                  );
+                                                } else {
+                                                  const color = days < 1 ? '#dc3545' : days < 3 ? '#b85d1a' : 'var(--odoo-text-light)';
+                                                  const txt = days < 1 ? `${Math.round(days * 24)}h` : `${Math.round(days)}j`;
+                                                  chips.push(
+                                                    <span key="d" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color }}>
+                                                      <AlertCircle size={10} /> DLC : {txt}
+                                                    </span>
+                                                  );
+                                                }
+                                              }
+
+                                              // Chip 3 : ré-exposition restante (si applicable)
+                                              if (maxReexpo > 0) {
+                                                const left = maxReexpo - reexpoCount;
+                                                const color = left <= 0 ? '#dc3545' : 'var(--odoo-text-light)';
+                                                chips.push(
+                                                  <span key="r" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color }}
+                                                    title={left <= 0 ? 'Nombre maximum de re-expositions atteint' : `${left} re-exposition(s) restante(s)`}>
+                                                    <RotateCcw size={10} /> Re-expo : {reexpoCount}/{maxReexpo}
+                                                  </span>
+                                                );
+                                              }
+
+                                              if (chips.length === 0) return null;
+                                              return (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem 0.625rem', marginTop: 2 }}>
+                                                  {chips}
+                                                </div>
+                                              );
+                                            })()}
+
+                                            {/* Suggestion automatique du backend (raison detaillee de la destination proposee) */}
                                             {sugReason && counted > 0 && (
-                                              <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', marginTop: 1 }} title={sugReason}>{sugReason}</span>
+                                              <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', marginTop: 1 }} title={sugReason}>
+                                                {sugReason}
+                                              </span>
                                             )}
-                                          </span>
-                                        </span>
+                                          </div>
+                                        </div>
                                       </td>
                                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{initial + replenished}</td>
                                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{sold}</td>
