@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
+import { smartFormatQuantity } from '../../utils/units';
 
 /**
  * Panneau reutilisable de gestion du bon de sortie.
@@ -780,11 +781,19 @@ export function BonSortiePanel({
                       {line.ingredient_name as string}
                     </span>
                     <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-                      <strong style={{ color: 'var(--theme-text-strong)', fontWeight: 600 }}>{displayedQty.toFixed(2)}</strong>
-                      <span style={{ fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
-                      {isMagasinier && actual !== null && actual !== allocated && (
-                        <span style={{ color: '#b85d1a', fontWeight: 600, marginLeft: 4 }}>&rarr; {actual.toFixed(2)}</span>
-                      )}
+                      {(() => {
+                        const f = smartFormatQuantity(displayedQty, unit);
+                        const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
+                        return <>
+                          <strong style={{ color: 'var(--theme-text-strong)', fontWeight: 600 }}>{f.value.toFixed(d)}</strong>
+                          <span style={{ fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
+                        </>;
+                      })()}
+                      {isMagasinier && actual !== null && actual !== allocated && (() => {
+                        const af = smartFormatQuantity(actual, unit);
+                        const d = af.unit === 'g' || af.unit === 'ml' ? 0 : 2;
+                        return <span style={{ color: '#b85d1a', fontWeight: 600, marginLeft: 4 }}>&rarr; {af.value.toFixed(d)} {af.unit}</span>;
+                      })()}
                     </span>
                     {isMagasinier && lotExpired && <span className="odoo-tag odoo-tag-red">Lot expiré</span>}
                     {sourceBadge && !isDone && isMagasinier && (

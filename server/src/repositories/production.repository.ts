@@ -7,6 +7,7 @@ import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
+import { toBaseUnit } from '../utils/units.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
@@ -338,12 +339,25 @@ export const productionRepository = {
         recipeId: string, yieldQty: number, multiplier: number,
         productId: string, acc: Map<string, { ingredientId: string; productId: string; quantity: number }>
       ) {
+        // Fetch BOTH the recipe-specified unit (ri.unit) and the ingredient's
+        // base unit (ing.unit). The recipe may say "420 g" while the ingredient
+        // is stored in "kg" — we must convert to base unit before aggregating.
         const ingsResult = await client.query(
-          `SELECT ingredient_id, quantity FROM recipe_ingredients WHERE recipe_id = $1`,
+          `SELECT ri.ingredient_id, ri.quantity,
+                  COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
+                  ing.unit AS base_unit
+             FROM recipe_ingredients ri
+             JOIN ingredients ing ON ing.id = ri.ingredient_id
+            WHERE ri.recipe_id = $1`,
           [recipeId]
         );
         for (const ri of ingsResult.rows) {
-          const needed = (parseFloat(ri.quantity) / yieldQty) * multiplier;
+          const recipeQty = parseFloat(ri.quantity);
+          // Convert recipe quantity (e.g. 420 g) to base unit (e.g. 0.42 kg)
+          // so aggregation across products with mixed units (g + kg) is correct
+          // and downstream consumers (BSI, FEFO) can compare with lot stock in kg.
+          const recipeQtyInBase = toBaseUnit(recipeQty, ri.recipe_unit, ri.base_unit);
+          const needed = (recipeQtyInBase / yieldQty) * multiplier;
           const key = `${ri.ingredient_id}::${productId}`;
           const existing = acc.get(key);
           if (existing) {
@@ -561,13 +575,20 @@ export const productionRepository = {
         recipeId: string, yieldQty: number, multiplier: number,
         acc: Map<string, number>,
       ) {
-        // 1. Direct ingredients
+        // 1. Direct ingredients — convert to base unit before aggregating
+        // (recipes may use g/ml while ingredients are stored in kg/l).
         const ingsResult = await client.query(
-          `SELECT ingredient_id, quantity FROM recipe_ingredients WHERE recipe_id = $1`,
+          `SELECT ri.ingredient_id, ri.quantity,
+                  COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
+                  ing.unit AS base_unit
+             FROM recipe_ingredients ri
+             JOIN ingredients ing ON ing.id = ri.ingredient_id
+            WHERE ri.recipe_id = $1`,
           [recipeId],
         );
         for (const ri of ingsResult.rows) {
-          const consumption = (parseFloat(ri.quantity) / yieldQty) * multiplier;
+          const qtyInBase = toBaseUnit(parseFloat(ri.quantity), ri.recipe_unit, ri.base_unit);
+          const consumption = (qtyInBase / yieldQty) * multiplier;
           const prev = acc.get(ri.ingredient_id) || 0;
           acc.set(ri.ingredient_id, prev + consumption);
         }
@@ -935,10 +956,17 @@ export const productionRepository = {
           // Recursive ingredient collection — skips sub-recipes already fulfilled from semi-finished stock
           async function collectNeeds(recipeId: string, yieldQty: number, multiplier: number) {
             const ingsResult = await client.query(
-              `SELECT ingredient_id, quantity FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]
+              `SELECT ri.ingredient_id, ri.quantity,
+                      COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
+                      ing.unit AS base_unit
+                 FROM recipe_ingredients ri
+                 JOIN ingredients ing ON ing.id = ri.ingredient_id
+                WHERE ri.recipe_id = $1`,
+              [recipeId]
             );
             for (const ri of ingsResult.rows) {
-              const consumption = (parseFloat(ri.quantity) / yieldQty) * multiplier;
+              const qtyInBase = toBaseUnit(parseFloat(ri.quantity), ri.recipe_unit, ri.base_unit);
+              const consumption = (qtyInBase / yieldQty) * multiplier;
               ingredientNeeds.set(ri.ingredient_id, (ingredientNeeds.get(ri.ingredient_id) || 0) + consumption);
             }
             const subsResult = await client.query(
