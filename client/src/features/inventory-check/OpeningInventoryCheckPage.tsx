@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardCheck, AlertTriangle, CheckCircle2, XCircle, Clock, Plus, Minus, Package } from 'lucide-react';
+import {
+  ClipboardCheck, AlertTriangle, CheckCircle2, XCircle, Clock,
+  Plus, Minus, Package, RefreshCw,
+} from 'lucide-react';
 import {
   openingInventoryCheckApi,
   type MissingReason,
@@ -56,8 +59,6 @@ export default function OpeningInventoryCheckPage() {
   const items = data?.items || [];
   const existingCheck = data?.existingCheck || null;
 
-  // Groupage par categorie pour rendu cards (similaire fermeture caisse).
-  // Doit etre defini AVANT les early returns pour respecter les regles des hooks React.
   const grouped = useMemo(() => {
     const m: Record<string, typeof items> = {};
     items.forEach((it) => {
@@ -104,7 +105,6 @@ export default function OpeningInventoryCheckPage() {
       };
     });
 
-    // Validation locale: si écart sans raison choisie -> bloque
     const missingReason = payload.find(
       (p) => p.foundQty !== p.expectedQty && !p.missingReason
     );
@@ -123,81 +123,102 @@ export default function OpeningInventoryCheckPage() {
     });
   };
 
+  // ─── Loading ──────────────────────────────────────────────────────────────
   if (isLoading) {
-    return <div className="p-8 text-gray-500">Chargement...</div>;
-  }
-
-  // Cas 1: rien à contrôler — caisse libre
-  if (items.length === 0 && !existingCheck) {
     return (
-      <div className="p-8 max-w-3xl mx-auto">
-        <div className="bg-green-50 border border-green-200 rounded-2xl p-6 flex items-center gap-4">
-          <CheckCircle2 className="text-green-600" size={32} />
-          <div>
-            <h2 className="font-bold text-green-900">Aucun contrôle requis</h2>
-            <p className="text-sm text-green-700">
-              Pas d'invendus réexposés à recontrôler. Vous pouvez ouvrir la caisse directement.
-            </p>
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Inventaire</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
           </div>
         </div>
-        <button
-          onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
-          className="mt-4 w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold"
-        >
-          Aller à la caisse
-        </button>
+        <div style={{ padding: '2rem', color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Chargement...</div>
       </div>
     );
   }
 
-  // Cas 2: check déjà en cours
-  if (existingCheck) {
-    const statusBadge =
-      existingCheck.status === 'awaiting_validation' ? (
-        <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold flex items-center gap-1">
-          <Clock size={12} /> En attente de validation
-        </span>
-      ) : existingCheck.status === 'validated' ? (
-        <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold flex items-center gap-1">
-          <CheckCircle2 size={12} /> Validé
-        </span>
-      ) : (
-        <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold flex items-center gap-1">
-          <XCircle size={12} /> Rejeté
-        </span>
-      );
+  // ─── Cas 1 : aucun controle requis ───────────────────────────────────────
+  if (items.length === 0 && !existingCheck) {
     return (
-      <div className="p-8 max-w-3xl mx-auto">
-        <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <ClipboardCheck size={24} /> Contrôle d'ouverture
-            </h2>
-            {statusBadge}
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Inventaire</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
           </div>
-          {existingCheck.status === 'awaiting_validation' && (
-            <p className="text-sm text-gray-700">
-              Votre contrôle a été soumis. Un responsable doit valider les écarts avant l'ouverture
-              de la caisse.
-            </p>
-          )}
+          <div style={{ flex: 1 }} />
+          <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
+            className="odoo-btn-primary">
+            Aller à la caisse
+          </button>
+        </div>
+        <div className="odoo-alert" style={{ backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb' }}>
+          <CheckCircle2 size={18} className="flex-shrink-0" />
+          <div>
+            <div className="odoo-alert-title">Aucun contrôle requis</div>
+            <div>Pas d'invendus réexposés à recontrôler. Vous pouvez ouvrir la caisse directement.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Cas 2 : check deja en cours ─────────────────────────────────────────
+  if (existingCheck) {
+    const tagClass =
+      existingCheck.status === 'awaiting_validation' ? 'odoo-tag odoo-tag-yellow' :
+      existingCheck.status === 'validated' ? 'odoo-tag odoo-tag-green' :
+      'odoo-tag odoo-tag-red';
+    const tagIcon =
+      existingCheck.status === 'awaiting_validation' ? <Clock size={11} /> :
+      existingCheck.status === 'validated' ? <CheckCircle2 size={11} /> :
+      <XCircle size={11} />;
+    const tagLabel =
+      existingCheck.status === 'awaiting_validation' ? 'En attente de validation' :
+      existingCheck.status === 'validated' ? 'Validé' : 'Rejeté';
+
+    return (
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Inventaire</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <span className={tagClass}>{tagIcon} {tagLabel}</span>
           {existingCheck.status === 'validated' && (
-            <>
-              <p className="text-sm text-gray-700 mb-4">Le contrôle a été validé. La caisse est ouverte.</p>
-              <button
-                onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
-                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold"
-              >
-                Aller à la caisse
-              </button>
-            </>
+            <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
+              className="odoo-btn-primary">
+              Aller à la caisse
+            </button>
           )}
-          {existingCheck.status === 'rejected' && existingCheck.rejection_reason && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-sm font-semibold text-red-900">Motif du rejet :</p>
-              <p className="text-sm text-red-700">{existingCheck.rejection_reason}</p>
+        </div>
+
+        <div style={{ padding: '1rem' }}>
+          <div className="odoo-section">
+            <div className="odoo-section-header">Statut du contrôle</div>
+            <div style={{ padding: '1rem', fontSize: '0.875rem', color: 'var(--odoo-text)' }}>
+              {existingCheck.status === 'awaiting_validation' && (
+                <p>Votre contrôle a été soumis. Un responsable doit valider les écarts avant l'ouverture de la caisse.</p>
+              )}
+              {existingCheck.status === 'validated' && (
+                <p>Le contrôle a été validé. La caisse est ouverte.</p>
+              )}
+              {existingCheck.status === 'rejected' && existingCheck.rejection_reason && (
+                <div>
+                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#721c24' }}>Motif du rejet :</p>
+                  <p style={{ color: '#721c24' }}>{existingCheck.rejection_reason}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     );
@@ -212,132 +233,143 @@ export default function OpeningInventoryCheckPage() {
     updateCount(pid, Math.max(0, cur - 1));
   };
 
-  // Cas 3: formulaire de saisie
+  // ─── Cas 3 : formulaire de saisie ────────────────────────────────────────
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2 mb-2">
-          <ClipboardCheck size={28} className="text-amber-600" /> Contrôle d'inventaire d'ouverture
-        </h1>
-        <p className="text-gray-600 text-sm">
-          Vérifiez la présence physique des invendus réexposés depuis la veille avant d'ouvrir la caisse.
-        </p>
+    <div className="odoo-scope" style={{ minHeight: '100%' }}>
+      {/* Control bar */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Inventaire</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => refetch()} className="odoo-btn-secondary">
+          <RefreshCw size={13} /> Recharger
+        </button>
+        <button onClick={handleSubmit} disabled={submitMutation.isPending}
+          className="odoo-btn-primary">
+          {submitMutation.isPending ? 'Soumission...' : 'Valider le contrôle'}
+        </button>
       </div>
 
+      {/* Alerts */}
       {submitMsg && (
-        <div
-          className={`mb-4 p-4 rounded-xl border ${
-            submitMsg.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-900'
-              : 'bg-red-50 border-red-200 text-red-900'
-          }`}
-        >
-          {submitMsg.text}
+        <div className={`odoo-alert ${submitMsg.type === 'error' ? 'danger' : ''}`}
+          style={submitMsg.type === 'success' ? { backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb' } : undefined}>
+          {submitMsg.type === 'error' ? <XCircle size={16} className="flex-shrink-0" /> : <CheckCircle2 size={16} className="flex-shrink-0" />}
+          <div>{submitMsg.text}</div>
+        </div>
+      )}
+      {totals.withDiscrepancy > 0 && (
+        <div className="odoo-alert warning">
+          <AlertTriangle size={16} className="flex-shrink-0" />
+          <div>
+            <span className="odoo-alert-title">{totals.withDiscrepancy} ligne(s) en écart.</span>{' '}
+            Le contrôle nécessitera la validation d'un responsable avant l'ouverture de la caisse.
+          </div>
         </div>
       )}
 
-      {/* ═══ Stat cards (haut, comme fermeture) ═══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-              <Package size={14} className="text-indigo-600" />
-            </div>
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Attendu</span>
+      {/* Stat grid */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">
+            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Attendu
           </div>
-          <div className="text-2xl font-bold text-indigo-700">{totals.totalExpected}</div>
+          <div className="odoo-stat-card-value">{totals.totalExpected}</div>
+          <div className="odoo-stat-card-sub">unités à recontrôler</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-              <ClipboardCheck size={14} className="text-blue-600" />
-            </div>
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Compté</span>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">
+            <ClipboardCheck size={11} style={{ display: 'inline', marginRight: 4 }} />Compté
           </div>
-          <div className="text-2xl font-bold text-blue-700">{totals.totalFound}</div>
+          <div className="odoo-stat-card-value">{totals.totalFound}</div>
+          <div className="odoo-stat-card-sub">unités physiques</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${totals.totalDiscrepancy === 0 ? 'bg-green-100' : 'bg-amber-100'}`}>
-              <AlertTriangle size={14} className={totals.totalDiscrepancy === 0 ? 'text-green-600' : 'text-amber-600'} />
-            </div>
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Écart</span>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">
+            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Écart
           </div>
-          <div className={`text-2xl font-bold ${totals.totalDiscrepancy === 0 ? 'text-green-600' : totals.totalDiscrepancy < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+          <div className="odoo-stat-card-value"
+            style={{ color: totals.totalDiscrepancy === 0 ? '#28a745' : totals.totalDiscrepancy < 0 ? '#dc3545' : '#1f6391' }}>
             {totals.totalDiscrepancy > 0 ? '+' : ''}{totals.totalDiscrepancy}
           </div>
+          <div className="odoo-stat-card-sub">{totals.totalDiscrepancy === 0 ? 'aucun' : 'unités'}</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${totals.withDiscrepancy === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-              <XCircle size={14} className={totals.withDiscrepancy === 0 ? 'text-green-600' : 'text-red-600'} />
-            </div>
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Lignes en ecart</span>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">
+            <XCircle size={11} style={{ display: 'inline', marginRight: 4 }} />Lignes en écart
           </div>
-          <div className={`text-2xl font-bold ${totals.withDiscrepancy === 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.withDiscrepancy}</div>
+          <div className="odoo-stat-card-value"
+            style={{ color: totals.withDiscrepancy === 0 ? '#28a745' : '#dc3545' }}>
+            {totals.withDiscrepancy}
+          </div>
+          <div className="odoo-stat-card-sub">{totals.withDiscrepancy === 0 ? 'tout conforme' : 'à motiver'}</div>
         </div>
       </div>
 
-      {/* ═══ Cards par categorie ═══ */}
-      <div className="space-y-3 mb-5">
-        {categoryNames.map((catName) => {
-          const catItems = grouped[catName];
-          const catTotalExpected = catItems.reduce((s, it) => s + it.expected_qty, 0);
-          return (
-            <div key={catName} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-              {/* Category header */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-800">{catName}</span>
-                  <span className="text-[11px] font-medium text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">
-                    {catItems.length} article{catItems.length > 1 ? 's' : ''}
-                  </span>
-                </div>
-                <span className="text-xs font-semibold text-gray-500">{catTotalExpected} attendu{catTotalExpected > 1 ? 's' : ''}</span>
-              </div>
+      {/* Description */}
+      <div style={{ padding: '0.75rem 1rem 0', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        Vérifiez la présence physique des invendus réexposés depuis la veille avant d'ouvrir la caisse.
+      </div>
 
-              {/* Column headers */}
-              <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                <span className="col-span-4">Produit</span>
-                <span className="col-span-1 text-center">Attendu</span>
-                <span className="col-span-3 text-center">Compté</span>
-                <span className="col-span-1 text-center">Ecart</span>
-                <span className="col-span-3 text-center">Raison (si ecart)</span>
+      {/* Sections par categorie */}
+      {categoryNames.map((catName) => {
+        const catItems = grouped[catName];
+        const catTotalExpected = catItems.reduce((s, it) => s + it.expected_qty, 0);
+        return (
+          <div key={catName} className="odoo-section">
+            <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>{catName}</span>
+                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
+                  {catItems.length} article{catItems.length > 1 ? 's' : ''}
+                </span>
               </div>
+              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                {catTotalExpected} attendu{catTotalExpected > 1 ? 's' : ''}
+              </span>
+            </div>
 
-              {/* Items */}
-              <div className="divide-y divide-gray-100">
+            <table className="odoo-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '40%' }}>Produit</th>
+                  <th style={{ width: '12%', textAlign: 'center' }}>Attendu</th>
+                  <th style={{ width: '20%', textAlign: 'center' }}>Compté</th>
+                  <th style={{ width: '10%', textAlign: 'center' }}>Écart</th>
+                  <th style={{ width: '18%', textAlign: 'center' }}>Raison (si écart)</th>
+                </tr>
+              </thead>
+              <tbody>
                 {catItems.map((it) => {
                   const pid = it.product_id;
                   const c = counts[pid];
-                  // Le champ "Compte" est pre-rempli avec la qte attendue par defaut.
-                  // L'utilisateur l'ajuste avec +/- uniquement en cas d'ecart constate.
-                  const hasBeenCounted = true;
                   const found = c?.found ?? it.expected_qty;
                   const discrepancy = found - it.expected_qty;
                   const hasDiscrepancy = discrepancy !== 0;
                   return (
-                    <div key={pid} className={`grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors ${
-                      !hasBeenCounted ? 'bg-yellow-50/60 ring-1 ring-inset ring-yellow-200' :
-                      hasDiscrepancy ? 'bg-amber-50/50' : 'hover:bg-gray-50'
-                    }`}>
-                      <div className="col-span-4 min-w-0">
-                        <span className="text-sm font-semibold text-gray-900 truncate block" title={it.product_name}>
-                          {it.product_name}
+                    <tr key={pid} className={hasDiscrepancy ? (discrepancy < 0 ? 'row-danger' : 'row-warning') : ''}
+                      style={{ cursor: 'default' }}>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span className={`odoo-status-dot ${hasDiscrepancy ? (discrepancy < 0 ? 'danger' : 'warning') : 'ok'}`} />
+                          <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{it.product_name}</span>
                         </span>
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <span className="text-sm font-bold text-indigo-700">{it.expected_qty}</span>
-                      </div>
-                      <div className="col-span-3 flex justify-center">
-                        <div className="flex items-center gap-1">
+                      </td>
+                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                        {it.expected_qty}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <button onClick={() => decCount(pid, it.expected_qty)}
-                            className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
+                            className="odoo-pager-btn" title="Diminuer">
                             <Minus size={12} />
                           </button>
                           <input type="number" min={0}
-                            value={hasBeenCounted ? found : ''}
-                            placeholder="?"
+                            value={found}
                             onChange={(e) => {
                               const v = e.target.value;
                               if (v === '') {
@@ -350,94 +382,70 @@ export default function OpeningInventoryCheckPage() {
                                 updateCount(pid, Math.max(0, parseInt(v) || 0));
                               }
                             }}
-                            className={`w-14 h-7 text-center text-sm font-bold border rounded-lg focus:ring-2 focus:ring-amber-500 ${
-                              hasBeenCounted ? 'border-gray-300' : 'border-yellow-400 bg-yellow-50 placeholder-yellow-500'
-                            }`} />
+                            style={{
+                              width: '52px', height: '26px', textAlign: 'center',
+                              fontSize: '0.8125rem', fontWeight: 500,
+                              fontVariantNumeric: 'tabular-nums',
+                              border: '1px solid var(--odoo-border-strong)',
+                              borderRadius: '3px', backgroundColor: 'var(--odoo-bg)',
+                              color: 'var(--odoo-text)', outline: 'none',
+                            }} />
                           <button onClick={() => incCount(pid, it.expected_qty)}
-                            className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
+                            className="odoo-pager-btn" title="Augmenter">
                             <Plus size={12} />
                           </button>
                         </div>
-                      </div>
-                      <div className="col-span-1 text-center">
-                        {!hasBeenCounted ? (
-                          <span className="text-sm font-bold text-yellow-600">—</span>
-                        ) : hasDiscrepancy ? (
-                          <span className={`text-sm font-bold ${discrepancy < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                            {discrepancy > 0 ? `+${discrepancy}` : discrepancy}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-green-500">0</span>
-                        )}
-                      </div>
-                      <div className="col-span-3">
+                      </td>
+                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
+                        color: hasDiscrepancy ? (discrepancy < 0 ? '#dc3545' : '#1f6391') : 'var(--odoo-text-light)',
+                      }}>
+                        {hasDiscrepancy ? (discrepancy > 0 ? `+${discrepancy}` : discrepancy) : '0'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
                         {hasDiscrepancy ? (
-                          <select
-                            value={c?.reason || ''}
+                          <select value={c?.reason || ''}
                             onChange={(e) => updateReason(pid, e.target.value as MissingReason)}
-                            className={`w-full text-[11px] px-2 py-1 rounded-md border font-medium focus:ring-1 ${
-                              c?.reason ? 'border-amber-300 bg-amber-50 text-amber-800 focus:ring-amber-400' :
-                              'border-red-300 bg-red-50 text-red-700 focus:ring-red-400 animate-pulse'
-                            }`}
-                          >
-                            <option value="">⚠ Motif obligatoire</option>
+                            style={{
+                              fontSize: '0.75rem', padding: '0.125rem 0.375rem',
+                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid #dc3545',
+                              borderRadius: '3px',
+                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : '#fdf0ed',
+                              color: c?.reason ? 'var(--odoo-text)' : '#721c24',
+                              fontWeight: c?.reason ? 400 : 500, outline: 'none',
+                            }}>
+                            <option value="">Motif obligatoire</option>
                             {(Object.keys(REASON_LABELS) as MissingReason[]).map((r) => (
                               <option key={r} value={r}>{REASON_LABELS[r]}</option>
                             ))}
                           </select>
-                        ) : hasBeenCounted ? (
-                          <span className="text-[11px] text-green-600 font-semibold flex items-center gap-1 justify-center">
-                            <CheckCircle2 size={12} /> Conforme
-                          </span>
                         ) : (
-                          <span className="text-[11px] text-yellow-600 font-medium text-center block">A compter</span>
+                          <span className="odoo-tag odoo-tag-green">
+                            <CheckCircle2 size={11} /> Conforme
+                          </span>
                         )}
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ═══ Notes ═══ */}
-      <div className="mb-5">
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Notes (optionnel)</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-amber-500"
-          placeholder="Observations particulières..."
-        />
-      </div>
-
-      {totals.withDiscrepancy > 0 && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-          <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
-          <div className="text-sm text-amber-900">
-            <strong>{totals.withDiscrepancy} ligne(s) en écart.</strong> Le contrôle nécessitera la
-            validation d'un responsable avant l'ouverture de la caisse.
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        );
+      })}
 
-      <div className="flex gap-3 justify-end">
-        <button
-          onClick={() => refetch()}
-          className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold"
-        >
-          Recharger
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={submitMutation.isPending}
-          className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold disabled:opacity-50 shadow-md"
-        >
-          {submitMutation.isPending ? 'Soumission...' : 'Valider le contrôle'}
-        </button>
+      {/* Notes */}
+      <div className="odoo-section">
+        <div className="odoo-section-header">Notes (optionnel)</div>
+        <div style={{ padding: '0.75rem 1rem' }}>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            placeholder="Observations particulières..."
+            style={{
+              width: '100%', padding: '0.5rem', fontSize: '0.875rem',
+              border: '1px solid var(--odoo-border-strong)', borderRadius: '3px',
+              backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+              outline: 'none', resize: 'vertical', fontFamily: 'inherit',
+            }} />
+        </div>
       </div>
     </div>
   );
