@@ -364,14 +364,14 @@ function CatalogueTab() {
                       <h3 className="text-sm font-semibold text-gray-900 truncate" title={p.name as string}>{p.name as string}</h3>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name as string}</p>
                     </div>
-                    <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">DH</span></span>
+                    <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : 'DH'}</span></span>
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
                     <div className="flex items-center gap-1 text-xs" title={`Reserve production : ${backroom} — En magasin (gere par caissieres) : ${vitrine}`}>
                       <Package size={12} className="text-gray-400" />
                       <span className={`font-semibold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-600'}`}>
-                        {backroom}
+                        {backroom}{p.sale_unit === 'weight' ? ' g' : ''}
                       </span>
                     </div>
                     {p.responsible_first_name && (
@@ -450,15 +450,15 @@ function CatalogueTab() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{parseFloat(p.price as string).toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{p.sale_unit === 'weight' ? 'DH/kg' : 'DH'}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {isOut ? (
                         <span className="odoo-tag odoo-tag-red">Rupture</span>
                       ) : isLow ? (
-                        <span className="odoo-tag odoo-tag-orange">{stock}</span>
+                        <span className="odoo-tag odoo-tag-orange">{stock}{p.sale_unit === 'weight' ? ' g' : ''}</span>
                       ) : (
-                        <span style={{ fontWeight: 500 }}>{stock}</span>
+                        <span style={{ fontWeight: 500 }}>{stock}{p.sale_unit === 'weight' ? ' g' : ''}</span>
                       )}
                     </td>
                     <td>
@@ -1144,11 +1144,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Stock actuel</span>
-                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_quantity as string) || '0')}</span>
+                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_quantity as string) || '0')}{product.sale_unit === 'weight' ? ' g' : ''}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Seuil alerte</span>
-                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_min_threshold as string) || '0')}</span>
+                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_min_threshold as string) || '0')}{product.sale_unit === 'weight' ? ' g' : ''}</span>
                       </div>
                     </div>
                   </div>
