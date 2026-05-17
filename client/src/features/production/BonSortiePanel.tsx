@@ -187,21 +187,23 @@ export function BonSortiePanel({
   // (stock dispo en economat, juste a transferer) — elles ne sont pas en rupture.
   // Les lignes annulees (status='annule') sont exclues : elles ne participent plus au BSI.
   // current_stock_total est fourni par le backend : somme (pesage + economat) des lots
-  // actifs pour cet ingredient sur ce store. Si ce total couvre le besoin, la ligne n'est
-  // PAS reellement en rupture, meme si son status BSI est encore 'rupture' (reappro arrive
-  // apres generation BSI -> sera ralloue au prochain "Re-verifier dispo").
-  const ruptureLines = lines.filter((l) => {
+  // actifs pour cet ingredient sur ce store. On separe deux cas :
+  //  - ruptureLines : vraie rupture (stock insuffisant maintenant -> il faut commander)
+  //  - recoverableRuptureLines : status BSI='rupture' MAIS stock revenu depuis
+  //    (reappro/transfert) -> juste un "Re-verifier dispo" suffit a re-allouer.
+  const allRuptureCandidates = lines.filter((l) => {
     if (l.status === 'annule') return false;
     if (l.source_location === 'ECONOMAT_REQUIRES_TRANSFER') return false;
     const need = parseFloat(l.needed_quantity as string || '0');
     const allocated = parseFloat(l.allocated_quantity as string || '0');
-    const isRuptureCandidate = allocated < need || (l.status === 'rupture' && !l.ingredient_lot_id);
-    if (!isRuptureCandidate) return false;
-    // Cache si le stock courant couvre deja le besoin (reapprovisionne entre temps).
-    const currentStock = parseFloat(l.current_stock_total as string || 'NaN');
-    if (Number.isFinite(currentStock) && currentStock >= need) return false;
-    return true;
+    return allocated < need || (l.status === 'rupture' && !l.ingredient_lot_id);
   });
+  const recoverableRuptureLines = allRuptureCandidates.filter((l) => {
+    const need = parseFloat(l.needed_quantity as string || '0');
+    const currentStock = parseFloat(l.current_stock_total as string || 'NaN');
+    return Number.isFinite(currentStock) && currentStock >= need;
+  });
+  const ruptureLines = allRuptureCandidates.filter(l => !recoverableRuptureLines.includes(l));
   // Option B : lignes en attente de transfert Economat → Pesage.
   // Le transfert se fait DEPUIS le module Economat (onglet "Transferts demandes" de InventoryPage),
   // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
@@ -563,6 +565,48 @@ export function BonSortiePanel({
         </div>
       )}
 
+      {/* Bandeau "recuperable" : lignes marquees rupture mais dont le stock est revenu
+          (reappro ou transfert depuis la generation du BSI). Un simple "Re-verifier dispo"
+          re-alloue ces lignes et les passe en preleve. */}
+      {!isClosed && recoverableRuptureLines.length > 0 && isMagasinier && (
+        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+              <RefreshCw size={18} className="text-emerald-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-emerald-900">
+                {recoverableRuptureLines.length} ingredient{recoverableRuptureLines.length > 1 ? 's' : ''} reapprovisionne{recoverableRuptureLines.length > 1 ? 's' : ''} — pret a re-allouer
+              </p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                Le stock est revenu depuis la generation du BSI. Clique "Re-verifier dispo" pour re-allouer ces lignes en pesage automatiquement (FEFO).
+              </p>
+              <ul className="text-xs text-emerald-800 mt-2 space-y-0.5">
+                {recoverableRuptureLines.slice(0, 5).map((l) => {
+                  const need = parseFloat(l.needed_quantity as string || '0');
+                  const stock = parseFloat(l.current_stock_total as string || '0');
+                  return (
+                    <li key={l.id as string}>
+                      <strong>{l.ingredient_name as string}</strong> :
+                      besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> · stock dispo <span className="font-mono text-emerald-700 font-semibold">{stock.toFixed(2)} {l.unit as string}</span>
+                    </li>
+                  );
+                })}
+                {recoverableRuptureLines.length > 5 && <li className="italic">+ {recoverableRuptureLines.length - 5} autres...</li>}
+              </ul>
+            </div>
+            <button
+              onClick={() => completePendingMutation.mutate()}
+              disabled={completePendingMutation.isPending}
+              className="px-3.5 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+            >
+              {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {completePendingMutation.isPending ? 'Re-allocation...' : 'Re-verifier dispo'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Phase BSI partiel : bandeau "preparation partielle" pour reprendre apres reappro
           Visible uniquement par le magasinier — c'est lui qui gere la reprise post-reappro. */}
       {isPartial && isMagasinier && (
@@ -707,10 +751,13 @@ export function BonSortiePanel({
           // requis non encore effectue par le magasinier). On affiche la qty demandee.
           // Pour le magasinier sur une ligne ECONOMAT_REQUIRES_TRANSFER, on affiche la qty
           // a transferer (transfer_required_qty) plutot que allocated=0.
+          // Sur une ligne en rupture totale (status='rupture' + lot=NULL + allocated=0),
+          // on affiche le besoin (needed_quantity) plutot que "0.00 kg" qui est trompeur.
           const transferRequiredQty = parseFloat(line.transfer_required_qty as string || '0');
           const isTransferRequired = line.source_location === 'ECONOMAT_REQUIRES_TRANSFER';
+          const isFullRupture = lineStatus === 'rupture' && !line.ingredient_lot_id && allocated < 0.001;
           const displayedQty = isMagasinier
-            ? (isTransferRequired ? transferRequiredQty : allocated)
+            ? (isTransferRequired ? transferRequiredQty : isFullRupture ? needed : allocated)
             : (allocated > 0 ? allocated : needed);
 
           // Source du stock : badge visuel pour aider le magasinier a savoir ou recuperer l'ingredient.
