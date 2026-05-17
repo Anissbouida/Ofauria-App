@@ -394,6 +394,12 @@ export const bonSortieRepository = {
   // toutes les lignes BSI actives en rupture totale (allocated=0 / lot=NULL),
   // groupables par BSI. Le magasinier peut declencher une commande fournisseur
   // depuis cette vue (centralisation au lieu d'agir BSI par BSI).
+  //
+  // IMPORTANT : on filtre les lignes dont le stock est REVENU entre temps
+  // (apres reapprovisionnement / transfert). Ces lignes restent flaggees
+  // 'rupture' cote BSI jusqu'a un "Re-verifier dispo", mais elles ne doivent
+  // plus apparaitre dans cette vue puisqu'il n'y a plus rien a commander.
+  // Le stock total (pesage + economat) doit etre < besoin pour rester affiche.
   async findRuptureRequests(storeId: string | null) {
     const result = await db.query(
       `SELECT bsl.id AS line_id,
@@ -429,6 +435,14 @@ export const bonSortieRepository = {
          AND bsl.status = 'rupture'
          AND bsl.ingredient_lot_id IS NULL
          AND COALESCE(bsl.allocated_quantity, 0) < 0.001
+         -- Cache les lignes dont le stock est revenu (pesage + economat couvrent le besoin)
+         AND COALESCE((
+           SELECT SUM(COALESCE(il.pesage_quantity, 0) + COALESCE(il.economat_quantity, 0))
+             FROM ingredient_lots il
+            WHERE il.ingredient_id = bsl.ingredient_id
+              AND il.store_id = bs.store_id
+              AND il.status = 'active'
+         ), 0) < bsl.needed_quantity
        ORDER BY pp.plan_date ASC NULLS LAST, bs.numero ASC, ing.name ASC`,
       [storeId]
     );
