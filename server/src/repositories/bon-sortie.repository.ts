@@ -510,13 +510,23 @@ export const bonSortieRepository = {
                 il.lot_number, il.supplier_lot_number, il.expiration_date,
                 il.quantity_remaining AS lot_remaining,
                 il.status AS lot_status,
-                CASE WHEN il.status = 'expired' THEN true ELSE false END AS lot_expired
+                CASE WHEN il.status = 'expired' THEN true ELSE false END AS lot_expired,
+                -- Stock courant total (pesage + economat) pour cet ingredient sur ce store.
+                -- Sert au frontend a savoir si une ligne 'rupture' a en realite ete reapprovisionnee
+                -- depuis la generation du BSI -> ne plus l'afficher dans le bandeau ruptures.
+                COALESCE((
+                  SELECT SUM(COALESCE(il2.pesage_quantity, 0) + COALESCE(il2.economat_quantity, 0))
+                    FROM ingredient_lots il2
+                   WHERE il2.ingredient_id = bsl.ingredient_id
+                     AND il2.store_id = $2
+                     AND il2.status = 'active'
+                ), 0) AS current_stock_total
          FROM production_bons_sortie_lignes bsl
          JOIN ingredients ing ON ing.id = bsl.ingredient_id
          LEFT JOIN ingredient_lots il ON il.id = bsl.ingredient_lot_id
          WHERE bsl.bon_id = $1
          ORDER BY ing.name, il.expiration_date ASC NULLS LAST`,
-        [bon.id]
+        [bon.id, bon.store_id]
       );
       bons.push({ ...bon, lines: linesResult.rows });
     }
@@ -551,13 +561,21 @@ export const bonSortieRepository = {
       `SELECT bsl.*,
               ing.name AS ingredient_name, ing.unit AS ingredient_unit,
               il.lot_number, il.supplier_lot_number, il.expiration_date, il.quantity_remaining AS lot_remaining,
-              il.status AS lot_status
+              il.status AS lot_status,
+              -- Stock courant total (pesage + economat) — voir findByPlan pour la motivation.
+              COALESCE((
+                SELECT SUM(COALESCE(il2.pesage_quantity, 0) + COALESCE(il2.economat_quantity, 0))
+                  FROM ingredient_lots il2
+                 WHERE il2.ingredient_id = bsl.ingredient_id
+                   AND il2.store_id = $2
+                   AND il2.status = 'active'
+              ), 0) AS current_stock_total
        FROM production_bons_sortie_lignes bsl
        JOIN ingredients ing ON ing.id = bsl.ingredient_id
        LEFT JOIN ingredient_lots il ON il.id = bsl.ingredient_lot_id
        WHERE bsl.bon_id = $1
        ORDER BY ing.name, il.expiration_date ASC NULLS LAST`,
-      [bonId]
+      [bonId, bon.store_id]
     );
 
     return { ...bon, lines: linesResult.rows };
