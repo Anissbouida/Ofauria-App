@@ -5,11 +5,12 @@ import { inventoryApi, ingredientsApi } from '../../api/inventory.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { TransferRequestsList } from '../warehouse/TransferRequestsList';
+import { RuptureRequestsList } from '../warehouse/RuptureRequestsList';
 import {
   AlertTriangle, Package, Search, TrendingUp,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
-  Plus, List, LayoutGrid, Save,
+  Plus, List, LayoutGrid, Save, ShoppingCart,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -19,7 +20,7 @@ import { format } from 'date-fns';
 type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock';
 type SortDir = 'asc' | 'desc';
 type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
-type EconomatTab = 'stock' | 'transfers';
+type EconomatTab = 'stock' | 'transfers' | 'ruptures';
 type ViewMode = 'list' | 'kanban';
 
 const INGREDIENT_CATEGORIES = [
@@ -105,15 +106,17 @@ export default function InventoryPage() {
   const { user } = useAuth();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 
-  // Onglets : "Stock economat" (defaut, vue actuelle) + "Transferts demandes" (BSI a transferer).
+  // Onglets : "Stock economat" (defaut) + "Transferts demandes" (BSI a transferer)
+  // + "Ingredients a commander" (BSI en rupture totale, cross-plans).
   // Persiste l'onglet en URL pour permettre les deep-links (badge sidebar, lien BSI panel).
+  const validTabs: EconomatTab[] = ['stock', 'transfers', 'ruptures'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as EconomatTab | null;
   const [econoTab, setEconoTab] = useState<EconomatTab>(
-    tabFromUrl === 'transfers' ? 'transfers' : 'stock'
+    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'stock'
   );
   useEffect(() => {
-    if (tabFromUrl === 'transfers' && econoTab !== 'transfers') setEconoTab('transfers');
+    if (tabFromUrl && validTabs.includes(tabFromUrl) && econoTab !== tabFromUrl) setEconoTab(tabFromUrl);
     if (!tabFromUrl && econoTab !== 'stock') setEconoTab('stock');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabFromUrl]);
@@ -124,11 +127,17 @@ export default function InventoryPage() {
     setSearchParams(searchParams, { replace: true });
   };
 
-  // Compteur de transferts en attente pour le badge de l'onglet.
-  // Visible uniquement aux roles ayant le module pesage (magasinier/admin/manager).
+  // Compteurs pour les badges des onglets (transferts + ruptures).
+  // Visible uniquement aux roles ayant le module economat (magasinier/admin/manager).
   const { data: transferRequests = [] } = useQuery<Record<string, any>[]>({
     queryKey: ['warehouse-transfer-requests'],
     queryFn: bonSortieApi.transferRequests,
+    enabled: isWarehouseUser,
+    refetchInterval: 30000,
+  });
+  const { data: ruptureRequests = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['warehouse-rupture-requests'],
+    queryFn: bonSortieApi.ruptureRequests,
     enabled: isWarehouseUser,
     refetchInterval: 30000,
   });
@@ -276,7 +285,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Onglets : Stock / Transferts */}
+      {/* Onglets : Stock / Transferts / Ingredients a commander */}
       {isWarehouseUser && (
         <div className="odoo-tabs">
           <button
@@ -298,12 +307,28 @@ export default function InventoryPage() {
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => changeEconoTab('ruptures')}
+            className={`odoo-tab ${econoTab === 'ruptures' ? 'active' : ''}`}>
+            <ShoppingCart size={13} />
+            <span>Ingrédients à commander</span>
+            {ruptureRequests.length > 0 && (
+              <span className="odoo-tag odoo-tag-red" style={{ marginLeft: '0.25rem' }}>
+                {ruptureRequests.length}
+              </span>
+            )}
+          </button>
         </div>
       )}
 
       {econoTab === 'transfers' ? (
         <div style={{ padding: '1rem' }}>
           <TransferRequestsList />
+        </div>
+      ) : econoTab === 'ruptures' ? (
+        <div style={{ padding: '1rem' }}>
+          <RuptureRequestsList />
         </div>
       ) : (
       <>

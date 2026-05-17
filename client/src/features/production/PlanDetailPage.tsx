@@ -33,6 +33,8 @@ import CoutReelPanel from './CoutReelPanel';
 const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
   confirmed: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', gradient: 'from-blue-500 to-blue-600', label: 'Confirme', icon: <CheckCircle size={14} /> },
+  awaiting_ingredients: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500', gradient: 'from-orange-500 to-orange-600', label: 'En attente ingredients', icon: <Clock size={14} /> },
+  ready_to_produce: { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', gradient: 'from-indigo-500 to-indigo-600', label: 'Pret a produire', icon: <AlertCircle size={14} /> },
   in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500', gradient: 'from-amber-500 to-orange-600', label: 'En cours', icon: <Play size={14} /> },
   completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600', label: 'Termine', icon: <CheckCircle size={14} /> },
 };
@@ -175,6 +177,43 @@ export default function PlanDetailPage() {
         || 'Erreur lors de la generation du bon de sortie';
       notify.error(msg);
     },
+  });
+
+  // Delta v1 point 2 : bandeau persistant chef "Ingredients prets — Confirmer ou refuser".
+  // S'affiche en haut de page (visible quel que soit l'onglet) quand le BSI est en 'pret'.
+  // Les actions sont les memes que celles du BonSortiePanel mais accessibles globalement.
+  const [bannerRejecting, setBannerRejecting] = useState(false);
+  const [bannerRejectReason, setBannerRejectReason] = useState('');
+  const acceptReceptionMutation = useMutation({
+    mutationFn: async () => {
+      const bonId = activeBon?.id as string;
+      if (!bonId) throw new Error('Aucun bon de sortie actif');
+      // Chaine pret -> prelevement -> verifie -> cloture (verify est idempotent).
+      if (activeBon!.status === 'pret') {
+        await bonSortieApi.startPrelevement(bonId);
+      }
+      if (['pret', 'prelevement'].includes(activeBon!.status as string)) {
+        await bonSortieApi.verify(bonId);
+      }
+      await bonSortieApi.close(bonId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      notify.success('Reception acceptee — ingredients livres, vous pouvez demarrer la production');
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+  const rejectReceptionMutation = useMutation({
+    mutationFn: (reason: string) => bonSortieApi.chefReject(activeBon!.id as string, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      setBannerRejecting(false);
+      setBannerRejectReason('');
+      notify.success('Reception refusee — le magasinier a ete notifie');
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
   });
 
   const confirmMutation = useMutation({
@@ -1083,6 +1122,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS];
   const statusTagClass = plan.status === 'completed' ? 'odoo-tag-green'
     : plan.status === 'in_progress' ? 'odoo-tag-yellow'
+    : plan.status === 'ready_to_produce' ? 'odoo-tag-blue'
+    : plan.status === 'awaiting_ingredients' ? 'odoo-tag-orange'
     : plan.status === 'confirmed' ? 'odoo-tag-blue'
     : 'odoo-tag-grey';
 
@@ -1103,6 +1144,115 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
         <span className={`odoo-tag ${statusTagClass}`}>{sc.icon}{planStatusBadge}</span>
       </div>
+
+      {/* ══════════════ DELTA v1 POINT 2 — BANDEAU PERSISTANT CHEF ══════════════
+          Affiche un bandeau d'action global tant que le plan est en 'ready_to_produce'
+          ET que le BSI lie est en 'pret' (le magasinier a fini la preparation).
+          Reste visible sur tous les onglets et ne disparait qu'apres action du chef
+          (acceptation ou refus). */}
+      {plan.status === 'ready_to_produce' && activeBon?.status === 'pret' && isChef && (
+        <div style={{
+          margin: '0.75rem 0',
+          padding: '1rem 1.25rem',
+          background: 'linear-gradient(90deg, #ecfdf5 0%, #d1fae5 100%)',
+          border: '2px solid #10b981',
+          borderRadius: '0.75rem',
+          boxShadow: '0 2px 8px rgba(16,185,129,0.15)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '0.625rem',
+              background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            }}>
+              <CheckCircle size={24} style={{ color: '#059669' }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#064e3b', margin: 0 }}>
+                Ingredients prets — Confirmer ou refuser la reception
+              </p>
+              <p style={{ fontSize: '0.8125rem', color: '#065f46', marginTop: '0.125rem', margin: '0.125rem 0 0 0' }}>
+                Le magasinier a termine la preparation du BSI {activeBon.numero as string}. Verifiez les quantites et la conformite avant de demarrer la production.
+              </p>
+            </div>
+            {!bannerRejecting && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                <button
+                  onClick={() => acceptReceptionMutation.mutate()}
+                  disabled={acceptReceptionMutation.isPending}
+                  style={{
+                    padding: '0.625rem 1rem',
+                    background: '#059669', color: 'white', border: 'none',
+                    borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: 600,
+                    cursor: acceptReceptionMutation.isPending ? 'not-allowed' : 'pointer',
+                    opacity: acceptReceptionMutation.isPending ? 0.6 : 1,
+                    display: 'flex', alignItems: 'center', gap: '0.375rem',
+                  }}>
+                  {acceptReceptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                  Confirmer la reception
+                </button>
+                <button
+                  onClick={() => setBannerRejecting(true)}
+                  style={{
+                    padding: '0.625rem 1rem',
+                    background: 'white', color: '#b91c1c',
+                    border: '1px solid #fca5a5', borderRadius: '0.5rem',
+                    fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.375rem',
+                  }}>
+                  <XCircle size={14} />
+                  Refuser
+                </button>
+              </div>
+            )}
+          </div>
+          {bannerRejecting && (
+            <div style={{
+              marginTop: '0.75rem', padding: '0.75rem',
+              background: 'white', border: '1px solid #fca5a5', borderRadius: '0.5rem',
+            }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', display: 'block', marginBottom: '0.375rem' }}>
+                Motif du refus (obligatoire)
+              </label>
+              <textarea
+                value={bannerRejectReason}
+                onChange={(e) => setBannerRejectReason(e.target.value)}
+                autoFocus
+                rows={2}
+                placeholder="Ex: Quantite insuffisante sur la farine, lot mal identifie..."
+                style={{
+                  width: '100%', fontSize: '0.875rem',
+                  border: '1px solid #fca5a5', borderRadius: '0.375rem',
+                  padding: '0.5rem 0.625rem', resize: 'none', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => rejectReceptionMutation.mutate(bannerRejectReason.trim())}
+                  disabled={rejectReceptionMutation.isPending || !bannerRejectReason.trim()}
+                  style={{
+                    flex: 1, padding: '0.5rem 0.75rem',
+                    background: '#dc2626', color: 'white', border: 'none',
+                    borderRadius: '0.375rem', fontSize: '0.8125rem', fontWeight: 600,
+                    cursor: rejectReceptionMutation.isPending || !bannerRejectReason.trim() ? 'not-allowed' : 'pointer',
+                    opacity: rejectReceptionMutation.isPending || !bannerRejectReason.trim() ? 0.5 : 1,
+                  }}>
+                  {rejectReceptionMutation.isPending ? 'Envoi...' : 'Confirmer le refus'}
+                </button>
+                <button
+                  onClick={() => { setBannerRejecting(false); setBannerRejectReason(''); }}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: '#f3f4f6', color: '#374151', border: 'none',
+                    borderRadius: '0.375rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+                  }}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══════════════ STAT TILES (sober, comme la liste) ══════════════ */}
       <div className="odoo-stat-grid">
@@ -1350,12 +1500,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
           </button>
         )}
-        {showPrepBsi && ['confirmed', 'in_progress'].includes(plan.status) && !isSemiFini && (
+        {showPrepBsi && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && (
           <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
             <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients
           </button>
         )}
-        {showProd && plan.status === 'confirmed' && (() => {
+        {showProd && ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && (() => {
           const deps = (plan.dependencies || []) as Record<string, any>[];
           const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
           // Wizard etape 3 : production bloquee tant que le BSI n'est pas cloture.

@@ -24,6 +24,11 @@ export const bonSortieApi = {
   transferRequests: () =>
     api.get('/bons-sortie/warehouse/transfer-requests').then(r => r.data.data),
 
+  // Lignes BSI en rupture totale, vue cross-BSI pour l'onglet "Ingredients a commander"
+  // (module Economat). Permet au magasinier de commander en lot.
+  ruptureRequests: () =>
+    api.get('/bons-sortie/warehouse/rupture-requests').then(r => r.data.data),
+
   // Get a single bon by id
   getById: (bonId: string) =>
     api.get(`/bons-sortie/${bonId}`).then(r => r.data.data),
@@ -66,6 +71,11 @@ export const bonSortieApi = {
   // Regenerate bon for a plan
   regenerate: (planId: string, storeId?: string) =>
     api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId }).then(r => r.data.data),
+
+  // Delta v1 point 4 : liste FEFO des lots Economat disponibles pour une ligne BSI.
+  // Le magasinier l'utilise pour confirmer le lot suggere ou en choisir un autre.
+  economatLotsForLigne: (ligneId: string) =>
+    api.get(`/bons-sortie/ligne/${ligneId}/economat-lots`).then(r => r.data.data),
 
   // Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant).
   // Le lot suggere peut etre substitue via overrideLotId, et la qty surchargee via overrideQty

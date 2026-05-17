@@ -149,8 +149,13 @@ export const productionController = {
   async start(req: AuthRequest, res: Response) {
     const plan = await productionRepository.findById(req.params.id);
     if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
-    if (plan.status !== 'confirmed') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme pour demarrer' } });
+    // Delta v1 point 1 : depuis l'introduction du cycle awaiting_ingredients ->
+    // ready_to_produce, le plan peut etre dans n'importe lequel de ces statuts
+    // au moment du demarrage. 'confirmed' couvre les plans sans BSI (aucun
+    // ingredient a prelever), 'ready_to_produce' couvre le cas standard avec
+    // BSI clôture. La verification BSI=cloture reste effectuee dans repository.start().
+    if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status)) {
+      res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme ou pret a produire pour demarrer' } });
       return;
     }
     try {
@@ -468,7 +473,7 @@ export const productionController = {
   async cancelItems(req: AuthRequest, res: Response) {
     const plan = await productionRepository.findById(req.params.id);
     if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
-    if (!['confirmed', 'in_progress'].includes(plan.status)) {
+    if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status)) {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme ou en cours' } });
       return;
     }

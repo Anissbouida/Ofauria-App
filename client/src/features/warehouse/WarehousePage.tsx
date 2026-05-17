@@ -345,8 +345,10 @@ export default function WarehousePage() {
 // ─── Onglet "Stock pesage" : ingredients actuellement ouverts au pesage ───
 // Aggregation par ingredient (1 ligne) avec details des lots ouverts (expansion).
 type PesageSort = 'dlc_asc' | 'name_asc' | 'qty_desc' | 'qty_asc';
-// L'onglet "Transferts demandes" utilise <TransferRequestsList /> importe depuis
-// ./TransferRequestsList — composant partage entre Pesage et Economat.
+// L'onglet "Transferts demandes" est rendu cote Economat (InventoryPage) uniquement —
+// decision metier : c'est au magasinier de partir de l'economat pour choisir le lot
+// FEFO et declencher le transfert. Le composant TransferRequestsList reste dans ce
+// dossier pour des raisons historiques mais n'est plus consomme par WarehousePage.
 function PesageStockList({ rows, isLoading }: { rows: Record<string, any>[]; isLoading: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');

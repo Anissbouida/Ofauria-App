@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bonSortieApi } from '../../api/bon-sortie.api';
-import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check, XCircle,
@@ -133,28 +132,9 @@ export function BonSortiePanel({
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
-  // EF-03/CA-04/CA-05 : sur une ligne en rupture totale (ni pesage ni economat),
-  // ajouter l'ingredient a la liste d'attente d'achat (service existant). Marque
-  // la ligne dans commandedLineIds pour bloquer le re-clic + retour visuel.
-  const [commandedLineIds, setCommandedLineIds] = useState<Set<string>>(new Set());
-  const commanderRuptureMutation = useMutation({
-    mutationFn: ({ line }: { line: Record<string, any> }) =>
-      purchaseRequestsApi.create({
-        ingredientId: line.ingredient_id as string,
-        quantity: parseFloat(line.needed_quantity as string || '0'),
-        unit: (line.unit || line.ingredient_unit || 'kg') as string,
-        reason: 'production',
-        note: `BSI ${bon?.numero || ''} — rupture totale signalee par magasinier`,
-        supplierId: null,
-      }),
-    onSuccess: (_data, vars) => {
-      setCommandedLineIds(prev => new Set(prev).add(vars.line.id as string));
-      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
-      notify.success('Ajoute a la liste d\'attente d\'achat');
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.response?.data?.error || 'Erreur ajout liste d\'attente'),
-  });
+  // Note : la commande fournisseur sur une ligne en rupture totale s'effectue
+  // desormais depuis le module Economat (onglet "Ingredients a commander"),
+  // pas depuis ce panneau. Le bandeau ruptures plus bas redirige le magasinier.
 
   // BSI partiel : valider ce qui est prelevé, garder le reste en attente
   const commitPartialMutation = useMutation({
@@ -215,7 +195,7 @@ export function BonSortiePanel({
     )
   );
   // Option B : lignes en attente de transfert Economat → Pesage.
-  // Le transfert se fait DEPUIS le module Pesage (onglet "Transferts demandes" de WarehousePage),
+  // Le transfert se fait DEPUIS le module Economat (onglet "Transferts demandes" de InventoryPage),
   // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
   const transferRequiredLines = lines.filter((l) => l.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
   const hasRupture = ruptureLines.length > 0;
@@ -224,7 +204,7 @@ export function BonSortiePanel({
   //  - vraies ruptures (stock manquant) avec au moins une ligne prelevee, OU
   //  - transferts economat encore non effectues avec au moins une ligne prelevee.
   // Cas 2 : le magasinier valide ce qui est deja transfere/pese et garde les autres
-  // en attente. Il fera le transfert depuis le module Pesage puis "Re-verifier dispo".
+  // en attente. Il fera le transfert depuis le module Economat puis "Re-verifier dispo".
   const canCommitPartial = bon?.status === 'preparation'
     && (hasRupture || transferRequiredLines.length > 0)
     && prelevees > 0;
@@ -371,7 +351,7 @@ export function BonSortiePanel({
                 onClick={() => markReadyMutation.mutate()}
                 disabled={markReadyMutation.isPending || hasRupture || enAttente > 0 || transferRequiredLines.length > 0}
                 title={
-                  transferRequiredLines.length > 0 ? `${transferRequiredLines.length} transfert(s) economat en attente — effectuez-les depuis le module Pesage ou utilisez "Valider partiel"` :
+                  transferRequiredLines.length > 0 ? `${transferRequiredLines.length} transfert(s) economat en attente — effectuez-les depuis le module Economat ou utilisez "Valider partiel"` :
                   hasRupture ? 'Ingredients en rupture — utilisez "Valider partiel"' :
                   enAttente > 0 ? `${enAttente} ingredient(s) non encore preleve(s)` : ''
                 }
@@ -472,10 +452,10 @@ export function BonSortiePanel({
         );
       })()}
 
-      {/* Bandeau informatif : transferts Economat → Pesage en attente.
+      {/* Bandeau informatif : transferts Economat -> Pesage en attente.
           Le transfert ne se fait PLUS depuis ce panneau : le magasinier doit aller dans
-          le module Pesage (onglet "Transferts demandes"), realiser le transfert physique,
-          puis revenir ici. Ce bandeau est purement passif (pas de bouton). */}
+          le module Economat (onglet "Transferts demandes") pour selectionner le lot et
+          realiser le transfert, ou commander l'ingredient en rupture. */}
       {!isClosed && transferRequiredLines.length > 0 && isMagasinier && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5">
           <div className="flex items-start gap-3 mb-2">
@@ -488,15 +468,15 @@ export function BonSortiePanel({
               </p>
               <p className="text-xs text-amber-800 mt-0.5">
                 Le stock existe en economat mais n'a pas encore ete transfere au pesage.
-                Effectue le transfert depuis le module Pesage, puis reviens ici pour finaliser le prelevement.
+                Effectue le transfert depuis le module Economat (selection du lot FEFO), puis reviens ici pour finaliser le prelevement.
               </p>
             </div>
             <Link
-              to="/warehouse?tab=transfers"
+              to="/inventory?tab=transfers"
               className="px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
             >
               <ArrowRightCircle size={13} />
-              Voir dans Pesage
+              Voir dans Economat
             </Link>
           </div>
           <ul className="text-xs text-amber-900 ml-12 space-y-0.5 mt-2">
@@ -515,9 +495,11 @@ export function BonSortiePanel({
         </div>
       )}
 
-      {/* Phase BSI partiel : bandeau alerte ruptures (vraies ruptures uniquement)
-          Visible uniquement par le magasinier — le chef n'est pas notifie de la dispo (Option B).
-          Le chef voit uniquement le statut du BSI (en preparation / pret). */}
+      {/* Bandeau alerte ruptures (vraies ruptures uniquement). Visible uniquement par
+          le magasinier. La commande fournisseur ne se fait PLUS depuis ce panneau :
+          le magasinier va dans le module Economat (onglet "Ingredients a commander")
+          pour declencher la commande de maniere centralisee.
+          Ici on garde le bouton "Re-verifier dispo" pour re-allouer apres reappro/transfert. */}
       {!isClosed && hasRupture && isMagasinier && (
         <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
           <div className="flex items-start gap-3 mb-2">
@@ -529,59 +511,42 @@ export function BonSortiePanel({
                 {ruptureLines.length} ingredient{ruptureLines.length > 1 ? 's' : ''} en rupture / partiel
               </p>
               <p className="text-xs text-orange-700 mt-0.5">
-                Le stock est insuffisant pour ces ingredients. Tu peux prelever ce qui est dispo et valider en partiel — la production continuera apres reapprovisionnement.
+                Le stock est insuffisant pour ces ingredients. Declenche la commande fournisseur depuis le module Economat, puis "Re-verifier dispo" ici. Tu peux aussi prelever ce qui est dispo et valider en partiel.
               </p>
             </div>
-            {/* Re-verifie la dispo apres reappro/transfert : re-run FEFO sur les ruptures.
-                Utile quand le magasinier a transfere depuis l'economat ou ajoute du stock
-                APRES la generation du BSI. Le statut du BSI (preparation / preparation_partielle)
-                est conserve, seules les lignes en rupture sont re-allouees si possible. */}
-            <button
-              onClick={() => completePendingMutation.mutate()}
-              disabled={completePendingMutation.isPending}
-              className="px-3.5 py-2 bg-orange-600 text-white rounded-lg text-xs font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-              title="Re-verifie la dispo et re-alloue les lignes en rupture (apres transfert ou reappro)"
-            >
-              {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-              {completePendingMutation.isPending ? 'Verification...' : 'Re-verifier dispo'}
-            </button>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              <Link
+                to="/inventory?tab=ruptures"
+                className="px-3.5 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <ShoppingCart size={13} />
+                Voir dans Economat
+              </Link>
+              {/* Re-verifie la dispo apres reappro/transfert : re-run FEFO sur les ruptures.
+                  Utile quand le magasinier a transfere depuis l'economat ou ajoute du stock
+                  APRES la generation du BSI. */}
+              <button
+                onClick={() => completePendingMutation.mutate()}
+                disabled={completePendingMutation.isPending}
+                className="px-3.5 py-2 bg-orange-600 text-white rounded-lg text-xs font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shadow-sm"
+                title="Re-verifie la dispo et re-alloue les lignes en rupture (apres transfert ou reappro)"
+              >
+                {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {completePendingMutation.isPending ? 'Verification...' : 'Re-verifier dispo'}
+              </button>
+            </div>
           </div>
           <ul className="text-xs text-orange-800 ml-12 space-y-1.5 mt-2">
             {ruptureLines.slice(0, 5).map((l) => {
               const need = parseFloat(l.needed_quantity as string || '0');
               const avail = parseFloat(l.allocated_quantity as string || '0');
               const missing = need - avail;
-              const lineId = l.id as string;
-              const isCommanded = commandedLineIds.has(lineId);
-              // EF-03 : ligne en rupture totale (pas de lot attache, allocated=0) → bouton "Commander"
-              // qui ajoute a la liste d'attente du module Achat.
-              const isFullRupture = !l.ingredient_lot_id && avail < 0.001 && !!l.ingredient_id;
-              const isPending = commanderRuptureMutation.isPending && (commanderRuptureMutation.variables as any)?.line?.id === lineId;
               return (
-                <li key={lineId} className="flex items-center justify-between gap-2 flex-wrap">
-                  <span>
-                    <strong>{l.ingredient_name as string}</strong> :
-                    dispo <span className="font-mono">{avail.toFixed(2)} {l.unit as string}</span> /
-                    besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> →
-                    <span className="text-red-700 font-semibold"> manque {missing.toFixed(2)}</span>
-                  </span>
-                  {isFullRupture && (
-                    isCommanded ? (
-                      <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[11px] font-semibold flex items-center gap-1 shrink-0">
-                        <CheckCircle size={11} /> Commande envoyee
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => commanderRuptureMutation.mutate({ line: l })}
-                        disabled={isPending}
-                        className="px-2.5 py-1 bg-blue-600 text-white rounded-md text-[11px] font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1 shrink-0 shadow-sm"
-                        title={`Ajouter ${need.toFixed(2)} ${l.unit as string} a la liste d'attente d'achat`}
-                      >
-                        {isPending ? <Loader2 size={11} className="animate-spin" /> : <ShoppingCart size={11} />}
-                        Commander
-                      </button>
-                    )
-                  )}
+                <li key={l.id as string}>
+                  <strong>{l.ingredient_name as string}</strong> :
+                  dispo <span className="font-mono">{avail.toFixed(2)} {l.unit as string}</span> /
+                  besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> →
+                  <span className="text-red-700 font-semibold"> manque {missing.toFixed(2)}</span>
                 </li>
               );
             })}
@@ -761,6 +726,19 @@ export function BonSortiePanel({
             : hasEcart ? 'warning'
             : lotExpired ? 'danger'
             : 'neutral';
+
+          // Delta v1 point 5 : indicateur visuel par ligne, terminologie spec :
+          //   Pret       — ingredient pese et prepare (preleve / substitue / ecart)
+          //   En transfert — absent du pesage, present en economat (transfert pas fait)
+          //   En commande  — absent du pesage ET de l'economat (rupture, achat necessaire)
+          //   En attente   — pesage dispo mais pas encore confirme par le magasinier
+          const lineSpecStatus: { label: string; cls: string; Icon: typeof CheckCircle } | null = isDone
+            ? { label: 'Pret', cls: 'odoo-tag-green', Icon: CheckCircle }
+            : isTransferRequired
+            ? { label: 'En transfert', cls: 'odoo-tag-orange', Icon: ArrowRightCircle }
+            : (lineStatus === 'rupture' && !line.ingredient_lot_id)
+            ? { label: 'En commande', cls: 'odoo-tag-red', Icon: AlertTriangle }
+            : null;
           return (
             <div
               key={line.id as string}
@@ -839,21 +817,20 @@ export function BonSortiePanel({
                   </div>
                 )}
 
-                {/* Ligne en attente de transfert Economat -> Pesage : badge passif uniquement.
-                    Le transfert s'effectue depuis le module Pesage (onglet "Transferts demandes"). */}
-                {!isClosed && !isVerified && line.source_location === 'ECONOMAT_REQUIRES_TRANSFER' && isMagasinier && (
+                {/* Delta v1 point 5 : indicateur visuel par ligne (3 etats spec). */}
+                {lineSpecStatus && (
                   <span
-                    className="px-2.5 py-1.5 bg-amber-100 text-amber-800 border border-amber-200 rounded-lg flex items-center gap-1 text-xs font-semibold shrink-0"
-                    title="Effectue le transfert depuis le module Pesage (onglet Transferts demandes)"
+                    className={`odoo-tag ${lineSpecStatus.cls} shrink-0`}
+                    title={
+                      lineSpecStatus.label === 'En transfert'
+                        ? 'Effectue le transfert depuis le module Economat (onglet Transferts demandes)'
+                        : lineSpecStatus.label === 'En commande'
+                        ? 'Ingredient absent du pesage ET de l\'economat — commande fournisseur necessaire'
+                        : 'Ingredient pese et pret'
+                    }
                   >
-                    <ArrowRightCircle size={12} />
-                    A transferer
-                  </span>
-                )}
-
-                {isDone && (
-                  <span className="text-emerald-500 shrink-0">
-                    <CheckCircle size={20} />
+                    <lineSpecStatus.Icon size={12} />
+                    {lineSpecStatus.label}
                   </span>
                 )}
               </div>
