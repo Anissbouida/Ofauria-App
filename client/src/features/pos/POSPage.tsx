@@ -31,9 +31,13 @@ interface CartItem {
   // Pour unit='g'    : prix au kilo (DH/kg). Le subtotal vaut quantity/1000*price.
   price: number;
   // Pour unit='unit' : nombre de pièces.
-  // Pour unit='g'    : poids vendu en grammes (entier).
+  // Pour unit='g'    : poids vendu en grammes (entier, normalisation interne).
   quantity: number;
   unit: 'unit' | 'g';
+  // Pour les items au poids : unité d'affichage choisie par le caissier dans
+  // le modal (g ou kg). Permet d'afficher "0.50 kg" ou "500 g" selon la saisie.
+  // N'affecte ni la DB ni le calcul (quantity reste en grammes).
+  displayUnit?: 'g' | 'kg';
   imageUrl?: string;
 }
 
@@ -134,6 +138,9 @@ export default function POSPage() {
   const [numpadValue, setNumpadValue] = useState('');
   const [weightModal, setWeightModal] = useState<{ product: Record<string, any>; existingQty: number } | null>(null);
   const [weightInput, setWeightInput] = useState('');
+  // Unité de saisie choisie par le caissier dans le modal (toggle kg/g).
+  // En 'kg' l'input accepte les décimales ; en 'g' uniquement des entiers.
+  const [weightInputUnit, setWeightInputUnit] = useState<'g' | 'kg'>('g');
 
   // Cash register state
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -633,8 +640,14 @@ export default function POSPage() {
     // au lieu d'incrémenter par 1 (ça ne veut rien dire en grammes).
     if (product.sale_unit === 'weight') {
       const existing = cart.find(i => i.productId === product.id);
+      const existingUnit = existing?.displayUnit || 'g';
       setWeightModal({ product, existingQty: existing?.quantity || 0 });
-      setWeightInput(existing ? String(existing.quantity) : '');
+      setWeightInputUnit(existingUnit);
+      // Si on rouvre sur une ligne existante : pré-remplit la valeur dans
+      // l'unité d'origine (500g → "500", 0.5kg → "0.5").
+      setWeightInput(existing
+        ? (existingUnit === 'kg' ? String(existing.quantity / 1000) : String(existing.quantity))
+        : '');
       return;
     }
 
@@ -658,8 +671,10 @@ export default function POSPage() {
 
   const confirmWeight = () => {
     if (!weightModal) return;
-    const weightG = parseInt(weightInput, 10);
-    if (!weightG || weightG <= 0) { setWeightModal(null); setWeightInput(''); return; }
+    const raw = parseFloat(weightInput.replace(',', '.'));
+    if (!raw || raw <= 0) { setWeightModal(null); setWeightInput(''); return; }
+    // Conversion en grammes (entier, arrondi) selon l'unité de saisie.
+    const weightG = weightInputUnit === 'kg' ? Math.round(raw * 1000) : Math.round(raw);
     const p = weightModal.product;
     const stock = parseFloat(p.stock_quantity as string) || 0;
     if (weightG > stock) { showStockAlert(p.id as string, stock); return; }
@@ -667,7 +682,7 @@ export default function POSPage() {
     const existing = cart.find(i => i.productId === p.id);
     if (existing) {
       // Remplace le poids saisi (et pas un cumul, sinon difficile à corriger).
-      setCart(cart.map(i => i.productId === p.id ? { ...i, quantity: weightG } : i));
+      setCart(cart.map(i => i.productId === p.id ? { ...i, quantity: weightG, displayUnit: weightInputUnit } : i));
     } else {
       setCart([...cart, {
         productId: p.id as string,
@@ -675,6 +690,7 @@ export default function POSPage() {
         price: pricePerKg,
         quantity: weightG,
         unit: 'g',
+        displayUnit: weightInputUnit,
         imageUrl: p.image_url as string | undefined,
       }]);
     }
@@ -1094,7 +1110,7 @@ export default function POSPage() {
                             <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
                             <p className="text-xs text-gray-400 mt-0.5">
                               {isWeight
-                                ? `${item.quantity} g @ ${item.price.toFixed(2)} DH/kg`
+                                ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} @ ${item.price.toFixed(2)} DH/kg`
                                 : `${item.price.toFixed(2)} DH / unité`}
                             </p>
                             {isItemAlerted && (
@@ -3336,39 +3352,64 @@ export default function POSPage() {
         <ReceiptModal receipt={receiptData} onClose={() => setReceiptData(null)} autoPrintTriggered />
       )}
 
-      {/* Weight input modal — produits vendus au poids */}
+      {/* Weight input modal — produits vendus au poids (toggle kg/g) */}
       {weightModal && (() => {
         const p = weightModal.product;
         const pricePerKg = parseFloat((p.price_per_kg ?? p.price) as string);
         const stock = parseFloat(p.stock_quantity as string) || 0;
-        const weightG = parseInt(weightInput, 10) || 0;
+        const isKg = weightInputUnit === 'kg';
+        const raw = parseFloat(weightInput.replace(',', '.')) || 0;
+        const weightG = isKg ? Math.round(raw * 1000) : Math.round(raw);
         const computedTotal = (weightG / 1000) * pricePerKg;
         const overStock = weightG > stock;
-        const append = (s: string) => setWeightInput(v => (v + s).slice(0, 6));
+        const switchUnit = (target: 'g' | 'kg') => {
+          if (target === weightInputUnit) return;
+          // Reconvertit l'input pour ne pas perdre la valeur affichée
+          if (target === 'kg' && raw > 0) {
+            const kg = raw / 1000;
+            setWeightInput(kg === Math.floor(kg) ? String(kg) : kg.toFixed(3).replace(/\.?0+$/, ''));
+          } else if (target === 'g' && raw > 0) {
+            setWeightInput(String(Math.round(raw * 1000)));
+          }
+          setWeightInputUnit(target);
+        };
+        const append = (s: string) => setWeightInput(v => (v + s).slice(0, 8));
         const back = () => setWeightInput(v => v.slice(0, -1));
+        const closeModal = () => { setWeightModal(null); setWeightInput(''); };
+        const validChars = isKg ? /[^\d.,]/g : /\D/g;
+        const stockDisplay = isKg ? `${(stock / 1000).toFixed(2)} kg` : `${stock.toFixed(0)} g`;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => { setWeightModal(null); setWeightInput(''); }}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeModal}>
             <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="px-5 py-3 border-b bg-gradient-to-r from-primary-50 to-white">
                 <h3 className="font-semibold text-gray-800">{p.name as string}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerKg.toFixed(2)} DH/kg — Stock vitrine : {stock.toFixed(0)} g</p>
+                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerKg.toFixed(2)} DH/kg — Stock vitrine : {stockDisplay}</p>
               </div>
               <div className="p-5">
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Poids (grammes)</label>
+                {/* Toggle kg/g */}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-600">Poids ({isKg ? 'kilogrammes' : 'grammes'})</label>
+                  <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+                    <button onClick={() => switchUnit('g')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${!isKg ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>g</button>
+                    <button onClick={() => switchUnit('kg')}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${isKg ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>kg</button>
+                  </div>
+                </div>
                 <div className="flex items-baseline gap-2 mb-3">
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode={isKg ? 'decimal' : 'numeric'}
                     value={weightInput}
-                    onChange={e => setWeightInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="350"
+                    onChange={e => setWeightInput(e.target.value.replace(validChars, '').slice(0, 8))}
+                    placeholder={isKg ? '0.5' : '350'}
                     autoFocus
                     className={`flex-1 text-3xl font-bold text-center py-3 border-2 rounded-lg focus:outline-none ${overStock ? 'border-red-400 text-red-600' : 'border-gray-200 focus:border-primary-400 text-gray-800'}`}
                   />
-                  <span className="text-lg font-semibold text-gray-500">g</span>
+                  <span className="text-lg font-semibold text-gray-500">{isKg ? 'kg' : 'g'}</span>
                 </div>
                 {overStock && (
-                  <p className="text-xs text-red-600 mb-2">Stock insuffisant — max {stock.toFixed(0)} g</p>
+                  <p className="text-xs text-red-600 mb-2">Stock insuffisant — max {stockDisplay}</p>
                 )}
                 <div className="flex justify-between items-center px-1 mb-3">
                   <span className="text-xs text-gray-500">Total ligne</span>
@@ -3381,17 +3422,22 @@ export default function POSPage() {
                   ))}
                   <button onClick={back} className="h-12 bg-gray-50 hover:bg-amber-50 rounded-lg text-amber-600 text-sm font-semibold">←</button>
                   <button onClick={() => append('0')} className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">0</button>
-                  <button onClick={() => append('00')} className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">00</button>
+                  {isKg ? (
+                    <button onClick={() => append('.')} disabled={weightInput.includes('.') || weightInput.includes(',')}
+                      className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed">.</button>
+                  ) : (
+                    <button onClick={() => append('00')} className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">00</button>
+                  )}
                 </div>
                 <div className="grid grid-cols-4 gap-1.5 mt-2">
-                  {[100, 200, 250, 500].map(g => (
-                    <button key={g} onClick={() => setWeightInput(String(g))}
-                      className="h-9 bg-gray-50 hover:bg-primary-50 rounded-lg text-xs font-semibold text-gray-600">+{g}g</button>
+                  {(isKg ? [0.25, 0.5, 1, 2] : [100, 200, 250, 500]).map(v => (
+                    <button key={v} onClick={() => setWeightInput(String(v))}
+                      className="h-9 bg-gray-50 hover:bg-primary-50 rounded-lg text-xs font-semibold text-gray-600">{isKg ? `${v} kg` : `${v} g`}</button>
                   ))}
                 </div>
               </div>
               <div className="px-5 py-3 border-t bg-gray-50 flex justify-end gap-2">
-                <button onClick={() => { setWeightModal(null); setWeightInput(''); }}
+                <button onClick={closeModal}
                   className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100">Annuler</button>
                 <button onClick={confirmWeight} disabled={!weightG || overStock}
                   className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
