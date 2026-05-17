@@ -1,6 +1,8 @@
 export const PRODUCTION_STATUS = {
   DRAFT: 'draft',
   CONFIRMED: 'confirmed',
+  AWAITING_INGREDIENTS: 'awaiting_ingredients',
+  READY_TO_PRODUCE: 'ready_to_produce',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
 } as const;
@@ -10,7 +12,9 @@ export type ProductionPlanStatus = (typeof PRODUCTION_STATUS)[keyof typeof PRODU
 export const PRODUCTION_STATUS_LABELS: Record<ProductionPlanStatus, string> = {
   draft: 'Brouillon',
   confirmed: 'Confirme',
-  in_progress: 'En cours',
+  awaiting_ingredients: 'En attente ingredients',
+  ready_to_produce: 'Pret a produire',
+  in_progress: 'En production',
   completed: 'Termine',
 };
 

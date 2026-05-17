@@ -38,17 +38,30 @@ export default function Sidebar() {
 
   // Badge "transferts en attente" sur l'icone Pesage : compteur global toutes BSI confondues
   // pour le store du magasinier. Polling 30s pour rester aligne avec la file d'attente.
-  // Visible uniquement pour les roles ayant acces au module pesage (filteredNav le garantit).
+  // Visible uniquement pour les roles ayant acces au module economat (filteredNav le garantit).
+  // Le badge est attache au module Economat : c'est la qu'on selectionne le lot FEFO,
+  // qu'on declenche le transfert vers Pesage et qu'on commande les ingredients en
+  // rupture (decision metier de centraliser ces actions cote economat).
+  // Le compteur agrege transferts + ruptures pour un signal unique.
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
-  const showsPesage = filteredNav.some(n => n.module === 'pesage');
+  const showsEconomat = filteredNav.some(n => n.module === 'economat');
   const { data: transferRequests = [] } = useQuery<Record<string, any>[]>({
     queryKey: ['warehouse-transfer-requests'],
     queryFn: bonSortieApi.transferRequests,
-    enabled: isWarehouseUser && showsPesage,
+    enabled: isWarehouseUser && showsEconomat,
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
+  const { data: ruptureRequests = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['warehouse-rupture-requests'],
+    queryFn: bonSortieApi.ruptureRequests,
+    enabled: isWarehouseUser && showsEconomat,
     refetchInterval: 30000,
     staleTime: 10000,
   });
   const transferCount = transferRequests.length;
+  const ruptureCount = ruptureRequests.length;
+  const economatActionCount = transferCount + ruptureCount;
 
   return (
     <aside className="w-64 bg-bakery-chocolate text-white min-h-screen flex flex-col">
@@ -58,11 +71,13 @@ export default function Sidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {filteredNav.map((item) => {
-          const showBadge = item.module === 'pesage' && isWarehouseUser && transferCount > 0;
+          const showBadge = item.module === 'economat' && isWarehouseUser && economatActionCount > 0;
+          // Priorite a l'onglet transferts si les deux ont des items. Sinon, ruptures.
+          const badgeTab = transferCount > 0 ? 'transfers' : 'ruptures';
           return (
             <NavLink
               key={item.href}
-              to={showBadge ? `${item.href}?tab=transfers` : item.href}
+              to={showBadge ? `${item.href}?tab=${badgeTab}` : item.href}
               end={item.href === '/'}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-sm font-medium ${
@@ -77,9 +92,9 @@ export default function Sidebar() {
               {showBadge && (
                 <span
                   className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow"
-                  title={`${transferCount} transfert(s) economat en attente`}
+                  title={`${transferCount} transfert(s) + ${ruptureCount} commande(s) en attente`}
                 >
-                  {transferCount}
+                  {economatActionCount}
                 </span>
               )}
             </NavLink>

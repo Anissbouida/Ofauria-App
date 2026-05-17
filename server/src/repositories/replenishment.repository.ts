@@ -577,7 +577,7 @@ export const replenishmentRepository = {
              WHERE id = $1`,
             [plan.id]
           );
-        } else if (['confirmed', 'in_progress'].includes(plan.status)) {
+        } else if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status)) {
           // Cancel all pending items
           await client.query(
             `UPDATE production_plan_items

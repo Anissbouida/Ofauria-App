@@ -49,9 +49,10 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
   };
 
   const transferLineMutation = useMutation({
-    mutationFn: (vars: { ligneId: string; overrideQty?: number; reason?: string }) =>
+    mutationFn: (vars: { ligneId: string; overrideQty?: number; overrideLotId?: string; reason?: string }) =>
       bonSortieApi.transferLineFromEconomat(vars.ligneId, {
         overrideQty: vars.overrideQty,
+        overrideLotId: vars.overrideLotId,
         reason: vars.reason,
       }),
     onSuccess: () => {
@@ -257,9 +258,10 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
         <BsiTransferModal
           payload={modalPayload}
           onClose={() => setModalPayload(null)}
-          onConfirm={(qty, reason) => transferLineMutation.mutate({
+          onConfirm={(qty, reason, overrideLotId) => transferLineMutation.mutate({
             ligneId: modalPayload.ligneId,
             overrideQty: qty,
+            overrideLotId,
             reason,
           })}
           isLoading={transferLineMutation.isPending}
@@ -271,21 +273,38 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
 
 /**
  * Modale de confirmation de transfert. Affiche le contexte (ingredient / lot / DLC / BSI),
- * permet d'ajuster la qty (defaut = besoin BSI) et de saisir une note.
- * Le lot est en lecture seule — le besoin et la DLC sont attaches au lot suggere par le BSI.
+ * permet d'ajuster la qty (defaut = besoin BSI), de saisir une note et de selectionner
+ * un lot alternatif au lot suggere par le FEFO (delta v1 point 4).
  */
 function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
   payload: TransferModalPayload;
   onClose: () => void;
-  onConfirm: (qty: number, reason?: string) => void;
+  onConfirm: (qty: number, reason?: string, overrideLotId?: string) => void;
   isLoading: boolean;
 }) {
+  // Delta v1 point 4 : chargement de la liste FEFO des lots Economat dispo pour cette ligne.
+  // Le magasinier confirme le suggere ou en choisit un autre. La qty max et la DLC sont
+  // recalculees dynamiquement en fonction du lot selectionne.
+  const { data: economatLots = [], isLoading: lotsLoading } = useQuery<Record<string, any>[]>({
+    queryKey: ['bsi-line-economat-lots', payload.ligneId],
+    queryFn: () => bonSortieApi.economatLotsForLigne(payload.ligneId),
+  });
+  // Lot selectionne : initialement le suggere (premier de la liste FEFO).
+  const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
+  const selectedLot = economatLots.find(l => (l.id as string) === selectedLotId) || economatLots.find(l => l.is_suggested) || economatLots[0];
+  const effectiveLotId = (selectedLot?.id as string | undefined) || null;
+  const effectiveAvailable = parseFloat((selectedLot?.economat_quantity as string) || '0') || payload.economatAvailable;
+  const effectiveLotNumber = (selectedLot?.lot_number as string) || payload.lotNumber;
+  const effectiveDlc = (selectedLot?.expiration_date as string) || payload.lotDlc;
+  const isOverride = !!selectedLot && !selectedLot.is_suggested;
+
   const [quantity, setQuantity] = useState<string>(payload.requiredQty.toFixed(2));
   const [note, setNote] = useState<string>('');
   const qty = parseFloat(quantity);
   const isValid = !isNaN(qty)
     && qty >= payload.requiredQty
-    && qty <= payload.economatAvailable;
+    && qty <= effectiveAvailable
+    && !!effectiveLotId;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -312,27 +331,88 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               <span className="font-mono font-semibold">{payload.bonNumero}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-amber-700">Lot suggéré</span>
-              <span className="font-mono font-semibold">{payload.lotNumber || '—'}</span>
-            </div>
-            {payload.lotDlc && (
-              <div className="flex items-center justify-between">
-                <span className="text-amber-700 inline-flex items-center gap-1">
-                  <CalendarClock size={11} /> DLC
-                </span>
-                <span className="font-mono font-semibold">
-                  {format(new Date(payload.lotDlc), 'dd/MM/yyyy')}
-                </span>
-              </div>
-            )}
-            <div className="flex items-center justify-between pt-1 border-t border-amber-200">
-              <span className="text-amber-700">Économat disponible</span>
-              <span className="font-mono font-semibold">{payload.economatAvailable.toFixed(2)} {payload.unit}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-amber-700">Besoin BSI</span>
               <span className="font-mono font-semibold">{payload.requiredQty.toFixed(2)} {payload.unit}</span>
             </div>
+          </div>
+
+          {/* Delta v1 point 4 : selecteur de lot FEFO. Le lot suggere est presente en premier
+              (marque par is_suggested). Le magasinier peut le confirmer ou en choisir un autre. */}
+          <div>
+            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+              Lot a transferer {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
+            </label>
+            {economatLots.length === 0 && !lotsLoading && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                Aucun lot Economat actif pour cet ingredient.
+              </div>
+            )}
+            {economatLots.length > 0 && (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {economatLots.map((lot) => {
+                  const lotId = lot.id as string;
+                  const isSelected = effectiveLotId === lotId;
+                  const lotEconomat = parseFloat(lot.economat_quantity as string || '0');
+                  const lotInsufficient = lotEconomat < payload.requiredQty;
+                  return (
+                    <button
+                      key={lotId}
+                      type="button"
+                      onClick={() => setSelectedLotId(lotId)}
+                      disabled={lotInsufficient}
+                      className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-amber-100 border-amber-400 ring-2 ring-amber-300'
+                          : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50'
+                      } ${lotInsufficient ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-gray-800">
+                            {(lot.lot_number as string) || (lot.supplier_lot_number as string) || lotId.slice(0, 8)}
+                          </span>
+                          {lot.is_suggested && (
+                            <span className="text-[10px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                              Suggéré FEFO
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
+                          {lot.expiration_date && (
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarClock size={10} />
+                              DLC {format(new Date(lot.expiration_date as string), 'dd/MM/yyyy')}
+                            </span>
+                          )}
+                          <span className="text-gray-400">·</span>
+                          <span>{lotEconomat.toFixed(2)} {payload.unit} dispo</span>
+                          {lotInsufficient && (
+                            <span className="text-red-600 font-semibold">insuffisant</span>
+                          )}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6.5 5 9 10 3.5"/></svg>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {isOverride && (
+              <p className="text-[11px] text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                ⚠ Lot different du suggere FEFO : la raison sera tracee dans l'audit.
+              </p>
+            )}
+            {effectiveDlc && (
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                DLC du lot selectionne : <strong>{format(new Date(effectiveDlc), 'dd/MM/yyyy')}</strong> · Dispo : <strong>{effectiveAvailable.toFixed(2)} {payload.unit}</strong>
+              </p>
+            )}
+            {/* Garde-fou : eviter "unused var" warnings sur effectiveLotNumber (utilisable pour debug). */}
+            <span className="hidden">{effectiveLotNumber}</span>
           </div>
 
           <div>
@@ -341,23 +421,22 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             </label>
             <div className="flex items-center gap-2">
               <input
-                type="number" step="0.01" min={payload.requiredQty} max={payload.economatAvailable}
+                type="number" step="0.01" min={payload.requiredQty} max={effectiveAvailable}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                autoFocus
                 className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
               />
               <span className="text-sm text-gray-500 font-medium">{payload.unit}</span>
             </div>
             <p className="text-[11px] text-gray-500 mt-1.5">
-              Doit être ≥ {payload.requiredQty.toFixed(2)} (besoin BSI) et ≤ {payload.economatAvailable.toFixed(2)} (dispo).
+              Doit être ≥ {payload.requiredQty.toFixed(2)} (besoin BSI) et ≤ {effectiveAvailable.toFixed(2)} (dispo du lot sélectionné).
               Tu peux transférer plus si tu ouvres un contenant entier — le surplus restera au pesage.
             </p>
             {qty < payload.requiredQty && (
               <p className="text-xs text-red-600 mt-1">Inférieur au besoin BSI ({payload.requiredQty.toFixed(2)}).</p>
             )}
-            {qty > payload.economatAvailable && (
-              <p className="text-xs text-red-600 mt-1">Dépasse la quantité économat dispo ({payload.economatAvailable.toFixed(2)}).</p>
+            {qty > effectiveAvailable && (
+              <p className="text-xs text-red-600 mt-1">Dépasse la quantité dispo sur ce lot ({effectiveAvailable.toFixed(2)}).</p>
             )}
           </div>
 
@@ -378,7 +457,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               className="flex-1 py-2.5 px-4 rounded-xl text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-60">
               Annuler
             </button>
-            <button onClick={() => onConfirm(qty, note.trim() || undefined)}
+            <button onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined)}
               disabled={!isValid || isLoading}
               className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-amber-600 hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
               {isLoading ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}

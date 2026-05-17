@@ -83,6 +83,23 @@ export const bonSortieController = {
     }
   },
 
+  /** GET /bons-sortie/warehouse/rupture-requests — Lignes BSI actives en rupture totale.
+   *  Sert l'onglet "Ingredients a commander" du module Economat. Centralise les ruptures
+   *  cross-BSI pour que le magasinier puisse commander en lot plutot qu'au cas par cas.
+   */
+  async getRuptureRequests(req: Request, res: Response) {
+    try {
+      const userStoreId = (req as any).user?.storeId;
+      const queryStoreId = (req.query.storeId as string) || undefined;
+      const storeId = queryStoreId || userStoreId;
+      const data = await bonSortieRepository.findRuptureRequests(storeId || null);
+      res.json({ data });
+    } catch (err: any) {
+      console.error('[bon-sortie] getRuptureRequests:', err);
+      res.status(500).json({ error: 'Erreur lors de la recuperation des ruptures' });
+    }
+  },
+
   /** GET /bons-sortie/warehouse/transfer-requests — Lignes BSI en attente de transfert Economat -> Pesage.
    *  Si l'utilisateur n'a pas de storeId associe (admin global / manager multi-store),
    *  on retourne les transferts de TOUS les stores accessibles plutot qu'une 400 silencieuse.
@@ -334,6 +351,19 @@ export const bonSortieController = {
       res.json({ data });
     } catch (err: any) {
       const msg = safeErrorMessage(err, 'Erreur lors du refus de reception');
+      res.status(400).json({ error: msg });
+    }
+  },
+
+  // Delta v1 point 4 : liste des lots Economat disponibles pour une ligne BSI,
+  // tries FEFO. Permet au magasinier de confirmer le lot suggere ou d'en choisir un autre.
+  async listEconomatLotsForLigne(req: Request, res: Response) {
+    try {
+      const ligneId = req.params.ligneId as string;
+      const data = await bonSortieRepository.listEconomatLotsForLigne(ligneId);
+      res.json({ data });
+    } catch (err: any) {
+      const msg = safeErrorMessage(err, 'Erreur lors de la recuperation des lots Economat');
       res.status(400).json({ error: msg });
     }
   },

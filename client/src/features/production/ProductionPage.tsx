@@ -33,10 +33,12 @@ const roleConfig: Record<string, { color: string; bg: string; gradient: string }
 };
 
 const statusConfig: Record<string, { color: string; bg: string; icon: typeof Clock; gradient: string }> = {
-  draft:       { color: 'text-gray-600',    bg: 'bg-gray-100',    icon: FileText,     gradient: 'from-gray-400 to-gray-500' },
-  confirmed:   { color: 'text-blue-700',    bg: 'bg-blue-50',     icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
-  in_progress: { color: 'text-amber-700',   bg: 'bg-amber-50',    icon: Play,         gradient: 'from-amber-500 to-amber-600' },
-  completed:   { color: 'text-emerald-700', bg: 'bg-emerald-50',  icon: Flag,         gradient: 'from-emerald-500 to-emerald-600' },
+  draft:                { color: 'text-gray-600',    bg: 'bg-gray-100',    icon: FileText,     gradient: 'from-gray-400 to-gray-500' },
+  confirmed:            { color: 'text-blue-700',    bg: 'bg-blue-50',     icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
+  awaiting_ingredients: { color: 'text-orange-700',  bg: 'bg-orange-50',   icon: Clock,        gradient: 'from-orange-500 to-orange-600' },
+  ready_to_produce:     { color: 'text-indigo-700',  bg: 'bg-indigo-50',   icon: AlertCircle,  gradient: 'from-indigo-500 to-indigo-600' },
+  in_progress:          { color: 'text-amber-700',   bg: 'bg-amber-50',    icon: Play,         gradient: 'from-amber-500 to-amber-600' },
+  completed:            { color: 'text-emerald-700', bg: 'bg-emerald-50',  icon: Flag,         gradient: 'from-emerald-500 to-emerald-600' },
 };
 
 function formatCurrency(value: number) {
@@ -151,6 +153,8 @@ function ProductionPlansView() {
     total: plans.length,
     draft: plans.filter((p: Record<string, any>) => p.status === 'draft').length,
     confirmed: plans.filter((p: Record<string, any>) => p.status === 'confirmed').length,
+    awaiting_ingredients: plans.filter((p: Record<string, any>) => p.status === 'awaiting_ingredients').length,
+    ready_to_produce: plans.filter((p: Record<string, any>) => p.status === 'ready_to_produce').length,
     in_progress: plans.filter((p: Record<string, any>) => p.status === 'in_progress').length,
     completed: plans.filter((p: Record<string, any>) => p.status === 'completed').length,
   }), [plans]);
@@ -159,6 +163,8 @@ function ProductionPlansView() {
     { key: '', label: 'Tous', count: stats.total, icon: Factory },
     { key: 'draft', label: 'Brouillon', count: stats.draft, icon: FileText },
     { key: 'confirmed', label: 'Confirmé', count: stats.confirmed, icon: CheckCircle2 },
+    { key: 'awaiting_ingredients', label: 'En attente ingr.', count: stats.awaiting_ingredients, icon: Clock },
+    { key: 'ready_to_produce', label: 'Prêt à produire', count: stats.ready_to_produce, icon: AlertCircle },
     { key: 'in_progress', label: 'En cours', count: stats.in_progress, icon: Play },
     { key: 'completed', label: 'Terminé', count: stats.completed, icon: Flag },
   ];
@@ -307,6 +313,8 @@ function ProductionPlansView() {
 
                   const dotClass = status === 'completed' ? 'ok'
                     : status === 'in_progress' ? 'warning'
+                    : status === 'ready_to_produce' ? 'ok'
+                    : status === 'awaiting_ingredients' ? 'warning'
                     : status === 'confirmed' ? 'ok' : 'neutral';
                   return (
                     <tr key={p.id as string} onClick={() => navigate(`/production/${p.id}`)}>
@@ -327,6 +335,8 @@ function ProductionPlansView() {
                         <span className={`odoo-tag ${
                           status === 'completed' ? 'odoo-tag-green'
                           : status === 'in_progress' ? 'odoo-tag-yellow'
+                          : status === 'ready_to_produce' ? 'odoo-tag-blue'
+                          : status === 'awaiting_ingredients' ? 'odoo-tag-orange'
                           : status === 'confirmed' ? 'odoo-tag-blue'
                           : 'odoo-tag-grey'
                         }`}>

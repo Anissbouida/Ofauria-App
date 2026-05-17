@@ -390,6 +390,51 @@ export const bonSortieRepository = {
   // Statuts BSI inclus : genere/preparation/preparation_partielle/pret/prelevement.
   // 'prelevement' est inclus pour couvrir les BSI ou le chef a accepte la reception
   // mais qui ont commit_partial laissant des lignes ECONOMAT_REQUIRES_TRANSFER en attente.
+  // Vue magasinier (module Economat, onglet "Ingredients a commander") :
+  // toutes les lignes BSI actives en rupture totale (allocated=0 / lot=NULL),
+  // groupables par BSI. Le magasinier peut declencher une commande fournisseur
+  // depuis cette vue (centralisation au lieu d'agir BSI par BSI).
+  async findRuptureRequests(storeId: string | null) {
+    const result = await db.query(
+      `SELECT bsl.id AS line_id,
+              bsl.bon_id,
+              bsl.ingredient_id,
+              bsl.needed_quantity,
+              bsl.allocated_quantity,
+              bsl.unit,
+              bsl.status AS line_status,
+              bs.store_id,
+              bs.numero AS bon_numero,
+              bs.status AS bon_status,
+              bs.plan_id,
+              pp.plan_date, pp.type AS plan_type,
+              s.name AS store_name,
+              ing.name AS ingredient_name,
+              ing.unit AS ingredient_unit,
+              -- Indicateur "deja commande" : presence d'une purchase_request
+              -- ouverte (pending/assigned/ordered) pour cet ingredient.
+              EXISTS (
+                SELECT 1 FROM purchase_requests pr
+                 WHERE pr.ingredient_id = bsl.ingredient_id
+                   AND pr.status IN ('pending', 'assigned', 'ordered')
+              ) AS already_ordered
+       FROM production_bons_sortie_lignes bsl
+       JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
+       LEFT JOIN production_plans pp ON pp.id = bs.plan_id
+       LEFT JOIN stores s ON s.id = bs.store_id
+       LEFT JOIN ingredients ing ON ing.id = bsl.ingredient_id
+       WHERE ($1::uuid IS NULL OR bs.store_id = $1)
+         AND bs.status IN ('genere', 'preparation', 'preparation_partielle', 'pret')
+         AND bsl.ingredient_id IS NOT NULL
+         AND bsl.status = 'rupture'
+         AND bsl.ingredient_lot_id IS NULL
+         AND COALESCE(bsl.allocated_quantity, 0) < 0.001
+       ORDER BY pp.plan_date ASC NULLS LAST, bs.numero ASC, ing.name ASC`,
+      [storeId]
+    );
+    return result.rows;
+  },
+
   async findEconomatTransferRequests(storeId: string | null) {
     const useStoreFilter = !!storeId;
     const result = await db.query(
@@ -630,15 +675,35 @@ export const bonSortieRepository = {
   // le magasinier doit d'abord transferer (ouvrir le contenant) tous les ingredients
   // economat necessaires avant de marquer pret.
   async markAsReady(bonId: string, userId: string) {
-    const pendingTransfersResult = await db.query(
-      `SELECT COUNT(*)::int AS pending
+    // Delta v1 point 5 : le BSI ne peut etre marque pret que si TOUTES les lignes
+    // sont a l'etat "Pret" (preleve, substitue ou ecart). On agrege en une seule
+    // requete les 3 motifs de blocage :
+    //  - lignes encore en_attente (non pesees)
+    //  - lignes rupture (ingredient absent du pesage ET de l'economat)
+    //  - lignes ECONOMAT_REQUIRES_TRANSFER (transfert pas encore effectue)
+    // Pour partir avec des ingredients manquants, le magasinier doit utiliser
+    // commitPartial (-> preparation_partielle), pas markAsReady.
+    const blockersResult = await db.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE source_location = 'ECONOMAT_REQUIRES_TRANSFER')::int AS pending_transfers,
+         COUNT(*) FILTER (WHERE status = 'rupture')::int AS rupture_lines,
+         COUNT(*) FILTER (WHERE status = 'en_attente' AND source_location IS DISTINCT FROM 'ECONOMAT_REQUIRES_TRANSFER')::int AS waiting_lines
        FROM production_bons_sortie_lignes
-       WHERE bon_id = $1 AND source_location = 'ECONOMAT_REQUIRES_TRANSFER'`,
+       WHERE bon_id = $1 AND status != 'annule'`,
       [bonId]
     );
-    const pending = pendingTransfersResult.rows[0]?.pending ?? 0;
-    if (pending > 0) {
-      throw new Error(`Impossible de marquer pret : ${pending} ligne(s) necessitent encore un transfert depuis l'economat.`);
+    const blockers = blockersResult.rows[0] || {};
+    const pendingTransfers = blockers.pending_transfers ?? 0;
+    const ruptureLines = blockers.rupture_lines ?? 0;
+    const waitingLines = blockers.waiting_lines ?? 0;
+    if (pendingTransfers > 0) {
+      throw new Error(`Impossible de marquer pret : ${pendingTransfers} ligne(s) necessitent encore un transfert depuis l'economat.`);
+    }
+    if (ruptureLines > 0) {
+      throw new Error(`Impossible de marquer pret : ${ruptureLines} ligne(s) en rupture. Utilisez "Valider partiel" ou commandez les ingredients manquants.`);
+    }
+    if (waitingLines > 0) {
+      throw new Error(`Impossible de marquer pret : ${waitingLines} ligne(s) non encore pesee(s).`);
     }
 
     const result = await db.query(
@@ -653,7 +718,48 @@ export const bonSortieRepository = {
     if (result.rows.length === 0) {
       throw new Error('Bon de sortie introuvable ou statut invalide pour marquer comme pret');
     }
-    return result.rows[0];
+
+    // Transition cycle de vie plan (delta v1 point 1) : magasinier a fini la
+    // preparation -> le plan passe en "pret a produire" en attendant l'acceptation
+    // de reception par le chef. Ne touche que si le plan est encore en attente.
+    const bon = result.rows[0];
+    if (bon.plan_id) {
+      await db.query(
+        `UPDATE production_plans SET status = 'ready_to_produce', updated_at = NOW()
+         WHERE id = $1 AND status = 'awaiting_ingredients'`,
+        [bon.plan_id]
+      );
+    }
+    return bon;
+  },
+
+  // Delta v1 point 4 : lister les lots Economat disponibles pour une ligne BSI,
+  // tries FEFO (date d'expiration la plus proche en premier). Le magasinier peut
+  // utiliser ce listing pour confirmer le lot suggere ou en choisir un autre.
+  async listEconomatLotsForLigne(ligneId: string) {
+    const lineResult = await db.query(
+      `SELECT bsl.ingredient_id, bsl.suggested_economat_lot_id, bs.store_id
+       FROM production_bons_sortie_lignes bsl
+       JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
+       WHERE bsl.id = $1`,
+      [ligneId]
+    );
+    if (lineResult.rows.length === 0) {
+      throw new Error('Ligne BSI introuvable');
+    }
+    const line = lineResult.rows[0];
+
+    const lotsResult = await db.query(
+      `SELECT id, lot_number, supplier_lot_number, economat_quantity, expiration_date,
+              received_at, first_opened_at, status,
+              (id = $3) AS is_suggested
+       FROM ingredient_lots
+       WHERE ingredient_id = $1 AND store_id = $2
+         AND status = 'active' AND economat_quantity > 0
+       ORDER BY expiration_date ASC NULLS LAST, received_at ASC`,
+      [line.ingredient_id, line.store_id, line.suggested_economat_lot_id]
+    );
+    return lotsResult.rows;
   },
 
   // ─── Magasinier : transferer une ligne BSI Economat -> Pesage ───
@@ -678,10 +784,12 @@ export const bonSortieRepository = {
       await client.query('BEGIN');
 
       // 1. Verrouiller la ligne BSI + recuperer contexte
+      // bs.plan_id est requis pour remplir plan_production_id sur le transfert
+      // (delta v1 point 4 — lien obligatoire avec le plan).
       const lineResult = await client.query(
         `SELECT bsl.id, bsl.bon_id, bsl.ingredient_id, bsl.suggested_economat_lot_id,
                 bsl.transfer_required_qty, bsl.source_location, bsl.unit, bsl.needed_quantity,
-                bs.store_id, bs.numero AS bon_numero
+                bs.store_id, bs.numero AS bon_numero, bs.plan_id
          FROM production_bons_sortie_lignes bsl
          JOIN production_bons_sortie bs ON bs.id = bsl.bon_id
          WHERE bsl.id = $1
@@ -746,14 +854,14 @@ export const bonSortieRepository = {
         throw new Error(`Quantite insuffisante en Economat (${economatAvailable} dispo / ${transferQty} requis)`);
       }
 
-      // 3. Insert audit transfer
+      // 3. Insert audit transfer (delta v1 point 4 : plan_production_id requis)
       await client.query(
         `INSERT INTO ingredient_stock_zone_transfers
            (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count,
-            bon_sortie_id, bon_sortie_ligne_id, reason, transferred_by)
-         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8)`,
+            bon_sortie_id, bon_sortie_ligne_id, plan_production_id, reason, transferred_by)
+         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8, $9)`,
         [lotId, line.store_id, transferQty, options.containerCount || null,
-         line.bon_id, ligneId, options.reason || `BSI ${line.bon_numero}`, userId]
+         line.bon_id, ligneId, line.plan_id, options.reason || `BSI ${line.bon_numero}`, userId]
       );
 
       // 4. Update lot quantities + opening history
@@ -823,7 +931,18 @@ export const bonSortieRepository = {
     if (result.rows.length === 0) {
       throw new Error('Bon de sortie introuvable ou statut invalide pour refus');
     }
-    return result.rows[0];
+
+    // Transition cycle de vie plan (delta v1 point 1) : chef refuse la reception
+    // -> le plan retombe en attente ingredients pour que le magasinier corrige.
+    const bon = result.rows[0];
+    if (bon.plan_id) {
+      await db.query(
+        `UPDATE production_plans SET status = 'awaiting_ingredients', updated_at = NOW()
+         WHERE id = $1 AND status = 'ready_to_produce'`,
+        [bon.plan_id]
+      );
+    }
+    return bon;
   },
 
   // ─── Update a line's actual quantity ───

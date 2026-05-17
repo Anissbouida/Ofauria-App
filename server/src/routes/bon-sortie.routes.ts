@@ -14,8 +14,10 @@ router.post('/generate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asy
 router.get('/warehouse/queue', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getWarehouseQueue));
 // Historique magasinier (BSI 'prelevement' / 'verifie' / 'cloture' / 'annule')
 router.get('/warehouse/history', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getWarehouseHistory));
-// Lignes BSI en attente de transfert Economat -> Pesage (module Pesage / WarehousePage)
+// Lignes BSI en attente de transfert Economat -> Pesage (module Economat / InventoryPage)
 router.get('/warehouse/transfer-requests', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getTransferRequests));
+// Lignes BSI en rupture totale, vue cross-BSI pour onglet "Ingredients a commander" (module Economat)
+router.get('/warehouse/rupture-requests', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.getRuptureRequests));
 
 // Get bon(s) for a plan
 router.get('/plan/:planId', authenticate, asyncHandler(bonSortieController.getByPlan));
@@ -38,6 +40,9 @@ router.put('/:id/ready', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyn
 // Le chef refuse la reception avec motif (pret -> preparation)
 router.put('/:id/chef-reject', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(bonSortieController.chefReject));
 
+// Magasinier : lister les lots Economat disponibles pour une ligne BSI (FEFO),
+// pour permettre la confirmation ou substitution du lot suggere avant transfert.
+router.get('/ligne/:ligneId/economat-lots', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.listEconomatLotsForLigne));
 // Magasinier : transferer une ligne BSI Economat -> Pesage (ouverture contenant)
 router.post('/ligne/:ligneId/transfer-from-economat', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(bonSortieController.transferLineFromEconomat));
 

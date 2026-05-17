@@ -114,7 +114,7 @@ export const notificationRepository = {
       // and don't already have a notification
       const conditions = [
         `pp.target_role = $1`,
-        `pp.status IN ('draft', 'confirmed', 'in_progress')`,
+        `pp.status IN ('draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress')`,
       ];
       const values: unknown[] = [role];
       let i = 2;
@@ -144,7 +144,13 @@ export const notificationRepository = {
         const statusLabels: Record<string, string> = {
           draft: 'en brouillon',
           confirmed: 'confirme et pret a demarrer',
+          awaiting_ingredients: 'en attente des ingredients',
+          ready_to_produce: 'pret a produire — reception a confirmer',
           in_progress: 'en cours de production',
+        };
+        const titleByStatus: Record<string, string> = {
+          confirmed: 'Plan de production a demarrer',
+          ready_to_produce: 'Ingredients prets — confirmer la reception',
         };
         await db.query(
           `INSERT INTO notifications (target_role, store_id, type, title, message, reference_type, reference_id, created_by)
@@ -153,7 +159,7 @@ export const notificationRepository = {
             role,
             storeId || null,
             `production_plan_${plan.status}`,
-            plan.status === 'confirmed' ? 'Plan de production a demarrer' : 'Plan de production en attente',
+            titleByStatus[plan.status] || 'Plan de production en attente',
             `Plan du ${plan.plan_date?.toString().slice(0, 10)} ${statusLabels[plan.status] || ''} — ${plan.item_count} produit(s)`,
             plan.id,
             plan.created_by,

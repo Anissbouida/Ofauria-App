@@ -444,6 +444,15 @@ export const productionRepository = {
         if (storeId && userId && needsMap.size > 0) {
           const bsi = await bonSortieRepository.generate(planId, storeId, userId);
           if (bsi?.id) {
+            // Transition cycle de vie (delta v1 point 1) : BSI genere -> le plan
+            // entre en phase "en attente ingredients" jusqu'a ce que le magasinier
+            // marque la preparation comme prete.
+            await db.query(
+              `UPDATE production_plans SET status = 'awaiting_ingredients', updated_at = NOW()
+               WHERE id = $1 AND status = 'confirmed'`,
+              [planId]
+            );
+
             // Notification aux magasiniers du store : nouveau BSI a preparer.
             // Non-bloquant : si le systeme de notifs echoue, la confirmation du plan reste OK.
             try {
@@ -1368,7 +1377,7 @@ export const productionRepository = {
 
       // Get plan to verify status
       const planResult = await client.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
-      if (!planResult.rows[0] || !['confirmed', 'in_progress'].includes(planResult.rows[0].status)) {
+      if (!planResult.rows[0] || !['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(planResult.rows[0].status)) {
         throw new Error('Le plan doit etre confirme ou en cours pour restaurer des articles');
       }
 
@@ -1459,7 +1468,7 @@ export const productionRepository = {
       await client.query('BEGIN');
 
       const planResult = await client.query(`SELECT status, store_id FROM production_plans WHERE id = $1`, [planId]);
-      if (!planResult.rows[0] || !['confirmed', 'in_progress'].includes(planResult.rows[0].status)) {
+      if (!planResult.rows[0] || !['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(planResult.rows[0].status)) {
         throw new Error('Le plan doit etre confirme ou en cours pour annuler des articles');
       }
 
