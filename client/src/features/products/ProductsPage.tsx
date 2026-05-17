@@ -371,7 +371,7 @@ function CatalogueTab() {
                     <div className="flex items-center gap-1 text-xs" title={`Reserve production : ${backroom} — En magasin (gere par caissieres) : ${vitrine}`}>
                       <Package size={12} className="text-gray-400" />
                       <span className={`font-semibold ${isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-gray-600'}`}>
-                        {backroom}{p.sale_unit === 'weight' ? ' g' : ''}
+                        {p.sale_unit === 'weight' ? `${(backroom / 1000).toFixed(2)} kg` : backroom}
                       </span>
                     </div>
                     {p.responsible_first_name && (
@@ -456,9 +456,9 @@ function CatalogueTab() {
                       {isOut ? (
                         <span className="odoo-tag odoo-tag-red">Rupture</span>
                       ) : isLow ? (
-                        <span className="odoo-tag odoo-tag-orange">{stock}{p.sale_unit === 'weight' ? ' g' : ''}</span>
+                        <span className="odoo-tag odoo-tag-orange">{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
                       ) : (
-                        <span style={{ fontWeight: 500 }}>{stock}{p.sale_unit === 'weight' ? ' g' : ''}</span>
+                        <span style={{ fontWeight: 500 }}>{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
                       )}
                     </td>
                     <td>
@@ -1144,11 +1144,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Stock actuel</span>
-                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_quantity as string) || '0')}{product.sale_unit === 'weight' ? ' g' : ''}</span>
+                        <span className="text-sm font-bold text-gray-900">{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_quantity as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_quantity as string) || '0')}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">Seuil alerte</span>
-                        <span className="text-sm font-bold text-gray-900">{parseFloat((product.stock_min_threshold as string) || '0')}{product.sale_unit === 'weight' ? ' g' : ''}</span>
+                        <span className="text-sm font-bold text-gray-900">{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_min_threshold as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_min_threshold as string) || '0')}</span>
                       </div>
                     </div>
                   </div>
