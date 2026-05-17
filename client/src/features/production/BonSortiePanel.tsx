@@ -186,14 +186,22 @@ export function BonSortiePanel({
   // Les lignes ECONOMAT_REQUIRES_TRANSFER sont affichees dans la section "transferts requis"
   // (stock dispo en economat, juste a transferer) — elles ne sont pas en rupture.
   // Les lignes annulees (status='annule') sont exclues : elles ne participent plus au BSI.
-  const ruptureLines = lines.filter((l) =>
-    l.status !== 'annule'
-    && l.source_location !== 'ECONOMAT_REQUIRES_TRANSFER'
-    && (
-      parseFloat(l.allocated_quantity as string || '0') < parseFloat(l.needed_quantity as string || '0')
-      || (l.status === 'rupture' && !l.ingredient_lot_id)
-    )
-  );
+  // current_stock_total est fourni par le backend : somme (pesage + economat) des lots
+  // actifs pour cet ingredient sur ce store. Si ce total couvre le besoin, la ligne n'est
+  // PAS reellement en rupture, meme si son status BSI est encore 'rupture' (reappro arrive
+  // apres generation BSI -> sera ralloue au prochain "Re-verifier dispo").
+  const ruptureLines = lines.filter((l) => {
+    if (l.status === 'annule') return false;
+    if (l.source_location === 'ECONOMAT_REQUIRES_TRANSFER') return false;
+    const need = parseFloat(l.needed_quantity as string || '0');
+    const allocated = parseFloat(l.allocated_quantity as string || '0');
+    const isRuptureCandidate = allocated < need || (l.status === 'rupture' && !l.ingredient_lot_id);
+    if (!isRuptureCandidate) return false;
+    // Cache si le stock courant couvre deja le besoin (reapprovisionne entre temps).
+    const currentStock = parseFloat(l.current_stock_total as string || 'NaN');
+    if (Number.isFinite(currentStock) && currentStock >= need) return false;
+    return true;
+  });
   // Option B : lignes en attente de transfert Economat → Pesage.
   // Le transfert se fait DEPUIS le module Economat (onglet "Transferts demandes" de InventoryPage),
   // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
