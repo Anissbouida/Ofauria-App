@@ -90,7 +90,7 @@ export const printerService = {
       payment_method: string;
       cashier_name?: string;
       customer_name?: string;
-      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number }>;
+      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g' }>;
       cash_given?: number;
       change_amount?: number;
     };
@@ -153,8 +153,10 @@ export const printerService = {
         // ─── Articles ───
         for (const item of params.sale.items) {
           printer.println(item.name);
-          // 2nd ligne : qty x PU                          subtotal
-          const left = `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
+          // 2nd ligne : qty x PU (ou poids @ prix/kg)        subtotal
+          const left = item.unit === 'g'
+            ? `  ${item.quantity} g @ ${item.unit_price.toFixed(2)}/kg`
+            : `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
           const right = `${item.subtotal.toFixed(2)} DH`;
           printer.leftRight(left, right);
         }

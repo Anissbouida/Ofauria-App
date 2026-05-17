@@ -65,6 +65,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
+              p.sale_unit, p.price_per_kg,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
@@ -153,13 +154,15 @@ export const productRepository = {
     price: number; costPrice?: number; isAvailable?: boolean;
     isCustomOrderable?: boolean; preparationTimeMin?: number;
     responsibleUserId?: string;
+    saleUnit?: 'unit' | 'weight'; pricePerKg?: number;
   }) {
     const result = await db.query(
-      `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id, sale_unit, price_per_kg)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [data.name, data.slug, data.categoryId, data.description || null, data.price,
        data.costPrice || null, data.isAvailable ?? true, data.isCustomOrderable ?? false,
-       data.preparationTimeMin || null, data.responsibleUserId || null]
+       data.preparationTimeMin || null, data.responsibleUserId || null,
+       data.saleUnit || 'unit', data.pricePerKg ?? null]
     );
     return result.rows[0];
   },
@@ -181,6 +184,8 @@ export const productRepository = {
       recycleIngredientId: 'recycle_ingredient_id',
       maxReexpositions: 'max_reexpositions',
       saleType: 'sale_type',
+      saleUnit: 'sale_unit',
+      pricePerKg: 'price_per_kg',
     };
 
     const fields: string[] = [];

@@ -64,19 +64,38 @@ export const saleController = {
         return;
       }
 
-      // Verify sufficient stock in the vitrine before selling
+      // Verify sufficient stock in the vitrine before selling.
+      // Pour les produits au poids, item.quantity = poids vendu en grammes
+      // et currentStock = grammes restants en vitrine (stock géré en grammes).
       const currentStock = await getVitrineStock(item.productId, req.user!.storeId);
       if (currentStock < item.quantity) {
+        const unitLabel = product.sale_unit === 'weight' ? 'g' : 'pièces';
         res.status(400).json({
           success: false,
-          error: { message: `Stock vitrine insuffisant pour "${product.name}" — disponible: ${currentStock}, demande: ${item.quantity}. Faire une demande d'approvisionnement.` },
+          error: { message: `Stock vitrine insuffisant pour "${product.name}" — disponible: ${currentStock} ${unitLabel}, demande: ${item.quantity} ${unitLabel}. Faire une demande d'approvisionnement.` },
         });
         return;
       }
 
-      const itemSubtotal = parseFloat(product.price) * item.quantity;
+      // Subtotal :
+      //   - unitaire : prix × quantité
+      //   - au poids : (poids_g / 1000) × prix_par_kg
+      let itemSubtotal: number;
+      let unitPrice: number;
+      let lineUnit: 'unit' | 'g' = 'unit';
+      if (product.sale_unit === 'weight') {
+        const pricePerKg = parseFloat(product.price_per_kg ?? product.price);
+        unitPrice = pricePerKg;
+        itemSubtotal = (item.quantity / 1000) * pricePerKg;
+        lineUnit = 'g';
+      } else {
+        unitPrice = parseFloat(product.price);
+        itemSubtotal = unitPrice * item.quantity;
+      }
+      // Arrondi à 2 décimales (centimes) pour éviter les écarts d'arrondi
+      itemSubtotal = Math.round(itemSubtotal * 100) / 100;
       subtotal += itemSubtotal;
-      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice: parseFloat(product.price), subtotal: itemSubtotal });
+      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit });
     }
 
     const taxAmount = 0;

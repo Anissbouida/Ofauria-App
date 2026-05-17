@@ -115,6 +115,7 @@ export const printerController = {
           quantity: parseFloat(String(it.quantity)),
           unit_price: parseFloat(String(it.unit_price)),
           subtotal: parseFloat(String(it.subtotal)),
+          unit: (it.unit === 'g' ? 'g' : 'unit') as 'unit' | 'g',
         })),
         cash_given: cashGiven,
         change_amount: changeAmount,

@@ -8,9 +8,12 @@ import { notify } from '../../components/ui/InlineNotification';
 
 interface ReceiptItem {
   name: string;
+  // unit='g' : quantity = poids en grammes, unitPrice = prix/kg.
+  // unit='unit' (ou absent) : quantity = nb pièces, unitPrice = prix/pièce.
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  unit?: 'unit' | 'g';
 }
 
 interface ReceiptData {
@@ -258,7 +261,9 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       <td colSpan={3} style={{ padding: '2px 0', fontSize: `${fs - 1}px` }}>
                         <div style={{ fontWeight: 'bold' }}>{item.name}</div>
                         <div style={{ paddingLeft: '8px', color: '#333' }}>
-                          {item.quantity} x {item.unitPrice.toFixed(2)} DH
+                          {item.unit === 'g'
+                            ? `${item.quantity} g @ ${item.unitPrice.toFixed(2)} DH/kg`
+                            : `${item.quantity} x ${item.unitPrice.toFixed(2)} DH`}
                         </div>
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0', fontSize: `${fs - 1}px`, verticalAlign: 'bottom' }}>

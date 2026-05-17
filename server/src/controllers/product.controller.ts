@@ -140,11 +140,12 @@ export const productController = {
     try {
       await client.query('BEGIN');
       const productResult = await client.query(
-        `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id, sale_unit, price_per_kg)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [data.name, data.slug, data.categoryId, data.description || null, data.price,
          data.costPrice || null, data.isAvailable ?? true, data.isCustomOrderable ?? false,
-         data.preparationTimeMin || null, data.responsibleUserId || null]
+         data.preparationTimeMin || null, data.responsibleUserId || null,
+         data.saleUnit || 'unit', data.pricePerKg ?? null]
       );
       const product = productResult.rows[0];
 

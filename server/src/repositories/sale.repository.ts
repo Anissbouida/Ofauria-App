@@ -140,7 +140,7 @@ export const saleRepository = {
     paymentStatus?: 'paid' | 'unpaid';
     unpaidCustomerName?: string;
     employeeId?: string;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' }[];
   }) {
     const client = await db.getClient();
     try {
@@ -163,9 +163,9 @@ export const saleRepository = {
 
       for (const item of data.items) {
         await client.query(
-          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal]
+          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit']
         );
 
         // Decrement vitrine (display) stock for regular POS sales only.

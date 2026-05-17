@@ -27,8 +27,13 @@ import { getApiErrorMessage } from '../../utils/api-error';
 interface CartItem {
   productId: string;
   name: string;
+  // Pour unit='unit' : prix unitaire (DH/pièce).
+  // Pour unit='g'    : prix au kilo (DH/kg). Le subtotal vaut quantity/1000*price.
   price: number;
+  // Pour unit='unit' : nombre de pièces.
+  // Pour unit='g'    : poids vendu en grammes (entier).
   quantity: number;
+  unit: 'unit' | 'g';
   imageUrl?: string;
 }
 
@@ -38,7 +43,7 @@ interface ReceiptData {
   date: string;
   cashierName: string;
   customerName?: string;
-  items: { name: string; quantity: number; unitPrice: number; subtotal: number }[];
+  items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' }[];
   subtotal: number;
   discountAmount: number;
   total: number;
@@ -127,6 +132,8 @@ export default function POSPage() {
   // Correction 2: Numpad for quantity editing
   const [numpadItem, setNumpadItem] = useState<{ productId: string; name: string } | null>(null);
   const [numpadValue, setNumpadValue] = useState('');
+  const [weightModal, setWeightModal] = useState<{ product: Record<string, any>; existingQty: number } | null>(null);
+  const [weightInput, setWeightInput] = useState('');
 
   // Cash register state
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -468,7 +475,13 @@ export default function POSPage() {
         date: sale.created_at as string,
         cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
         customerName: beneficiaryName,
-        items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, subtotal: i.price * i.quantity })),
+        items: cart.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.price,
+          subtotal: i.unit === 'g' ? (i.quantity / 1000) * i.price : i.price * i.quantity,
+          unit: i.unit,
+        })),
         subtotal,
         discountAmount: 0,
         total,
@@ -576,7 +589,13 @@ export default function POSPage() {
     }
     return (productsData?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
   })();
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // Subtotal :
+  //   - unit : prix × nb pièces
+  //   - g    : (poids_g / 1000) × prix/kg
+  const subtotal = cart.reduce((sum, item) => {
+    if (item.unit === 'g') return sum + (item.quantity / 1000) * item.price;
+    return sum + item.price * item.quantity;
+  }, 0);
   const total = subtotal;
 
   const orders = (ordersData?.data || []).filter((o: Record<string, any>) => {
@@ -609,6 +628,16 @@ export default function POSPage() {
   const addToCart = (product: Record<string, any>) => {
     const stock = parseFloat(product.stock_quantity as string) || 0;
     if (stock <= 0) return;
+
+    // Produits au poids : on ouvre un modal pour saisir le grammage,
+    // au lieu d'incrémenter par 1 (ça ne veut rien dire en grammes).
+    if (product.sale_unit === 'weight') {
+      const existing = cart.find(i => i.productId === product.id);
+      setWeightModal({ product, existingQty: existing?.quantity || 0 });
+      setWeightInput(existing ? String(existing.quantity) : '');
+      return;
+    }
+
     const existing = cart.find(i => i.productId === product.id);
     if (existing) {
       if (existing.quantity >= stock) { showStockAlert(product.id as string, stock); return; }
@@ -619,11 +648,40 @@ export default function POSPage() {
         name: product.name as string,
         price: parseFloat(product.price as string),
         quantity: 1,
+        unit: 'unit',
         imageUrl: product.image_url as string | undefined,
       }]);
     }
     addToRecent(product.id as string);
     cartScrollTrigger.current++;
+  };
+
+  const confirmWeight = () => {
+    if (!weightModal) return;
+    const weightG = parseInt(weightInput, 10);
+    if (!weightG || weightG <= 0) { setWeightModal(null); setWeightInput(''); return; }
+    const p = weightModal.product;
+    const stock = parseFloat(p.stock_quantity as string) || 0;
+    if (weightG > stock) { showStockAlert(p.id as string, stock); return; }
+    const pricePerKg = parseFloat((p.price_per_kg ?? p.price) as string);
+    const existing = cart.find(i => i.productId === p.id);
+    if (existing) {
+      // Remplace le poids saisi (et pas un cumul, sinon difficile à corriger).
+      setCart(cart.map(i => i.productId === p.id ? { ...i, quantity: weightG } : i));
+    } else {
+      setCart([...cart, {
+        productId: p.id as string,
+        name: p.name as string,
+        price: pricePerKg,
+        quantity: weightG,
+        unit: 'g',
+        imageUrl: p.image_url as string | undefined,
+      }]);
+    }
+    addToRecent(p.id as string);
+    cartScrollTrigger.current++;
+    setWeightModal(null);
+    setWeightInput('');
   };
 
   // Correction 1: Scroll to bottom on add
@@ -1009,7 +1067,7 @@ export default function POSPage() {
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-base text-gray-800">Panier</h2>
                 {cart.length > 0 && (
-                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{cart.reduce((s, i) => s + i.quantity, 0)} article{cart.reduce((s, i) => s + i.quantity, 0) > 1 ? 's' : ''}</span>
+                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)} article{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0) > 1 ? 's' : ''}</span>
                 )}
               </div>
             </div>
@@ -1027,33 +1085,50 @@ export default function POSPage() {
                     const itemStock = getProductStock(item.productId);
                     const atMax = item.quantity >= itemStock;
                     const isItemAlerted = stockAlert?.productId === item.productId;
+                    const isWeight = item.unit === 'g';
+                    const lineSubtotal = isWeight ? (item.quantity / 1000) * item.price : item.price * item.quantity;
                     return (
                       <div key={item.productId} className={`px-4 py-3 transition-colors ${isItemAlerted ? 'bg-amber-50' : 'hover:bg-gray-50/50'}`}>
                         <div className="flex items-start gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">{item.price.toFixed(2)} DH / unité</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {isWeight
+                                ? `${item.quantity} g @ ${item.price.toFixed(2)} DH/kg`
+                                : `${item.price.toFixed(2)} DH / unité`}
+                            </p>
                             {isItemAlerted && (
                               <p className="text-amber-600 text-[10px] font-semibold mt-0.5 animate-pulse">{stockAlert?.message}</p>
                             )}
                           </div>
-                          <span className="font-bold text-sm text-gray-800 shrink-0">{(item.price * item.quantity).toFixed(2)} DH</span>
+                          <span className="font-bold text-sm text-gray-800 shrink-0">{lineSubtotal.toFixed(2)} DH</span>
                         </div>
                         <div className="flex items-center gap-2 mt-2">
-                          <div className="flex items-center bg-gray-100 rounded-lg">
-                            <button onClick={() => updateQuantity(item.productId, -1)}
-                              className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600">
-                              <Minus size={14} />
+                          {isWeight ? (
+                            <button
+                              onClick={() => {
+                                const p = (products as Record<string, any>[]).find(p => p.id === item.productId);
+                                if (p) { setWeightModal({ product: p, existingQty: item.quantity }); setWeightInput(String(item.quantity)); }
+                              }}
+                              className="px-3 h-8 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs font-semibold transition-colors">
+                              Modifier le poids
                             </button>
-                            <button onClick={() => openNumpad(item.productId, item.name, item.quantity)}
-                              className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'} hover:bg-primary-50 rounded transition-colors`}>{item.quantity}</button>
-                            <button onClick={() => updateQuantity(item.productId, 1)}
-                              className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${
-                                atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'
-                              }`}>
-                              <Plus size={14} />
-                            </button>
-                          </div>
+                          ) : (
+                            <div className="flex items-center bg-gray-100 rounded-lg">
+                              <button onClick={() => updateQuantity(item.productId, -1)}
+                                className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600">
+                                <Minus size={14} />
+                              </button>
+                              <button onClick={() => openNumpad(item.productId, item.name, item.quantity)}
+                                className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'} hover:bg-primary-50 rounded transition-colors`}>{item.quantity}</button>
+                              <button onClick={() => updateQuantity(item.productId, 1)}
+                                className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${
+                                  atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'
+                                }`}>
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          )}
                           <div className="flex-1" />
                           <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))}
                             className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
@@ -1220,7 +1295,7 @@ export default function POSPage() {
                   <div className="px-4 py-3 space-y-1">
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Articles</span>
-                      <span>{cart.reduce((s, i) => s + i.quantity, 0)}</span>
+                      <span>{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)}</span>
                     </div>
                     <div className="flex justify-between text-xl font-bold text-gray-800 pt-1">
                       <span>Total</span>
@@ -3260,6 +3335,73 @@ export default function POSPage() {
       {receiptData && (
         <ReceiptModal receipt={receiptData} onClose={() => setReceiptData(null)} autoPrintTriggered />
       )}
+
+      {/* Weight input modal — produits vendus au poids */}
+      {weightModal && (() => {
+        const p = weightModal.product;
+        const pricePerKg = parseFloat((p.price_per_kg ?? p.price) as string);
+        const stock = parseFloat(p.stock_quantity as string) || 0;
+        const weightG = parseInt(weightInput, 10) || 0;
+        const computedTotal = (weightG / 1000) * pricePerKg;
+        const overStock = weightG > stock;
+        const append = (s: string) => setWeightInput(v => (v + s).slice(0, 6));
+        const back = () => setWeightInput(v => v.slice(0, -1));
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => { setWeightModal(null); setWeightInput(''); }}>
+            <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-3 border-b bg-gradient-to-r from-primary-50 to-white">
+                <h3 className="font-semibold text-gray-800">{p.name as string}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerKg.toFixed(2)} DH/kg — Stock vitrine : {stock.toFixed(0)} g</p>
+              </div>
+              <div className="p-5">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Poids (grammes)</label>
+                <div className="flex items-baseline gap-2 mb-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={weightInput}
+                    onChange={e => setWeightInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="350"
+                    autoFocus
+                    className={`flex-1 text-3xl font-bold text-center py-3 border-2 rounded-lg focus:outline-none ${overStock ? 'border-red-400 text-red-600' : 'border-gray-200 focus:border-primary-400 text-gray-800'}`}
+                  />
+                  <span className="text-lg font-semibold text-gray-500">g</span>
+                </div>
+                {overStock && (
+                  <p className="text-xs text-red-600 mb-2">Stock insuffisant — max {stock.toFixed(0)} g</p>
+                )}
+                <div className="flex justify-between items-center px-1 mb-3">
+                  <span className="text-xs text-gray-500">Total ligne</span>
+                  <span className="text-xl font-bold text-primary-700">{computedTotal.toFixed(2)} DH</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[1,2,3,4,5,6,7,8,9].map(n => (
+                    <button key={n} onClick={() => append(String(n))}
+                      className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">{n}</button>
+                  ))}
+                  <button onClick={back} className="h-12 bg-gray-50 hover:bg-amber-50 rounded-lg text-amber-600 text-sm font-semibold">←</button>
+                  <button onClick={() => append('0')} className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">0</button>
+                  <button onClick={() => append('00')} className="h-12 bg-gray-50 hover:bg-primary-50 rounded-lg font-semibold text-lg text-gray-700">00</button>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 mt-2">
+                  {[100, 200, 250, 500].map(g => (
+                    <button key={g} onClick={() => setWeightInput(String(g))}
+                      className="h-9 bg-gray-50 hover:bg-primary-50 rounded-lg text-xs font-semibold text-gray-600">+{g}g</button>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 py-3 border-t bg-gray-50 flex justify-end gap-2">
+                <button onClick={() => { setWeightModal(null); setWeightInput(''); }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100">Annuler</button>
+                <button onClick={confirmWeight} disabled={!weightG || overStock}
+                  className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  Ajouter
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

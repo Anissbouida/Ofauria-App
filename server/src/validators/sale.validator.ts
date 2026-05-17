@@ -7,6 +7,9 @@ const PAYMENT_METHODS = ['cash', 'card', 'mobile', 'check', 'credit'] as const;
 
 const saleItemSchema = z.object({
   productId: uuid,
+  // Pour les produits unitaires : nombre de pièces.
+  // Pour les produits au poids : nombre de grammes (entier, saisi à la caisse).
+  // Côté serveur on vérifie la cohérence avec product.sale_unit.
   quantity: positiveQuantity,
   // prix et subtotal sont calcules cote serveur, pas envoyes par le client
 });

@@ -68,6 +68,7 @@ app.use(helmet({
 const DEV_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://localhost:4176',
   'http://localhost',
   'https://localhost',
   'http://10.0.2.2:3001',
