@@ -116,6 +116,17 @@ export const invoiceController = {
     });
     res.json({ success: true, data: rows });
   },
+  async updateCategory(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const { categoryId } = req.body as { categoryId?: string | null };
+    const invoice = await invoiceRepository.findById(id);
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const updated = await invoiceRepository.updateCategory(id, categoryId ?? null);
+    res.json({ success: true, data: updated });
+  },
   async getById(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }

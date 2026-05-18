@@ -529,6 +529,9 @@ function ChargesTab() {
   const [year, setYear] = useState(now.getFullYear());
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Record<string, any> | null>(null);
+  // Modal de categorisation d'une facture (s'applique a toutes ses lignes)
+  const [categorizingInvoice, setCategorizingInvoice] = useState<Record<string, any> | null>(null);
+  const [categorizingCategoryId, setCategorizingCategoryId] = useState<string>('');
   const [filterRoot, setFilterRoot] = useState<string>('all');
   const [filterLeaf, setFilterLeaf] = useState<string>('all');
   const [filterMethod, setFilterMethod] = useState<string>('all');
@@ -617,6 +620,19 @@ function ChargesTab() {
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
       notify.success('Supprimé');
     },
+  });
+
+  // Categorise une facture en bloc (touche toutes les lignes derivees).
+  const updateInvoiceCategoryMutation = useMutation({
+    mutationFn: ({ id, categoryId }: { id: string; categoryId: string | null }) =>
+      invoicesApi.updateCategory(id, categoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+      notify.success('Facture categorisee');
+      setCategorizingInvoice(null);
+      setCategorizingCategoryId('');
+    },
+    onError: () => notify.error('Erreur lors de la categorisation'),
   });
 
   // Sorties affichees :
@@ -844,7 +860,15 @@ function ChargesTab() {
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {p.type === 'invoice' ? (
-                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }} title="Ligne derivee d'une facture (modifier dans la facture)">facture</span>
+                        <button
+                          onClick={() => {
+                            setCategorizingInvoice(p);
+                            setCategorizingCategoryId((p.category_id as string) || '');
+                          }}
+                          style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
+                          title="Categoriser la facture (s'applique a toutes ses lignes)">
+                          <Pencil size={13} />
+                        </button>
                       ) : p.type !== 'salary' ? (
                         <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button onClick={() => setEditingPayment(p)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }} title="Modifier"><Pencil size={13} /></button>
@@ -1039,6 +1063,64 @@ function ChargesTab() {
                 <button type="submit" disabled={updateMutation.isPending}
                   className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
                   {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de categorisation d'une facture (impacte toutes ses lignes) */}
+      {categorizingInvoice && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Pencil size={18} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Catégoriser la facture</h2>
+                  <p className="text-xs text-white/80">
+                    {(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
+                <X size={18} className="text-white" />
+              </button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              if (!categorizingCategoryId) { notify.error('Sélectionnez une catégorie'); return; }
+              updateInvoiceCategoryMutation.mutate({
+                id: categorizingInvoice.invoice_id as string,
+                categoryId: categorizingCategoryId,
+              });
+            }} className="p-5 space-y-4">
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                Cette catégorie s&apos;applique à <strong>toutes les lignes</strong> de la facture (modifie <code>invoices.category_id</code>).
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie *</label>
+                <CategoryCascadeSelector
+                  value={categorizingCategoryId}
+                  onChange={setCategorizingCategoryId}
+                  type="expense"
+                />
+                {categorizingInvoice.category_id && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Catégorie actuelle : <span className="font-medium">{getCategoryPath(String(categorizingInvoice.category_id))}</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }}
+                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                <button type="submit" disabled={updateInvoiceCategoryMutation.isPending}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+                  {updateInvoiceCategoryMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
               </div>

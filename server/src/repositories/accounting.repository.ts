@@ -558,6 +558,14 @@ export const invoiceRepository = {
     return result.rows[0];
   },
 
+  async updateCategory(id: string, categoryId: string | null) {
+    const result = await db.query(
+      `UPDATE invoices SET category_id = $1 WHERE id = $2 RETURNING *`,
+      [categoryId, id]
+    );
+    return result.rows[0];
+  },
+
   async updateAttachment(id: string, url: string | null) {
     const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
     return result.rows[0];

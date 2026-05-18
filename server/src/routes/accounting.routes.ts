@@ -55,6 +55,7 @@ export const invoicesRouter = Router();
 invoicesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.list);
 invoicesRouter.get('/line-expenses', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.lineExpenses);
 invoicesRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.getById);
+invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateCategory);
 invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.create);
 invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.createFromOrder);
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.cancel);
