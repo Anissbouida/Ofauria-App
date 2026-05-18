@@ -110,9 +110,13 @@ export default function CategoryCascadeSelector({
         <select
           value={selectedL1}
           onChange={(e) => {
-            setSelectedL1(e.target.value);
+            const id = e.target.value;
+            setSelectedL1(id);
             setSelectedL2('');
-            onChange('');
+            // Si L1 n'a ni sous-categorie ni type direct, L1 EST la feuille.
+            const hasL2Children = id && level2.some(c => String(c.parent_id) === id);
+            const hasDirectL3 = id && level3.some(c => String(c.parent_id) === id);
+            onChange(!id ? '' : (hasL2Children || hasDirectL3) ? '' : id);
           }}
           className={selectClass}
           required={required}
@@ -134,8 +138,17 @@ export default function CategoryCascadeSelector({
           <select
             value={selectedL2}
             onChange={(e) => {
-              setSelectedL2(e.target.value);
-              onChange('');
+              const id = e.target.value;
+              setSelectedL2(id);
+              // Si la sous-categorie n'a pas de Type (L3), elle EST la feuille.
+              const hasL3Children = id && level3.some(c => String(c.parent_id) === id);
+              if (!id) {
+                // Retour a "Toutes" : feuille = L1 si pas de type direct, sinon attendre L3.
+                const hasDirectL3FromL1 = selectedL1 && level3.some(c => String(c.parent_id) === selectedL1);
+                onChange(hasDirectL3FromL1 ? '' : selectedL1);
+              } else {
+                onChange(hasL3Children ? '' : id);
+              }
             }}
             className={selectClass}
             disabled={disabled}
