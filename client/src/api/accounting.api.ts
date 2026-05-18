@@ -31,6 +31,7 @@ export const revenueCategoriesApi = {
 
 export const invoicesApi = {
   list: (params?: Record<string, string>) => api.get('/invoices', { params }).then(r => r.data.data),
+  lineExpenses: (params?: Record<string, string>) => api.get('/invoices/line-expenses', { params }).then(r => r.data.data),
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
   createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),

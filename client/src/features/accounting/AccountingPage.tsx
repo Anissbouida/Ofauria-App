@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi } from '../../api/accounting.api';
+import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -540,10 +540,17 @@ function ChargesTab() {
   const lastDay = new Date(year, month, 0).getDate();
   const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data: payments = [], isLoading } = useQuery({
+  const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
     queryKey: ['payments-charges', year, month],
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
+  // Achats fournisseurs : on les lit a partir des factures (1 ligne = 1 ingredient),
+  // pas a partir des reglements (cheques) qui sont decoupes du fait economique.
+  const { data: invoiceLines = [], isLoading: isLoadingLines } = useQuery({
+    queryKey: ['invoice-line-expenses', year, month],
+    queryFn: () => invoicesApi.lineExpenses({ dateFrom, dateTo }),
+  });
+  const isLoading = isLoadingPayments || isLoadingLines;
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
   const { data: eligiblePOs = [] } = useQuery({ queryKey: ['eligible-pos'], queryFn: purchaseOrdersApi.eligible });
@@ -609,13 +616,16 @@ function ChargesTab() {
     },
   });
 
-  // Only outgoing payments (not income)
-  const outgoing = (payments as Record<string, any>[]).filter(p => p.type !== 'income');
+  // Outgoing payments hors achats fournisseurs (les achats viennent des invoice_items).
+  // On exclut type='income' (recettes) ET type='invoice' (anciens reglements cheque a ignorer
+  // au profit des lignes d'ingredients de factures).
+  const otherPayments = (payments as Record<string, any>[]).filter(p => p.type !== 'income' && p.type !== 'invoice');
 
   // Group by type
-  const invoicePayments = outgoing.filter(p => p.type === 'invoice');
-  const salaryPayments = outgoing.filter(p => p.type === 'salary');
-  const expensePayments = outgoing.filter(p => p.type === 'expense');
+  const invoicePayments = invoiceLines as Record<string, any>[];
+  const salaryPayments = otherPayments.filter(p => p.type === 'salary');
+  const expensePayments = otherPayments.filter(p => p.type === 'expense');
+  const outgoing = [...invoicePayments, ...salaryPayments, ...expensePayments];
 
   const totals = useMemo(() => {
     const invoiceTotal = invoicePayments.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0);
@@ -642,16 +652,17 @@ function ChargesTab() {
   const handleExport = () => {
     const rows = displayed.map(p => [
       format(new Date(p.payment_date as string), 'dd/MM/yyyy'),
-      (p.reference as string) || '',
+      (p.reference as string) || (p.invoice_number as string) || '',
       PAYMENT_TYPE_LABELS[p.type as string] || '',
       (p.category_name as string) || '',
       (p.supplier_name as string) || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : ''),
+      (p.designation as string) || '',
       getPaymentLabel(p.payment_method as string) || '',
       (p.description as string) || '',
       n(parseFloat(p.amount as string) || 0),
     ]);
     exportCSV(`charges_${MONTH_NAMES[month - 1]}_${year}.csv`,
-      ['DATE', 'REF', 'TYPE', 'CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
+      ['DATE', 'REF', 'TYPE', 'CATEGORIE', 'BENEFICIAIRE', 'INGREDIENT', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
   };
 
   return (
@@ -684,7 +695,7 @@ function ChargesTab() {
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Achats</div>
           <div className="odoo-stat-card-value">{n(totals.invoiceTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{invoicePayments.length} facture{invoicePayments.length > 1 ? 's' : ''}</div>
+          <div className="odoo-stat-card-sub">{invoicePayments.length} ligne{invoicePayments.length > 1 ? 's' : ''} d&apos;ingr&eacute;dient</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Salaires</div>
@@ -761,14 +772,27 @@ function ChargesTab() {
                 const typeTagClass = p.type === 'invoice' ? 'odoo-tag-orange'
                   : p.type === 'salary' ? 'odoo-tag-purple'
                   : 'odoo-tag-grey';
+                // Une ligne 'invoice' provient d'invoice_items (derivee), pas
+                // d'un payment editable. On affiche l'ingredient sous le nom du
+                // fournisseur et on masque les actions Edit/Delete.
+                const isInvoiceLine = p.type === 'invoice';
+                const rowKey = isInvoiceLine ? `inv-${p.id as string}` : (p.id as string);
                 return (
-                  <tr key={p.id as string}>
+                  <tr key={rowKey}>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{p.reference as string || '—'}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                      {(p.reference as string) || (p.invoice_number as string) || '—'}
+                    </td>
                     <td><span className={`odoo-tag ${typeTagClass}`}>{PAYMENT_TYPE_LABELS[p.type as string] || p.type}</span></td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{p.category_name as string || '—'}</td>
                     <td style={{ fontWeight: 500 }}>
                       {p.supplier_name as string || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : p.description as string || '—')}
+                      {isInvoiceLine && p.designation && (
+                        <div style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--theme-text-muted)', marginTop: 2 }}>
+                          {p.designation as string}
+                          {p.quantity ? <span style={{ marginLeft: 6 }}>· {parseFloat(p.quantity as string)} × {n(parseFloat(p.unit_price as string))} DH</span> : null}
+                        </div>
+                      )}
                     </td>
                     <td>
                       {p.purchase_order_number ? (
@@ -780,7 +804,9 @@ function ChargesTab() {
                       {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      {p.type !== 'salary' ? (
+                      {isInvoiceLine ? (
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }}>facture</span>
+                      ) : p.type !== 'salary' ? (
                         <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button onClick={() => setEditingPayment(p)}
                             style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
