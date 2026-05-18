@@ -1331,7 +1331,8 @@ function CascadeCategorySelect({
     if (!value || categories.length === 0) return;
     const leaf = categories.find(c => String(c.id) === value);
     if (!leaf) return;
-    if ((leaf.level as number) === 3) {
+    const leafLevel = leaf.level as number;
+    if (leafLevel === 3) {
       const parent = categories.find(c => String(c.id) === String(leaf.parent_id));
       if (parent && (parent.level as number) === 2) {
         setSelL2(String(parent.id));
@@ -1340,6 +1341,12 @@ function CascadeCategorySelect({
         setSelL1(String(parent.id));
         setSelL2('');
       }
+    } else if (leafLevel === 2) {
+      setSelL1(String(leaf.parent_id || ''));
+      setSelL2(String(leaf.id));
+    } else if (leafLevel === 1) {
+      setSelL1(String(leaf.id));
+      setSelL2('');
     }
   }, [value, categories]);
 
@@ -1354,12 +1361,31 @@ function CascadeCategorySelect({
 
   return (
     <div className="space-y-2">
-      <select value={selL1} onChange={e => { setSelL1(e.target.value); setSelL2(''); onChange(''); }} className={cls}>
+      <select value={selL1} onChange={e => {
+        const id = e.target.value;
+        setSelL1(id);
+        setSelL2('');
+        // Si L1 n'a ni L2 ni L3 direct, L1 EST la feuille.
+        const hasL2 = id && level2.some(c => String(c.parent_id) === id);
+        const hasL3Direct = id && level3.some(c => String(c.parent_id) === id);
+        onChange(!id ? '' : (hasL2 || hasL3Direct) ? '' : id);
+      }} className={cls}>
         <option value="">Categorie...</option>
         {level1.map(c => <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>)}
       </select>
       {filteredL2.length > 0 && (
-        <select value={selL2} onChange={e => { setSelL2(e.target.value); onChange(''); }} className={cls}>
+        <select value={selL2} onChange={e => {
+          const id = e.target.value;
+          setSelL2(id);
+          // Si la sous-categorie n'a pas de Type (L3), elle EST la feuille.
+          const hasL3 = id && level3.some(c => String(c.parent_id) === id);
+          if (!id) {
+            const hasL3DirectFromL1 = selL1 && level3.some(c => String(c.parent_id) === selL1);
+            onChange(hasL3DirectFromL1 ? '' : selL1);
+          } else {
+            onChange(hasL3 ? '' : id);
+          }
+        }} className={cls}>
           <option value="">Sous-categorie...</option>
           {filteredL2.map(c => <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>)}
         </select>
