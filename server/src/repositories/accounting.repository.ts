@@ -562,6 +562,113 @@ export const invoiceRepository = {
     const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
     return result.rows[0];
   },
+
+  /**
+   * Eclate les factures recues en une ligne par ingredient.
+   *
+   * Deux sources possibles selon comment la facture a ete saisie :
+   *   1. `invoice_items` : creation manuelle via le modal Facture.
+   *   2. `reception_voucher_items` : factures importees depuis Excel ou
+   *      generees via le flux PO -> reception. Pas de invoice_items dans ce
+   *      cas, on prend les lignes du bon de reception associe.
+   *
+   * On fait un UNION ALL des deux, en evitant les doublons pour les factures
+   * qui ont les deux (priorite a invoice_items).
+   */
+  async findLineExpenses(params: { dateFrom?: string; dateTo?: string; supplierId?: string; storeId?: string }) {
+    const conditions: string[] = [`inv.invoice_type = 'received'`];
+    const values: unknown[] = [];
+    let i = 1;
+    if (params.storeId) { conditions.push(`inv.store_id = $${i++}`); values.push(params.storeId); }
+    if (params.dateFrom) { conditions.push(`inv.invoice_date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`inv.invoice_date <= $${i++}`); values.push(params.dateTo); }
+    if (params.supplierId) { conditions.push(`inv.supplier_id = $${i++}`); values.push(params.supplierId); }
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
+    const result = await db.query(
+      `WITH ii_lines AS (
+         SELECT
+           ii.id                                       AS id,
+           inv.id                                      AS invoice_id,
+           inv.invoice_number                          AS invoice_number,
+           inv.invoice_date                            AS payment_date,
+           inv.status                                  AS invoice_status,
+           inv.supplier_id                             AS supplier_id,
+           inv.category_id                             AS invoice_category_id,
+           inv.purchase_order_id                       AS invoice_po_id,
+           ii.ingredient_id                            AS ingredient_id,
+           COALESCE(ing.name, p.name, ii.description)  AS designation,
+           ing.category                                AS ingredient_category,
+           ii.quantity                                 AS quantity,
+           ii.unit_price                               AS unit_price,
+           ii.subtotal                                 AS amount,
+           ii.created_at                               AS sort_at
+         FROM invoice_items ii
+         JOIN invoices inv ON inv.id = ii.invoice_id
+         LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id
+         LEFT JOIN products p ON p.id = ii.product_id
+         ${where}
+       ),
+       rv_lines AS (
+         SELECT
+           rvi.id                                                  AS id,
+           inv.id                                                  AS invoice_id,
+           inv.invoice_number                                      AS invoice_number,
+           inv.invoice_date                                        AS payment_date,
+           inv.status                                              AS invoice_status,
+           inv.supplier_id                                         AS supplier_id,
+           inv.category_id                                         AS invoice_category_id,
+           inv.purchase_order_id                                   AS invoice_po_id,
+           rvi.ingredient_id                                       AS ingredient_id,
+           ing.name                                                AS designation,
+           ing.category                                            AS ingredient_category,
+           rvi.quantity_received                                   AS quantity,
+           rvi.unit_price                                          AS unit_price,
+           ROUND((rvi.quantity_received * COALESCE(rvi.unit_price, 0))::numeric, 2) AS amount,
+           rvi.created_at                                          AS sort_at
+         FROM reception_voucher_items rvi
+         JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+         JOIN invoices inv ON inv.reception_voucher_id = rv.id
+         LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
+         ${where}
+           AND NOT EXISTS (SELECT 1 FROM invoice_items WHERE invoice_id = inv.id)
+       ),
+       all_lines AS (
+         SELECT * FROM ii_lines
+         UNION ALL
+         SELECT * FROM rv_lines
+       )
+       SELECT
+         al.id, al.invoice_id, al.invoice_number, al.payment_date,
+         al.invoice_status, al.supplier_id, al.ingredient_id,
+         al.designation, al.ingredient_category,
+         al.quantity, al.unit_price, al.amount,
+         'invoice'::text       AS type,
+         s.name                AS supplier_name,
+         po.order_number       AS purchase_order_number,
+         -- category_id : utilise par la cascade de filtres (root) de l'UI.
+         -- On expose celle de la facture (souvent "Matieres premieres").
+         al.invoice_category_id AS category_id,
+         -- Description : sert d'etiquette dans la colonne Designation cote UI.
+         CONCAT(
+           al.designation,
+           CASE WHEN al.quantity IS NOT NULL
+                THEN ' (' || TRIM(BOTH '0' FROM TRIM(TRAILING '.' FROM al.quantity::text)) || ' x ' || ROUND(al.unit_price::numeric, 2) || ')'
+                ELSE ''
+           END
+         )                     AS description,
+         -- Categorie affichee (leaf) : on prefere la categorie de l'ingredient
+         -- (farines / produits_laitiers / ...) plutot que celle de la facture.
+         COALESCE(al.ingredient_category, ec.name) AS category_name
+       FROM all_lines al
+       LEFT JOIN suppliers s ON s.id = al.supplier_id
+       LEFT JOIN purchase_orders po ON po.id = al.invoice_po_id
+       LEFT JOIN expense_categories ec ON ec.id = al.invoice_category_id
+       ORDER BY al.payment_date DESC, al.invoice_number, al.sort_at`,
+      values
+    );
+    return result.rows;
+  },
 };
 
 /* ═══ Payments ═══ */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi } from '../../api/accounting.api';
+import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -543,10 +543,17 @@ function ChargesTab() {
   const lastDay = new Date(year, month, 0).getDate();
   const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data: payments = [], isLoading } = useQuery({
+  const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
     queryKey: ['payments-charges', year, month],
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
+  // Achats fournisseurs : on les lit a partir des factures (1 ligne = 1 ingredient),
+  // pas a partir des reglements (cheques) qui sont decoupes du fait economique.
+  const { data: invoiceLines = [], isLoading: isLoadingLines } = useQuery({
+    queryKey: ['invoice-line-expenses', year, month],
+    queryFn: () => invoicesApi.lineExpenses({ dateFrom, dateTo }),
+  });
+  const isLoading = isLoadingPayments || isLoadingLines;
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
   const { data: eligiblePOs = [] } = useQuery({ queryKey: ['eligible-pos'], queryFn: purchaseOrdersApi.eligible });
@@ -612,8 +619,15 @@ function ChargesTab() {
     },
   });
 
-  // Only outgoing payments (not income)
-  const outgoing = (payments as Record<string, any>[]).filter(p => p.type !== 'income');
+  // Sorties affichees :
+  //   - payments hors income et hors invoice (les anciens reglements cheque
+  //     ne sont plus la source des achats),
+  //   - + 1 ligne par ingredient de facture recue (via invoicesApi.lineExpenses).
+  const otherPayments = (payments as Record<string, any>[]).filter(p => p.type !== 'income' && p.type !== 'invoice');
+  const outgoing = useMemo(
+    () => [...(invoiceLines as Record<string, any>[]), ...otherPayments],
+    [invoiceLines, otherPayments]
+  );
 
   const grandTotal = useMemo(() => outgoing.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [outgoing]);
 
@@ -829,7 +843,9 @@ function ChargesTab() {
                       {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      {p.type !== 'salary' ? (
+                      {p.type === 'invoice' ? (
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }} title="Ligne derivee d'une facture (modifier dans la facture)">facture</span>
+                      ) : p.type !== 'salary' ? (
                         <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button onClick={() => setEditingPayment(p)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }} title="Modifier"><Pencil size={13} /></button>
                           <button onClick={() => deleteMutation.mutate(p.id as string)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }} title="Supprimer"><X size={13} /></button>

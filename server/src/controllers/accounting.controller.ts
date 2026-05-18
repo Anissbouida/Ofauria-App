@@ -109,6 +109,13 @@ export const invoiceController = {
     });
     res.json({ success: true, data: invoices });
   },
+  async lineExpenses(req: AuthRequest, res: Response) {
+    const { supplierId, dateFrom, dateTo } = req.query as Record<string, string>;
+    const rows = await invoiceRepository.findLineExpenses({
+      supplierId, dateFrom, dateTo, storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: rows });
+  },
   async getById(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
