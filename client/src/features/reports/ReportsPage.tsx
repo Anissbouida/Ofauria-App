@@ -12,7 +12,7 @@ import {
 import {
   TrendingUp, ShoppingCart, Banknote, Package, ClipboardList,
   AlertTriangle, Calendar, ArrowUpRight, ArrowDownRight, Crown, BarChart3,
-  ChevronRight, LayoutDashboard, Sparkles, Wallet,
+  ChevronRight, LayoutDashboard, Sparkles, Wallet, Search, X,
 } from 'lucide-react';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
@@ -586,6 +586,11 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
   menuLoading: boolean;
 }) {
   const [filterClass, setFilterClass] = useState<MenuEngineeringClass | 'ALL'>('ALL');
+  const [menuSearch, setMenuSearch] = useState('');
+  const [menuSortCol, setMenuSortCol] = useState<string>('contribution');
+  const [menuSortDir, setMenuSortDir] = useState<'asc' | 'desc'>('desc');
+  const toggleMenuSort = (col: string) => { if (menuSortCol === col) setMenuSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setMenuSortCol(col); setMenuSortDir('desc'); } };
+  const MenuSortIcon = ({ col }: { col: string }) => menuSortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{menuSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
 
   const items = menuData?.items ?? [];
   const counts = menuData?.counts ?? { STAR: 0, PUZZLE: 0, HORSE: 0, DOG: 0 };
@@ -605,9 +610,21 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
   }, [items]);
 
   const filteredItems = useMemo(() => {
-    if (filterClass === 'ALL') return items;
-    return items.filter((it) => it.classification === filterClass);
-  }, [items, filterClass]);
+    let list = filterClass === 'ALL' ? items : items.filter(it => it.classification === filterClass);
+    if (menuSearch) { const s = menuSearch.toLowerCase(); list = list.filter(it => it.name.toLowerCase().includes(s) || (it.category || '').toLowerCase().includes(s)); }
+    return [...list].sort((a, b) => {
+      let va: any = '', vb: any = '';
+      if (menuSortCol === 'name') { va = a.name; vb = b.name; }
+      else if (menuSortCol === 'class') { va = a.classification; vb = b.classification; }
+      else if (menuSortCol === 'qty') { va = parseFloat(a.qty_sold) || 0; vb = parseFloat(b.qty_sold) || 0; }
+      else if (menuSortCol === 'revenue') { va = parseFloat(a.revenue) || 0; vb = parseFloat(b.revenue) || 0; }
+      else if (menuSortCol === 'cost') { va = parseFloat(a.total_food_cost) || 0; vb = parseFloat(b.total_food_cost) || 0; }
+      else if (menuSortCol === 'pct') { va = parseFloat(a.food_cost_pct) || 0; vb = parseFloat(b.food_cost_pct) || 0; }
+      else if (menuSortCol === 'contribution') { va = parseFloat(a.total_contribution) || 0; vb = parseFloat(b.total_contribution) || 0; }
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return menuSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [items, filterClass, menuSearch, menuSortCol, menuSortDir]);
 
   return (
     <>
@@ -706,28 +723,34 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
 
       {/* Classified table */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-700">Detail par produit</h2>
-            {filterClass !== 'ALL' && (
-              <button onClick={() => setFilterClass('ALL')} className="text-xs text-blue-600 hover:underline">
-                (filtre: {CLASS_META[filterClass].label} — effacer)
-              </button>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <h2 className="text-sm font-semibold text-gray-700 mr-1">Detail par produit</h2>
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Rechercher produit..." value={menuSearch} onChange={e => setMenuSearch(e.target.value)}
+              className="w-full pl-7 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            {menuSearch && (
+              <button onClick={() => setMenuSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
             )}
           </div>
-          <span className="text-xs text-gray-400">{filteredItems.length} produit(s)</span>
+          {filterClass !== 'ALL' && (
+            <button onClick={() => setFilterClass('ALL')} className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+              {CLASS_META[filterClass].label} ×
+            </button>
+          )}
+          <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">{filteredItems.length} produit(s)</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Produit</th>
-                <th className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Classification</th>
-                <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Vendus</th>
-                <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Revenus</th>
-                <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cout matiere</th>
-                <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">% matiere</th>
-                <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Contribution</th>
+                <th onClick={() => toggleMenuSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Produit<MenuSortIcon col="name" /></th>
+                <th onClick={() => toggleMenuSort('class')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Classification<MenuSortIcon col="class" /></th>
+                <th onClick={() => toggleMenuSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Vendus<MenuSortIcon col="qty" /></th>
+                <th onClick={() => toggleMenuSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Revenus<MenuSortIcon col="revenue" /></th>
+                <th onClick={() => toggleMenuSort('cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout matiere<MenuSortIcon col="cost" /></th>
+                <th onClick={() => toggleMenuSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">% matiere<MenuSortIcon col="pct" /></th>
+                <th onClick={() => toggleMenuSort('contribution')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Contribution<MenuSortIcon col="contribution" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -808,6 +831,37 @@ function CostTab({ costData, costLoading, lossStats }: {
     ? costData.coverage.plansCompleted - costData.coverage.plansWithCost
     : 0;
 
+  const [cbSearch, setCbSearch] = useState('');
+  const [cbSource, setCbSource] = useState<'all' | 'production' | 'recipe' | 'manual' | 'none'>('all');
+  const [cbSort, setCbSort] = useState<string>('revenue');
+  const [cbSortDir, setCbSortDir] = useState<'asc' | 'desc'>('desc');
+  const toggleCbSort = (col: string) => { if (cbSort === col) setCbSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setCbSort(col); setCbSortDir('desc'); } };
+  const CbSortIcon = ({ col }: { col: string }) => cbSort === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{cbSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
+
+  const displayedBreakdown = useMemo(() => {
+    if (!costData) return [];
+    let list = costData.breakdown;
+    if (cbSearch) { const s = cbSearch.toLowerCase(); list = list.filter(it => it.name.toLowerCase().includes(s) || (it.category || '').toLowerCase().includes(s)); }
+    if (cbSource === 'production') list = list.filter(it => it.cost_from_production);
+    else if (cbSource === 'recipe') list = list.filter(it => !it.cost_from_production && it.cost_from_recipe);
+    else if (cbSource === 'manual') list = list.filter(it => it.has_cost_data && !it.cost_from_production && !it.cost_from_recipe);
+    else if (cbSource === 'none') list = list.filter(it => !it.has_cost_data);
+    return [...list].sort((a, b) => {
+      const ra = parseFloat(a.revenue) || 0, rb = parseFloat(b.revenue) || 0;
+      const fca = parseFloat(a.food_cost) || 0, fcb = parseFloat(b.food_cost) || 0;
+      let va: any = '', vb: any = '';
+      if (cbSort === 'name') { va = a.name; vb = b.name; }
+      else if (cbSort === 'qty') { va = parseFloat(a.qty_sold) || 0; vb = parseFloat(b.qty_sold) || 0; }
+      else if (cbSort === 'revenue') { va = ra; vb = rb; }
+      else if (cbSort === 'unit_cost') { va = parseFloat(a.unit_food_cost) || 0; vb = parseFloat(b.unit_food_cost) || 0; }
+      else if (cbSort === 'food_cost') { va = fca; vb = fcb; }
+      else if (cbSort === 'pct') { va = ra > 0 ? fca / ra : 0; vb = rb > 0 ? fcb / rb : 0; }
+      else if (cbSort === 'margin') { va = ra - fca; vb = rb - fcb; }
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return cbSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [costData, cbSearch, cbSource, cbSort, cbSortDir]);
+
   return (
     <>
       <CostKpisRow costData={costData} loading={costLoading} detailed />
@@ -878,28 +932,50 @@ function CostTab({ costData, costLoading, lossStats }: {
       {/* Per-product breakdown — cost matched to actual sales */}
       {costData && costData.breakdown.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-700">Cout matiere par produit vendu</h2>
-              <p className="text-xs text-gray-400">Chaque ligne : qty_vendue x cout_unitaire (source production reelle si dispo)</p>
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-700">Cout matiere par produit vendu</h2>
+                <p className="text-xs text-gray-400">Chaque ligne : qty_vendue x cout_unitaire (source production reelle si dispo)</p>
+              </div>
+              <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
+                {displayedBreakdown.length !== costData.breakdown.length ? `${displayedBreakdown.length} / ${costData.breakdown.length}` : `${costData.breakdown.length}`} produit(s)
+              </span>
             </div>
-            <span className="text-xs text-gray-400">{costData.breakdown.length} produit(s)</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px] max-w-xs">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Rechercher produit..." value={cbSearch} onChange={e => setCbSearch(e.target.value)}
+                  className="w-full pl-7 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                {cbSearch && (
+                  <button onClick={() => setCbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
+                )}
+              </div>
+              <select value={cbSource} onChange={e => setCbSource(e.target.value as any)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white text-gray-700">
+                <option value="all">Toutes sources</option>
+                <option value="production">Production reelle</option>
+                <option value="recipe">Recette theorique</option>
+                <option value="manual">Cout manuel</option>
+                <option value="none">Sans cout</option>
+              </select>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Produit</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Vendus</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Revenus</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cout unitaire</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cout matiere</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">% matiere</th>
-                  <th className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">Marge</th>
+                  <th onClick={() => toggleCbSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Produit<CbSortIcon col="name" /></th>
+                  <th onClick={() => toggleCbSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Vendus<CbSortIcon col="qty" /></th>
+                  <th onClick={() => toggleCbSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Revenus<CbSortIcon col="revenue" /></th>
+                  <th onClick={() => toggleCbSort('unit_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout unitaire<CbSortIcon col="unit_cost" /></th>
+                  <th onClick={() => toggleCbSort('food_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout matiere<CbSortIcon col="food_cost" /></th>
+                  <th onClick={() => toggleCbSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">% matiere<CbSortIcon col="pct" /></th>
+                  <th onClick={() => toggleCbSort('margin')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Marge<CbSortIcon col="margin" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {costData.breakdown.map((it) => {
+                {displayedBreakdown.map((it) => {
                   const revenue = parseFloat(it.revenue) || 0;
                   const foodCost = parseFloat(it.food_cost) || 0;
                   const unitCost = parseFloat(it.unit_food_cost) || 0;
@@ -943,19 +1019,30 @@ function CostTab({ costData, costLoading, lossStats }: {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-200 font-bold">
-                  <td className="py-3 text-sm text-gray-800">Total</td>
+                  <td className="py-3 text-sm text-gray-800">
+                    Total{displayedBreakdown.length !== costData.breakdown.length ? ` (${displayedBreakdown.length}/${costData.breakdown.length})` : ''}
+                  </td>
                   <td className="py-3 text-right text-sm text-gray-700">
-                    {costData.breakdown.reduce((s, r) => s + (parseFloat(r.qty_sold) || 0), 0).toFixed(0)}
+                    {displayedBreakdown.reduce((s, r) => s + (parseFloat(r.qty_sold) || 0), 0).toFixed(0)}
                   </td>
-                  <td className="py-3 text-right text-sm text-gray-800">{formatCurrency(costData.netSales)}</td>
+                  <td className="py-3 text-right text-sm text-gray-800">
+                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + (parseFloat(r.revenue) || 0), 0))}
+                  </td>
                   <td className="py-3"></td>
-                  <td className="py-3 text-right text-sm text-gray-700">{formatCurrency(costData.foodCost)}</td>
-                  <td className="py-3 text-right">
-                    <span className={`text-xs font-bold ${costData.foodCostPct > 35 ? 'text-rose-600' : costData.foodCostPct > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {costData.foodCostPct.toFixed(1)}%
-                    </span>
+                  <td className="py-3 text-right text-sm text-gray-700">
+                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0))}
                   </td>
-                  <td className="py-3 text-right text-sm text-gray-800">{formatCurrency(costData.netSales - costData.foodCost)}</td>
+                  <td className="py-3 text-right">
+                    {(() => {
+                      const rev = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.revenue) || 0), 0);
+                      const fc = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0);
+                      const pct = rev > 0 ? fc / rev * 100 : 0;
+                      return <span className={`text-xs font-bold ${pct > 35 ? 'text-rose-600' : pct > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>{pct.toFixed(1)}%</span>;
+                    })()}
+                  </td>
+                  <td className="py-3 text-right text-sm text-gray-800">
+                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + ((parseFloat(r.revenue) || 0) - (parseFloat(r.food_cost) || 0)), 0))}
+                  </td>
                 </tr>
               </tfoot>
             </table>

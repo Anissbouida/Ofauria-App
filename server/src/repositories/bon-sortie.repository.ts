@@ -1194,63 +1194,183 @@ export const bonSortieRepository = {
         const stillNeeded = parseFloat(line.needed_quantity) - parseFloat(line.allocated_quantity);
         if (stillNeeded <= 0) continue;
 
-        // FEFO sur lots disponibles (active / expired) maintenant
-        const lots = await client.query(
-          `SELECT id, lot_number, quantity_remaining, expiration_date, status
-           FROM ingredient_lots
-           WHERE ingredient_id = $1 AND store_id = $2
-             AND status IN ('active', 'expired') AND quantity_remaining > 0
-           ORDER BY
-             CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-             expiration_date ASC NULLS LAST, received_at ASC`,
-          [line.ingredient_id, storeId]
-        );
-
         let remaining = stillNeeded;
-
-        // Cas 1 : la ligne n'avait AUCUNE allocation (status='rupture' avec lot_id NULL)
-        //  -> on lui assigne le 1er lot et on cree des lignes supplementaires si besoin
-        // Cas 2 : la ligne avait une allocation partielle, on cree des lignes additionnelles
-        //  pour le residuel (la ligne d'origine garde sa qty allocated)
+        // Cas 1 : ligne 'rupture' sans allocation -> on reutilise la ligne pour la 1ere
+        //   allocation (Pesage ou Economat), puis on cree des lignes supplementaires.
+        // Cas 2 : ligne 'en_attente' avec allocation partielle -> on ne touche pas a
+        //   l'originale (firstUpdateDone reste false), on cree uniquement des
+        //   complementaires pour le residuel.
         let firstUpdateDone = false;
 
-        for (const lot of lots.rows) {
-          if (remaining <= 0) break;
-          const take = Math.min(parseFloat(lot.quantity_remaining), remaining);
-
+        const applyAllocation = async (params: {
+          sourceLocation: 'PESAGE' | 'ECONOMAT_REQUIRES_TRANSFER';
+          lotId: string | null;
+          suggestedEcoLotId: string | null;
+          qty: number;
+          note: string;
+        }) => {
+          const { sourceLocation, lotId, suggestedEcoLotId, qty, note } = params;
           if (!firstUpdateDone && line.status === 'rupture') {
-            // Attache au lot trouve, met a jour le statut en 'en_attente'.
-            // source_location='PESAGE' : la ligne est prete a etre prelevee directement
-            // (re-allocation post-reappro/transfert, plus besoin de transfert intermediaire).
-            await client.query(
-              `UPDATE production_bons_sortie_lignes
-               SET ingredient_lot_id = $1, allocated_quantity = $2, status = 'en_attente',
-                   source_location = 'PESAGE',
-                   notes = COALESCE(notes, '') || ' | Reapprov: lot attache',
-                   updated_at = NOW()
-               WHERE id = $3`,
-              [lot.id, take, line.id]
-            );
+            if (sourceLocation === 'PESAGE') {
+              await client.query(
+                `UPDATE production_bons_sortie_lignes
+                 SET ingredient_lot_id = $1,
+                     needed_quantity = $2, allocated_quantity = $2,
+                     status = 'en_attente', source_location = 'PESAGE',
+                     suggested_economat_lot_id = NULL, transfer_required_qty = NULL,
+                     notes = COALESCE(notes, '') || ' | ' || $3,
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [lotId, qty, note, line.id]
+              );
+            } else {
+              await client.query(
+                `UPDATE production_bons_sortie_lignes
+                 SET ingredient_lot_id = NULL,
+                     needed_quantity = $1, allocated_quantity = 0,
+                     status = 'en_attente', source_location = 'ECONOMAT_REQUIRES_TRANSFER',
+                     suggested_economat_lot_id = $2, transfer_required_qty = $1,
+                     notes = COALESCE(notes, '') || ' | ' || $3,
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [qty, suggestedEcoLotId, note, line.id]
+              );
+            }
             firstUpdateDone = true;
           } else {
-            // Ligne supplementaire pour ce lot
-            await client.query(
-              `INSERT INTO production_bons_sortie_lignes
-                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity, unit, status, notes)
-               VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', 'Reapprov: ligne complementaire')`,
-              [bonId, line.ingredient_id, lot.id, take, line.ingredient_unit || 'kg']
-            );
+            if (sourceLocation === 'PESAGE') {
+              await client.query(
+                `INSERT INTO production_bons_sortie_lignes
+                   (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                    unit, status, source_location, notes)
+                 VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', 'PESAGE', $6)`,
+                [bonId, line.ingredient_id, lotId, qty, line.ingredient_unit || 'kg', note]
+              );
+            } else {
+              await client.query(
+                `INSERT INTO production_bons_sortie_lignes
+                   (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                    unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
+                 VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', 'ECONOMAT_REQUIRES_TRANSFER', $5, $3, $6)`,
+                [bonId, line.ingredient_id, qty, line.ingredient_unit || 'kg', suggestedEcoLotId, note]
+              );
+            }
           }
+        };
+
+        // Étape 1 : FEFO sur Pesage uniquement (lots deja ouverts, prets a prelever).
+        // On NE consomme PAS economat_quantity ici : un sac scelle en economat n'est pas
+        // dispo au pesage sans transfert physique prealable.
+        //
+        // effective_pesage = pesage_quantity - sum(allocated des lignes BSI deja attachees
+        // a ce lot sur ce BSI). Indispensable car :
+        //  1) plusieurs lignes pending peuvent exister pour le meme ingredient (ex:
+        //     legacy bug ayant cree des complementaires) -> iterations multiples
+        //     re-allouaient le meme lot.
+        //  2) re-click du bouton "Re-verifier dispo" : les lignes attachees lors
+        //     du premier click sont visibles ici, donc l'allocation est idempotente.
+        // Dans une transaction Postgres, le sous-SELECT voit les INSERT/UPDATE faits
+        // plus tot dans la meme boucle.
+        const pesageLots = await client.query(
+          `SELECT l.id, l.lot_number, l.expiration_date, l.first_opened_at, l.status,
+                  (l.pesage_quantity - COALESCE((
+                    SELECT SUM(bsl.allocated_quantity)
+                    FROM production_bons_sortie_lignes bsl
+                    WHERE bsl.bon_id = $3 AND bsl.ingredient_lot_id = l.id
+                      AND bsl.source_location = 'PESAGE'
+                      AND bsl.status IN ('en_attente', 'preleve', 'substitue')
+                  ), 0)) AS effective_pesage
+           FROM ingredient_lots l
+           WHERE l.ingredient_id = $1 AND l.store_id = $2
+             AND l.status IN ('active', 'expired') AND l.pesage_quantity > 0
+           ORDER BY
+             CASE WHEN l.status = 'active' THEN 0 ELSE 1 END,
+             l.expiration_date ASC NULLS LAST,
+             l.first_opened_at ASC NULLS FIRST, l.received_at ASC`,
+          [line.ingredient_id, storeId, bonId]
+        );
+
+        for (const lot of pesageLots.rows) {
+          if (remaining <= 0) break;
+          const effective = parseFloat(lot.effective_pesage);
+          if (effective <= 0) continue;
+          const take = Math.min(effective, remaining);
+          await applyAllocation({
+            sourceLocation: 'PESAGE',
+            lotId: lot.id,
+            suggestedEcoLotId: null,
+            qty: take,
+            note: `Reapprov pesage (lot ${lot.lot_number})`,
+          });
           remaining -= take;
         }
 
+        // Étape 2 : si encore besoin, on regarde l'economat -> ligne ECONOMAT_REQUIRES_TRANSFER.
+        // Une seule ligne agrege le besoin (meme logique que generate), avec un lot
+        // economat suggere par FEFO. Le magasinier devra effectuer le transfert depuis
+        // le module Economat avant de pouvoir prelever.
+        //
+        // Meme principe d'idempotence : effective_economat = economat_quantity - sum(
+        // transfer_required_qty des lignes ECONOMAT_REQUIRES_TRANSFER deja suggerees
+        // sur ce BSI pour ce lot).
         if (remaining > 0) {
-          // Toujours en rupture
+          const ecoLotsResult = await client.query(
+            `SELECT l.id, l.lot_number,
+                    (l.economat_quantity - COALESCE((
+                      SELECT SUM(bsl.transfer_required_qty)
+                      FROM production_bons_sortie_lignes bsl
+                      WHERE bsl.bon_id = $3 AND bsl.suggested_economat_lot_id = l.id
+                        AND bsl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+                        AND bsl.status = 'en_attente'
+                    ), 0)) AS effective_economat
+             FROM ingredient_lots l
+             WHERE l.ingredient_id = $1 AND l.store_id = $2
+               AND l.status = 'active' AND l.economat_quantity > 0
+             ORDER BY l.expiration_date ASC NULLS LAST, l.received_at ASC`,
+            [line.ingredient_id, storeId, bonId]
+          );
+          const totalEco = ecoLotsResult.rows.reduce(
+            (sum, r) => sum + Math.max(0, parseFloat(r.effective_economat || '0')),
+            0
+          );
+          const transferable = Math.min(totalEco, remaining);
+
+          if (transferable > 0) {
+            const suggested = ecoLotsResult.rows.find(r => parseFloat(r.effective_economat || '0') > 0);
+            if (suggested) {
+              await applyAllocation({
+                sourceLocation: 'ECONOMAT_REQUIRES_TRANSFER',
+                lotId: null,
+                suggestedEcoLotId: suggested.id,
+                qty: transferable,
+                note: `Reapprov economat - transfert requis (lot ${suggested.lot_number})`,
+              });
+              remaining -= transferable;
+            }
+          }
+        }
+
+        // Étape 3 : residuel toujours en rupture
+        if (remaining > 0) {
           stillPending++;
+          if (firstUpdateDone) {
+            // La ligne d'origine a deja ete reaffectee (PESAGE/ECONOMAT_REQUIRES_TRANSFER) :
+            // on cree une ligne RUPTURE separee pour le residuel non couvrable.
+            await client.query(
+              `INSERT INTO production_bons_sortie_lignes
+                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                  unit, status, source_location, notes)
+               VALUES ($1, $2, NULL, $3, 0, $4, 'rupture', 'RUPTURE', $5)`,
+              [bonId, line.ingredient_id, remaining, line.ingredient_unit || 'kg',
+               `🚨 Rupture residuelle apres reapprov - manque ${remaining.toFixed(2)} ${line.ingredient_unit || 'kg'}`]
+            );
+          }
+          // Si !firstUpdateDone, la ligne d'origine reste telle quelle (rupture pure ou en_attente partiel).
         } else {
           resolved++;
-          // Si on n'a rien fait sur la ligne d'origine (cas oublie) on l'annule
           if (!firstUpdateDone && line.status === 'rupture') {
+            // Edge case : remaining=0 sans avoir touche a la ligne d'origine.
+            // Devrait etre impossible (si remaining baisse, on a alloue) — securite.
             await client.query(
               `UPDATE production_bons_sortie_lignes
                SET status = 'annule', notes = COALESCE(notes, '') || ' | Remplacee par lignes complementaires apres reapprov'

@@ -528,8 +528,11 @@ function ChargesTab() {
   const [year, setYear] = useState(now.getFullYear());
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Record<string, any> | null>(null);
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [filterRoot, setFilterRoot] = useState<string>('all');
+  const [filterLeaf, setFilterLeaf] = useState<string>('all');
+  const [filterMethod, setFilterMethod] = useState<string>('all');
+  const [sortCol, setSortCol] = useState<string>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -605,38 +608,94 @@ function ChargesTab() {
   // Only outgoing payments (not income)
   const outgoing = (payments as Record<string, any>[]).filter(p => p.type !== 'income');
 
-  // Group by type
-  const invoicePayments = outgoing.filter(p => p.type === 'invoice');
-  const salaryPayments = outgoing.filter(p => p.type === 'salary');
-  const expensePayments = outgoing.filter(p => p.type === 'expense');
+  const grandTotal = useMemo(() => outgoing.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [outgoing]);
 
-  const totals = useMemo(() => {
-    const invoiceTotal = invoicePayments.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0);
-    const salaryTotal = salaryPayments.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0);
-    const expenseTotal = expensePayments.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0);
-    return { invoiceTotal, salaryTotal, expenseTotal, total: invoiceTotal + salaryTotal + expenseTotal };
-  }, [invoicePayments, salaryPayments, expensePayments]);
+  // Category tree helpers
+  const catMap = useMemo(() => {
+    const m: Record<string, any> = {};
+    (categories as any[]).forEach(c => { m[String(c.id)] = c; });
+    return m;
+  }, [categories]);
 
-  // Filter displayed payments
-  const typeFiltered = typeFilter === 'all' ? outgoing
-    : typeFilter === 'invoice' ? invoicePayments
-    : typeFilter === 'salary' ? salaryPayments
-    : expensePayments;
-  const displayed = categoryFilter === 'all' ? typeFiltered
-    : typeFiltered.filter(p => (p.category_name as string || '') === categoryFilter);
+  const getRootId = (catId: string | null): string | null => {
+    if (!catId) return null;
+    let c = catMap[catId]; let limit = 4;
+    while (c && limit-- > 0) {
+      if (c.level === 1) return String(c.id);
+      if (!c.parent_id) return null;
+      c = catMap[String(c.parent_id)];
+    }
+    return null;
+  };
 
-  // Unique categories from current type-filtered list for the dropdown
-  const availableCategories = useMemo(() => {
-    const cats = new Set<string>();
-    typeFiltered.forEach(p => { if (p.category_name) cats.add(p.category_name as string); });
-    return Array.from(cats).sort();
-  }, [typeFiltered]);
+  const getSubId = (catId: string | null): string | null => {
+    if (!catId) return null;
+    const c = catMap[catId];
+    if (!c) return null;
+    if (c.level === 2) return String(c.id);
+    if (c.level === 3) { const par = catMap[String(c.parent_id)]; if (par?.level === 2) return String(par.id); }
+    return null;
+  };
+
+  // Root categories that have payments, sorted by display_order
+  const rootCatsWithPayments = useMemo(() => {
+    const rootIds = new Set<string>();
+    outgoing.forEach(p => { const rid = getRootId(p.category_id as string | null); rootIds.add(rid ?? '__none__'); });
+    const roots = (categories as any[])
+      .filter(c => c.level === 1 && rootIds.has(String(c.id)))
+      .sort((a, b) => (a.display_order || 99) - (b.display_order || 99));
+    if (rootIds.has('__none__')) roots.push({ id: '__none__', name: 'Sans catégorie', level: 1, display_order: 999 });
+    return roots;
+  }, [categories, outgoing]);
+
+
+  // Top 3 root categories by total for stat cards
+  const topCats = useMemo(() => rootCatsWithPayments
+    .map(rc => ({
+      ...rc,
+      total: (outgoing.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(rc.id))
+        .reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0)),
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 3),
+  [rootCatsWithPayments, outgoing]);
+
+  // Leaf categories available for the current root filter
+  const availableLeaves = useMemo(() => {
+    const base = filterRoot === 'all' ? outgoing : outgoing.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === filterRoot);
+    const leaves = new Set<string>();
+    base.forEach(p => { if (p.category_name) leaves.add(p.category_name as string); });
+    return Array.from(leaves).sort();
+  }, [outgoing, filterRoot, catMap]);
+
+  // Filtered + sorted rows
+  const displayed = useMemo(() => {
+    let list = outgoing;
+    if (filterRoot !== 'all') list = list.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === filterRoot);
+    if (filterLeaf !== 'all') list = list.filter(p => (p.category_name as string || '') === filterLeaf);
+    if (filterMethod !== 'all') list = list.filter(p => (p.payment_method as string || '') === filterMethod);
+    return [...list].sort((a, b) => {
+      let va: any = '', vb: any = '';
+      if (sortCol === 'date') { va = a.payment_date; vb = b.payment_date; }
+      else if (sortCol === 'cat') { const ra = getRootId(a.category_id as string | null); const rb = getRootId(b.category_id as string | null); va = ra ? catMap[ra]?.name || '' : ''; vb = rb ? catMap[rb]?.name || '' : ''; }
+      else if (sortCol === 'type') { va = a.category_name || ''; vb = b.category_name || ''; }
+      else if (sortCol === 'amount') { va = parseFloat(a.amount) || 0; vb = parseFloat(b.amount) || 0; }
+      else if (sortCol === 'beneficiaire') { va = a.supplier_name || (a.employee_first_name ? `${a.employee_first_name} ${a.employee_last_name}` : ''); vb = b.supplier_name || (b.employee_first_name ? `${b.employee_first_name} ${b.employee_last_name}` : ''); }
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [outgoing, filterRoot, filterLeaf, filterMethod, sortCol, sortDir, catMap]);
+
+  const displayedTotal = useMemo(() => displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [displayed]);
+
+  const toggleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
+  const SortIcon = ({ col }: { col: string }) => sortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
 
   const handleExport = () => {
     const rows = displayed.map(p => [
       format(new Date(p.payment_date as string), 'dd/MM/yyyy'),
       (p.reference as string) || '',
-      PAYMENT_TYPE_LABELS[p.type as string] || '',
+      (() => { const rid = getRootId(p.category_id as string | null); return rid ? catMap[rid]?.name || '' : ''; })(),
       (p.category_name as string) || '',
       (p.supplier_name as string) || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : ''),
       getPaymentLabel(p.payment_method as string) || '',
@@ -644,8 +703,9 @@ function ChargesTab() {
       n(parseFloat(p.amount as string) || 0),
     ]);
     exportCSV(`charges_${MONTH_NAMES[month - 1]}_${year}.csv`,
-      ['DATE', 'REF', 'TYPE', 'CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
+      ['DATE', 'REF', 'CATEGORIE', 'SOUS-CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
   };
+
 
   return (
     <>
@@ -667,68 +727,54 @@ function ChargesTab() {
         </button>
       </div>
 
-      {/* Stat tiles */}
+      {/* Stat tiles: total + top 3 categories */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
-          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.total)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(grandTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">{outgoing.length} opération{outgoing.length > 1 ? 's' : ''}</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Achats</div>
-          <div className="odoo-stat-card-value">{n(totals.invoiceTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{invoicePayments.length} facture{invoicePayments.length > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Salaires</div>
-          <div className="odoo-stat-card-value">{n(totals.salaryTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{salaryPayments.length} employé{salaryPayments.length > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Receipt size={11} style={{ display: 'inline', marginRight: 4 }} />Autres</div>
-          <div className="odoo-stat-card-value">{n(totals.expenseTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{expensePayments.length} dépense{expensePayments.length > 1 ? 's' : ''}</div>
-        </div>
-      </div>
-
-      {/* Filter chips */}
-      <div className="odoo-search-panel">
-        {[
-          { key: 'all', label: 'Tout', count: outgoing.length },
-          { key: 'invoice', label: 'Achats', count: invoicePayments.length },
-          { key: 'salary', label: 'Salaires', count: salaryPayments.length },
-          { key: 'expense', label: 'Dépenses', count: expensePayments.length },
-        ].map(f => (
-          <button key={f.key} onClick={() => { setTypeFilter(f.key); setCategoryFilter('all'); }}
-            className="odoo-filter-dropdown"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              backgroundColor: typeFilter === f.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-              color: typeFilter === f.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-              fontWeight: typeFilter === f.key ? 600 : 400,
-            }}>
-            {f.label}
-            {f.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{f.count}</span>}
-          </button>
+        {topCats.map(tc => (
+          <div key={tc.id} className="odoo-stat-card">
+            <div className="odoo-stat-card-label">{tc.name}</div>
+            <div className="odoo-stat-card-value">{n(tc.total)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+            <div className="odoo-stat-card-sub">{grandTotal > 0 ? Math.round(tc.total / grandTotal * 100) : 0}% du total</div>
+          </div>
         ))}
-        {availableCategories.length > 1 && (
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-            className="odoo-filter-dropdown" style={{ marginLeft: 'auto' }}>
-            <option value="all">Toutes catégories ({typeFiltered.length})</option>
-            {availableCategories.map(c => (
-              <option key={c} value={c}>{c} ({typeFiltered.filter(p => (p.category_name as string) === c).length})</option>
-            ))}
-          </select>
-        )}
       </div>
 
-      {/* Expenses table */}
+      {/* Filter bar */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <select value={filterRoot} onChange={e => { setFilterRoot(e.target.value); setFilterLeaf('all'); }} className="odoo-filter-dropdown">
+          <option value="all">Toutes catégories</option>
+          {rootCatsWithPayments.map(rc => <option key={String(rc.id)} value={String(rc.id)}>{rc.name}</option>)}
+        </select>
+        <select value={filterLeaf} onChange={e => setFilterLeaf(e.target.value)} className="odoo-filter-dropdown">
+          <option value="all">Tous types</option>
+          {availableLeaves.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <select value={filterMethod} onChange={e => setFilterMethod(e.target.value)} className="odoo-filter-dropdown">
+          <option value="all">Toutes méthodes</option>
+          {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+        </select>
+        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all') && (
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); }}
+            className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={11} /> Réinitialiser
+          </button>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
+          {displayed.length !== outgoing.length ? `${displayed.length} / ${outgoing.length} résultats` : `${displayed.length} résultat${displayed.length > 1 ? 's' : ''}`}
+        </span>
+      </div>
+
+      {/* Flat table with referentiel columns */}
       {isLoading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
           <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
           <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
         </div>
-      ) : displayed.length === 0 ? (
+      ) : outgoing.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>Aucune sortie pour cette période</p>
@@ -738,53 +784,48 @@ function ChargesTab() {
           <table className="odoo-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Réf.</th>
-                <th>Type</th>
-                <th>Catégorie</th>
-                <th>Bénéficiaire</th>
-                <th>BC</th>
+                <th onClick={() => toggleSort('date')} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>Date<SortIcon col="date" /></th>
+                <th>Désignation</th>
+                <th onClick={() => toggleSort('beneficiaire')} style={{ cursor: 'pointer', userSelect: 'none' }}>Bénéficiaire<SortIcon col="beneficiaire" /></th>
+                <th onClick={() => toggleSort('cat')} style={{ cursor: 'pointer', userSelect: 'none' }}>Catégorie<SortIcon col="cat" /></th>
+                <th onClick={() => toggleSort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type<SortIcon col="type" /></th>
                 <th>Méthode</th>
-                <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
+                <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>Montant<SortIcon col="amount" /></th>
+                <th style={{ textAlign: 'center', width: 72 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {displayed.map(p => {
-                const typeTagClass = p.type === 'invoice' ? 'odoo-tag-orange'
-                  : p.type === 'salary' ? 'odoo-tag-purple'
-                  : 'odoo-tag-grey';
+                const rootId = getRootId(p.category_id as string | null);
+                const rootName = rootId ? catMap[rootId]?.name || '—' : '—';
+                const leafName = p.category_name as string || '—';
+                const isRootLeaf = rootId && catMap[rootId]?.name === leafName;
                 return (
                   <tr key={p.id as string}>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{p.reference as string || '—'}</td>
-                    <td><span className={`odoo-tag ${typeTagClass}`}>{PAYMENT_TYPE_LABELS[p.type as string] || p.type}</span></td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{p.category_name as string || '—'}</td>
-                    <td style={{ fontWeight: 500 }}>
-                      {p.supplier_name as string || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : p.description as string || '—')}
+                    <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
+                    <td style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {(p.description as string) || '—'}
+                    </td>
+                    <td style={{ fontWeight: 500, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.supplier_name as string || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : '—')}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text)' }}>{rootName}</span>
                     </td>
                     <td>
-                      {p.purchase_order_number ? (
-                        <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>{p.purchase_order_number as string}</span>
+                      {!isRootLeaf && leafName !== '—' ? (
+                        <span className="odoo-tag odoo-tag-grey">{leafName}</span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{getPaymentLabel(p.payment_method as string)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545', whiteSpace: 'nowrap' }}>
                       {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {p.type !== 'salary' ? (
                         <div style={{ display: 'inline-flex', gap: 4 }}>
-                          <button onClick={() => setEditingPayment(p)}
-                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
-                            title="Modifier">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => deleteMutation.mutate(p.id as string)}
-                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}
-                            title="Supprimer">
-                            <X size={13} />
-                          </button>
+                          <button onClick={() => setEditingPayment(p)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }} title="Modifier"><Pencil size={13} /></button>
+                          <button onClick={() => deleteMutation.mutate(p.id as string)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }} title="Supprimer"><X size={13} /></button>
                         </div>
                       ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }}>auto</span>}
                     </td>
@@ -794,11 +835,11 @@ function ChargesTab() {
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td colSpan={7} style={{ padding: 12, fontWeight: 600 }}>
-                  Total ({displayed.length} opération{displayed.length > 1 ? 's' : ''})
+                <td colSpan={6} style={{ padding: 12, fontWeight: 600 }}>
+                  Total {MONTH_NAMES[month - 1]} {year} ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
-                  {n(displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0))} DH
+                  {n(displayedTotal)} DH
                 </td>
                 <td></td>
               </tr>

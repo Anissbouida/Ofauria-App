@@ -216,7 +216,9 @@ export const reportsController = {
       ),
       recipe_live_cost AS (
         SELECT rec.product_id,
-               SUM(ri.quantity * ing.unit_cost) / NULLIF(rec.yield_quantity, 0) AS unit_cost
+               SUM(CASE WHEN ri.unit = 'g' AND ing.unit = 'kg' THEN (ri.quantity / 1000.0) * ing.unit_cost
+                        ELSE ri.quantity * ing.unit_cost END
+               ) / NULLIF(rec.yield_quantity, 0) AS unit_cost
         FROM recipes rec
         JOIN recipe_ingredients ri ON ri.recipe_id = rec.id
         JOIN ingredients ing ON ing.id = ri.ingredient_id
@@ -392,7 +394,9 @@ export const reportsController = {
       recipe_live_cost AS (
         -- Fallback theorique (utilise seulement si production_cout_reel n'a pas de donnees pour ce produit).
         SELECT rec.product_id,
-               SUM(ri.quantity * ing.unit_cost) / NULLIF(rec.yield_quantity, 0) AS unit_cost
+               SUM(CASE WHEN ri.unit = 'g' AND ing.unit = 'kg' THEN (ri.quantity / 1000.0) * ing.unit_cost
+                        ELSE ri.quantity * ing.unit_cost END
+               ) / NULLIF(rec.yield_quantity, 0) AS unit_cost
         FROM recipes rec
         JOIN recipe_ingredients ri ON ri.recipe_id = rec.id
         JOIN ingredients ing ON ing.id = ri.ingredient_id
