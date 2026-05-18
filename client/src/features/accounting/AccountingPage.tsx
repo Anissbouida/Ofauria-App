@@ -14,6 +14,7 @@ import {
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
 import CaisseImportModal from './CaisseImportModal';
+import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 type AccTab = 'caisse' | 'charges' | 'resume' | 'losses';
@@ -533,6 +534,10 @@ function ChargesTab() {
   const [filterMethod, setFilterMethod] = useState<string>('all');
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  useEffect(() => {
+    // Init la cascade categorie a l'ouverture du modal d'edition
+    setEditCategoryId(editingPayment ? (editingPayment.category_id as string) || '' : '');
+  }, [editingPayment]);
 
   const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -549,6 +554,8 @@ function ChargesTab() {
   // Form state for new expense
   const [formCategoryId, setFormCategoryId] = useState<string>('');
   const [formPOId, setFormPOId] = useState<string>('');
+  // State du modal "Modifier la depense" : cascade categorie controllee
+  const [editCategoryId, setEditCategoryId] = useState<string>('');
 
   // Check if selected category requires a PO (look up the leaf category)
   const selectedCategory = (categories as Record<string, any>[]).find(c => String(c.id) === formCategoryId);
@@ -974,7 +981,8 @@ function ChargesTab() {
               e.preventDefault();
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string);
-              if (!fd.categoryId) fd.categoryId = null;
+              // categoryId est gere par la cascade controllee, pas via FormData
+              fd.categoryId = editCategoryId || null;
               updateMutation.mutate({ id: editingPayment.id as string, data: fd });
             }} className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -986,18 +994,23 @@ function ChargesTab() {
                     defaultValue={format(new Date(editingPayment.payment_date as string), 'yyyy-MM-dd')} /></div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
-                  <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.payment_method as string || 'cash'}>
-                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
-                  </select></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
-                  <select name="categoryId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.category_id as string || ''}>
-                    <option value="">Choisir...</option>
-                    {(categories as Record<string, any>[])
-                      .filter(c => (c.level as number) === 3 || (!(categories as Record<string, any>[]).some(ch => String(ch.parent_id) === String(c.id))))
-                      .map(c => <option key={String(c.id)} value={String(c.id)}>{getCategoryPath(String(c.id))}</option>)}
-                  </select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
+                <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.payment_method as string || 'cash'}>
+                  {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+                </select></div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
+                <CategoryCascadeSelector
+                  value={editCategoryId}
+                  onChange={setEditCategoryId}
+                  type="expense"
+                />
+                {editingPayment.category_id && !editCategoryId && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Categorie actuelle : <span className="font-medium">{getCategoryPath(String(editingPayment.category_id))}</span>
+                  </p>
+                )}
               </div>
 
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
