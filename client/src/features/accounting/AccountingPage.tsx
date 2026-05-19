@@ -15,6 +15,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
 import CaisseImportModal from './CaisseImportModal';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
+import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 type AccTab = 'caisse' | 'charges' | 'resume' | 'losses';
@@ -196,6 +197,8 @@ export default function AccountingPage() {
       </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
+        <PaymentAlertsWidget />
         {tab === 'caisse' && <CaisseTab />}
         {tab === 'charges' && <ChargesTab />}
         {tab === 'resume' && <ResumeTab />}
