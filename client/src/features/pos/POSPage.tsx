@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
+import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
@@ -89,6 +90,13 @@ export default function POSPage() {
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState(false);
   const [unpaidCustomerName, setUnpaidCustomerName] = useState('');
+  // Sachets : la suggestion est recalculee a chaque changement de panier.
+  // sachetsGiven garde la valeur saisie par la vendeuse (override possible).
+  // userOverrode bascule a true des qu'elle modifie manuellement, pour ne plus
+  // ecraser sa saisie avec la suggestion auto.
+  const [sachetsGiven, setSachetsGiven] = useState<number>(0);
+  const [sachetReason, setSachetReason] = useState<string>('');
+  const [userOverrode, setUserOverrode] = useState(false);
 
   // Cart draft: restore from localStorage on mount
   const cartInitialized = useRef(false);
@@ -500,10 +508,37 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
+      setSachetsGiven(0); setSachetReason(''); setUserOverrode(false);
       notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
     },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la vente')),
   });
+
+  // Suggestion de sachets calculee cote serveur a partir du contenu du panier.
+  // On utilise une cle stable (productId|quantity tries) pour eviter les fetchs
+  // a chaque re-render.
+  const sachetSuggestKey = cart
+    .map(i => `${i.productId}:${i.quantity}`)
+    .sort()
+    .join(',');
+  const sachetSuggestQuery = useQuery({
+    queryKey: ['sachet-suggest', sachetSuggestKey],
+    queryFn: () => sachetConfigApi.suggest(cart.map(i => ({ productId: i.productId, quantity: i.quantity }))),
+    enabled: cart.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const suggestedSachets = sachetSuggestQuery.data?.suggested ?? 0;
+
+  // Auto-remplit le compteur tant que la vendeuse n'a pas surcharge manuellement.
+  // Reset par checkoutMutation.onSuccess (cart vide ramene userOverrode a false).
+  useEffect(() => {
+    if (!userOverrode) {
+      setSachetsGiven(suggestedSachets);
+    }
+  }, [suggestedSachets, userOverrode]);
+
+  const sachetReasonRequired = sachetsGiven > suggestedSachets;
+  const sachetReasonOK = !sachetReasonRequired || sachetReason.trim().length > 0;
 
 
   const deliverMutation = useMutation({
@@ -748,10 +783,17 @@ export default function POSPage() {
   };
 
   const handleCheckout = () => {
+    if (!sachetReasonOK) {
+      notify.error('Indiquez un motif pour le sachet supplémentaire');
+      return;
+    }
     checkoutMutation.mutate({
       customerId: customerId || undefined,
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
       paymentMethod,
+      sachetsGiven,
+      sachetsSuggested: suggestedSachets,
+      sachetReason: sachetReason.trim() || undefined,
     });
   };
 
@@ -762,12 +804,19 @@ export default function POSPage() {
       notify.error('Indiquez un client ou un nom de bénéficiaire');
       return;
     }
+    if (!sachetReasonOK) {
+      notify.error('Indiquez un motif pour le sachet supplémentaire');
+      return;
+    }
     checkoutMutation.mutate({
       customerId: customerId || undefined,
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
       paymentMethod: 'credit',
       paymentStatus: 'unpaid',
       unpaidCustomerName: !customerId && unpaidCustomerName.trim() ? unpaidCustomerName.trim() : undefined,
+      sachetsGiven,
+      sachetsSuggested: suggestedSachets,
+      sachetReason: sachetReason.trim() || undefined,
     });
     setShowUnpaidModal(false);
     setUnpaidCustomerName('');
@@ -1305,6 +1354,68 @@ export default function POSPage() {
                 </div>
               )}
 
+              {/* Sachets — visible des qu'il y a au moins 1 article et que le numpad est ferme */}
+              {!numpadItem && cart.length > 0 && (
+                <div className="px-4 py-2.5 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart size={14} className="text-gray-400" />
+                      <span className="text-xs font-semibold text-gray-600">Sachets</span>
+                      {sachetSuggestQuery.isFetching ? (
+                        <span className="text-[10px] text-gray-400">calcul...</span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">suggéré: {suggestedSachets}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserOverrode(true);
+                          setSachetsGiven(Math.max(0, sachetsGiven - 1));
+                          if (sachetsGiven - 1 <= suggestedSachets) setSachetReason('');
+                        }}
+                        disabled={sachetsGiven <= 0}
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                        aria-label="Moins de sachets"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className={`min-w-[1.5rem] text-center text-base font-bold ${sachetsGiven > suggestedSachets ? 'text-amber-600' : 'text-gray-800'}`}>
+                        {sachetsGiven}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setUserOverrode(true); setSachetsGiven(sachetsGiven + 1); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        aria-label="Plus de sachets"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  {sachetReasonRequired && (
+                    <div className="mt-2">
+                      <label className="block text-[10px] font-semibold text-amber-700 mb-1">
+                        Motif (sachet supplémentaire)
+                      </label>
+                      <select
+                        value={sachetReason}
+                        onChange={(e) => setSachetReason(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                      >
+                        <option value="">Choisir un motif...</option>
+                        <option value="client_demande">Client a demandé</option>
+                        <option value="produit_fragile">Produit fragile</option>
+                        <option value="produit_chaud">Produit chaud / gras</option>
+                        <option value="double_sachet">Double sachet renforcé</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Totals + Actions — only when cart has items and numpad is closed */}
               {!numpadItem && cart.length > 0 ? (
                 <>
@@ -1332,7 +1443,7 @@ export default function POSPage() {
                       <span className="text-[10px] font-semibold">Plus tard</span>
                     </button>
                     <button onClick={handleCheckout}
-                      disabled={checkoutMutation.isPending || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)}
+                      disabled={checkoutMutation.isPending || !sachetReasonOK || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)}
                       className="flex-1 flex flex-col items-center justify-center gap-1 py-3 bg-primary-50 text-primary-700 rounded-xl font-bold text-base hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
                       <ShoppingCart size={20} />
                       <span className="text-sm">{checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}</span>

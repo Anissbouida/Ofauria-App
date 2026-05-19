@@ -45,7 +45,11 @@ export const saleController = {
   },
 
   async checkout(req: AuthRequest, res: Response) {
-    const { customerId, items, paymentMethod, notes, discountAmount = 0, paymentStatus = 'paid', unpaidCustomerName, employeeId: explicitEmployeeId } = req.body;
+    const {
+      customerId, items, paymentMethod, notes, discountAmount = 0,
+      paymentStatus = 'paid', unpaidCustomerName, employeeId: explicitEmployeeId,
+      sachetsGiven, sachetsSuggested, sachetReason,
+    } = req.body;
 
     // POS strictly consumes from vitrine (product_store_stock). Cashier must be
     // rattached to a store — otherwise we risk silently decrementing the global
@@ -138,12 +142,30 @@ export const saleController = {
       if (active) employeeId = active.id;
     }
 
+    // Sachets : on accepte les champs s'ils sont fournis, on tolere leur absence
+    // pour ne pas casser les anciens clients. Validation basique des types.
+    const sg =
+      typeof sachetsGiven === 'number' && Number.isFinite(sachetsGiven) && sachetsGiven >= 0
+        ? Math.floor(sachetsGiven)
+        : undefined;
+    const ss =
+      typeof sachetsSuggested === 'number' && Number.isFinite(sachetsSuggested) && sachetsSuggested >= 0
+        ? Math.floor(sachetsSuggested)
+        : undefined;
+    const sr =
+      typeof sachetReason === 'string' && sachetReason.trim().length > 0
+        ? sachetReason.trim().slice(0, 40)
+        : undefined;
+
     const sale = await saleRepository.create({
       customerId, userId: req.user!.userId,
       subtotal, taxAmount, discountAmount, total, paymentMethod: effectivePaymentMethod, notes, items: saleItems,
       sessionId: activeSession.id, storeId: req.user!.storeId,
       paymentStatus, unpaidCustomerName: unpaidCustomerName?.trim() || undefined,
       employeeId: employeeId || undefined,
+      sachetsGiven: sg,
+      sachetsSuggested: ss,
+      sachetReason: sr,
     });
 
     res.status(201).json({ success: true, data: sale });

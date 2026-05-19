@@ -34,6 +34,13 @@ export const checkoutSchema = z.object({
   // Employe qui realise la vente (selecteur explicite au POS). Si absent, le
   // controller utilise le dernier pointage actif du store comme fallback.
   employeeId: uuid.optional(),
+  // Sachets : compteur cote vendeuse + suggestion calculee + motif si override
+  // a la hausse. Tous optionnels pour ne pas casser les clients existants.
+  sachetsGiven: z.coerce.number().int().min(0).max(50).optional(),
+  sachetsSuggested: z.coerce.number().int().min(0).max(50).optional(),
+  sachetReason: z.enum([
+    'client_demande', 'produit_fragile', 'produit_chaud', 'double_sachet', 'autre',
+  ]).optional(),
 });
 
 export const paySaleSchema = z.object({

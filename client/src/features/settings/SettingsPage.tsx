@@ -10,15 +10,16 @@ import {
   Printer, Upload, Image, Eye, Type, FileText, ToggleLeft, ToggleRight,
   Database, Tag, Check, X, ShieldCheck, ArrowDownUp, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, AlertTriangle, EyeOff, Users,
-  Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp,
+  Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp, ShoppingBag,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PrinterSettingsCard from './PrinterSettingsCard';
+import SachetsTab from './SachetsTab';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -70,6 +71,7 @@ export default function SettingsPage() {
     { key: 'stores', label: 'Points de vente', icon: <Store size={18} /> },
     { key: 'referentiel', label: 'Referentiel', icon: <Database size={18} /> },
     { key: 'production', label: 'Production', icon: <BarChart3 size={18} /> },
+    { key: 'sachets', label: 'Sachets', icon: <ShoppingBag size={18} /> },
   ];
 
   return (
@@ -124,6 +126,8 @@ export default function SettingsPage() {
       {activeTab === 'referentiel' && <ReferentielTab />}
 
       {activeTab === 'production' && <ProductionChargesTab />}
+
+      {activeTab === 'sachets' && <SachetsTab />}
     </div>
   );
 }

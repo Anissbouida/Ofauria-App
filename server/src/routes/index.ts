@@ -36,6 +36,7 @@ import packagingRoutes from './packaging.routes.js';
 import productLotRoutes from './product-lot.routes.js';
 import openingInventoryCheckRoutes from './opening-inventory-check.routes.js';
 import printerRoutes from './printer.routes.js';
+import sachetConfigRoutes from './sachet-config.routes.js';
 
 const router = Router();
 
@@ -87,5 +88,6 @@ router.use('/production-etapes', productionEtapesRoutes);
 router.use('/production-cout', productionCoutRoutes);
 router.use('/inventory-checks', openingInventoryCheckRoutes);
 router.use('/printers', printerRoutes);
+router.use('/sachet-config', sachetConfigRoutes);
 
 export default router;

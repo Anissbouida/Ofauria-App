@@ -140,6 +140,9 @@ export const saleRepository = {
     paymentStatus?: 'paid' | 'unpaid';
     unpaidCustomerName?: string;
     employeeId?: string;
+    sachetsGiven?: number;
+    sachetsSuggested?: number;
+    sachetReason?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' }[];
   }) {
     const client = await db.getClient();
@@ -153,12 +156,13 @@ export const saleRepository = {
       const paidAtExpr = paymentStatus === 'paid' ? 'NOW()' : 'NULL';
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21) RETURNING *`,
         [saleNumber, data.customerId || null, data.userId, data.subtotal,
          data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
          data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard',
-         paymentStatus, data.unpaidCustomerName || null, data.employeeId || null]
+         paymentStatus, data.unpaidCustomerName || null, data.employeeId || null,
+         data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null]
       );
 
       for (const item of data.items) {
