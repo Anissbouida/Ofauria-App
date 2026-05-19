@@ -425,6 +425,7 @@ export const invoiceRepository = {
     purchaseOrderId?: string; receptionVoucherId?: string; orderId?: string;
     invoiceDate: string; dueDate?: string; amount: number;
     taxAmount?: number; totalAmount?: number; notes?: string; createdBy: string; storeId?: string;
+    expectedPaymentMode?: string; receptionDate?: string;
     items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number }[];
   }) {
     const client = await db.getClient();
@@ -438,13 +439,15 @@ export const invoiceRepository = {
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
           purchase_order_id, reception_voucher_id, order_id,
-          invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id,
+          expected_payment_mode, reception_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
          data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
          data.orderId || null, data.invoiceDate, data.dueDate || null,
          data.amount, data.taxAmount || 0, totalAmount,
-         data.notes || null, data.createdBy, data.storeId || null]
+         data.notes || null, data.createdBy, data.storeId || null,
+         data.expectedPaymentMode || null, data.receptionDate || null]
       );
 
       // Insert invoice items if provided
@@ -525,9 +528,10 @@ export const invoiceRepository = {
       await client.query('BEGIN');
 
       // Lock invoice row to prevent concurrent payment race conditions
-      const inv = await client.query('SELECT total_amount FROM invoices WHERE id = $1 FOR UPDATE', [id]);
+      const inv = await client.query('SELECT total_amount, status FROM invoices WHERE id = $1 FOR UPDATE', [id]);
       if (!inv.rows[0]) { await client.query('ROLLBACK'); return null; }
       const totalAmount = parseFloat(inv.rows[0].total_amount);
+      const currentStatus = inv.rows[0].status as string;
 
       const paymentsResult = await client.query(
         `SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = $1`, [id]
@@ -537,6 +541,12 @@ export const invoiceRepository = {
       let status = 'pending';
       if (totalPaid >= totalAmount) status = 'paid';
       else if (totalPaid > 0) status = 'partial';
+
+      // Preserve manual statuses (disputed/cancelled) unless invoice is now fully paid.
+      // Avoids overwriting a deliberate "En litige" flag when a partial payment arrives.
+      if ((currentStatus === 'disputed' || currentStatus === 'cancelled') && status !== 'paid') {
+        status = currentStatus;
+      }
 
       const result = await client.query(
         `UPDATE invoices SET paid_amount = $1, status = $2 WHERE id = $3 RETURNING *`,
@@ -569,6 +579,67 @@ export const invoiceRepository = {
   async updateAttachment(id: string, url: string | null) {
     const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
     return result.rows[0];
+  },
+
+  /**
+   * Met a jour les modalites de reglement d'une facture (echeance, mode prevu,
+   * date de reception). Champs additifs, tous optionnels.
+   */
+  async updatePaymentTerms(id: string, data: {
+    dueDate?: string | null;
+    expectedPaymentMode?: string | null;
+    receptionDate?: string | null;
+  }) {
+    const sets: string[] = []; const values: unknown[] = []; let i = 1;
+    if (data.dueDate !== undefined) { sets.push(`due_date = $${i++}`); values.push(data.dueDate || null); }
+    if (data.expectedPaymentMode !== undefined) {
+      sets.push(`expected_payment_mode = $${i++}`);
+      values.push(data.expectedPaymentMode || null);
+    }
+    if (data.receptionDate !== undefined) { sets.push(`reception_date = $${i++}`); values.push(data.receptionDate || null); }
+    if (sets.length === 0) return this.findById(id);
+    values.push(id);
+    const result = await db.query(
+      `UPDATE invoices SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * Retourne les factures fournisseurs dont l'echeance est dans <= alertDays
+   * jours (defaut 7), et dont le statut est encore non finalise.
+   * Inclut les factures deja en retard (due_date < CURRENT_DATE).
+   */
+  async findPaymentAlerts(params: { storeId?: string; alertDays?: number }) {
+    const alertDays = params.alertDays ?? 7;
+    const conditions: string[] = [
+      `inv.invoice_type = 'received'`,
+      `inv.due_date IS NOT NULL`,
+      `inv.due_date <= CURRENT_DATE + ($1 || ' days')::interval`,
+      `inv.status IN ('pending', 'partial', 'overdue', 'disputed')`,
+    ];
+    const values: unknown[] = [String(alertDays)];
+    let i = 2;
+    if (params.storeId) {
+      conditions.push(`inv.store_id = $${i++}`);
+      values.push(params.storeId);
+    }
+    const result = await db.query(
+      `SELECT inv.id, inv.invoice_number, inv.supplier_id, inv.invoice_date,
+              inv.reception_date, inv.due_date, inv.total_amount, inv.paid_amount,
+              inv.status, inv.expected_payment_mode, inv.notes,
+              s.name AS supplier_name,
+              (inv.total_amount - inv.paid_amount) AS remaining_amount,
+              (inv.due_date - CURRENT_DATE) AS days_until_due,
+              CASE WHEN inv.due_date < CURRENT_DATE THEN true ELSE false END AS is_overdue
+         FROM invoices inv
+         LEFT JOIN suppliers s ON s.id = inv.supplier_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY inv.due_date ASC, inv.invoice_date ASC`,
+      values
+    );
+    return result.rows;
   },
 
   /**

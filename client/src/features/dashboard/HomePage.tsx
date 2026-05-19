@@ -6,11 +6,12 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { reportsApi } from '../../api/reports.api';
 import { productionApi } from '../../api/production.api';
 import { inventoryApi } from '../../api/inventory.api';
+import { invoicesApi } from '../../api/accounting.api';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag, Truck,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
   DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock, Box,
-  Plus, Zap,
+  Plus, Zap, CalendarClock,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
 
@@ -62,6 +63,21 @@ export default function HomePage() {
     queryFn: inventoryApi.alerts,
     enabled: hasModule('inventory'),
   });
+
+  // Echeances fournisseurs <= 7 jours, non reglees / partiellement reglees / en litige
+  const canSeePaymentAlerts = hasModule('purchasing') || hasModule('accounting');
+  const { data: paymentAlerts = [] } = useQuery({
+    queryKey: ['invoice-payment-alerts'],
+    queryFn: () => invoicesApi.paymentAlerts(7),
+    enabled: canSeePaymentAlerts,
+    refetchInterval: 60000,
+  });
+  const paymentAlertsList = paymentAlerts as Array<Record<string, any>>;
+  const paymentAlertsCount = paymentAlertsList.length;
+  const paymentAlertsTotalDue = paymentAlertsList.reduce(
+    (s, a) => s + parseFloat((a.remaining_amount as string) || '0'),
+    0,
+  );
 
   const userModules = modules.filter(m => hasModule(m.module));
 
@@ -189,6 +205,15 @@ export default function HomePage() {
               )}
             </div>
           </div>
+
+          {/* Echeances fournisseurs <= 7 jours */}
+          {canSeePaymentAlerts && paymentAlertsCount > 0 && (
+            <PaymentAlertsWidget
+              alerts={paymentAlertsList}
+              totalDue={paymentAlertsTotalDue}
+              onNavigate={() => navigate('/purchasing')}
+            />
+          )}
         </div>
       )}
 
@@ -229,6 +254,83 @@ export default function HomePage() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+const PAYMENT_MODE_LABELS: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement' };
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Non réglée', partial: 'Partiellement réglée',
+  overdue: 'En retard', disputed: 'En litige',
+};
+
+function PaymentAlertsWidget({
+  alerts, totalDue, onNavigate,
+}: { alerts: Array<Record<string, any>>; totalDue: number; onNavigate: () => void }) {
+  const overdueCount = alerts.filter(a => a.is_overdue).length;
+  return (
+    <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-sm">
+            <CalendarClock size={16} className="text-white" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-red-800 uppercase tracking-wider">Échéances fournisseurs (≤ 7 jours)</p>
+            <p className="text-[11px] text-red-600">
+              {alerts.length} facture{alerts.length > 1 ? 's' : ''} à honorer
+              {overdueCount > 0 && ` · ${overdueCount} en retard`}
+              {' · Reste dû : '}{totalDue.toFixed(2)} DH
+            </p>
+          </div>
+        </div>
+        <button onClick={onNavigate}
+          className="text-[11px] font-semibold text-red-700 hover:text-red-900 underline">
+          Voir tout
+        </button>
+      </div>
+      <div className="divide-y divide-gray-50 max-h-80 overflow-auto">
+        {alerts.slice(0, 8).map(a => {
+          const days = parseInt(String(a.days_until_due ?? 0));
+          const isOverdue = !!a.is_overdue;
+          const remaining = parseFloat((a.remaining_amount as string) || '0');
+          return (
+            <div key={a.id as string}
+              onClick={onNavigate}
+              className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer">
+              <AlertTriangle size={14} className={isOverdue ? 'text-red-600' : 'text-orange-500'} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-mono font-semibold text-gray-800">{a.invoice_number as string}</span>
+                  <span className="text-xs text-gray-500 truncate">— {(a.supplier_name as string) || 'Fournisseur ?'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                  <span>Échéance : {a.due_date ? new Date(a.due_date as string).toLocaleDateString('fr-FR') : '—'}</span>
+                  <span>·</span>
+                  <span className={isOverdue ? 'text-red-600 font-semibold' : 'text-orange-600'}>
+                    {isOverdue ? `${Math.abs(days)}j de retard` : days === 0 ? "Aujourd'hui" : `dans ${days}j`}
+                  </span>
+                  {a.expected_payment_mode && (
+                    <>
+                      <span>·</span>
+                      <span>{PAYMENT_MODE_LABELS[a.expected_payment_mode as string] || (a.expected_payment_mode as string)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold text-red-700">{remaining.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                <p className="text-[10px] text-gray-400">{STATUS_LABELS[a.status as string] || (a.status as string)}</p>
+              </div>
+            </div>
+          );
+        })}
+        {alerts.length > 8 && (
+          <div className="px-4 py-2 text-center text-[11px] text-gray-400">
+            … {alerts.length - 8} facture{alerts.length - 8 > 1 ? 's' : ''} supplémentaire{alerts.length - 8 > 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

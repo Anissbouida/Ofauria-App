@@ -18,11 +18,24 @@ import { RotateCcw } from 'lucide-react';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'waiting_list';
 
-const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  pending: 'Non réglée', partial: 'Partiellement réglée', paid: 'Réglée',
+  overdue: 'En retard', cancelled: 'Annulée', disputed: 'En litige',
+};
 const INVOICE_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700', partial: 'bg-blue-100 text-blue-700',
-  paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500',
+  paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-500', disputed: 'bg-purple-100 text-purple-700',
 };
+const PAYMENT_MODE_LABELS: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement' };
+// Statuts modifiables manuellement (admin/gérant). 'overdue' et 'cancelled' restent
+// pilotés par leur logique propre (cancel button + flag automatique d'echeance depassee).
+const MANUAL_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'pending', label: 'Non réglée' },
+  { value: 'partial', label: 'Partiellement réglée' },
+  { value: 'paid', label: 'Réglée' },
+  { value: 'disputed', label: 'En litige' },
+];
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -311,12 +324,23 @@ function ReceivedInvoicesSection() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => invoicesApi.updateStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+      notify.success('Statut mis à jour');
+    },
+    onError: () => notify.error('Erreur lors du changement de statut'),
+  });
+
   const payMutation = useMutation({
     mutationFn: (data: Record<string, any>) => paymentsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
       notify.success('Paiement enregistré');
       setShowPayForm(null);
     },
@@ -383,10 +407,11 @@ function ReceivedInvoicesSection() {
       <div className="odoo-search-panel">
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="odoo-filter-dropdown">
           <option value="">Tous les statuts</option>
-          <option value="pending">En attente</option>
-          <option value="partial">Partiel</option>
-          <option value="paid">Payée</option>
+          <option value="pending">Non réglée</option>
+          <option value="partial">Partiellement réglée</option>
+          <option value="paid">Réglée</option>
           <option value="overdue">En retard</option>
+          <option value="disputed">En litige</option>
         </select>
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
@@ -415,6 +440,7 @@ function ReceivedInvoicesSection() {
                 <th>N° Facture</th>
                 <th>Fournisseur</th>
                 <th>Date</th>
+                <th>Échéance / Mode</th>
                 <th>BC</th>
                 <th>Catégorie</th>
                 <th>Statut</th>
@@ -428,13 +454,25 @@ function ReceivedInvoicesSection() {
                 const paid = parseFloat(inv.paid_amount as string);
                 const remaining = total - paid;
                 const hasAttachment = !!(inv.attachment_url as string);
+                const isFinalStatus = inv.status === 'paid' || inv.status === 'cancelled';
+                const dueDateStr = inv.due_date as string | null;
+                let daysUntilDue: number | null = null;
+                let dueAlert = false;
+                if (dueDateStr && !isFinalStatus) {
+                  const today = new Date(); today.setHours(0, 0, 0, 0);
+                  const d = new Date(dueDateStr); d.setHours(0, 0, 0, 0);
+                  daysUntilDue = Math.round((d.getTime() - today.getTime()) / 86400000);
+                  dueAlert = daysUntilDue <= 7;
+                }
+                const expectedMode = (inv.expected_payment_mode as string) || '';
                 const statusTag = inv.status === 'paid' ? 'odoo-tag-green'
                   : inv.status === 'partial' ? 'odoo-tag-blue'
                   : inv.status === 'overdue' ? 'odoo-tag-red'
                   : inv.status === 'cancelled' ? 'odoo-tag-grey'
+                  : inv.status === 'disputed' ? 'odoo-tag-orange'
                   : 'odoo-tag-yellow';
                 const dotClass = inv.status === 'paid' ? 'ok'
-                  : inv.status === 'overdue' ? 'danger'
+                  : inv.status === 'overdue' || inv.status === 'disputed' ? 'danger'
                   : inv.status === 'cancelled' ? 'neutral'
                   : 'warning';
                 return (
@@ -444,17 +482,63 @@ function ReceivedInvoicesSection() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
                         {hasAttachment && <Paperclip size={10} style={{ color: 'var(--theme-accent)' }} />}
+                        {dueAlert && (
+                          <span title={daysUntilDue !== null && daysUntilDue < 0
+                            ? `Échéance dépassée de ${Math.abs(daysUntilDue)} jour(s)`
+                            : `Échéance dans ${daysUntilDue} jour(s)`}
+                            style={{ display: 'inline-flex', alignItems: 'center' }}>
+                            <AlertTriangle size={11} style={{ color: '#dc3545' }} />
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td style={{ fontWeight: 500 }}>{inv.supplier_name as string}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(inv.invoice_date as string), 'dd/MM/yyyy')}</td>
+                    <td style={{ color: dueAlert ? '#dc3545' : 'var(--theme-text-muted)' }}>
+                      {dueDateStr ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
+                          <span style={{ fontWeight: dueAlert ? 600 : 400 }}>
+                            {format(new Date(dueDateStr), 'dd/MM/yyyy')}
+                          </span>
+                          {expectedMode && (
+                            <span style={{ fontSize: '0.6875rem' }}>
+                              {PAYMENT_MODE_LABELS[expectedMode] || expectedMode}
+                            </span>
+                          )}
+                        </div>
+                      ) : expectedMode ? (
+                        <span style={{ fontSize: '0.6875rem' }}>{PAYMENT_MODE_LABELS[expectedMode]}</span>
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                    </td>
                     <td>
                       {inv.purchase_order_number ? (
                         <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>{inv.purchase_order_number as string}</span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(inv.category_name as string) || '—'}</td>
-                    <td><span className={`odoo-tag ${statusTag}`}>{INVOICE_STATUS_LABELS[inv.status as string]}</span></td>
+                    <td>
+                      {inv.status === 'cancelled' ? (
+                        <span className={`odoo-tag ${statusTag}`}>{INVOICE_STATUS_LABELS[inv.status as string]}</span>
+                      ) : (
+                        <select
+                          value={inv.status as string}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            if (next === inv.status) return;
+                            if (confirm(`Mettre à jour le statut de la facture ${inv.invoice_number} vers « ${INVOICE_STATUS_LABELS[next]} » ?`)) {
+                              statusMutation.mutate({ id: inv.id as string, status: next });
+                            }
+                          }}
+                          disabled={statusMutation.isPending}
+                          className={`odoo-tag ${statusTag}`}
+                          style={{ border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: '0.6875rem' }}>
+                          {MANUAL_STATUS_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                          {inv.status === 'overdue' && <option value="overdue">En retard</option>}
+                        </select>
+                      )}
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 700 }}>{n(total)}</span>
                       <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
@@ -529,6 +613,9 @@ function ReceivedInvoicesSection() {
               fd.amount = parseFloat(fd.amount as string) || 0;
               fd.taxAmount = parseFloat(fd.taxAmount as string) || 0;
               fd.totalAmount = (fd.amount as number) + (fd.taxAmount as number);
+              if (!fd.expectedPaymentMode) delete fd.expectedPaymentMode;
+              if (!fd.receptionDate) delete fd.receptionDate;
+              if (!fd.dueDate) delete fd.dueDate;
               createMutation.mutate(fd);
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -561,6 +648,17 @@ function ReceivedInvoicesSection() {
                     <input name="taxAmount" type="number" step="0.01" defaultValue="0" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
                   <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Échéance</label>
                     <input name="dueDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date de réception</label>
+                    <input name="receptionDate" type="date" defaultValue={format(new Date(), 'yyyy-MM-dd')} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Mode de règlement prévu</label>
+                    <select name="expectedPaymentMode" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                      <option value="">— Non défini —</option>
+                      <option value="cash">Espèces</option>
+                      <option value="check">Chèque</option>
+                      <option value="transfer">Virement</option>
+                    </select></div>
                 </div>
                 <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
                   <textarea name="notes" rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>

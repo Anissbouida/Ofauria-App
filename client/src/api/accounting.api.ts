@@ -37,6 +37,11 @@ export const invoicesApi = {
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
   createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
+  paymentAlerts: (days = 7) => api.get('/invoices/payment-alerts', { params: { days } }).then(r => r.data.data),
+  updatePaymentTerms: (id: string, data: { dueDate?: string | null; expectedPaymentMode?: string | null; receptionDate?: string | null }) =>
+    api.put(`/invoices/${id}/payment-terms`, data).then(r => r.data.data),
+  updateStatus: (id: string, status: string) =>
+    api.put(`/invoices/${id}/status`, { status }).then(r => r.data.data),
   downloadDocx: (id: string) => api.get(`/invoices/${id}/download-pdf`, { responseType: 'blob' }).then(r => r),
   uploadAttachment: (id: string, file: File) => {
     const fd = new FormData();

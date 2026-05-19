@@ -151,6 +151,42 @@ export const invoiceController = {
     const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
     res.json({ success: true, data: invoice });
   },
+  async paymentAlerts(req: AuthRequest, res: Response) {
+    const alertDays = req.query.days ? Math.max(1, Math.min(60, parseInt(req.query.days as string) || 7)) : 7;
+    const rows = await invoiceRepository.findPaymentAlerts({ storeId: req.user!.storeId, alertDays });
+    res.json({ success: true, data: rows });
+  },
+  async updatePaymentTerms(req: AuthRequest, res: Response) {
+    const invoice = await invoiceRepository.findById(req.params.id);
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const { dueDate, expectedPaymentMode, receptionDate } = req.body as Record<string, string | null | undefined>;
+    if (expectedPaymentMode && !['cash', 'check', 'transfer'].includes(expectedPaymentMode)) {
+      res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
+      return;
+    }
+    const updated = await invoiceRepository.updatePaymentTerms(req.params.id, {
+      dueDate, expectedPaymentMode, receptionDate,
+    });
+    res.json({ success: true, data: updated });
+  },
+  async updateStatusManual(req: AuthRequest, res: Response) {
+    const invoice = await invoiceRepository.findById(req.params.id);
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const { status } = req.body as { status?: string };
+    const allowed = ['pending', 'partial', 'paid', 'overdue', 'cancelled', 'disputed'];
+    if (!status || !allowed.includes(status)) {
+      res.status(400).json({ success: false, error: { message: 'Statut invalide' } });
+      return;
+    }
+    const updated = await invoiceRepository.updateStatus(req.params.id, status);
+    res.json({ success: true, data: updated });
+  },
   async uploadAttachment(req: AuthRequest, res: Response) {
     if (!req.file) {
       res.status(400).json({ success: false, error: { message: 'Aucun fichier envoye' } });

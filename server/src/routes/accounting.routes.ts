@@ -54,8 +54,11 @@ revenueCategoriesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), rev
 export const invoicesRouter = Router();
 invoicesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.list);
 invoicesRouter.get('/line-expenses', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.lineExpenses);
+invoicesRouter.get('/payment-alerts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.paymentAlerts);
 invoicesRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.getById);
 invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateCategory);
+invoicesRouter.put('/:id/payment-terms', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updatePaymentTerms);
+invoicesRouter.put('/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateStatusManual);
 invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.create);
 invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.createFromOrder);
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.cancel);
