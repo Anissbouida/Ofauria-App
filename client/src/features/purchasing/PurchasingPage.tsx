@@ -14,6 +14,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { RotateCcw } from 'lucide-react';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'waiting_list';
 
@@ -89,6 +90,24 @@ function SuppliersTab() {
       setShowForm(false); setEditing(null);
     },
     onError: () => notify.error('Erreur'),
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (id: string) => suppliersApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      notify.success('Fournisseur désactivé');
+    },
+    onError: () => notify.error('Erreur lors de la désactivation'),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (id: string) => suppliersApi.update(id, { isActive: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      notify.success('Fournisseur réactivé');
+    },
+    onError: () => notify.error('Erreur lors de la réactivation'),
   });
 
   const suppliersList = suppliers as Record<string, any>[];
@@ -167,10 +186,33 @@ function SuppliersTab() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setEditing(s); setShowForm(true); }}
-                      className="odoo-pager-btn" title="Modifier">
-                      <Pencil size={13} />
-                    </button>
+                    <div style={{ display: 'inline-flex', gap: 2 }}>
+                      <button onClick={() => { setEditing(s); setShowForm(true); }}
+                        className="odoo-pager-btn" title="Modifier">
+                        <Pencil size={13} />
+                      </button>
+                      {s.is_active ? (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Désactiver le fournisseur « ${s.name as string} » ?\n\nIl n'apparaîtra plus dans les listes de sélection.\nL'historique (factures, bons de commande, paiements) est conservé.`)) {
+                              deactivateMutation.mutate(s.id as string);
+                            }
+                          }}
+                          className="odoo-pager-btn" title="Désactiver" style={{ color: '#dc3545' }}>
+                          <Trash2 size={13} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Réactiver le fournisseur « ${s.name as string} » ?`)) {
+                              reactivateMutation.mutate(s.id as string);
+                            }
+                          }}
+                          className="odoo-pager-btn" title="Réactiver" style={{ color: '#28a745' }}>
+                          <RotateCcw size={13} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -446,8 +488,13 @@ function ReceivedInvoicesSection() {
                           </button>
                         )}
                         {inv.status !== 'cancelled' && inv.status !== 'paid' && (
-                          <button onClick={() => cancelMutation.mutate(inv.id as string)}
-                            className="odoo-pager-btn" title="Annuler" style={{ color: '#dc3545' }}>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Annuler la facture « ${inv.invoice_number as string} » de ${inv.supplier_name as string} ?\n\nElle sera marquée « Annulée » mais reste visible dans l'historique.`)) {
+                                cancelMutation.mutate(inv.id as string);
+                              }
+                            }}
+                            className="odoo-pager-btn" title="Annuler la facture" style={{ color: '#dc3545' }}>
                             <X size={13} />
                           </button>
                         )}
