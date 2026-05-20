@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, ShoppingBag, Info, BarChart3, Settings as SettingsIcon } from 'lucide-react';
+import { Save, Info, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
-import { sachetConfigApi, type SachetConfig, type SachetReport } from '../../api/sachet-config.api';
+import { sachetConfigApi, type SachetConfig } from '../../api/sachet-config.api';
+import { SettingsSection, SettingItem, OdooToggle } from './SettingsPrimitives';
 
 const REASON_LABELS: Record<string, string> = {
   client_demande: 'Client a demandé',
@@ -52,23 +53,23 @@ function isUnchanged(draft: Draft, config: SachetConfig): boolean {
 export default function SachetsTab() {
   const [sub, setSub] = useState<SubTab>('config');
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 max-w-md">
+    <div>
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 max-w-xs mb-6">
         <button
           onClick={() => setSub('config')}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
             sub === 'config' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          <SettingsIcon size={16} /> Configuration
+          <SettingsIcon size={15} /> Configuration
         </button>
         <button
           onClick={() => setSub('stats')}
-          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
             sub === 'stats' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          <BarChart3 size={16} /> Statistiques
+          <BarChart3 size={15} /> Statistiques
         </button>
       </div>
       {sub === 'config' ? <ConfigPanel /> : <StatsPanel />}
@@ -106,11 +107,7 @@ function ConfigPanel() {
   });
 
   if (isLoading || !config || !draft) {
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <p className="text-sm text-gray-500">Chargement...</p>
-      </div>
-    );
+    return <p className="text-sm text-gray-500">Chargement...</p>;
   }
 
   const hasChanges = !isUnchanged(draft, config);
@@ -166,50 +163,33 @@ function ConfigPanel() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
-            <ShoppingBag size={20} />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">Sachets de caisse</h2>
-            <p className="text-sm text-gray-500">
-              Définit combien d'articles entrent dans un sachet. À la caisse, le nombre de sachets
-              à remettre est calculé automatiquement à partir du contenu du ticket.
-            </p>
-          </div>
-        </div>
+    <>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm text-blue-900 mb-6">
+        <Info size={16} className="flex-shrink-0 mt-0.5" />
+        <p>
+          Chaque article compte pour <code className="px-1 bg-white rounded">1 / ratio</code> de sachet.
+          La caisse arrondit à l'entier supérieur. Désactivez "Nécessite un sachet" pour les produits
+          déjà emballés (bouteilles, sachets madeleine conditionnés...).
+        </p>
+      </div>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm text-blue-900 mb-6">
-          <Info size={16} className="flex-shrink-0 mt-0.5" />
-          <div>
-            <p>
-              Chaque article compte pour <code className="px-1 bg-white rounded">1 / ratio</code> de sachet.
-              La caisse arrondit à l'entier supérieur. Décochez "Nécessite un sachet" pour les produits
-              déjà emballés (bouteilles, sachets madeleine conditionnés...).
-            </p>
-          </div>
-        </div>
-
-        <div className="max-w-md mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Défaut global (articles par sachet)
-          </label>
+      <SettingsSection title="Réglage global" columns={1}>
+        <SettingItem
+          title="Défaut global (articles par sachet)"
+          description="Utilisé pour les catégories sans ratio personnalisé"
+        >
           <input
             type="number"
             min={1}
             step={1}
             value={draft.defaultArticlesPerSachet}
             onChange={(e) => handleDefaultChange(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="input w-32"
           />
-          <p className="text-xs text-gray-500 mt-1">
-            Utilisé pour les catégories sans ratio personnalisé.
-          </p>
-        </div>
+        </SettingItem>
+      </SettingsSection>
 
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Par catégorie</h3>
+      <SettingsSection title="Ratio par catégorie" columns={1}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -222,8 +202,8 @@ function ConfigPanel() {
             <tbody>
               {draft.categories.map((row) => (
                 <tr key={row.id} className="border-b border-gray-100 last:border-0">
-                  <td className="py-2 pr-4 text-gray-800">{row.name}</td>
-                  <td className="py-2 pr-4">
+                  <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.name}</td>
+                  <td className="py-2.5 pr-4">
                     <input
                       type="number"
                       min={1}
@@ -232,19 +212,17 @@ function ConfigPanel() {
                       value={row.articlesPerSachet}
                       onChange={(e) => handleRowChange(row.id, { articlesPerSachet: e.target.value })}
                       disabled={!row.needsSachet}
-                      className="w-32 border border-gray-300 rounded-lg px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                      className="input w-36 disabled:bg-gray-100 disabled:text-gray-400"
                     />
                   </td>
-                  <td className="py-2 pr-4">
-                    <label className="inline-flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
+                  <td className="py-2.5 pr-4">
+                    <div className="flex items-center gap-2">
+                      <OdooToggle
                         checked={row.needsSachet}
-                        onChange={(e) => handleRowChange(row.id, { needsSachet: e.target.checked })}
-                        className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        onChange={(v) => handleRowChange(row.id, { needsSachet: v })}
                       />
-                      <span className="text-sm text-gray-700">{row.needsSachet ? 'Oui' : 'Non'}</span>
-                    </label>
+                      <span className="text-sm text-gray-500">{row.needsSachet ? 'Oui' : 'Non'}</span>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -258,19 +236,19 @@ function ConfigPanel() {
             </tbody>
           </table>
         </div>
+      </SettingsSection>
 
-        <div className="pt-6">
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || saveMutation.isPending}
-            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition inline-flex items-center gap-2 disabled:opacity-60"
-          >
-            <Save size={16} />
-            {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
-        </div>
+      <div className="pt-2">
+        <button
+          onClick={handleSave}
+          disabled={!hasChanges || saveMutation.isPending}
+          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
+        >
+          <Save size={16} />
+          {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
+        </button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -302,35 +280,29 @@ function StatsPanel() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">Reporting sachets</h2>
-            <p className="text-sm text-gray-500">
-              Sachets remis vs. suggérés, par vendeuse. Une sur-distribution élevée indique du gaspillage.
-            </p>
-          </div>
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            {periodOptions.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                  period === p.key ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+    <>
+      <div className="flex items-center justify-end mb-4">
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          {periodOptions.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                period === p.key ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {isLoading || !report ? (
-          <p className="text-sm text-gray-500">Chargement...</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      {isLoading || !report ? (
+        <p className="text-sm text-gray-500">Chargement...</p>
+      ) : (
+        <>
+          <SettingsSection title="Vue d'ensemble" columns={1}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <KPI label="Ventes" value={report.totals.salesCount} />
               <KPI label="Sachets remis" value={report.totals.sachetsGiven} />
               <KPI label="Sachets suggérés" value={report.totals.sachetsSuggested} />
@@ -340,8 +312,9 @@ function StatsPanel() {
                 tone={report.totals.overshoot > 0 ? 'warning' : 'ok'}
               />
             </div>
+          </SettingsSection>
 
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Par vendeuse</h3>
+          <SettingsSection title="Par vendeuse" columns={1}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -372,16 +345,16 @@ function StatsPanel() {
                       'text-amber-600 font-semibold';
                     return (
                       <tr key={row.userId} className="border-b border-gray-100 last:border-0">
-                        <td className="py-2 pr-4 text-gray-800">{row.userName}</td>
-                        <td className="py-2 pr-4 text-gray-500">{row.storeName ?? '—'}</td>
-                        <td className="py-2 pr-4 text-right">{row.salesCount}</td>
-                        <td className="py-2 pr-4 text-right">{row.sachetsGiven}</td>
-                        <td className="py-2 pr-4 text-right text-gray-500">{row.sachetsSuggested}</td>
-                        <td className={`py-2 pr-4 text-right ${tone}`}>{row.overshoot}</td>
-                        <td className={`py-2 pr-4 text-right ${tone}`}>
+                        <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.userName}</td>
+                        <td className="py-2.5 pr-4 text-gray-500">{row.storeName ?? '—'}</td>
+                        <td className="py-2.5 pr-4 text-right">{row.salesCount}</td>
+                        <td className="py-2.5 pr-4 text-right">{row.sachetsGiven}</td>
+                        <td className="py-2.5 pr-4 text-right text-gray-500">{row.sachetsSuggested}</td>
+                        <td className={`py-2.5 pr-4 text-right ${tone}`}>{row.overshoot}</td>
+                        <td className={`py-2.5 pr-4 text-right ${tone}`}>
                           {row.sachetsSuggested > 0 ? `${ratioPct.toFixed(0)}%` : '—'}
                         </td>
-                        <td className="py-2 pr-4 text-gray-600">
+                        <td className="py-2.5 pr-4 text-gray-600">
                           {row.topReason ? REASON_LABELS[row.topReason] ?? row.topReason : '—'}
                         </td>
                       </tr>
@@ -390,27 +363,26 @@ function StatsPanel() {
                 </tbody>
               </table>
             </div>
+          </SettingsSection>
 
-            {report.reasons.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Motifs invoqués</h3>
-                <div className="flex flex-wrap gap-2">
-                  {report.reasons.map((r) => (
-                    <span
-                      key={r.reason}
-                      className="inline-flex items-center gap-2 bg-amber-50 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-full"
-                    >
-                      {REASON_LABELS[r.reason] ?? r.reason}
-                      <span className="bg-white px-1.5 py-0.5 rounded-full font-semibold">{r.count}</span>
-                    </span>
-                  ))}
-                </div>
+          {report.reasons.length > 0 && (
+            <SettingsSection title="Motifs invoqués" columns={1}>
+              <div className="flex flex-wrap gap-2">
+                {report.reasons.map((r) => (
+                  <span
+                    key={r.reason}
+                    className="inline-flex items-center gap-2 bg-amber-50 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-full"
+                  >
+                    {REASON_LABELS[r.reason] ?? r.reason}
+                    <span className="bg-white px-1.5 py-0.5 rounded-full font-semibold">{r.count}</span>
+                  </span>
+                ))}
               </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+            </SettingsSection>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
@@ -418,7 +390,7 @@ function KPI({ label, value, tone }: { label: string; value: number; tone?: 'ok'
   const color =
     tone === 'warning' ? 'text-amber-600' : tone === 'ok' ? 'text-emerald-600' : 'text-gray-800';
   return (
-    <div className="bg-gray-50 rounded-xl px-4 py-3">
+    <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
     </div>

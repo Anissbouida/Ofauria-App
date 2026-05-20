@@ -17,6 +17,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
+import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -85,58 +86,91 @@ export default function SettingsPage() {
 
   const activeMeta = tabs.find((t) => t.key === activeTab);
 
+  // Onglets "tableau de bord" (Stores, Referentiel) : surfaces propres,
+  // pas de panneau blanc englobant. Les autres sont des formulaires de reglages.
+  const DASHBOARD_TABS: SettingsTab[] = ['stores', 'referentiel'];
+  const isDashboard = DASHBOARD_TABS.includes(activeTab);
+
+  const tabContent = (
+    <>
+      {activeTab === 'general' && (
+        <GeneralTab
+          companyName={companyName} setCompanyName={setCompanyName}
+          subtitle={subtitle} setSubtitle={setSubtitle}
+        />
+      )}
+      {activeTab === 'appearance' && <AppearanceTab />}
+      {activeTab === 'print' && <PrintTab />}
+      {activeTab === 'stores' && <StoresSection />}
+      {activeTab === 'referentiel' && <ReferentielTab />}
+      {activeTab === 'production' && <ProductionChargesTab />}
+      {activeTab === 'sachets' && <SachetsTab />}
+    </>
+  );
+
+  const sectionHeader = activeMeta && (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <span className="w-9 h-9 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
+          {activeMeta.icon}
+        </span>
+        <div>
+          <h2 className="text-base font-bold text-gray-800 leading-tight">{activeMeta.label}</h2>
+          <p className="text-xs text-gray-400">{activeMeta.description}</p>
+        </div>
+      </div>
+      {activeTab === 'general' && (
+        <div className="flex gap-2">
+          {hasChanges && (
+            <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
+              <RotateCcw size={16} /> Annuler
+            </button>
+          )}
+          <button onClick={handleSave} disabled={saving || !hasChanges}
+            className="btn-primary flex items-center gap-2">
+            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-gray-800">Parametres</h1>
-        {activeTab === 'general' && (
-          <div className="flex gap-2">
-            {hasChanges && (
-              <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
-                <RotateCcw size={16} /> Annuler
-              </button>
-            )}
-            <button onClick={handleSave} disabled={saving || !hasChanges}
-              className="btn-primary flex items-center gap-2">
-              <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        )}
-      </div>
+      <h1 className="text-2xl font-bold text-gray-800 mb-4">Parametres</h1>
 
-      <div className="flex gap-6 items-start">
-        {/* Navigation laterale */}
-        <aside className="w-64 shrink-0 sticky top-4">
-          <div className="relative mb-3">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={tabSearch}
-              onChange={(e) => setTabSearch(e.target.value)}
-              placeholder="Rechercher un reglage..."
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-300"
-            />
+      <div className="flex gap-5 items-start">
+        {/* Navigation laterale plate */}
+        <aside className="w-60 shrink-0 sticky top-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="p-2.5 border-b border-gray-100">
+            <div className="relative">
+              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={tabSearch}
+                onChange={(e) => setTabSearch(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full pl-8 pr-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-300 focus:bg-white"
+              />
+            </div>
           </div>
-          <nav className="space-y-0.5 bg-white border border-gray-200 rounded-xl p-2">
+          <nav className="p-1.5">
             {filteredTabs.map((tab) => {
               const isActive = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                    isActive ? 'bg-primary-50' : 'hover:bg-gray-50'
+                  className={`w-full flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-md text-sm text-left transition-colors border-l-2 ${
+                    isActive
+                      ? 'bg-primary-50 text-primary-700 font-semibold border-primary-600'
+                      : 'text-gray-600 hover:bg-gray-100 border-transparent'
                   }`}
                 >
-                  <span className={`mt-0.5 ${isActive ? 'text-primary-600' : 'text-gray-400'}`}>
+                  <span className={isActive ? 'text-primary-600' : 'text-gray-400'}>
                     {tab.icon}
                   </span>
-                  <span className="min-w-0">
-                    <span className={`block text-sm font-medium ${isActive ? 'text-primary-700' : 'text-gray-700'}`}>
-                      {tab.label}
-                    </span>
-                    <span className="block text-xs text-gray-400 truncate">{tab.description}</span>
-                  </span>
+                  {tab.label}
                 </button>
               );
             })}
@@ -148,30 +182,21 @@ export default function SettingsPage() {
 
         {/* Contenu */}
         <div className="flex-1 min-w-0">
-          {activeMeta && (
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-gray-400">{activeMeta.icon}</span>
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 leading-tight">{activeMeta.label}</h2>
-                <p className="text-xs text-gray-400">{activeMeta.description}</p>
+          {isDashboard ? (
+            <div className="space-y-4">
+              {sectionHeader}
+              {tabContent}
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl">
+              <div className="px-6 py-4 border-b border-gray-100">
+                {sectionHeader}
+              </div>
+              <div className="p-6">
+                {tabContent}
               </div>
             </div>
           )}
-
-          <div className="space-y-6">
-            {activeTab === 'general' && (
-              <GeneralTab
-                companyName={companyName} setCompanyName={setCompanyName}
-                subtitle={subtitle} setSubtitle={setSubtitle}
-              />
-            )}
-            {activeTab === 'appearance' && <AppearanceTab />}
-            {activeTab === 'print' && <PrintTab />}
-            {activeTab === 'stores' && <StoresSection />}
-            {activeTab === 'referentiel' && <ReferentielTab />}
-            {activeTab === 'production' && <ProductionChargesTab />}
-            {activeTab === 'sachets' && <SachetsTab />}
-          </div>
         </div>
       </div>
     </div>
@@ -188,33 +213,17 @@ function GeneralTab({
 }) {
   return (
     <>
-      {/* Company info */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Building2 size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Informations de l'entreprise</h2>
-            <p className="text-sm text-gray-500">Nom et description affiches dans l'application</p>
-          </div>
-        </div>
+      <SettingsSection title="Informations de l'entreprise">
+        <SettingItem title="Nom de l'entreprise" description="Affiche dans l'application et sur les tickets">
+          <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
+            className="input w-full" placeholder="OFAURIA" />
+        </SettingItem>
+        <SettingItem title="Sous-titre" description="Texte affiche sous le logo">
+          <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
+            className="input w-full" placeholder="Boulangerie & Patisserie" />
+        </SettingItem>
+      </SettingsSection>
 
-        <div className="grid gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l'entreprise</label>
-            <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
-              className="input" placeholder="OFAURIA" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Sous-titre</label>
-            <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
-              className="input" placeholder="Boulangerie & Patisserie" />
-          </div>
-        </div>
-      </div>
-
-      {/* Staff discount */}
       <StaffDiscountSection />
     </>
   );
@@ -361,44 +370,27 @@ function AppearanceTab() {
   };
 
   const groups = [...new Set(THEME_FIELDS.map(f => f.group))];
-  const groupIcons: Record<string, React.ReactNode> = {
-    'Surfaces': <Layers size={18} className="text-gray-500" />,
-    'Texte': <Type size={18} className="text-gray-500" />,
-    'Accents': <Palette size={18} className="text-gray-500" />,
-    'Bouton principal': <Monitor size={18} className="text-gray-500" />,
-  };
 
   return (
     <>
-      {/* Save bar */}
-      <div className="flex items-center justify-between">
-        <div />
-        <div className="flex gap-2">
-          {hasChanges && (
-            <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
-              <RotateCcw size={16} /> Annuler
-            </button>
-          )}
-          <button onClick={handleSave} disabled={saving || !hasChanges}
-            className="btn-primary flex items-center gap-2">
-            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+      <div className="flex justify-end gap-2 mb-5">
+        {hasChanges && (
+          <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
+            <RotateCcw size={16} /> Annuler
           </button>
-        </div>
+        )}
+        <button onClick={handleSave} disabled={saving || !hasChanges}
+          className="btn-primary flex items-center gap-2 disabled:opacity-60">
+          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+        </button>
       </div>
 
-      {/* Preset themes */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Paintbrush size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Themes predefinis</h2>
-            <p className="text-sm text-gray-500">Selectionnez un theme de base puis personnalisez les couleurs</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <SettingsSection
+        title="Themes predefinis"
+        description="Selectionnez un theme de base puis personnalisez les couleurs"
+        columns={1}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
           {THEME_PRESETS.map(preset => {
             const isActive = Object.entries(preset.values).every(([k, v]) => theme[k as ThemeKey] === v);
             return (
@@ -432,45 +424,27 @@ function AppearanceTab() {
             );
           })}
         </div>
-      </div>
+      </SettingsSection>
 
       {/* Custom color pickers by group */}
       {groups.map(group => (
-        <div key={group} className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              {groupIcons[group] || <Palette size={18} className="text-gray-500" />}
-            </div>
-            <h2 className="text-lg font-semibold text-gray-800">{group}</h2>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            {THEME_FIELDS.filter(f => f.group === group).map(field => (
-              <div key={field.key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
-                <div className="flex gap-2">
-                  <input type="color" value={theme[field.key]}
-                    onChange={e => setColor(field.key, e.target.value)}
-                    className="w-12 h-10 rounded cursor-pointer border border-gray-200 p-0.5" />
-                  <input type="text" value={theme[field.key]}
-                    onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value) || e.target.value === '') setColor(field.key, e.target.value); }}
-                    className="input flex-1 font-mono text-sm" placeholder="#000000" maxLength={7} />
-                </div>
+        <SettingsSection key={group} title={group}>
+          {THEME_FIELDS.filter(f => f.group === group).map(field => (
+            <SettingItem key={field.key} title={field.label}>
+              <div className="flex gap-2">
+                <input type="color" value={theme[field.key]}
+                  onChange={e => setColor(field.key, e.target.value)}
+                  className="w-12 h-10 rounded cursor-pointer border border-gray-200 p-0.5" />
+                <input type="text" value={theme[field.key]}
+                  onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value) || e.target.value === '') setColor(field.key, e.target.value); }}
+                  className="input flex-1 font-mono text-sm" placeholder="#000000" maxLength={7} />
               </div>
-            ))}
-          </div>
-        </div>
+            </SettingItem>
+          ))}
+        </SettingsSection>
       ))}
 
-      {/* Live preview */}
-      <div className="bg-white rounded-xl shadow-sm border p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Eye size={20} className="text-gray-600" />
-          </div>
-          <h2 className="text-lg font-semibold text-gray-800">Apercu en direct</h2>
-        </div>
-
+      <SettingsSection title="Apercu en direct" columns={1}>
         <div className="rounded-xl overflow-hidden border border-gray-200">
           {/* Header preview */}
           <div className="h-14 flex items-center px-5" style={{ background: theme.themeAccent }}>
@@ -542,7 +516,7 @@ function AppearanceTab() {
             </div>
           </div>
         </div>
-      </div>
+      </SettingsSection>
     </>
   );
 }
@@ -572,37 +546,28 @@ function StaffDiscountSection() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-          <Users size={20} className="text-purple-600" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">Commandes personnel</h2>
-          <p className="text-sm text-gray-500">Remise appliquee automatiquement aux commandes du personnel</p>
-        </div>
-      </div>
-
-      <div className="flex items-end gap-4">
-        <div className="flex-1 max-w-xs">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Taux de remise (%)</label>
-          <div className="relative">
+    <SettingsSection title="Commandes personnel">
+      <SettingItem
+        title="Remise personnel"
+        description="Remise appliquee automatiquement aux commandes du personnel (ex: 10 = -10%)"
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative w-32">
             <input type="number" min={0} max={100} step={1} value={discount}
               onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-              className="input text-lg font-bold text-purple-700 pr-10" />
+              className="input w-full font-bold pr-8" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">%</span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">Ex: 10 = remise de 10% sur chaque commande personnel</p>
+          {hasChanges && (
+            <button onClick={handleSave} disabled={saving}
+              className="btn-primary px-4 py-2 flex items-center gap-2 text-sm">
+              {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
+              Enregistrer
+            </button>
+          )}
         </div>
-        {hasChanges && (
-          <button onClick={handleSave} disabled={saving}
-            className="btn-primary px-6 py-2.5 flex items-center gap-2 text-sm">
-            {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
-            Enregistrer
-          </button>
-        )}
-      </div>
-    </div>
+      </SettingItem>
+    </SettingsSection>
   );
 }
 
@@ -709,238 +674,144 @@ function PrintTab() {
   const nowStr = format(new Date(), "dd MMMM yyyy 'a' HH:mm", { locale: fr });
 
   return (
-    <>
-      {/* Save button bar */}
-      <div className="flex justify-end">
-        <button onClick={handleSavePrint} disabled={saving || !hasChanges}
-          className="btn-primary flex items-center gap-2">
-          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-        </button>
-      </div>
-
-      <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-        {/* Settings panel */}
-        <div className="space-y-6">
-          {/* Imprimantes physiques ESC/POS */}
-          <PrinterSettingsCard />
-
-          {/* Logo */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Image size={20} className="text-gray-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Logo</h2>
-                <p className="text-sm text-gray-500">Logo affiche sur les recus et tickets (PNG, JPG, SVG - max 2 Mo)</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-6">
-              {/* Logo preview */}
-              <div className="flex-shrink-0 w-32 h-20 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden">
-                {logoUrl ? (
-                  <img src={logoSrc} alt="Logo" className="max-w-full max-h-full object-contain" />
-                ) : (
-                  <div className="text-center">
-                    <Image size={24} className="text-gray-300 mx-auto mb-1" />
-                    <span className="text-[10px] text-gray-400">Logo par defaut</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 space-y-3">
-                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                  onChange={handleLogoUpload} className="hidden" />
-                <div className="flex gap-2">
-                  <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                    className="btn-secondary flex items-center gap-2 text-sm">
-                    <Upload size={14} />
-                    {uploading ? 'Telechargement...' : 'Telecharger un logo'}
-                  </button>
-                  {logoUrl && (
-                    <button onClick={handleRemoveLogo}
-                      className="btn-secondary text-sm text-red-500 hover:text-red-700">
-                      Supprimer
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <ToggleSwitch label="Afficher le logo sur le recu" checked={receiptShowLogo}
-                    onChange={setReceiptShowLogo} />
-                </div>
-
-                {receiptShowLogo && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Taille du logo (px) : {receiptLogoSize}
-                    </label>
-                    <input type="range" min="20" max="80" value={receiptLogoSize}
-                      onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))}
-                      className="w-full accent-primary-600" />
-                    <div className="flex justify-between text-[10px] text-gray-400">
-                      <span>Petit</span><span>Grand</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Receipt content */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <FileText size={20} className="text-gray-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Contenu du recu</h2>
-                <p className="text-sm text-gray-500">Textes et informations affiches sur les recus</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">En-tete supplementaire</label>
-                <input type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
-                  className="input" placeholder="Ex: Adresse, telephone, ICE..." />
-                <p className="text-xs text-gray-400 mt-1">Affiche sous le sous-titre (adresse, tel, ICE...)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Message de pied de page</label>
-                <input type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
-                  className="input" placeholder="Merci pour votre visite !" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lignes supplementaires</label>
-                <textarea value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
-                  className="input" rows={3}
-                  placeholder="Ex: Horaires d'ouverture, conditions de retour..." />
-                <p className="text-xs text-gray-400 mt-1">Chaque ligne sera affichee en bas du recu</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Display options */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Eye size={20} className="text-gray-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Options d'affichage</h2>
-                <p className="text-sm text-gray-500">Choisissez les informations visibles sur le recu</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <ToggleSwitch label="Afficher le nom du caissier" checked={receiptShowCashier}
-                onChange={setReceiptShowCashier} />
-              <ToggleSwitch label="Afficher la date et l'heure" checked={receiptShowDate}
-                onChange={setReceiptShowDate} />
-              <ToggleSwitch label="Afficher le detail du paiement (especes rendues)" checked={receiptShowPaymentDetail}
-                onChange={setReceiptShowPaymentDetail} />
-            </div>
-          </div>
-
-          {/* Thermal printer & automation */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Printer size={20} className="text-gray-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Imprimante thermique</h2>
-                <p className="text-sm text-gray-500">Configuration de l'imprimante et du tiroir-caisse</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <ToggleSwitch
-                label="Impression automatique apres chaque vente"
-                checked={receiptAutoPrint}
-                onChange={setReceiptAutoPrint}
-              />
-              <p className="text-xs text-gray-400 -mt-2 ml-1">
-                Le recu s'imprime automatiquement apres chaque encaissement sans cliquer sur "Imprimer"
-              </p>
-
-              <ToggleSwitch
-                label="Ouvrir le tiroir-caisse a chaque impression"
-                checked={receiptOpenDrawer}
-                onChange={setReceiptOpenDrawer}
-              />
-              <p className="text-xs text-gray-400 -mt-2 ml-1">
-                Le tiroir-caisse s'ouvre automatiquement quand le recu est imprime (necessite un tiroir connecte a l'imprimante thermique)
-              </p>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de copies</label>
-                <select value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
-                  className="input w-32">
-                  <option value={1}>1 copie</option>
-                  <option value={2}>2 copies</option>
-                  <option value={3}>3 copies</option>
-                </select>
-                <p className="text-xs text-gray-400 mt-1">Nombre de recus imprimes a chaque vente</p>
-              </div>
-            </div>
-
-            {/* Info box */}
-            <div className="mt-5 p-4 bg-blue-50 rounded-xl border border-blue-100">
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">Configuration de l'imprimante</h4>
-              <ul className="text-xs text-blue-700 space-y-1.5">
-                <li>1. Connectez votre imprimante thermique (USB ou reseau)</li>
-                <li>2. Installez le pilote de l'imprimante sur votre ordinateur</li>
-                <li>3. Dans les parametres d'impression du navigateur, selectionnez votre imprimante thermique comme imprimante par defaut</li>
-                <li>4. Desactivez les en-tetes et pieds de page du navigateur dans les parametres d'impression</li>
-                <li>5. Le tiroir-caisse doit etre connecte au port RJ11/DK de l'imprimante</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Format */}
-          <div className="bg-white rounded-xl shadow-sm border p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Type size={20} className="text-gray-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">Format d'impression</h2>
-                <p className="text-sm text-gray-500">Ajustez la taille du texte et du papier</p>
-              </div>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Taille de police : {receiptFontSize}px
-                </label>
-                <input type="range" min="9" max="16" value={receiptFontSize}
-                  onChange={(e) => setReceiptFontSize(parseInt(e.target.value))}
-                  className="w-full accent-primary-600" />
-                <div className="flex justify-between text-[10px] text-gray-400">
-                  <span>9px</span><span>16px</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Largeur du papier</label>
-                <select value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
-                  className="input">
-                  <option value={58}>58 mm (petit)</option>
-                  <option value={80}>80 mm (standard)</option>
-                </select>
-              </div>
-            </div>
-          </div>
+    <div className="grid lg:grid-cols-[1fr_300px] gap-8 items-start">
+      {/* Settings panel */}
+      <div>
+        <div className="flex justify-end mb-5">
+          <button onClick={handleSavePrint} disabled={saving || !hasChanges}
+            className="btn-primary flex items-center gap-2 disabled:opacity-60">
+            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
         </div>
 
+        <div className="mb-8">
+          <PrinterSettingsCard />
+        </div>
+
+        <SettingsSection title="Logo" columns={1}>
+          <div className="flex items-start gap-6 py-2">
+            <div className="flex-shrink-0 w-32 h-20 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden">
+              {logoUrl ? (
+                <img src={logoSrc} alt="Logo" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <div className="text-center">
+                  <Image size={24} className="text-gray-300 mx-auto mb-1" />
+                  <span className="text-[10px] text-gray-400">Logo par defaut</span>
+                </div>
+              )}
+            </div>
+            <div className="flex-1">
+              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={handleLogoUpload} className="hidden" />
+              <p className="text-sm text-gray-500 mb-2">Logo affiche sur les recus et tickets (PNG, JPG, SVG - max 2 Mo)</p>
+              <div className="flex gap-2">
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                  className="btn-secondary flex items-center gap-2 text-sm">
+                  <Upload size={14} />
+                  {uploading ? 'Telechargement...' : 'Telecharger un logo'}
+                </button>
+                {logoUrl && (
+                  <button onClick={handleRemoveLogo}
+                    className="btn-secondary text-sm text-red-500 hover:text-red-700">
+                    Supprimer
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <SettingItem
+            title="Afficher le logo sur le recu"
+            description="Le logo apparait en haut du ticket imprime"
+            toggle={{ checked: receiptShowLogo, onChange: setReceiptShowLogo }}
+          >
+            {receiptShowLogo && (
+              <div className="max-w-xs">
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Taille du logo (px) : {receiptLogoSize}
+                </label>
+                <input type="range" min="20" max="80" value={receiptLogoSize}
+                  onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))}
+                  className="w-full accent-primary-600" />
+              </div>
+            )}
+          </SettingItem>
+        </SettingsSection>
+
+        <SettingsSection title="Contenu du recu" columns={1}>
+          <SettingItem title="En-tete supplementaire" description="Affiche sous le sous-titre (adresse, tel, ICE...)">
+            <input type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
+              className="input w-full max-w-md" placeholder="Ex: Adresse, telephone, ICE..." />
+          </SettingItem>
+          <SettingItem title="Message de pied de page" description="Texte de remerciement en bas du ticket">
+            <input type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
+              className="input w-full max-w-md" placeholder="Merci pour votre visite !" />
+          </SettingItem>
+          <SettingItem title="Lignes supplementaires" description="Chaque ligne sera affichee en bas du recu">
+            <textarea value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
+              className="input w-full max-w-md" rows={3}
+              placeholder="Ex: Horaires d'ouverture, conditions de retour..." />
+          </SettingItem>
+        </SettingsSection>
+
+        <SettingsSection title="Options d'affichage">
+          <SettingItem title="Nom du caissier" description="Affiche le caissier sur le ticket"
+            toggle={{ checked: receiptShowCashier, onChange: setReceiptShowCashier }} />
+          <SettingItem title="Date et heure" description="Affiche la date de la vente"
+            toggle={{ checked: receiptShowDate, onChange: setReceiptShowDate }} />
+          <SettingItem title="Detail du paiement" description="Especes recues et monnaie rendue"
+            toggle={{ checked: receiptShowPaymentDetail, onChange: setReceiptShowPaymentDetail }} />
+        </SettingsSection>
+
+        <SettingsSection title="Imprimante thermique" columns={1}>
+          <SettingItem
+            title="Impression automatique"
+            description="Le recu s'imprime apres chaque encaissement sans cliquer sur Imprimer"
+            toggle={{ checked: receiptAutoPrint, onChange: setReceiptAutoPrint }}
+          />
+          <SettingItem
+            title="Ouvrir le tiroir-caisse"
+            description="Le tiroir s'ouvre a chaque impression (necessite un tiroir connecte a l'imprimante)"
+            toggle={{ checked: receiptOpenDrawer, onChange: setReceiptOpenDrawer }}
+          />
+          <SettingItem title="Nombre de copies" description="Nombre de recus imprimes a chaque vente">
+            <select value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
+              className="input w-40">
+              <option value={1}>1 copie</option>
+              <option value={2}>2 copies</option>
+              <option value={3}>3 copies</option>
+            </select>
+          </SettingItem>
+          <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+            <h4 className="text-sm font-semibold text-blue-800 mb-2">Configuration de l'imprimante</h4>
+            <ul className="text-xs text-blue-700 space-y-1.5">
+              <li>1. Connectez votre imprimante thermique (USB ou reseau)</li>
+              <li>2. Installez le pilote de l'imprimante sur votre ordinateur</li>
+              <li>3. Dans les parametres d'impression du navigateur, selectionnez votre imprimante thermique comme imprimante par defaut</li>
+              <li>4. Desactivez les en-tetes et pieds de page du navigateur dans les parametres d'impression</li>
+              <li>5. Le tiroir-caisse doit etre connecte au port RJ11/DK de l'imprimante</li>
+            </ul>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection title="Format d'impression">
+          <SettingItem title="Taille de police" description={`Texte du ticket : ${receiptFontSize}px`}>
+            <input type="range" min="9" max="16" value={receiptFontSize}
+              onChange={(e) => setReceiptFontSize(parseInt(e.target.value))}
+              className="w-full max-w-xs accent-primary-600" />
+          </SettingItem>
+          <SettingItem title="Largeur du papier" description="Format du rouleau thermique">
+            <select value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
+              className="input w-44">
+              <option value={58}>58 mm (petit)</option>
+              <option value={80}>80 mm (standard)</option>
+            </select>
+          </SettingItem>
+        </SettingsSection>
+      </div>
+
         {/* Live receipt preview */}
-        <div className="lg:sticky lg:top-6 h-fit">
-          <div className="bg-white rounded-xl shadow-sm border p-4">
+        <div className="lg:sticky lg:top-4 h-fit">
+          <div className="border border-gray-200 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Eye size={16} className="text-gray-500" />
               <h3 className="text-sm font-semibold text-gray-700">Apercu du recu</h3>
@@ -1038,8 +909,7 @@ function PrintTab() {
             </div>
           </div>
         </div>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -1130,17 +1000,11 @@ function StoresSection() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Store size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Points de vente</h2>
-            <p className="text-sm text-gray-500">Gerez vos differents magasins et emplacements</p>
-          </div>
-        </div>
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500">
+          {stores.length} point{stores.length > 1 ? 's' : ''} de vente configure{stores.length > 1 ? 's' : ''}
+        </p>
         <button onClick={() => { resetForm(); setShowForm(true); }}
           className="btn-primary flex items-center gap-2 text-sm">
           <Plus size={16} /> Ajouter
@@ -1148,10 +1012,10 @@ function StoresSection() {
       </div>
 
       {/* Store list */}
-      <div className="space-y-3">
+      <div className="divide-y divide-gray-100">
         {stores.map((store: Record<string, any>) => (
           <div key={store.id as string}
-            className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+            className="flex items-center justify-between py-3 hover:bg-gray-50 transition-colors -mx-2 px-2 rounded-lg">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
                 <MapPin size={18} className="text-primary-600" />
@@ -2088,35 +1952,39 @@ function ProductionChargesTab() {
     }
   };
 
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-      <h2 className="text-lg font-bold text-gray-800 mb-1">Charges fixes mensuelles</h2>
-      <p className="text-sm text-gray-500 mb-6">
-        Ces montants sont repartis proportionnellement sur chaque plan de production du mois pour calculer le cout de revient.
-      </p>
-      <div className="space-y-4 max-w-md">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Loyer mensuel (DH)</label>
-          <input type="number" value={loyer} onChange={e => setLoyer(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Energie mensuelle (DH)</label>
-          <input type="number" value={energie} onChange={e => setEnergie(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Autres charges (DH)</label>
-          <input type="number" value={autres} onChange={e => setAutres(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0" step="0.01" />
-        </div>
-        <div className="pt-2">
-          <button onClick={handleSave} disabled={saving}
-            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition inline-flex items-center gap-2 disabled:opacity-60">
-            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer les charges'}
-          </button>
-        </div>
-      </div>
+  const hasChanges =
+    parseFloat(loyer || '0') !== (settings.productionChargeLoyer || 0) ||
+    parseFloat(energie || '0') !== (settings.productionChargeEnergie || 0) ||
+    parseFloat(autres || '0') !== (settings.productionChargeAutres || 0);
+
+  const moneyInput = (value: string, onChange: (v: string) => void) => (
+    <div className="relative w-44">
+      <input type="number" value={value} onChange={e => onChange(e.target.value)}
+        className="input w-full pr-10" min="0" step="0.01" />
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">DH</span>
     </div>
+  );
+
+  return (
+    <SettingsSection
+      title="Charges fixes mensuelles"
+      description="Reparties proportionnellement sur chaque plan de production du mois pour calculer le cout de revient."
+    >
+      <SettingItem title="Loyer mensuel" description="Montant du loyer de l'atelier de production">
+        {moneyInput(loyer, setLoyer)}
+      </SettingItem>
+      <SettingItem title="Energie mensuelle" description="Electricite, gaz, eau">
+        {moneyInput(energie, setEnergie)}
+      </SettingItem>
+      <SettingItem title="Autres charges" description="Assurances, maintenance, divers">
+        {moneyInput(autres, setAutres)}
+      </SettingItem>
+      <div className="sm:col-span-2 pt-4">
+        <button onClick={handleSave} disabled={saving || !hasChanges}
+          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60">
+          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer les charges'}
+        </button>
+      </div>
+    </SettingsSection>
   );
 }
