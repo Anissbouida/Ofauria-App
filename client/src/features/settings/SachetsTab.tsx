@@ -167,11 +167,10 @@ function ConfigPanel() {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm text-blue-900 mb-6">
         <Info size={16} className="flex-shrink-0 mt-0.5" />
         <p>
-          Chaque article compte pour <code className="px-1 bg-white rounded">1 / ratio</code> de sachet.
-          La caisse arrondit la somme à l'entier le plus proche : un petit nombre d'articles face à un
-          grand ratio ne déclenche aucun sachet (ex : 1 croissant avec un ratio de 15 → 0 sachet).
-          Désactivez "Nécessite un sachet" pour les produits déjà emballés (bouteilles, sachets
-          madeleine conditionnés...).
+          Le ratio est un <strong>seuil</strong> : 1 sachet est suggéré par tranche complète
+          d'articles. Avec un ratio de 15, il faut 15 viennoiseries pour 1 sachet (1 à 14 → 0,
+          15 à 29 → 1, etc.). Désactivez "Nécessite un sachet" pour les produits déjà emballés
+          (bouteilles, sachets madeleine conditionnés...).
         </p>
       </div>
 
