@@ -11,6 +11,7 @@ import {
   Database, Tag, Check, X, ShieldCheck, ArrowDownUp, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, AlertTriangle, EyeOff, Users,
   Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp, ShoppingBag,
+  Wallet, Factory, Package, ChevronRight,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -1274,18 +1275,36 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const TABLE_ICONS: Record<string, { icon: typeof Database; color: string; bg: string }> = {
     expense_categories:     { icon: Layers,    color: 'text-red-600',    bg: 'bg-red-50' },
     revenue_categories:     { icon: Layers,    color: 'text-green-600',  bg: 'bg-green-50' },
-    categories:             { icon: Tag,       color: 'text-amber-600',  bg: 'bg-amber-50' },
+    payment_methods:        { icon: Wallet,    color: 'text-emerald-600',bg: 'bg-emerald-50' },
+    product_categories:     { icon: ShoppingBag, color: 'text-amber-600', bg: 'bg-amber-50' },
     ingredient_categories:  { icon: Tag,       color: 'text-orange-600', bg: 'bg-orange-50' },
+    units:                  { icon: ArrowDownUp, color: 'text-sky-600',  bg: 'bg-sky-50' },
+    yield_units:            { icon: ArrowDownUp, color: 'text-blue-600', bg: 'bg-blue-50' },
     loss_types:             { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' },
+    loss_reasons:           { icon: Trash2,    color: 'text-rose-600',   bg: 'bg-rose-50' },
     production_loss_reasons:{ icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-50' },
     unsold_destinations:    { icon: RotateCw,  color: 'text-teal-600',   bg: 'bg-teal-50' },
-    yield_units:            { icon: ArrowDownUp, color: 'text-blue-600', bg: 'bg-blue-50' },
     contract_types:         { icon: FileText,  color: 'text-indigo-600', bg: 'bg-indigo-50' },
     leave_types:            { icon: FileText,  color: 'text-purple-600', bg: 'bg-purple-50' },
-    employee_functions:     { icon: Users,     color: 'text-cyan-600',   bg: 'bg-cyan-50' },
-    payment_types:          { icon: Tag,       color: 'text-emerald-600',bg: 'bg-emerald-50' },
+    absence_reasons:        { icon: Users,     color: 'text-violet-600', bg: 'bg-violet-50' },
+    employee_roles:         { icon: Users,     color: 'text-cyan-600',   bg: 'bg-cyan-50' },
   };
   const defaultIcon = { icon: Database, color: 'text-gray-600', bg: 'bg-gray-100' };
+
+  // Regroupement des tables par domaine metier. Les ids absents de cette
+  // config tombent dans le domaine "Autres" pour ne jamais etre masques.
+  const REF_DOMAINS: { key: string; label: string; icon: typeof Database; tableIds: string[] }[] = [
+    { key: 'sales', label: 'Ventes & Comptabilite', icon: Wallet,
+      tableIds: ['expense_categories', 'revenue_categories', 'payment_methods'] },
+    { key: 'products', label: 'Produits & Ingredients', icon: Package,
+      tableIds: ['product_categories', 'units', 'ingredient_categories'] },
+    { key: 'production', label: 'Production & Pertes', icon: Factory,
+      tableIds: ['yield_units', 'loss_types', 'loss_reasons', 'production_loss_reasons', 'unsold_destinations'] },
+    { key: 'hr', label: 'Ressources humaines', icon: Users,
+      tableIds: ['absence_reasons', 'employee_roles', 'contract_types', 'leave_types'] },
+  ];
+  const domainOf = (id: string) =>
+    REF_DOMAINS.find((d) => d.tableIds.includes(id))?.key ?? 'other';
 
   const filteredTables = tables.filter(t => {
     if (!dashSearch) return true;
@@ -1293,120 +1312,164 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
     return String(t.label).toLowerCase().includes(q) || String(t.description || '').toLowerCase().includes(q);
   });
 
+  // Construit la liste des sections affichees (domaines connus + "Autres").
+  const sections = [
+    ...REF_DOMAINS.map((d) => ({
+      ...d,
+      tables: filteredTables.filter((t) => domainOf(String(t.id)) === d.key),
+    })),
+    {
+      key: 'other', label: 'Autres', icon: Database,
+      tableIds: [] as string[],
+      tables: filteredTables.filter((t) => domainOf(String(t.id)) === 'other'),
+    },
+  ].filter((s) => s.tables.length > 0);
+
+  const actionLabels: Record<string, string> = {
+    create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
+  };
+  const actionColors: Record<string, string> = {
+    create: 'bg-green-100 text-green-700', update: 'bg-blue-100 text-blue-700',
+    deactivate: 'bg-red-100 text-red-700', reactivate: 'bg-amber-100 text-amber-700',
+  };
+
   return (
-    <div className="space-y-5">
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-            <Database size={22} className="text-indigo-600" />
+    <div className="flex flex-col xl:flex-row gap-5 items-start">
+      {/* Colonne principale */}
+      <div className="flex-1 min-w-0 w-full space-y-5">
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+              <Database size={18} className="text-indigo-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-gray-800 leading-tight">{tables.length}</p>
+              <p className="text-xs text-gray-500 truncate">Tables de reference</p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-800">{tables.length}</p>
-            <p className="text-xs text-gray-500">Tables de reference</p>
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <Check size={18} className="text-green-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-green-600 leading-tight">{totalActive}</p>
+              <p className="text-xs text-gray-500 truncate">Entrees actives</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <EyeOff size={18} className="text-amber-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-amber-500 leading-tight">{totalInactive}</p>
+              <p className="text-xs text-gray-500 truncate">Inactives</p>
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center">
-            <Check size={22} className="text-green-600" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-green-600">{totalActive}</p>
-            <p className="text-xs text-gray-500">Entrees actives</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
-            <EyeOff size={22} className="text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-amber-500">{totalInactive}</p>
-            <p className="text-xs text-gray-500">Inactives</p>
-          </div>
-        </div>
-      </div>
 
-      {/* Search bar */}
-      <div className="relative">
-        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input type="text" value={dashSearch} onChange={e => setDashSearch(e.target.value)}
-          placeholder="Rechercher une table de parametrage..."
-          className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
-      </div>
+        {/* Search bar */}
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={dashSearch} onChange={e => setDashSearch(e.target.value)}
+            placeholder="Rechercher une table de parametrage..."
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
 
-      {/* Table cards */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filteredTables.map((t) => {
-          const cfg = TABLE_ICONS[String(t.id)] || defaultIcon;
-          const IconComp = cfg.icon;
-          const count = (t.active_count as number) || 0;
-          const inactiveCount = (t.inactive_count as number) || 0;
+        {/* Sections par domaine */}
+        {sections.map((section) => {
+          const DomainIcon = section.icon;
           return (
-            <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
-              className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all text-left group">
-              <div className={`w-11 h-11 rounded-xl ${cfg.bg} flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform`}>
-                <IconComp size={20} className={cfg.color} />
+            <div key={section.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
+                <DomainIcon size={16} className="text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-700">{section.label}</h3>
+                <span className="text-xs text-gray-400 bg-white border border-gray-200 rounded-full px-1.5">
+                  {section.tables.length}
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-800 text-sm truncate group-hover:text-indigo-700 transition-colors">{String(t.label)}</p>
-                {Boolean(t.description) && (
-                  <p className="text-xs text-gray-400 truncate mt-0.5">{String(t.description)}</p>
-                )}
+              <div className="divide-y divide-gray-50">
+                {section.tables.map((t) => {
+                  const cfg = TABLE_ICONS[String(t.id)] || defaultIcon;
+                  const IconComp = cfg.icon;
+                  const count = (t.active_count as number) || 0;
+                  const inactiveCount = (t.inactive_count as number) || 0;
+                  return (
+                    <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/40 transition-colors text-left group">
+                      <div className={`w-9 h-9 rounded-lg ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
+                        <IconComp size={17} className={cfg.color} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 text-sm truncate group-hover:text-indigo-700 transition-colors">
+                          {String(t.label)}
+                        </p>
+                        {Boolean(t.description) && (
+                          <p className="text-xs text-gray-400 truncate">{String(t.description)}</p>
+                        )}
+                      </div>
+                      {inactiveCount > 0 && (
+                        <span className="text-[10px] font-medium text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                          {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      <span className="text-sm font-bold text-gray-700 tabular-nums w-8 text-right flex-shrink-0">
+                        {count}
+                      </span>
+                      <ChevronRight size={16} className="text-gray-300 group-hover:text-indigo-400 transition-colors flex-shrink-0" />
+                    </button>
+                  );
+                })}
               </div>
-              <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                <span className="text-lg font-bold text-gray-700">{count}</span>
-                {inactiveCount > 0 && (
-                  <span className="text-[10px] font-medium text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">{inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</span>
-                )}
-              </div>
-            </button>
+            </div>
           );
         })}
+        {sections.length === 0 && (
+          <div className="text-center py-8 text-gray-400 text-sm">Aucune table ne correspond a votre recherche</div>
+        )}
       </div>
-      {filteredTables.length === 0 && (
-        <div className="text-center py-8 text-gray-400 text-sm">Aucune table ne correspond a votre recherche</div>
-      )}
 
-      {/* Recent changes */}
+      {/* Panneau lateral : historique */}
       {recentChanges.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <History size={18} className="text-indigo-600" />
+        <aside className="w-full xl:w-80 xl:flex-shrink-0">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden xl:sticky xl:top-4">
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <History size={16} className="text-indigo-600" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-800 leading-tight">Dernieres modifications</h2>
+                <p className="text-xs text-gray-400">Historique des changements</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-800">Dernieres modifications</h2>
-              <p className="text-xs text-gray-400">Historique des changements recents</p>
+            <div className="divide-y divide-gray-50 max-h-[28rem] overflow-y-auto">
+              {recentChanges.slice(0, 20).map((log) => {
+                const action = String(log.action);
+                return (
+                  <div key={String(log.id)} className="px-4 py-2.5 hover:bg-gray-50/50 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${actionColors[action] || 'bg-gray-100 text-gray-600'}`}>
+                        {actionLabels[action] || action}
+                      </span>
+                      <span className="text-sm text-gray-700 font-medium truncate">
+                        {String(log.table_label || log.table_id)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                      <span className="truncate">
+                        {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : '—'}
+                      </span>
+                      <span className="flex-1" />
+                      <span className="whitespace-nowrap">
+                        {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM HH:mm', { locale: fr }) : ''}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-            {recentChanges.slice(0, 15).map((log) => {
-              const actionLabels: Record<string, string> = {
-                create: 'Ajout', update: 'Modification', deactivate: 'Desactivation', reactivate: 'Reactivation',
-              };
-              const actionColors: Record<string, string> = {
-                create: 'bg-green-100 text-green-700', update: 'bg-blue-100 text-blue-700',
-                deactivate: 'bg-red-100 text-red-700', reactivate: 'bg-amber-100 text-amber-700',
-              };
-              const action = String(log.action);
-              return (
-                <div key={String(log.id)} className="flex items-center gap-3 py-3 px-5 hover:bg-gray-50/50 transition-colors">
-                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${actionColors[action] || 'bg-gray-100 text-gray-600'}`}>
-                    {actionLabels[action] || action}
-                  </span>
-                  <span className="text-sm text-gray-700 font-medium">{String(log.table_label || log.table_id)}</span>
-                  <span className="flex-1" />
-                  <span className="text-xs text-gray-500">
-                    {log.first_name ? `${String(log.first_name)} ${String(log.last_name || '')}`.trim() : ''}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {log.created_at ? format(new Date(String(log.created_at)), 'dd/MM HH:mm', { locale: fr }) : ''}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        </aside>
       )}
     </div>
   );
