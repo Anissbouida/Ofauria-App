@@ -12,6 +12,8 @@ const router = Router();
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.list);
 router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.todayStats);
 router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.summary);
+// Avant /:id pour que "deferred" ne soit pas capture comme un id de vente.
+router.get('/deferred', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.deferred);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.getById);
 router.post(
   '/checkout',

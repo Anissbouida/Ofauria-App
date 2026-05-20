@@ -16,15 +16,26 @@ export const saleRepository = {
     let i = 1;
     let needItemJoin = false;
 
+    // Une vente "a plus tard" (payment_status='unpaid') ne compte dans les
+    // ventes du jour que lorsqu'elle est encaissee : la liste normale est
+    // datee au jour d'encaissement (paid_at) et exclut les impayees ; la vue
+    // Impayes liste ces dernieres, datees a leur jour de vente (created_at).
+    const isUnpaidView = params.paymentStatus === 'unpaid';
+    const dateCol = isUnpaidView ? 's.created_at' : 'COALESCE(s.paid_at, s.created_at)';
+
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
     // Filtrer les dates dans le fuseau de l'utilisateur (sinon une vente Montreal le 22 avril a 21h46
     // = 01h46 UTC le 23 avril tombe a tort dans le filtre "23 avril").
     const tzFind = getUserTimezone();
-    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzFind}')::date <= $${i++}`); values.push(params.dateTo); }
+    if (params.dateFrom) { conditions.push(`(${dateCol} AT TIME ZONE '${tzFind}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(${dateCol} AT TIME ZONE '${tzFind}')::date <= $${i++}`); values.push(params.dateTo); }
     if (params.customerId) { conditions.push(`s.customer_id = $${i++}`); values.push(params.customerId); }
     if (params.paymentMethod) { conditions.push(`s.payment_method = $${i++}`); values.push(params.paymentMethod); }
-    if (params.paymentStatus) { conditions.push(`s.payment_status = $${i++}`); values.push(params.paymentStatus); }
+    if (isUnpaidView) {
+      conditions.push(`s.payment_status = 'unpaid'`);
+    } else {
+      conditions.push(`s.payment_status IS DISTINCT FROM 'unpaid'`);
+    }
     if (params.userId) { conditions.push(`s.user_id = $${i++}`); values.push(params.userId); }
     if (params.search) { conditions.push(`s.sale_number ILIKE $${i++}`); values.push(`%${params.search}%`); }
     if (params.productId) {
@@ -45,12 +56,13 @@ export const saleRepository = {
     values.push(params.limit, params.offset);
     const result = await db.query(
       `SELECT DISTINCT s.*, c.first_name as customer_first_name, c.last_name as customer_last_name,
-              u.first_name as cashier_first_name, u.last_name as cashier_last_name
+              u.first_name as cashier_first_name, u.last_name as cashier_last_name,
+              COALESCE(s.paid_at, s.created_at) AS effective_sort_date
        FROM sales s
        LEFT JOIN customers c ON c.id = s.customer_id
        JOIN users u ON u.id = s.user_id
        ${where}
-       ORDER BY s.created_at DESC
+       ORDER BY effective_sort_date DESC
        LIMIT $${i++} OFFSET $${i}`,
       values
     );
@@ -245,7 +257,11 @@ export const saleRepository = {
     }
   },
 
-  async markPaid(saleId: string, params: { paymentMethod: string; sessionId: string }) {
+  // sessionId : session de caisse encaissante (null si reglement hors caisse,
+  // p.ex. un admin qui solde un impaye depuis l'onglet Impayes).
+  // paidAt : date d'encaissement choisie (defaut : maintenant). C'est cette
+  // date qui rattache la vente au CA d'une journee.
+  async markPaid(saleId: string, params: { paymentMethod: string; sessionId: string | null; paidAt?: string | null }) {
     const dbClient = await db.getClient();
     try {
       await dbClient.query('BEGIN');
@@ -268,12 +284,12 @@ export const saleRepository = {
       const result = await dbClient.query(
         `UPDATE sales
            SET payment_status = 'paid',
-               paid_at = NOW(),
+               paid_at = COALESCE($4::timestamptz, NOW()),
                payment_method = $2,
                session_id = $3
          WHERE id = $1
          RETURNING *`,
-        [saleId, params.paymentMethod, params.sessionId]
+        [saleId, params.paymentMethod, params.sessionId, params.paidAt || null]
       );
 
       // Attribution des points de fidelite au moment de l'encaissement effectif.
@@ -296,24 +312,55 @@ export const saleRepository = {
     }
   },
 
+  // Ventes "a plus tard" : impayees en attente + celles deja reglees.
+  // Une vente reglee est reconnaissable a paid_at > created_at (un encaissement
+  // immediat a paid_at = created_at, pose dans le meme INSERT).
+  async findDeferred(storeId?: string) {
+    const conditions = [
+      `(s.payment_status = 'unpaid'
+        OR (s.payment_status = 'paid' AND s.paid_at IS NOT NULL AND s.paid_at > s.created_at))`,
+    ];
+    const values: unknown[] = [];
+    if (storeId) { conditions.push(`s.store_id = $1`); values.push(storeId); }
+
+    const result = await db.query(
+      `SELECT s.id, s.sale_number, s.total, s.created_at, s.paid_at,
+              s.payment_status, s.payment_method, s.unpaid_customer_name,
+              c.first_name as customer_first_name, c.last_name as customer_last_name,
+              u.first_name as cashier_first_name, u.last_name as cashier_last_name
+       FROM sales s
+       LEFT JOIN customers c ON c.id = s.customer_id
+       JOIN users u ON u.id = s.user_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY (s.payment_status = 'unpaid') DESC, COALESCE(s.paid_at, s.created_at) DESC`,
+      values
+    );
+    return result.rows;
+  },
+
   async todayStats(storeId?: string) {
     const storeFilter = storeId ? ' AND store_id = $1' : '';
     const storeValues = storeId ? [storeId] : [];
     const tz = getUserTimezone();
 
+    // Une vente a plus tard ne compte qu'au jour de son encaissement (paid_at) ;
+    // tant qu'elle est impayee elle est exclue. COALESCE(paid_at, created_at)
+    // protege les ventes historiques / imports sans paid_at.
     const result = await db.query(`
       SELECT
         COUNT(*) as total_sales,
         COALESCE(SUM(total), 0) as total_revenue,
         COALESCE(AVG(total), 0) as avg_sale_value
       FROM sales
-      WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
+      WHERE payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
     `, storeValues);
 
     const itemsResult = await db.query(`
       SELECT COALESCE(SUM(si.quantity), 0) as total_items
       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-      WHERE (s.created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
+      WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
     `, storeValues);
 
     // Subtract today's refunds from revenue
@@ -342,11 +389,14 @@ export const saleRepository = {
     const values: unknown[] = [];
     let i = 1;
 
+    // Les ventes a plus tard non encaissees sont exclues du CA ; une vente
+    // encaissee compte au jour de son reglement (paid_at).
+    conditions.push(`s.payment_status IS DISTINCT FROM 'unpaid'`);
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
     // Meme remise en fuseau utilisateur que findAll (evite les decalages de date aux heures limites).
     const tzSum = getUserTimezone();
-    if (params.dateFrom) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`(s.created_at AT TIME ZONE '${tzSum}')::date <= $${i++}`); values.push(params.dateTo); }
+    if (params.dateFrom) { conditions.push(`(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tzSum}')::date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tzSum}')::date <= $${i++}`); values.push(params.dateTo); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 

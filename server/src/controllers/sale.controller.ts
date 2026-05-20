@@ -177,7 +177,7 @@ export const saleController = {
 
   async pay(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { paymentMethod } = req.body;
+    const { paymentMethod, paidAt } = req.body as { paymentMethod: string; paidAt?: string };
 
     if (!req.user!.storeId) {
       res.status(400).json({ success: false, error: { message: 'Caissier non rattache a un magasin' } });
@@ -194,13 +194,38 @@ export const saleController = {
       return;
     }
 
-    const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
-    if (!activeSession) {
-      res.status(400).json({ success: false, error: { message: 'Vous devez ouvrir la caisse avant d\'encaisser' } });
-      return;
+    // Date d'encaissement : par defaut maintenant. Si l'admin la precise (onglet
+    // Impayes), on borne entre la date de creation de la vente et aujourd'hui —
+    // on n'encaisse pas une vente avant qu'elle existe, ni dans le futur.
+    let paidAtTs: string | undefined;
+    if (paidAt) {
+      const picked = new Date(`${paidAt}T12:00:00`);
+      const created = new Date(existing.created_at);
+      const now = new Date();
+      if (Number.isNaN(picked.getTime())) {
+        res.status(400).json({ success: false, error: { message: 'Date d\'encaissement invalide' } });
+        return;
+      }
+      if (picked.getTime() > now.getTime()) {
+        res.status(400).json({ success: false, error: { message: 'La date d\'encaissement ne peut pas etre dans le futur' } });
+        return;
+      }
+      if (picked < new Date(created.toISOString().slice(0, 10) + 'T00:00:00')) {
+        res.status(400).json({ success: false, error: { message: 'La date d\'encaissement ne peut pas preceder la date de la vente' } });
+        return;
+      }
+      paidAtTs = picked.toISOString();
     }
 
-    const result = await saleRepository.markPaid(id, { paymentMethod, sessionId: activeSession.id });
+    // L'encaissement peut etre fait sans caisse ouverte (admin qui solde un
+    // impaye depuis l'onglet Impayes) : dans ce cas session_id reste null.
+    const activeSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
+
+    const result = await saleRepository.markPaid(id, {
+      paymentMethod,
+      sessionId: activeSession?.id ?? null,
+      paidAt: paidAtTs,
+    });
     if (!result.ok) {
       if (result.reason === 'not_found') {
         res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
@@ -219,6 +244,16 @@ export const saleController = {
   async todayStats(req: AuthRequest, res: Response) {
     const stats = await saleRepository.todayStats(req.user!.storeId);
     res.json({ success: true, data: stats });
+  },
+
+  // Ventes a plus tard (impayees + reglees) pour l'onglet Impayes.
+  async deferred(req: AuthRequest, res: Response) {
+    if (!req.user!.storeId && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
+      return;
+    }
+    const rows = await saleRepository.findDeferred(req.user!.storeId);
+    res.json({ success: true, data: rows });
   },
 
   async summary(req: AuthRequest, res: Response) {

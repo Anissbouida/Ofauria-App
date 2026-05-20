@@ -103,7 +103,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
-  const [mainTab, setMainTab] = useState<'sales' | 'sessions' | 'returns' | 'invoices'>('sales');
+  const [mainTab, setMainTab] = useState<'sales' | 'unpaid' | 'sessions' | 'returns' | 'invoices'>('sales');
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -112,9 +112,12 @@ export default function SalesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [importResults, setImportResults] = useState<Record<string, any>[] | null>(null);
   const [importing, setImporting] = useState(false);
-  const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [paySaleTarget, setPaySaleTarget] = useState<Record<string, any> | null>(null);
   const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
+  // Date d'encaissement choisie dans le modal de reglement (onglet Impayes).
+  const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  // Filtre de statut de l'onglet Impayes.
+  const [unpaidStatusFilter, setUnpaidStatusFilter] = useState<'all' | 'unpaid' | 'paid'>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
     saleNumber: string; date: string; cashierName: string; customerName?: string;
@@ -155,23 +158,28 @@ export default function SalesPage() {
     });
   };
 
-  // Receipt list query — quand on filtre "Impayes uniquement", on ignore la
-  // fenetre de date pour ne pas masquer un impaye plus ancien.
+  // Receipt list query — la liste affiche les ventes encaissees du jour ;
+  // les ventes a plus tard non encaissees vivent dans l'onglet Impayes.
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', { dateFrom, dateTo, unpaid: showUnpaidOnly }],
-    queryFn: () => salesApi.list(
-      showUnpaidOnly
-        ? { paymentStatus: 'unpaid', limit: '500' }
-        : { dateFrom, dateTo, limit: '500' }
-    ),
+    queryKey: ['sales', { dateFrom, dateTo }],
+    queryFn: () => salesApi.list({ dateFrom, dateTo, limit: '500' }),
     enabled: mainTab === 'sales' && view === 'receipt',
   });
 
+  // Ventes a plus tard (impayees + reglees) pour l'onglet Impayes.
+  const { data: deferredData, isLoading: deferredLoading } = useQuery({
+    queryKey: ['sales-deferred'],
+    queryFn: () => salesApi.deferred(),
+    enabled: mainTab === 'unpaid',
+  });
+  const deferred: Record<string, any>[] = deferredData || [];
+
   const paySaleMutation = useMutation({
-    mutationFn: ({ id, paymentMethod }: { id: string; paymentMethod: string }) =>
-      salesApi.pay(id, { paymentMethod }),
+    mutationFn: ({ id, paymentMethod, paidAt }: { id: string; paymentMethod: string; paidAt?: string }) =>
+      salesApi.pay(id, { paymentMethod, paidAt }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['sales-deferred'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       notify.success('Encaissement enregistré');
       setPaySaleTarget(null);
@@ -383,6 +391,7 @@ export default function SalesPage() {
 
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
+    { key: 'unpaid' as const, label: 'Impayés', icon: Clock },
     { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
     { key: 'sessions' as const, label: 'Périodes de travail', icon: Lock },
     { key: 'invoices' as const, label: 'Factures émises', icon: FileText },
@@ -427,12 +436,6 @@ export default function SalesPage() {
           disabled={dateTo >= format(new Date(), 'yyyy-MM-dd')}
           className="odoo-pager-btn" title="Période suivante">
           <ChevronRight size={14} />
-        </button>
-        <button onClick={() => setShowUnpaidOnly(v => !v)}
-          title={showUnpaidOnly ? 'Afficher toutes les ventes' : 'Afficher uniquement les ventes en paiement reporté'}
-          className={showUnpaidOnly ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Clock size={13} /> Impayés
         </button>
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -637,7 +640,7 @@ export default function SalesPage() {
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', gap: 4 }}>
                             {isUnpaid && (
-                              <button onClick={() => { setPayPaymentMethod('cash'); setPaySaleTarget(s); }}
+                              <button onClick={() => { setPayPaymentMethod('cash'); setPayDate(format(new Date(), 'yyyy-MM-dd')); setPaySaleTarget(s); }}
                                 title="Encaisser le paiement"
                                 className="odoo-btn-primary"
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
@@ -858,6 +861,117 @@ export default function SalesPage() {
             )
           )}
         </>
+      )}
+
+      {/* ═══════════ IMPAYÉS TAB ═══════════ */}
+      {mainTab === 'unpaid' && (
+        deferredLoading ? <LoadingState /> : (() => {
+          const now = new Date();
+          const rows: Record<string, any>[] = deferred.map((s: Record<string, any>) => {
+            const status: 'unpaid' | 'paid' = s.payment_status === 'unpaid' ? 'unpaid' : 'paid';
+            const created = new Date(s.created_at as string);
+            const ref = status === 'paid' && s.paid_at ? new Date(s.paid_at as string) : now;
+            return { ...s, _status: status, _ageDays: Math.max(0, differenceInDays(ref, created)) };
+          });
+          const filtered = rows.filter(r => unpaidStatusFilter === 'all' || r._status === unpaidStatusFilter);
+          const unpaidRows = rows.filter(r => r._status === 'unpaid');
+          const outstanding = unpaidRows.reduce((sum, r) => sum + parseFloat(r.total as string), 0);
+          return (
+            <>
+              {/* Total des impayés en cours */}
+              <div className="odoo-stat-grid">
+                <div className="odoo-stat-card">
+                  <div className="odoo-stat-card-label"><Clock size={11} style={{ display: 'inline', marginRight: 4 }} />Impayés en cours</div>
+                  <div className="odoo-stat-card-value" style={{ color: outstanding > 0 ? '#dc3545' : undefined }}>{formatCurrency(outstanding)}</div>
+                  <div className="odoo-stat-card-sub">{unpaidRows.length} vente{unpaidRows.length > 1 ? 's' : ''} à encaisser</div>
+                </div>
+              </div>
+
+              {/* Filtre par statut */}
+              <div style={{ display: 'inline-flex', gap: 4 }}>
+                {([['all', 'Toutes'], ['unpaid', 'Impayées'], ['paid', 'Réglées']] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setUnpaidStatusFilter(k)}
+                    className="odoo-filter-dropdown"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      backgroundColor: unpaidStatusFilter === k ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+                      color: unpaidStatusFilter === k ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+                      fontWeight: unpaidStatusFilter === k ? 600 : 400,
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table className="odoo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 24 }}></th>
+                      <th>N° Vente</th>
+                      <th>Client</th>
+                      <th>Date de vente</th>
+                      <th style={{ textAlign: 'right' }}>Ancienneté</th>
+                      <th style={{ textAlign: 'right' }}>Montant</th>
+                      <th>Statut</th>
+                      <th style={{ textAlign: 'right', width: 140 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                        Aucune vente à plus tard
+                      </td></tr>
+                    ) : filtered.map((s: Record<string, any>) => {
+                      const isUnpaid = s._status === 'unpaid';
+                      const beneficiary = s.customer_first_name
+                        ? `${s.customer_first_name} ${s.customer_last_name}`
+                        : (s.unpaid_customer_name as string) || 'Client de passage';
+                      return (
+                        <tr key={s.id as string} className={isUnpaid ? 'row-warning' : ''}>
+                          <td><span className={`odoo-status-dot ${isUnpaid ? 'warning' : 'ok'}`} /></td>
+                          <td><span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.sale_number as string}</span></td>
+                          <td>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
+                              <User size={11} /> {beneficiary}
+                            </span>
+                          </td>
+                          <td style={{ color: 'var(--theme-text-muted)' }}>
+                            {format(new Date(s.created_at as string), 'dd MMM yyyy', { locale: fr })}
+                          </td>
+                          <td style={{ textAlign: 'right', color: isUnpaid && s._ageDays > 7 ? '#dc3545' : 'var(--theme-text-muted)' }}>
+                            {s._ageDays} j
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(parseFloat(s.total as string))}</td>
+                          <td>
+                            {isUnpaid
+                              ? <span className="odoo-tag odoo-tag-yellow"><Clock size={9} style={{ display: 'inline', marginRight: 2 }} /> Impayée</span>
+                              : <span className="odoo-tag odoo-tag-green"><CheckCircle size={9} style={{ display: 'inline', marginRight: 2 }} /> Réglée</span>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: 4 }}>
+                              {isUnpaid && (
+                                <button onClick={() => { setPayPaymentMethod('cash'); setPayDate(format(new Date(), 'yyyy-MM-dd')); setPaySaleTarget(s); }}
+                                  title="Marquer comme réglée"
+                                  className="odoo-btn-primary"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
+                                  <Banknote size={11} /> Encaisser
+                                </button>
+                              )}
+                              <button onClick={() => openReceipt(s.id as string)} className="odoo-pager-btn" title="Voir le reçu">
+                                <Eye size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()
       )}
 
       {/* ═══════════ RETURNS TAB ═══════════ */}
@@ -1093,7 +1207,7 @@ export default function SalesPage() {
             </div>
 
             <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-5">
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-4">
               <button onClick={() => setPayPaymentMethod('cash')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${
                   payPaymentMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
@@ -1108,9 +1222,17 @@ export default function SalesPage() {
               </button>
             </div>
 
+            <label className="block text-sm font-medium text-gray-700 mb-2">Date d'encaissement</label>
+            <input type="date" value={payDate}
+              min={format(new Date(paySaleTarget.created_at as string), 'yyyy-MM-dd')}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={(e) => setPayDate(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:border-primary-400" />
+            <p className="text-xs text-gray-400 mb-5">La vente sera comptabilisée dans le CA de ce jour.</p>
+
             <div className="flex gap-3">
               <button onClick={() => setPaySaleTarget(null)} className="btn-secondary flex-1">Annuler</button>
-              <button onClick={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod })}
+              <button onClick={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod, paidAt: payDate })}
                 disabled={paySaleMutation.isPending}
                 className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40">
                 {paySaleMutation.isPending ? 'En cours...' : 'Encaisser'}

@@ -123,7 +123,9 @@ export const cashRegisterRepository = {
           COUNT(CASE WHEN sale_type = 'standard' THEN 1 END) as standard_count,
           COUNT(CASE WHEN sale_type = 'advance' THEN 1 END) as advance_count,
           COUNT(CASE WHEN sale_type = 'delivery' THEN 1 END) as delivery_count
-        FROM sales WHERE session_id = $1`,
+        FROM sales
+        WHERE session_id = $1
+          AND payment_status IS DISTINCT FROM 'unpaid'`,
         [sessionId]
       );
 

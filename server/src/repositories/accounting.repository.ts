@@ -45,18 +45,21 @@ export const caisseRepository = {
       params
     );
 
-    // Daily sales totals with payment method breakdown (source of truth for cash/card)
+    // Daily sales totals with payment method breakdown (source of truth for cash/card).
+    // Une vente a plus tard est rattachee au jour de son encaissement (paid_at)
+    // et exclue tant qu'elle n'est pas encaissee.
     const sales = await db.query(
-      `SELECT TO_CHAR(DATE(created_at AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
+      `SELECT TO_CHAR(DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
               COALESCE(SUM(total), 0) as total_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
               COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
               COUNT(*) as sale_count
        FROM sales
-       WHERE DATE(created_at AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
-       GROUP BY DATE(created_at AT TIME ZONE '${tz}')
-       ORDER BY DATE(created_at AT TIME ZONE '${tz}')`,
+       WHERE payment_status IS DISTINCT FROM 'unpaid'
+         AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
+       GROUP BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')
+       ORDER BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')`,
       params
     );
 
@@ -96,7 +99,8 @@ export const caisseRepository = {
         COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
         COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
        FROM sales
-       WHERE DATE(created_at AT TIME ZONE '${tz}') < $1${prevSalesFilterS}`,
+       WHERE payment_status IS DISTINCT FROM 'unpaid'
+         AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1${prevSalesFilterS}`,
       prevSalesParams
     );
 

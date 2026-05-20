@@ -47,8 +47,14 @@ export const checkoutSchema = z.object({
   ]).optional(),
 });
 
+// Encaissement d'une vente a plus tard. 'credit' est exclu : c'est le marqueur
+// d'une vente non encaissee, pas un mode de reglement.
+const SETTLEMENT_METHODS = ['cash', 'card', 'mobile', 'check'] as const;
+
 export const paySaleSchema = z.object({
-  paymentMethod: z.enum(PAYMENT_METHODS),
+  paymentMethod: z.enum(SETTLEMENT_METHODS),
+  // Date d'encaissement choisie (AAAA-MM-JJ). Absente : encaissement immediat.
+  paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional(),
 });
 
 export { moneyAmount, positiveQuantity };

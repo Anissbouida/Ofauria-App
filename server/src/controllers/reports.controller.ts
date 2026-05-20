@@ -10,17 +10,21 @@ export const reportsController = {
     const storeValues = storeId ? [storeId] : [];
     const tz = getUserTimezone();
 
-    // Sales stats (daily POS)
+    // Sales stats (daily POS). Une vente a plus tard ne compte qu'au jour de
+    // son encaissement (paid_at) ; impayee, elle est exclue.
     const todaySales = await db.query(`
       SELECT COUNT(*) as total_sales, COALESCE(SUM(total), 0) as total_revenue,
              COALESCE(AVG(total), 0) as avg_sale_value
-      FROM sales WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
+      FROM sales
+      WHERE payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter}
     `, storeValues);
 
     const totalItems = await db.query(`
       SELECT COALESCE(SUM(si.quantity), 0) as total_items
       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-      WHERE (s.created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter.replace('store_id', 's.store_id')}
+      WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date${storeFilter.replace('store_id', 's.store_id')}
     `, storeValues);
 
     // Today's refunds (returns only, not exchanges)
@@ -45,7 +49,8 @@ export const reportsController = {
                AND sr.created_at >= (NOW() AT TIME ZONE '${tz}')::date - INTERVAL '7 days'
              ), 0) as total_revenue
       FROM sale_items si JOIN products p ON p.id = si.product_id JOIN sales s ON s.id = si.sale_id
-      WHERE s.created_at >= (NOW() AT TIME ZONE '${tz}')::date - INTERVAL '7 days'
+      WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+        AND COALESCE(s.paid_at, s.created_at) >= (NOW() AT TIME ZONE '${tz}')::date - INTERVAL '7 days'
       GROUP BY p.id, p.name ORDER BY total_sold DESC LIMIT 5
     `);
 
@@ -119,9 +124,11 @@ export const reportsController = {
     const result = await db.query(`
       SELECT s.date, s.sales_count, s.revenue - COALESCE(r.refunds, 0) as revenue
       FROM (
-        SELECT (created_at AT TIME ZONE '${tz}')::date as date, COUNT(*) as sales_count, SUM(total) as revenue
-        FROM sales WHERE (created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
-        GROUP BY (created_at AT TIME ZONE '${tz}')::date
+        SELECT (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date as date, COUNT(*) as sales_count, SUM(total) as revenue
+        FROM sales
+        WHERE payment_status IS DISTINCT FROM 'unpaid'
+          AND (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+        GROUP BY (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date
       ) s
       LEFT JOIN (
         SELECT (created_at AT TIME ZONE '${tz}')::date as date, SUM(refund_amount) as refunds
@@ -155,7 +162,8 @@ export const reportsController = {
       JOIN products p ON p.id = si.product_id
       LEFT JOIN categories c ON c.id = p.category_id
       JOIN sales s ON s.id = si.sale_id
-      WHERE (s.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+      WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
       GROUP BY p.id, p.name, c.name ORDER BY total_sold DESC
     `, [startDate || '2024-01-01', endDate || 'now']);
 
@@ -184,7 +192,8 @@ export const reportsController = {
             ${storeId ? ' AND sr.store_id = $3' : ''}
         ), 0) AS net_sales
       FROM sales s
-      WHERE (s.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+      WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+        AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
         ${salesStoreFilter}
     `, params);
 
@@ -238,7 +247,8 @@ export const reportsController = {
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN production_unit_cost puc ON puc.product_id = p.id
         LEFT JOIN recipe_live_cost rlc ON rlc.product_id = p.id
-        WHERE (s.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+        WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+          AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
           ${salesStoreFilter}
         GROUP BY p.id, p.name, c.name, puc.allocated_cost, puc.produced_qty, rlc.unit_cost, p.cost_price
       ),
@@ -424,7 +434,8 @@ export const reportsController = {
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN production_unit_cost puc ON puc.product_id = p.id
         LEFT JOIN recipe_live_cost rlc ON rlc.product_id = p.id
-        WHERE (s.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+        WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+          AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
           ${salesStoreFilter}
           ${categoryFilter}
         GROUP BY p.id, p.name, c.name, puc.allocated_cost, puc.produced_qty, rlc.unit_cost, p.cost_price
