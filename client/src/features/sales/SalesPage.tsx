@@ -118,7 +118,7 @@ export default function SalesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
     saleNumber: string; date: string; cashierName: string; customerName?: string;
-    items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' }[];
+    items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' }[];
     subtotal: number; discountAmount: number; total: number; paymentMethod: string;
     advanceAmount?: number; advanceDate?: string; orderTotal?: number; isAdvanceReceipt?: boolean;
   } | null>(null);
@@ -142,6 +142,7 @@ export default function SalesPage() {
         unitPrice: parseFloat(item.unit_price as string),
         subtotal: parseFloat(item.subtotal as string),
         unit: item.unit === 'g' ? 'g' : 'unit',
+        displayUnit: item.display_unit === 'kg' ? 'kg' : item.display_unit === 'g' ? 'g' : undefined,
       })),
       subtotal: hasOrderData ? parseFloat(sale.order_subtotal) : parseFloat(sale.subtotal),
       discountAmount: hasOrderData ? parseFloat(sale.order_discount || '0') : parseFloat(sale.discount_amount),

@@ -11,6 +11,10 @@ const saleItemSchema = z.object({
   // Pour les produits au poids : nombre de grammes (entier, saisi à la caisse).
   // Côté serveur on vérifie la cohérence avec product.sale_unit.
   quantity: positiveQuantity,
+  // Unité de saisie choisie au POS pour un produit au poids ('g' ou 'kg').
+  // Purement cosmétique : memorisee pour afficher le recu dans la meme unite.
+  // Ignoree pour les produits unitaires.
+  displayUnit: z.enum(['g', 'kg']).optional(),
   // prix et subtotal sont calcules cote serveur, pas envoyes par le client
 });
 

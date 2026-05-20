@@ -90,7 +90,7 @@ export const printerService = {
       payment_method: string;
       cashier_name?: string;
       customer_name?: string;
-      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g' }>;
+      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g'; display_unit?: 'g' | 'kg' | null }>;
       cash_given?: number;
       change_amount?: number;
     };
@@ -153,10 +153,18 @@ export const printerService = {
         // ─── Articles ───
         for (const item of params.sale.items) {
           printer.println(item.name);
-          // 2nd ligne : qty x PU (ou poids @ prix/kg)        subtotal
-          const left = item.unit === 'g'
-            ? `  ${item.quantity} g @ ${item.unit_price.toFixed(2)}/kg`
-            : `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
+          // 2nd ligne : qty x PU (ou poids @ prix/kg)        subtotal.
+          // Pour un produit au poids, on affiche dans l'unite saisie au POS
+          // (display_unit) : "1 kg @ ..." ou "1000 g @ ...".
+          let left: string;
+          if (item.unit === 'g') {
+            const weight = item.display_unit === 'kg'
+              ? `${Number((item.quantity / 1000).toFixed(3))} kg`
+              : `${item.quantity} g`;
+            left = `  ${weight} @ ${item.unit_price.toFixed(2)}/kg`;
+          } else {
+            left = `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
+          }
           const right = `${item.subtotal.toFixed(2)} DH`;
           printer.leftRight(left, right);
         }

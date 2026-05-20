@@ -14,6 +14,9 @@ interface ReceiptItem {
   unitPrice: number;
   subtotal: number;
   unit?: 'unit' | 'g';
+  // Pour unit='g' : unité de saisie du caissier. 'kg' affiche "1 kg",
+  // 'g' (ou absent) affiche "1000 g". quantity reste toujours en grammes.
+  displayUnit?: 'g' | 'kg';
 }
 
 interface ReceiptData {
@@ -262,7 +265,9 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                         <div style={{ fontWeight: 'bold' }}>{item.name}</div>
                         <div style={{ paddingLeft: '8px', color: '#333' }}>
                           {item.unit === 'g'
-                            ? `${item.quantity} g @ ${item.unitPrice.toFixed(2)} DH/kg`
+                            ? `${item.displayUnit === 'kg'
+                                ? `${Number((item.quantity / 1000).toFixed(3))} kg`
+                                : `${item.quantity} g`} @ ${item.unitPrice.toFixed(2)} DH/kg`
                             : `${item.quantity} x ${item.unitPrice.toFixed(2)} DH`}
                         </div>
                       </td>

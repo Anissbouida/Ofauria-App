@@ -87,11 +87,15 @@ export const saleController = {
       let itemSubtotal: number;
       let unitPrice: number;
       let lineUnit: 'unit' | 'g' = 'unit';
+      // Unité d'affichage du recu : memorise le toggle g/kg du caissier pour
+      // les ventes au poids. NULL pour les produits unitaires.
+      let lineDisplayUnit: 'g' | 'kg' | null = null;
       if (product.sale_unit === 'weight') {
         const pricePerKg = parseFloat(product.price_per_kg ?? product.price);
         unitPrice = pricePerKg;
         itemSubtotal = (item.quantity / 1000) * pricePerKg;
         lineUnit = 'g';
+        lineDisplayUnit = item.displayUnit === 'kg' ? 'kg' : 'g';
       } else {
         unitPrice = parseFloat(product.price);
         itemSubtotal = unitPrice * item.quantity;
@@ -99,7 +103,7 @@ export const saleController = {
       // Arrondi à 2 décimales (centimes) pour éviter les écarts d'arrondi
       itemSubtotal = Math.round(itemSubtotal * 100) / 100;
       subtotal += itemSubtotal;
-      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit });
+      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit, displayUnit: lineDisplayUnit });
     }
 
     const taxAmount = 0;

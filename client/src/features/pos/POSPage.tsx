@@ -37,7 +37,8 @@ interface CartItem {
   unit: 'unit' | 'g';
   // Pour les items au poids : unité d'affichage choisie par le caissier dans
   // le modal (g ou kg). Permet d'afficher "0.50 kg" ou "500 g" selon la saisie.
-  // N'affecte ni la DB ni le calcul (quantity reste en grammes).
+  // Memorisee en DB (sale_items.display_unit) pour que le recu rouvert plus
+  // tard affiche la meme unite. N'affecte pas le calcul (quantity reste en g).
   displayUnit?: 'g' | 'kg';
   imageUrl?: string;
 }
@@ -48,7 +49,7 @@ interface ReceiptData {
   date: string;
   cashierName: string;
   customerName?: string;
-  items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' }[];
+  items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' }[];
   subtotal: number;
   discountAmount: number;
   total: number;
@@ -499,6 +500,7 @@ export default function POSPage() {
           unitPrice: i.price,
           subtotal: i.unit === 'g' ? (i.quantity / 1000) * i.price : i.price * i.quantity,
           unit: i.unit,
+          displayUnit: i.displayUnit,
         })),
         subtotal,
         discountAmount: 0,
@@ -794,7 +796,7 @@ export default function POSPage() {
     }
     checkoutMutation.mutate({
       customerId: customerId || undefined,
-      items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
+      items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, displayUnit: i.displayUnit })),
       paymentMethod,
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
@@ -815,7 +817,7 @@ export default function POSPage() {
     }
     checkoutMutation.mutate({
       customerId: customerId || undefined,
-      items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
+      items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, displayUnit: i.displayUnit })),
       paymentMethod: 'credit',
       paymentStatus: 'unpaid',
       unpaidCustomerName: !customerId && unpaidCustomerName.trim() ? unpaidCustomerName.trim() : undefined,
