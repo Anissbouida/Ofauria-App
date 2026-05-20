@@ -13,7 +13,8 @@ router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.li
 router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.todayStats);
 router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.summary);
 // Avant /:id pour que "deferred" ne soit pas capture comme un id de vente.
-router.get('/deferred', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), saleController.deferred);
+// Ouvert a SALES : la caissiere consulte et encaisse les impayes depuis le POS.
+router.get('/deferred', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.deferred);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), saleController.getById);
 router.post(
   '/checkout',

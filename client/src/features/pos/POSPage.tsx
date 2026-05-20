@@ -62,7 +62,7 @@ interface ReceiptData {
   isAdvanceReceipt?: boolean;
 }
 
-type PosTab = 'sell' | 'orders' | 'returns';
+type PosTab = 'sell' | 'orders' | 'returns' | 'unpaid';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -79,6 +79,9 @@ export default function POSPage() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [posTab, setPosTab] = useState<PosTab>('sell');
+  // Onglet Impayes : vente a plus tard en cours d'encaissement.
+  const [unpaidPayTarget, setUnpaidPayTarget] = useState<Record<string, any> | null>(null);
+  const [unpaidPayMethod, setUnpaidPayMethod] = useState<'cash' | 'card'>('cash');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('__top__');
   const [search, setSearch] = useState('');
@@ -297,6 +300,30 @@ export default function POSPage() {
     queryKey: ['pos-orders', orderSearch],
     queryFn: () => ordersApi.list({ limit: '50' }),
     enabled: !!activeSession && posTab === 'orders',
+  });
+
+  // Ventes a plus tard (impayees) pour l'onglet Impayes
+  const { data: deferredData, isLoading: deferredLoading } = useQuery({
+    queryKey: ['sales-deferred'],
+    queryFn: () => salesApi.deferred(),
+    enabled: !!activeSession && posTab === 'unpaid',
+  });
+  const unpaidSales: Record<string, any>[] = (deferredData || [])
+    .filter((s: Record<string, any>) => s.payment_status === 'unpaid');
+
+  // Encaissement d'une vente a plus tard depuis le POS (date = aujourd'hui,
+  // rattachee a la session de caisse ouverte du caissier).
+  const payUnpaidMutation = useMutation({
+    mutationFn: ({ id, paymentMethod }: { id: string; paymentMethod: string }) =>
+      salesApi.pay(id, { paymentMethod }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-deferred'] });
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      notify.success('Vente encaissée');
+      setUnpaidPayTarget(null);
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Erreur lors de l'encaissement")),
   });
 
   // Pending transfers for cashier confirmation
@@ -943,6 +970,17 @@ export default function POSPage() {
             }`}>
             <RotateCcw size={15} /> Retours
           </button>
+          <button onClick={() => setPosTab('unpaid')}
+            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              posTab === 'unpaid' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}>
+            <Clock size={15} /> Impayés
+            {unpaidSales.length > 0 && (
+              <span className="ml-0.5 bg-amber-500 text-white rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold">
+                {unpaidSales.length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -1547,6 +1585,103 @@ export default function POSPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ IMPAYÉS TAB ═══════════ */}
+      {posTab === 'unpaid' && (
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-50">
+          <div className="p-3 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Ventes à plus tard</p>
+              <p className="text-xs text-gray-400">{unpaidSales.length} vente{unpaidSales.length > 1 ? 's' : ''} en attente d'encaissement</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Total impayés</p>
+              <p className="text-lg font-bold text-amber-600">
+                {unpaidSales.reduce((sum, r) => sum + parseFloat(r.total as string), 0).toFixed(2)} DH
+              </p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {deferredLoading && <p className="text-center py-12 text-gray-400">Chargement...</p>}
+            {!deferredLoading && unpaidSales.length === 0 && (
+              <div className="text-center py-16">
+                <CheckCircle size={48} className="mx-auto text-green-300 mb-3" />
+                <p className="text-gray-400">Aucune vente impayée</p>
+              </div>
+            )}
+            {unpaidSales.map((s) => {
+              const beneficiary = s.customer_first_name
+                ? `${s.customer_first_name} ${s.customer_last_name}`
+                : (s.unpaid_customer_name as string) || 'Client de passage';
+              const ageDays = Math.max(0, Math.floor((Date.now() - new Date(s.created_at as string).getTime()) / 86400000));
+              return (
+                <div key={s.id as string} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-sm font-semibold">{s.sale_number as string}</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Impayée</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                      <span className="flex items-center gap-1"><User size={13} /> {beneficiary}</span>
+                      <span className="flex items-center gap-1 text-gray-400">
+                        <Clock size={12} /> {format(new Date(s.created_at as string), 'dd MMM yyyy', { locale: fr })}
+                        {ageDays > 0 && ` · ${ageDays} j`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-lg">{parseFloat(s.total as string).toFixed(2)} DH</p>
+                  </div>
+                  <button onClick={() => { setUnpaidPayMethod('cash'); setUnpaidPayTarget(s); }}
+                    className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0">
+                    <Banknote size={18} />
+                    <span className="text-[10px] font-semibold">Encaisser</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Modal encaissement vente impayée */}
+      {unpaidPayTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setUnpaidPayTarget(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[380px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b">
+              <h3 className="font-semibold text-gray-800">Encaisser la vente</h3>
+              <p className="text-xs text-gray-500 font-mono">{unpaidPayTarget.sale_number as string}</p>
+            </div>
+            <div className="p-5">
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 flex items-center justify-between">
+                <span className="text-sm text-gray-500">Montant à encaisser</span>
+                <span className="text-xl font-bold text-primary-700">{parseFloat(unpaidPayTarget.total as string).toFixed(2)} DH</span>
+              </div>
+              <label className="block text-xs font-semibold text-gray-600 mb-2">Mode de paiement</label>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-2">
+                <button onClick={() => setUnpaidPayMethod('cash')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${unpaidPayMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'}`}>
+                  <Banknote size={15} /> Espèces
+                </button>
+                <button onClick={() => setUnpaidPayMethod('card')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${unpaidPayMethod === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>
+                  <CreditCard size={15} /> Carte
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">Encaissement daté d'aujourd'hui, ajouté à votre caisse.</p>
+            </div>
+            <div className="px-5 py-3 border-t bg-gray-50 flex justify-end gap-2">
+              <button onClick={() => setUnpaidPayTarget(null)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100">Annuler</button>
+              <button onClick={() => payUnpaidMutation.mutate({ id: unpaidPayTarget.id as string, paymentMethod: unpaidPayMethod })}
+                disabled={payUnpaidMutation.isPending}
+                className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+                {payUnpaidMutation.isPending ? 'En cours...' : 'Encaisser'}
+              </button>
+            </div>
           </div>
         </div>
       )}
