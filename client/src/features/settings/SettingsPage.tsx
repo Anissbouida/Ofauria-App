@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const { settings, updateSettings } = useSettings();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [tabSearch, setTabSearch] = useState('');
 
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [subtitle, setSubtitle] = useState(settings.subtitle);
@@ -64,19 +65,28 @@ export default function SettingsPage() {
     companyName !== settings.companyName ||
     subtitle !== settings.subtitle;
 
-  const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { key: 'general', label: 'General', icon: <Building2 size={18} /> },
-    { key: 'appearance', label: 'Apparence', icon: <Paintbrush size={18} /> },
-    { key: 'print', label: 'Impression', icon: <Printer size={18} /> },
-    { key: 'stores', label: 'Points de vente', icon: <Store size={18} /> },
-    { key: 'referentiel', label: 'Referentiel', icon: <Database size={18} /> },
-    { key: 'production', label: 'Production', icon: <BarChart3 size={18} /> },
-    { key: 'sachets', label: 'Sachets', icon: <ShoppingBag size={18} /> },
+  const tabs: { key: SettingsTab; label: string; description: string; icon: React.ReactNode }[] = [
+    { key: 'general', label: 'General', description: 'Nom et identite de l\'entreprise', icon: <Building2 size={18} /> },
+    { key: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
+    { key: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
+    { key: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
+    { key: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
+    { key: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
+    { key: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
   ];
 
+  const normalize = (s: string) =>
+    s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const search = normalize(tabSearch.trim());
+  const filteredTabs = search
+    ? tabs.filter((t) => normalize(t.label).includes(search) || normalize(t.description).includes(search))
+    : tabs;
+
+  const activeMeta = tabs.find((t) => t.key === activeTab);
+
   return (
-    <div className={`${activeTab === 'referentiel' ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6 transition-all`}>
-      <div className="flex items-center justify-between">
+    <div className="max-w-7xl mx-auto">
+      <div className="flex items-center justify-between mb-5">
         <h1 className="text-2xl font-bold text-gray-800">Parametres</h1>
         {activeTab === 'general' && (
           <div className="flex gap-2">
@@ -93,41 +103,76 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {tabs.map((tab) => (
-          <button key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === tab.key
-                ? 'bg-white shadow-sm text-gray-800'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}>
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex gap-6 items-start">
+        {/* Navigation laterale */}
+        <aside className="w-64 shrink-0 sticky top-4">
+          <div className="relative mb-3">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={tabSearch}
+              onChange={(e) => setTabSearch(e.target.value)}
+              placeholder="Rechercher un reglage..."
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-300"
+            />
+          </div>
+          <nav className="space-y-0.5 bg-white border border-gray-200 rounded-xl p-2">
+            {filteredTabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
+                    isActive ? 'bg-primary-50' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <span className={`mt-0.5 ${isActive ? 'text-primary-600' : 'text-gray-400'}`}>
+                    {tab.icon}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-medium ${isActive ? 'text-primary-700' : 'text-gray-700'}`}>
+                      {tab.label}
+                    </span>
+                    <span className="block text-xs text-gray-400 truncate">{tab.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {filteredTabs.length === 0 && (
+              <p className="px-3 py-4 text-xs text-gray-400 text-center">Aucun reglage trouve.</p>
+            )}
+          </nav>
+        </aside>
+
+        {/* Contenu */}
+        <div className="flex-1 min-w-0">
+          {activeMeta && (
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-gray-400">{activeMeta.icon}</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 leading-tight">{activeMeta.label}</h2>
+                <p className="text-xs text-gray-400">{activeMeta.description}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            {activeTab === 'general' && (
+              <GeneralTab
+                companyName={companyName} setCompanyName={setCompanyName}
+                subtitle={subtitle} setSubtitle={setSubtitle}
+              />
+            )}
+            {activeTab === 'appearance' && <AppearanceTab />}
+            {activeTab === 'print' && <PrintTab />}
+            {activeTab === 'stores' && <StoresSection />}
+            {activeTab === 'referentiel' && <ReferentielTab />}
+            {activeTab === 'production' && <ProductionChargesTab />}
+            {activeTab === 'sachets' && <SachetsTab />}
+          </div>
+        </div>
       </div>
-
-      {/* Tab content */}
-      {activeTab === 'general' && (
-        <GeneralTab
-          companyName={companyName} setCompanyName={setCompanyName}
-          subtitle={subtitle} setSubtitle={setSubtitle}
-        />
-      )}
-
-      {activeTab === 'appearance' && <AppearanceTab />}
-
-      {activeTab === 'print' && <PrintTab />}
-
-      {activeTab === 'stores' && <StoresSection />}
-
-      {activeTab === 'referentiel' && <ReferentielTab />}
-
-      {activeTab === 'production' && <ProductionChargesTab />}
-
-      {activeTab === 'sachets' && <SachetsTab />}
     </div>
   );
 }
