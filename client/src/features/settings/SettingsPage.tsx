@@ -804,7 +804,7 @@ function PrintTab() {
               <Eye size={16} className="text-gray-500" />
               <h3 className="text-sm font-semibold text-gray-700">Apercu du recu</h3>
             </div>
-            <div className="bg-gray-50 rounded-lg p-3 overflow-hidden" style={{ maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>
+            <div className="bg-white border border-gray-200 shadow-sm rounded-lg p-3 overflow-hidden" style={{ maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>
               <div style={{ fontFamily: "'Courier New', monospace", fontSize: `${Math.max(receiptFontSize - 2, 8)}px`, color: '#000', lineHeight: 1.4 }}>
                 {/* Logo */}
                 {receiptShowLogo && (
