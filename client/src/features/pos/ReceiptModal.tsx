@@ -220,7 +220,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
 
         {/* Receipt preview */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="bg-gray-50 rounded-xl p-4 font-mono text-xs" style={{ maxWidth: '300px', margin: '0 auto' }}>
+          <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-4 font-mono text-xs" style={{ maxWidth: '300px', margin: '0 auto' }}>
             <div ref={receiptRef}>
               {/* Header */}
               <div className="receipt-header" style={{ textAlign: 'center', marginBottom: '8px' }}>
