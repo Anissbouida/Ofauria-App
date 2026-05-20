@@ -6,11 +6,11 @@ import { settingsApi } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { referentielApi } from '../../api/referentiel.api';
 import {
-  Save, Palette, Building2, RotateCcw, MapPin, Plus, Pencil, Trash2, Store,
-  Printer, Upload, Image, Eye, Type, FileText, ToggleLeft, ToggleRight,
-  Database, Tag, Check, X, ShieldCheck, ArrowDownUp, Search, Download,
-  ChevronLeft, RotateCw, History, BarChart3, AlertTriangle, EyeOff, Users,
-  Paintbrush, Monitor, Sun, Moon, Layers, ChevronDown, ChevronUp, ShoppingBag,
+  Save, Building2, RotateCcw, MapPin, Plus, Pencil, Trash2, Store,
+  Printer, Upload, Image, Eye, Type,
+  Database, Check, X, Search, Download,
+  ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
+  Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
   Wallet, Factory, Package, ChevronRight,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
@@ -85,11 +85,6 @@ export default function SettingsPage() {
     : tabs;
 
   const activeMeta = tabs.find((t) => t.key === activeTab);
-
-  // Onglets "tableau de bord" (Stores, Referentiel) : surfaces propres,
-  // pas de panneau blanc englobant. Les autres sont des formulaires de reglages.
-  const DASHBOARD_TABS: SettingsTab[] = ['stores', 'referentiel'];
-  const isDashboard = DASHBOARD_TABS.includes(activeTab);
 
   const tabContent = (
     <>
@@ -182,21 +177,14 @@ export default function SettingsPage() {
 
         {/* Contenu */}
         <div className="flex-1 min-w-0">
-          {isDashboard ? (
-            <div className="space-y-4">
+          <div className="bg-white border border-gray-200 rounded-xl">
+            <div className="px-6 py-4 border-b border-gray-100">
               {sectionHeader}
+            </div>
+            <div className="p-6">
               {tabContent}
             </div>
-          ) : (
-            <div className="bg-white border border-gray-200 rounded-xl">
-              <div className="px-6 py-4 border-b border-gray-100">
-                {sectionHeader}
-              </div>
-              <div className="p-6">
-                {tabContent}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -1000,7 +988,7 @@ function StoresSection() {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
+    <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500">
           {stores.length} point{stores.length > 1 ? 's' : ''} de vente configure{stores.length > 1 ? 's' : ''}
@@ -1139,25 +1127,6 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const totalActive = tables.reduce((s: number, t: Record<string, any>) => s + ((t.active_count as number) || 0), 0);
   const totalInactive = tables.reduce((s: number, t: Record<string, any>) => s + ((t.inactive_count as number) || 0), 0);
 
-  const TABLE_ICONS: Record<string, { icon: typeof Database; color: string; bg: string }> = {
-    expense_categories:     { icon: Layers,    color: 'text-red-600',    bg: 'bg-red-50' },
-    revenue_categories:     { icon: Layers,    color: 'text-green-600',  bg: 'bg-green-50' },
-    payment_methods:        { icon: Wallet,    color: 'text-emerald-600',bg: 'bg-emerald-50' },
-    product_categories:     { icon: ShoppingBag, color: 'text-amber-600', bg: 'bg-amber-50' },
-    ingredient_categories:  { icon: Tag,       color: 'text-orange-600', bg: 'bg-orange-50' },
-    units:                  { icon: ArrowDownUp, color: 'text-sky-600',  bg: 'bg-sky-50' },
-    yield_units:            { icon: ArrowDownUp, color: 'text-blue-600', bg: 'bg-blue-50' },
-    loss_types:             { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-50' },
-    loss_reasons:           { icon: Trash2,    color: 'text-rose-600',   bg: 'bg-rose-50' },
-    production_loss_reasons:{ icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-50' },
-    unsold_destinations:    { icon: RotateCw,  color: 'text-teal-600',   bg: 'bg-teal-50' },
-    contract_types:         { icon: FileText,  color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    leave_types:            { icon: FileText,  color: 'text-purple-600', bg: 'bg-purple-50' },
-    absence_reasons:        { icon: Users,     color: 'text-violet-600', bg: 'bg-violet-50' },
-    employee_roles:         { icon: Users,     color: 'text-cyan-600',   bg: 'bg-cyan-50' },
-  };
-  const defaultIcon = { icon: Database, color: 'text-gray-600', bg: 'bg-gray-100' };
-
   // Regroupement des tables par domaine metier. Les ids absents de cette
   // config tombent dans le domaine "Autres" pour ne jamais etre masques.
   const REF_DOMAINS: { key: string; label: string; icon: typeof Database; tableIds: string[] }[] = [
@@ -1201,46 +1170,24 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   };
 
   return (
-    <div className="flex flex-col xl:flex-row gap-5 items-start">
+    <div className="flex flex-col xl:flex-row gap-6 items-start">
       {/* Colonne principale */}
-      <div className="flex-1 min-w-0 w-full space-y-5">
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-              <Database size={18} className="text-indigo-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold text-gray-800 leading-tight">{tables.length}</p>
-              <p className="text-xs text-gray-500 truncate">Tables de reference</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <Check size={18} className="text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold text-green-600 leading-tight">{totalActive}</p>
-              <p className="text-xs text-gray-500 truncate">Entrees actives</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-              <EyeOff size={18} className="text-amber-500" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold text-amber-500 leading-tight">{totalInactive}</p>
-              <p className="text-xs text-gray-500 truncate">Inactives</p>
-            </div>
-          </div>
-        </div>
+      <div className="flex-1 min-w-0 w-full">
+        {/* Resume */}
+        <p className="text-xs text-gray-400 mb-3">
+          {tables.length} tables &middot;{' '}
+          <span className="text-emerald-600 font-medium">{totalActive}</span> entrees actives
+          {totalInactive > 0 && (
+            <> &middot; <span className="text-amber-500 font-medium">{totalInactive}</span> inactives</>
+          )}
+        </p>
 
-        {/* Search bar */}
-        <div className="relative">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+        {/* Recherche */}
+        <div className="relative mb-6">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={dashSearch} onChange={e => setDashSearch(e.target.value)}
             placeholder="Rechercher une table de parametrage..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-300" />
         </div>
 
         {/* Sections par domaine */}
@@ -1249,58 +1196,49 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
           // En recherche, on garde tout deplie pour voir les resultats.
           const isCollapsed = !dashSearch && collapsedDomains[section.key];
           return (
-            <div key={section.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div key={section.key} className="mb-7 last:mb-0">
               <button
                 type="button"
                 onClick={() => toggleDomain(section.key)}
-                className={`w-full flex items-center gap-2.5 px-4 py-2.5 bg-gray-50/60 hover:bg-gray-100/80 transition-colors ${
-                  isCollapsed ? '' : 'border-b border-gray-100'
-                }`}
+                className="w-full flex items-center gap-2 border-b-2 border-primary-100 pb-1.5 mb-1 group"
               >
-                <DomainIcon size={16} className="text-gray-500" />
-                <h3 className="text-sm font-semibold text-gray-700">{section.label}</h3>
-                <span className="text-xs text-gray-400 bg-white border border-gray-200 rounded-full px-1.5">
-                  {section.tables.length}
-                </span>
+                <DomainIcon size={15} className="text-gray-400" />
+                <h3 className="text-[13px] font-bold text-gray-700 uppercase tracking-wide">{section.label}</h3>
+                <span className="text-xs font-medium text-gray-400">({section.tables.length})</span>
                 <span className="flex-1" />
                 {isCollapsed
-                  ? <ChevronDown size={16} className="text-gray-400" />
-                  : <ChevronUp size={16} className="text-gray-400" />}
+                  ? <ChevronDown size={15} className="text-gray-400 group-hover:text-gray-600" />
+                  : <ChevronUp size={15} className="text-gray-400 group-hover:text-gray-600" />}
               </button>
               {!isCollapsed && (
-              <div className="divide-y divide-gray-50">
-                {section.tables.map((t) => {
-                  const cfg = TABLE_ICONS[String(t.id)] || defaultIcon;
-                  const IconComp = cfg.icon;
-                  const count = (t.active_count as number) || 0;
-                  const inactiveCount = (t.inactive_count as number) || 0;
-                  return (
-                    <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/40 transition-colors text-left group">
-                      <div className={`w-9 h-9 rounded-lg ${cfg.bg} flex items-center justify-center flex-shrink-0`}>
-                        <IconComp size={17} className={cfg.color} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate group-hover:text-indigo-700 transition-colors">
-                          {String(t.label)}
-                        </p>
-                        {Boolean(t.description) && (
-                          <p className="text-xs text-gray-400 truncate">{String(t.description)}</p>
+                <div>
+                  {section.tables.map((t) => {
+                    const count = (t.active_count as number) || 0;
+                    const inactiveCount = (t.inactive_count as number) || 0;
+                    return (
+                      <button key={String(t.id)} onClick={() => onOpenTable(String(t.id))}
+                        className="w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left group hover:bg-gray-50 -mx-2 px-2 rounded transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 group-hover:text-primary-700 transition-colors">
+                            {String(t.label)}
+                          </p>
+                          {Boolean(t.description) && (
+                            <p className="text-xs text-gray-500 truncate">{String(t.description)}</p>
+                          )}
+                        </div>
+                        {inactiveCount > 0 && (
+                          <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                            {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}
+                          </span>
                         )}
-                      </div>
-                      {inactiveCount > 0 && (
-                        <span className="text-[10px] font-medium text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                          {inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}
+                        <span className="text-sm font-bold text-gray-700 tabular-nums w-10 text-right flex-shrink-0">
+                          {count}
                         </span>
-                      )}
-                      <span className="text-sm font-bold text-gray-700 tabular-nums w-8 text-right flex-shrink-0">
-                        {count}
-                      </span>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-indigo-400 transition-colors flex-shrink-0" />
-                    </button>
-                  );
-                })}
-              </div>
+                        <ChevronRight size={15} className="text-gray-300 group-hover:text-primary-500 flex-shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
           );
@@ -1312,22 +1250,17 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 
       {/* Panneau lateral : historique */}
       {recentChanges.length > 0 && (
-        <aside className="w-full xl:w-80 xl:flex-shrink-0">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden xl:sticky xl:top-4">
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <History size={16} className="text-indigo-600" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-800 leading-tight">Dernieres modifications</h2>
-                <p className="text-xs text-gray-400">Historique des changements</p>
-              </div>
+        <aside className="w-full xl:w-72 xl:flex-shrink-0">
+          <div className="border border-gray-200 rounded-lg overflow-hidden xl:sticky xl:top-4">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 bg-gray-50/60">
+              <History size={15} className="text-gray-400" />
+              <h3 className="text-[13px] font-bold text-gray-700 uppercase tracking-wide">Historique</h3>
             </div>
-            <div className="divide-y divide-gray-50 max-h-[28rem] overflow-y-auto">
+            <div className="divide-y divide-gray-100 max-h-[26rem] overflow-y-auto">
               {recentChanges.slice(0, 20).map((log) => {
                 const action = String(log.action);
                 return (
-                  <div key={String(log.id)} className="px-4 py-2.5 hover:bg-gray-50/50 transition-colors">
+                  <div key={String(log.id)} className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${actionColors[action] || 'bg-gray-100 text-gray-600'}`}>
                         {actionLabels[action] || action}
