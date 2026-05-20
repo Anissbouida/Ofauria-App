@@ -168,8 +168,10 @@ function ConfigPanel() {
         <Info size={16} className="flex-shrink-0 mt-0.5" />
         <p>
           Chaque article compte pour <code className="px-1 bg-white rounded">1 / ratio</code> de sachet.
-          La caisse arrondit à l'entier supérieur. Désactivez "Nécessite un sachet" pour les produits
-          déjà emballés (bouteilles, sachets madeleine conditionnés...).
+          La caisse arrondit la somme à l'entier le plus proche : un petit nombre d'articles face à un
+          grand ratio ne déclenche aucun sachet (ex : 1 croissant avec un ratio de 15 → 0 sachet).
+          Désactivez "Nécessite un sachet" pour les produits déjà emballés (bouteilles, sachets
+          madeleine conditionnés...).
         </p>
       </div>
 

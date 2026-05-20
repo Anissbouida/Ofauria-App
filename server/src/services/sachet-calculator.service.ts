@@ -21,9 +21,11 @@ export type SachetSuggestion = {
 /**
  * Calcule le nombre de sachets a remettre pour un panier.
  *
- * Methode "ponderee" : chaque article compte pour 1 / ratio_categorie de sachet,
- * en arrondissant ensuite la somme a l'entier superieur. Cela evite la
- * sur-estimation qu'on aurait en arrondissant categorie par categorie.
+ * Methode "ponderee" : chaque article compte pour 1 / ratio_categorie de sachet.
+ * On arrondit la somme a l'entier le plus proche (Math.round) : un petit nombre
+ * d'articles face a un grand ratio ne declenche aucun sachet (ex: 1 croissant
+ * avec un ratio de 15 -> 1/15 = 0,07 -> 0 sachet), ce qui sert l'objectif
+ * anti-gaspillage. La vendeuse peut toujours augmenter manuellement.
  *
  * - Si la categorie a needs_sachet = false (produits deja emballes), le produit
  *   est ignore (poids = 0).
@@ -105,7 +107,7 @@ export async function computeSuggestedSachets(
   }
 
   return {
-    suggested: totalWeight > 0 ? Math.ceil(totalWeight) : 0,
+    suggested: Math.round(totalWeight),
     breakdown,
   };
 }
