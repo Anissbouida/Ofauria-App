@@ -3730,7 +3730,14 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     alreadyRequestedDetails[d.product_id] = d;
   }
 
-  const MARGIN = 1.10; // +10% margin
+  // Quantite pre-remplie pour un produit : suggestion du serveur (ventes de
+  // reference J-7/J-14 + majoration parametrable cote admin) diminuee du stock
+  // vitrine actuel. Sert aussi de base a la trace de l'ajustement manuel.
+  const formSuggestion = (item: Record<string, any>) => {
+    const sugg = parseInt(String(item.suggested_qty ?? item.last_week_qty ?? 0)) || 0;
+    const stock = Math.max(0, Math.floor(parseFloat(String(item.current_stock ?? 0)) || 0));
+    return Math.max(1, sugg - stock);
+  };
 
   const getTargetDayName = () => {
     const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
@@ -3759,11 +3766,9 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     const auto: Record<string, number> = {};
 
     if (recos.length > 0) {
-      // Suggestions basées sur l'historique + 10% marge
+      // Suggestions = ventes de reference (J-7/J-14) + majoration, moins le stock
       for (const r of recos) {
-        const sold = parseInt(r.last_week_qty as string) || 0;
-        const stock = parseFloat(r.current_stock as string) || 0;
-        const suggested = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
+        const suggested = formSuggestion(r);
         if (suggested > 0) {
           auto[r.product_id as string] = suggested;
         }
@@ -3793,10 +3798,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
     const next = { ...selected };
     for (const item of items) {
       const pid = (item.product_id || item.id) as string;
-      const sold = parseInt((item.last_week_qty as string) || '0') || 0;
-      const stock = parseFloat((item.current_stock as string) || '0') || 0;
-      const need = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
-      next[pid] = need;
+      next[pid] = formSuggestion(item);
     }
     setSelected(next);
   };
@@ -3863,7 +3865,15 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
       }
     }
 
-    const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({ productId, requestedQuantity }));
+    // suggestedQuantity : ce que le systeme avait propose — l'ecart avec la
+    // quantite demandee = ajustement manuel, conserve pour la tracabilite.
+    const suggestedMap: Record<string, number> = {};
+    for (const r of ((recommendations || []) as Record<string, any>[])) {
+      suggestedMap[r.product_id as string] = formSuggestion(r);
+    }
+    const items = Object.entries(selected).map(([productId, requestedQuantity]) => ({
+      productId, requestedQuantity, suggestedQuantity: suggestedMap[productId],
+    }));
     if (!items.length) { notify.error('Aucun article éligible à envoyer'); return; }
     setBlockedItems([]);
     setValidationDone(false);
@@ -3902,7 +3912,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-800">Approvisionnement</h2>
-              <p className="text-xs text-gray-500">{hasHistory ? `Suggestions pour ${getTargetDayName()} basees sur l'historique du meme jour (+10%)` : 'Aucun historique — saisie manuelle'}</p>
+              <p className="text-xs text-gray-500">{hasHistory ? `Suggestions pour ${getTargetDayName()} — ventes du même jour (J-7, repli J-14) + majoration` : 'Aucun historique — saisie manuelle'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/80 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
@@ -4009,7 +4019,8 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                           const stock = parseFloat((item.current_stock as string) || '0') || 0;
                           const refType = (item.reference_type as string) || 'j7';
                           const refLabel = (item.reference_label as string) || '';
-                          const suggested = Math.max(1, Math.ceil(sold * MARGIN) - Math.max(0, Math.floor(stock)));
+                          const markupPct = parseFloat(String(item.markup_percent ?? 0)) || 0;
+                          const suggested = formSuggestion(item);
                           const qty = selected[pid] || 0;
                           const isSelected = qty > 0;
 
@@ -4044,7 +4055,8 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                                   <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`} title="Stock actuel">
                                     <Package size={10} /> {Math.floor(stock)}
                                   </span>
-                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium" title={`Suggere (${refLabel} x1.10)`}>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium"
+                                    title={`Suggéré : ${refLabel}${markupPct > 0 ? ` + ${markupPct}% de majoration` : ''}, moins le stock vitrine`}>
                                     <Lightbulb size={10} /> {suggested}
                                   </span>
                                 </div>

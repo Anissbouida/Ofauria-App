@@ -17,6 +17,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
+import ProductionMarkupTab from './ProductionMarkupTab';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -98,7 +99,12 @@ export default function SettingsPage() {
       {activeTab === 'print' && <PrintTab />}
       {activeTab === 'stores' && <StoresSection />}
       {activeTab === 'referentiel' && <ReferentielTab />}
-      {activeTab === 'production' && <ProductionChargesTab />}
+      {activeTab === 'production' && (
+        <>
+          <ProductionChargesTab />
+          <ProductionMarkupTab />
+        </>
+      )}
       {activeTab === 'sachets' && <SachetsTab />}
     </>
   );

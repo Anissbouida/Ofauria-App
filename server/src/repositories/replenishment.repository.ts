@@ -4,6 +4,7 @@ import { getUserTimezone } from '../utils/timezone.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
+import { productionMarkupRepository } from './production-markup.repository.js';
 
 export const replenishmentRepository = {
 
@@ -162,7 +163,10 @@ export const replenishmentRepository = {
     priority?: string;
     neededBy?: string;
     notes?: string;
-    items: { productId: string; requestedQuantity: number }[];
+    // suggestedQuantity : quantite proposee par le systeme (ventes J-7/J-14 +
+    // majoration). Conservee pour tracer l'ecart avec requested_quantity =
+    // ajustement manuel du caissier.
+    items: { productId: string; requestedQuantity: number; suggestedQuantity?: number }[];
   }) {
     const client = await db.getClient();
     try {
@@ -227,9 +231,9 @@ export const replenishmentRepository = {
         // Insert items with requested quantity only — stock check & production deferred to acknowledge
         for (const item of items) {
           await client.query(
-            `INSERT INTO replenishment_request_items (request_id, product_id, requested_quantity, status)
-             VALUES ($1, $2, $3, 'pending')`,
-            [req.id, item.productId, item.requestedQuantity]
+            `INSERT INTO replenishment_request_items (request_id, product_id, requested_quantity, suggested_quantity, status)
+             VALUES ($1, $2, $3, $4, 'pending')`,
+            [req.id, item.productId, item.requestedQuantity, item.suggestedQuantity ?? null]
           );
         }
       }
@@ -998,6 +1002,10 @@ export const replenishmentRepository = {
     j14Date.setDate(j14Date.getDate() - 14 + 1);
     const j14Str = j14Date.toISOString().slice(0, 10);
 
+    // Majoration parametrable appliquee a la quantite de reference pour
+    // absorber les aleas de demande (override par categorie sinon taux global).
+    const { globalPercent, overrides } = await productionMarkupRepository.getEffectiveMap();
+
     // Enrichir chaque produit avec la recommandation
     const results = productsResult.rows.map(product => {
       const pid = product.product_id as string;
@@ -1041,9 +1049,20 @@ export const replenishmentRepository = {
         referenceLabel = 'Historique insuffisant';
       }
 
+      // Majoration : override de categorie si defini, sinon taux global.
+      const catId = product.category_id as number;
+      const markupPercent = overrides[catId] != null ? overrides[catId] : globalPercent;
+      const markupSource: 'category' | 'global' = overrides[catId] != null ? 'category' : 'global';
+      const suggestedQty = lastWeekQty > 0
+        ? Math.ceil(lastWeekQty * (1 + markupPercent / 100))
+        : 0;
+
       return {
         ...product,
         last_week_qty: lastWeekQty,
+        suggested_qty: suggestedQty,
+        markup_percent: markupPercent,
+        markup_source: markupSource,
         reference_type: referenceType,
         reference_date: referenceDate,
         reference_label: referenceLabel,
