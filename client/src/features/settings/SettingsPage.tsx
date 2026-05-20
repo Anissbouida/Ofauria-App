@@ -1254,6 +1254,9 @@ function ReferentielTab() {
 
 function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const [dashSearch, setDashSearch] = useState('');
+  const [collapsedDomains, setCollapsedDomains] = useState<Record<string, boolean>>({});
+  const toggleDomain = (key: string) =>
+    setCollapsedDomains((prev) => ({ ...prev, [key]: !prev[key] }));
   const { data, isLoading } = useQuery({
     queryKey: ['ref-dashboard'],
     queryFn: referentielApi.dashboard,
@@ -1379,15 +1382,28 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
         {/* Sections par domaine */}
         {sections.map((section) => {
           const DomainIcon = section.icon;
+          // En recherche, on garde tout deplie pour voir les resultats.
+          const isCollapsed = !dashSearch && collapsedDomains[section.key];
           return (
             <div key={section.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
+              <button
+                type="button"
+                onClick={() => toggleDomain(section.key)}
+                className={`w-full flex items-center gap-2.5 px-4 py-2.5 bg-gray-50/60 hover:bg-gray-100/80 transition-colors ${
+                  isCollapsed ? '' : 'border-b border-gray-100'
+                }`}
+              >
                 <DomainIcon size={16} className="text-gray-500" />
                 <h3 className="text-sm font-semibold text-gray-700">{section.label}</h3>
                 <span className="text-xs text-gray-400 bg-white border border-gray-200 rounded-full px-1.5">
                   {section.tables.length}
                 </span>
-              </div>
+                <span className="flex-1" />
+                {isCollapsed
+                  ? <ChevronDown size={16} className="text-gray-400" />
+                  : <ChevronUp size={16} className="text-gray-400" />}
+              </button>
+              {!isCollapsed && (
               <div className="divide-y divide-gray-50">
                 {section.tables.map((t) => {
                   const cfg = TABLE_ICONS[String(t.id)] || defaultIcon;
@@ -1421,6 +1437,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
                   );
                 })}
               </div>
+              )}
             </div>
           );
         })}
