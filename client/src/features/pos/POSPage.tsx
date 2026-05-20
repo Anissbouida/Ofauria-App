@@ -148,7 +148,10 @@ export default function POSPage() {
   const [weightInput, setWeightInput] = useState('');
   // Unité de saisie choisie par le caissier dans le modal (toggle kg/g).
   // En 'kg' l'input accepte les décimales ; en 'g' uniquement des entiers.
-  const [weightInputUnit, setWeightInputUnit] = useState<'g' | 'kg'>('g');
+  // Défaut 'kg' : les produits sont tarifés au kilo, et une erreur d'unité
+  // dans ce sens (grammes saisis en mode kg) dépasse le stock et est bloquée,
+  // au lieu de passer en silence (ex: "5" voulu en kg saisi en g → 0,75 DH).
+  const [weightInputUnit, setWeightInputUnit] = useState<'g' | 'kg'>('kg');
 
   // Cash register state
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -675,7 +678,9 @@ export default function POSPage() {
     // au lieu d'incrémenter par 1 (ça ne veut rien dire en grammes).
     if (product.sale_unit === 'weight') {
       const existing = cart.find(i => i.productId === product.id);
-      const existingUnit = existing?.displayUnit || 'g';
+      // Ligne existante : on réutilise l'unité d'origine. Nouvelle ligne : kg
+      // par défaut (voir weightInputUnit).
+      const existingUnit = existing?.displayUnit || 'kg';
       setWeightModal({ product, existingQty: existing?.quantity || 0 });
       setWeightInputUnit(existingUnit);
       // Si on rouvre sur une ligne existante : pré-remplit la valeur dans
@@ -1173,7 +1178,7 @@ export default function POSPage() {
                             <button
                               onClick={() => {
                                 const p = (products as Record<string, any>[]).find(p => p.id === item.productId);
-                                if (p) { setWeightModal({ product: p, existingQty: item.quantity }); setWeightInput(String(item.quantity)); }
+                                if (p) addToCart(p);
                               }}
                               className="px-3 h-8 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs font-semibold transition-colors">
                               Modifier le poids
