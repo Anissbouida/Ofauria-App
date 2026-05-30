@@ -520,7 +520,17 @@ export const bonSortieRepository = {
                    WHERE il2.ingredient_id = bsl.ingredient_id
                      AND il2.store_id = $2
                      AND il2.status = 'active'
-                ), 0) AS current_stock_total
+                ), 0) AS current_stock_total,
+                -- Stock courant pesage seul. Permet au frontend de detecter qu'une ligne
+                -- ECONOMAT_REQUIRES_TRANSFER peut etre re-allouee depuis le pesage (le
+                -- magasinier a deja transfere via un autre flow et le BSI ne le sait pas).
+                COALESCE((
+                  SELECT SUM(COALESCE(il2.pesage_quantity, 0))
+                    FROM ingredient_lots il2
+                   WHERE il2.ingredient_id = bsl.ingredient_id
+                     AND il2.store_id = $2
+                     AND il2.status = 'active'
+                ), 0) AS current_pesage_total
          FROM production_bons_sortie_lignes bsl
          JOIN ingredients ing ON ing.id = bsl.ingredient_id
          LEFT JOIN ingredient_lots il ON il.id = bsl.ingredient_lot_id
@@ -569,7 +579,15 @@ export const bonSortieRepository = {
                  WHERE il2.ingredient_id = bsl.ingredient_id
                    AND il2.store_id = $2
                    AND il2.status = 'active'
-              ), 0) AS current_stock_total
+              ), 0) AS current_stock_total,
+              -- Stock courant pesage seul (voir findByPlan).
+              COALESCE((
+                SELECT SUM(COALESCE(il2.pesage_quantity, 0))
+                  FROM ingredient_lots il2
+                 WHERE il2.ingredient_id = bsl.ingredient_id
+                   AND il2.store_id = $2
+                   AND il2.status = 'active'
+              ), 0) AS current_pesage_total
        FROM production_bons_sortie_lignes bsl
        JOIN ingredients ing ON ing.id = bsl.ingredient_id
        LEFT JOIN ingredient_lots il ON il.id = bsl.ingredient_lot_id
@@ -1176,10 +1194,14 @@ export const bonSortieRepository = {
       }
       const storeId = current.rows[0].store_id;
 
-      // 1. Recupere les lignes en attente / rupture avec leur ingredient
+      // 1. Recupere les lignes en attente / rupture avec leur ingredient.
+      //    Inclut source_location pour pouvoir recycler les lignes ECONOMAT_REQUIRES_TRANSFER
+      //    dont le pesage a ete reapprovisionne entre-temps (transfert via le module
+      //    Economat sans passer par le bouton "transferer" du BSI).
       const pendingLines = await client.query(
         `SELECT bsl.id, bsl.ingredient_id, bsl.needed_quantity, bsl.allocated_quantity,
-                bsl.status, ing.name as ingredient_name, ing.unit as ingredient_unit
+                bsl.status, bsl.source_location,
+                ing.name as ingredient_name, ing.unit as ingredient_unit
          FROM production_bons_sortie_lignes bsl
          JOIN ingredients ing ON ing.id = bsl.ingredient_id
          WHERE bsl.bon_id = $1 AND bsl.status IN ('en_attente', 'rupture')
@@ -1202,6 +1224,12 @@ export const bonSortieRepository = {
         //   complementaires pour le residuel.
         let firstUpdateDone = false;
 
+        // Une ligne ECONOMAT_REQUIRES_TRANSFER est aussi "recyclable" : son besoin
+        // n'est pas encore servi (allocated=0), donc on peut la basculer en PESAGE
+        // si du stock pesage est apparu (transfert deja fait via Economat).
+        const isRecyclable = line.status === 'rupture'
+          || (line.status === 'en_attente' && line.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
+
         const applyAllocation = async (params: {
           sourceLocation: 'PESAGE' | 'ECONOMAT_REQUIRES_TRANSFER';
           lotId: string | null;
@@ -1210,7 +1238,7 @@ export const bonSortieRepository = {
           note: string;
         }) => {
           const { sourceLocation, lotId, suggestedEcoLotId, qty, note } = params;
-          if (!firstUpdateDone && line.status === 'rupture') {
+          if (!firstUpdateDone && isRecyclable) {
             if (sourceLocation === 'PESAGE') {
               await client.query(
                 `UPDATE production_bons_sortie_lignes

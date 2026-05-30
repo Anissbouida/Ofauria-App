@@ -207,7 +207,21 @@ export function BonSortiePanel({
   // Option B : lignes en attente de transfert Economat → Pesage.
   // Le transfert se fait DEPUIS le module Economat (onglet "Transferts demandes" de InventoryPage),
   // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
-  const transferRequiredLines = lines.filter((l) => l.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
+  const allTransferRequiredLines = lines.filter((l) => l.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
+  // Sous-ensemble : lignes ECONOMAT_REQUIRES_TRANSFER dont le pesage est deja suffisant
+  // (le magasinier a deja transfere via le module Economat, mais le BSI ne le sait pas).
+  // Un "Re-verifier dispo" suffit alors a basculer ces lignes en PESAGE.
+  const recoverableTransferLines = allTransferRequiredLines.filter((l) => {
+    const need = parseFloat(l.needed_quantity as string || '0');
+    const pesage = parseFloat(l.current_pesage_total as string || 'NaN');
+    return Number.isFinite(pesage) && pesage >= need;
+  });
+  // Bandeau "transfert encore requis" : transferts qui n'ont pas (encore) de pesage suffisant.
+  const transferRequiredLines = allTransferRequiredLines.filter(
+    l => !recoverableTransferLines.includes(l),
+  );
+  // Unifie les deux types de lignes recuperables (rupture + transfert pesage-pret) pour le bandeau.
+  const allRecoverableLines = [...recoverableRuptureLines, ...recoverableTransferLines];
   const hasRupture = ruptureLines.length > 0;
   const isPartial = bon?.status === 'preparation_partielle';
   // Permet le commit partiel si :
@@ -565,10 +579,10 @@ export function BonSortiePanel({
         </div>
       )}
 
-      {/* Bandeau "recuperable" : lignes marquees rupture mais dont le stock est revenu
-          (reappro ou transfert depuis la generation du BSI). Un simple "Re-verifier dispo"
-          re-alloue ces lignes et les passe en preleve. */}
-      {!isClosed && recoverableRuptureLines.length > 0 && isMagasinier && (
+      {/* Bandeau "recuperable" : lignes marquees rupture/transfert mais dont le stock
+          pesage est revenu (reappro ou transfert via le module Economat). Un simple
+          "Re-verifier dispo" re-alloue ces lignes et les passe en preleve. */}
+      {!isClosed && allRecoverableLines.length > 0 && isMagasinier && (
         <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
@@ -576,23 +590,28 @@ export function BonSortiePanel({
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-emerald-900">
-                {recoverableRuptureLines.length} ingredient{recoverableRuptureLines.length > 1 ? 's' : ''} reapprovisionne{recoverableRuptureLines.length > 1 ? 's' : ''} — pret a re-allouer
+                {allRecoverableLines.length} ingredient{allRecoverableLines.length > 1 ? 's' : ''} pret{allRecoverableLines.length > 1 ? 's' : ''} a re-allouer
               </p>
               <p className="text-xs text-emerald-700 mt-0.5">
-                Le stock est revenu depuis la generation du BSI. Clique "Re-verifier dispo" pour re-allouer ces lignes en pesage automatiquement (FEFO).
+                Le pesage a ete reapprovisionne (transfert ou reappro). Clique "Re-verifier dispo" pour re-allouer ces lignes en pesage automatiquement (FEFO).
               </p>
               <ul className="text-xs text-emerald-800 mt-2 space-y-0.5">
-                {recoverableRuptureLines.slice(0, 5).map((l) => {
+                {allRecoverableLines.slice(0, 5).map((l) => {
                   const need = parseFloat(l.needed_quantity as string || '0');
-                  const stock = parseFloat(l.current_stock_total as string || '0');
+                  // Lignes ECONOMAT_REQUIRES_TRANSFER : afficher le pesage dispo (current_pesage_total),
+                  // pas le stock total (qui inclut l'economat non encore transfere).
+                  const isTransfer = l.source_location === 'ECONOMAT_REQUIRES_TRANSFER';
+                  const stock = isTransfer
+                    ? parseFloat(l.current_pesage_total as string || '0')
+                    : parseFloat(l.current_stock_total as string || '0');
                   return (
                     <li key={l.id as string}>
                       <strong>{l.ingredient_name as string}</strong> :
-                      besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> · stock dispo <span className="font-mono text-emerald-700 font-semibold">{stock.toFixed(2)} {l.unit as string}</span>
+                      besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> · {isTransfer ? 'pesage dispo' : 'stock dispo'} <span className="font-mono text-emerald-700 font-semibold">{stock.toFixed(2)} {l.unit as string}</span>
                     </li>
                   );
                 })}
-                {recoverableRuptureLines.length > 5 && <li className="italic">+ {recoverableRuptureLines.length - 5} autres...</li>}
+                {allRecoverableLines.length > 5 && <li className="italic">+ {allRecoverableLines.length - 5} autres...</li>}
               </ul>
             </div>
             <button
