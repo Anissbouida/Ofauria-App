@@ -233,6 +233,19 @@ export default function PlanDetailPage() {
         }
       } catch { /* non-blocking */ }
     },
+    // Sans onError, les erreurs (409 statut invalide, 403 role refuse, 500 backend, etc.)
+    // etaient avalees silencieusement : le bouton arretait son spinner et "rien ne se passait".
+    onError: (e: unknown) => {
+      const resp = (e as Record<string, any>)?.response as Record<string, any> | undefined;
+      const data = resp?.data as Record<string, any> | undefined;
+      const err = data?.error as Record<string, any> | undefined;
+      const status = resp?.status as number | undefined;
+      const msg = (err?.message as string)
+        || (e as Error)?.message
+        || `Impossible de confirmer le plan${status ? ` (HTTP ${status})` : ''}`;
+      console.error('Confirm plan failed:', e);
+      notify.error(msg);
+    },
   });
 
   const getPlanLotPrefix = (planData?: Record<string, any>) => {
@@ -1141,6 +1154,19 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           <span className="odoo-breadcrumb-current">
             Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
           </span>
+          {/* Nom du(des) produit(s) en cours de production : 1 article -> nom complet,
+              2+ articles -> premier + compteur des autres. Cache pour les plans
+              semi-finis car le nom de la recette est deja affiche dans la zone dediee. */}
+          {!isSemiFini && items.length > 0 && (
+            <>
+              <span className="odoo-breadcrumb-separator">›</span>
+              <span className="odoo-breadcrumb-current" style={{ color: 'var(--theme-accent)' }}>
+                {items.length === 1
+                  ? (items[0].product_name as string)
+                  : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
+              </span>
+            </>
+          )}
         </div>
         <span className={`odoo-tag ${statusTagClass}`}>{sc.icon}{planStatusBadge}</span>
       </div>
