@@ -2064,14 +2064,43 @@ async function assignLotNumbersInternal(client: import('pg').PoolClient, planId:
   );
   let seq = parseInt(seqResult.rows[0].max_seq);
 
+  // Retry-on-conflict via SAVEPOINT : indispensable car en cas de duplicate
+  // (race condition residuelle, etat inconsistant, etc.) Postgres marque la
+  // transaction entiere comme aborted et le COMMIT du caller echouerait sans
+  // ce save point. Avec savepoint, on peut sauter le conflit et reessayer
+  // avec sequence+1.
+  const MAX_ATTEMPTS_PER_ITEM = 200;
   for (const item of itemsResult.rows) {
-    seq++;
-    const lotNumber = `LOT-${dateStr}-${String(seq).padStart(3, '0')}`;
-    await client.query(
-      `INSERT INTO production_lot_numbers (plan_item_id, plan_id, lot_number, lot_date, sequence_number)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [item.id, planId, lotNumber, lotDateStr, seq]
-    );
+    let attempts = 0;
+    while (attempts < MAX_ATTEMPTS_PER_ITEM) {
+      seq++;
+      const lotNumber = `LOT-${dateStr}-${String(seq).padStart(3, '0')}`;
+      await client.query('SAVEPOINT sp_lot_insert');
+      try {
+        await client.query(
+          `INSERT INTO production_lot_numbers (plan_item_id, plan_id, lot_number, lot_date, sequence_number)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [item.id, planId, lotNumber, lotDateStr, seq]
+        );
+        await client.query('RELEASE SAVEPOINT sp_lot_insert');
+        break;
+      } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT sp_lot_insert');
+        const err = e as { code?: string; constraint?: string };
+        // 23505 = unique_violation. On retente si c'est le lot_number qui colide ;
+        // sinon (plan_item_id deja present, autre contrainte), on remonte l'erreur.
+        if (err.code === '23505' && err.constraint === 'production_lot_numbers_lot_number_key') {
+          attempts++;
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (attempts >= MAX_ATTEMPTS_PER_ITEM) {
+      throw new Error(
+        `Impossible de generer un numero de lot unique pour ${lotDateStr} apres ${MAX_ATTEMPTS_PER_ITEM} tentatives (seq=${seq})`
+      );
+    }
   }
 }
 
