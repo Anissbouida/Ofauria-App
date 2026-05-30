@@ -14,13 +14,16 @@
 const SAME = 1;
 const K = 1000;
 const MILLI = 0.001;
+const CENTI = 0.01;
+const HECTO = 100;
 
 const FACTORS: Record<string, Record<string, number>> = {
   // de -> { vers -> facteur }
   g:  { g: SAME, kg: MILLI },
   kg: { kg: SAME, g: K },
-  ml: { ml: SAME, l: MILLI },
-  l:  { l: SAME, ml: K },
+  ml: { ml: SAME, l: MILLI, cl: 0.1 },
+  cl: { cl: SAME, l: CENTI, ml: 10 },
+  l:  { l: SAME, ml: K, cl: HECTO },
   // unites "comptables" (pcs, paq...) : pas de conversion possible
 };
 

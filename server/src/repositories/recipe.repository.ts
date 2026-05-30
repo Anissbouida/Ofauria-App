@@ -5,6 +5,7 @@ const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
   kg:   { base: 'kg', factor: 1 },
   g:    { base: 'kg', factor: 0.001 },
   l:    { base: 'l',  factor: 1 },
+  cl:   { base: 'l',  factor: 0.01 },
   ml:   { base: 'l',  factor: 0.001 },
   unit: { base: 'unit', factor: 1 },
 };
@@ -48,11 +49,14 @@ export const recipeRepository = {
 
   async findById(id: string) {
     // total_cost vient de la vue v_recipe_total_cost. On override le champ stocke.
+    // total_weight_kg : idem, calcule a la volee a partir des ingredients
+    // (densite 1 pour les liquides, pieces ignorees).
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
               r.created_at, r.updated_at,
               vtc.total_cost,
+              vtw.total_weight_kg,
               p.name as product_name, p.price as product_price,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
               pc.quantite_theorique as contenant_quantite_theorique,
@@ -63,6 +67,7 @@ export const recipeRepository = {
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        WHERE r.id = $1`,
       [id]
     );
@@ -75,17 +80,19 @@ export const recipeRepository = {
       [id]
     );
 
-    // sub_total_cost : direct_cost de la sous-recette (vue v_recipe_direct_cost).
-    // Sous-recette = preparation de base = pas de sous-sous-recettes en pratique, donc
-    // direct_cost suffit. Le frontend divise par sub_yield_quantity pour le cout/unite.
+    // sub_total_cost / sub_total_weight_kg : valeurs directes de la sous-recette
+    // (vues v_recipe_direct_cost / v_recipe_direct_weight_kg). Le frontend divise
+    // par sub_yield_quantity pour obtenir cout/poids par unite de rendement.
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
               sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
               sr.yield_unit as sub_yield_unit,
-              vdc.direct_cost AS sub_total_cost
+              vdc.direct_cost AS sub_total_cost,
+              vdw.direct_weight_kg AS sub_total_weight_kg
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
        LEFT JOIN v_recipe_direct_cost vdc ON vdc.id = sr.id
+       LEFT JOIN v_recipe_direct_weight_kg vdw ON vdw.id = sr.id
        WHERE rsr.recipe_id = $1`,
       [id]
     );

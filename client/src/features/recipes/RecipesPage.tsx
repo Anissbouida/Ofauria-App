@@ -6,7 +6,7 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, Weight, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
@@ -29,6 +29,7 @@ interface SubRecipeRef {
   sub_yield_quantity: number;
   sub_yield_unit: string;
   sub_total_cost: string;
+  sub_total_weight_kg: string | null;
   quantity: number;
 }
 
@@ -55,6 +56,7 @@ interface RecipeDetail {
   yield_quantity: number;
   yield_unit: string;
   total_cost: string;
+  total_weight_kg: string | null;
   is_base: boolean;
   contenant_id: string | null;
   contenant_nom: string | null;
@@ -73,7 +75,7 @@ interface RecipeDetail {
 // Unit conversion factors for cost calculation
 const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
   kg: { base: 'kg', factor: 1 }, g: { base: 'kg', factor: 0.001 },
-  l: { base: 'l', factor: 1 }, ml: { base: 'l', factor: 0.001 },
+  l: { base: 'l', factor: 1 }, cl: { base: 'l', factor: 0.01 }, ml: { base: 'l', factor: 0.001 },
   unit: { base: 'unit', factor: 1 },
 };
 function unitConversionFactor(fromUnit: string, toUnit: string): number {
@@ -81,6 +83,15 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
   const from = UNIT_TO_BASE[fromUnit], to = UNIT_TO_BASE[toUnit];
   if (!from || !to || from.base !== to.base) return 1;
   return from.factor / to.factor;
+}
+
+// Conversion d'une quantite vers kg pour le calcul du poids total.
+// Les liquides (l/cl/ml) sont consideres avec densite 1 (approximation usuelle).
+// Les pieces (unit) n'ont pas de poids intrinseque -> retourne null.
+function quantityToKg(quantity: number, unit: string): number | null {
+  const u = UNIT_TO_BASE[unit];
+  if (!u || u.base === 'unit') return null;
+  return quantity * u.factor;
 }
 
 /** Affiche une quantite avec max 3 decimales, sans zeros traînants.
@@ -95,7 +106,7 @@ function trimZeros(value: string | number | null | undefined): string {
 // Compatible units grouped by type
 const COMPATIBLE_UNITS: Record<string, string[]> = {
   kg: ['kg', 'g'], g: ['kg', 'g'],
-  l: ['l', 'ml'], ml: ['l', 'ml'],
+  l: ['l', 'cl', 'ml'], cl: ['l', 'cl', 'ml'], ml: ['l', 'cl', 'ml'],
   unit: ['unit'],
 };
 
@@ -510,6 +521,15 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
   const totalCost = ingredientCost + subRecipeCost;
   const costPerUnit = targetPortions > 0 ? totalCost / targetPortions : 0;
+
+  // Poids des ingredients DIRECTS (sans les sous-recettes). Sert pour la ligne
+  // sous-total du tableau ingredients. Les pieces (unit) sont ignorees - elles
+  // n'ont pas de poids intrinseque convertible.
+  const ingredientsWeightKg = recipe?.ingredients?.reduce((sum, ing) => {
+    const w = quantityToKg(ing.quantity * multiplier, ing.unit || ing.ingredient_base_unit);
+    return sum + (w ?? 0);
+  }, 0) || 0;
+
   // Prix de vente : priorite au product.price (defini), sinon fallback sur
   // costPerUnit * margin_multiplier (cas des recettes sans produit lie comme OFAURIA).
   const productPrice = parseFloat(recipe?.product_price || '0');
@@ -720,7 +740,21 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                         );
                       })}
                       <tr style={{ backgroundColor: 'var(--theme-bg-page)', fontWeight: 700, cursor: 'default' }}>
-                        <td colSpan={4} style={{ textAlign: 'right' }}>Sous-total ingrédients</td>
+                        <td style={{ textAlign: 'right' }}>Sous-total ingrédients</td>
+                        {/* Poids des ingredients directs, dans la colonne Quantite/Unite pour
+                            s'aligner visuellement avec les quantites individuelles ci-dessus.
+                            Format : "g" si <1 kg sinon "kg" (idem smart button Poids total). */}
+                        <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>
+                          {ingredientsWeightKg > 0
+                            ? (ingredientsWeightKg < 1
+                                ? (ingredientsWeightKg * 1000).toFixed(0)
+                                : ingredientsWeightKg.toFixed(3))
+                            : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                          {ingredientsWeightKg > 0 ? (ingredientsWeightKg < 1 ? 'g' : 'kg') : ''}
+                        </td>
+                        <td></td>
                         <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>{ingredientCost.toFixed(2)} DH</td>
                       </tr>
                     </tbody>
