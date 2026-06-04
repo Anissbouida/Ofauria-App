@@ -738,6 +738,7 @@ function ChargesTab() {
       (() => { const rid = getRootId(p.category_id as string | null); return rid ? catMap[rid]?.name || '' : ''; })(),
       (p.category_name as string) || '',
       (p.supplier_name as string) || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : ''),
+      (p.designation as string) || '',
       getPaymentLabel(p.payment_method as string) || '',
       (p.description as string) || '',
       n(parseFloat(p.amount as string) || 0),
