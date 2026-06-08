@@ -90,11 +90,17 @@ jobs:
           service: ${{ vars.GCP_SERVICE_NAME }}
           region: ${{ vars.GCP_REGION }}
           image: ${{ needs.build-and-push.outputs.image }}
-          flags: --port=8080 --allow-unauthenticated --add-cloudsql-instances=ofauria:europe-west1:ofauria-db
-          env_vars: |
-            NODE_ENV=production
-            SERVER_PORT=8080
-            ALLOWED_ORIGINS=https://ofauria-app-gpezecanha-ew.a.run.app,https://ofauria-app-54056779982.europe-west1.run.app
+          # ALLOWED_ORIGINS contient une virgule (separateur d'URLs) dans sa
+          # valeur. Le bloc `env_vars: |` de l'action passe la liste a gcloud
+          # qui parse la virgule comme delimiteur entre env vars → 2e URL
+          # tronquee. On contourne en passant TOUTES les env vars via
+          # --set-env-vars avec le separateur custom "^@^" (cf gcloud topic
+          # escaping). Les secrets restent dans `secrets:` (pas de probleme).
+          flags: >-
+            --port=8080
+            --allow-unauthenticated
+            --add-cloudsql-instances=ofauria:europe-west1:ofauria-db
+            --set-env-vars=^@^NODE_ENV=production@SERVER_PORT=8080@ALLOWED_ORIGINS=https://ofauria-app-gpezecanha-ew.a.run.app,https://ofauria-app-54056779982.europe-west1.run.app
           secrets: |
             JWT_SECRET=JWT_SECRET:latest
             DATABASE_URL=DATABASE_URL:latest
