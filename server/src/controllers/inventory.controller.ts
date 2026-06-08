@@ -222,7 +222,10 @@ export const ingredientController = {
   },
   async create(req: AuthRequest, res: Response) {
     try {
-      const ingredient = await ingredientRepository.create(req.body);
+      const ingredient = await ingredientRepository.create({
+        ...req.body,
+        storeId: req.user!.storeId || null,
+      });
       res.status(201).json({ success: true, data: ingredient });
     } catch (err) {
       console.error('Error creating ingredient:', err);

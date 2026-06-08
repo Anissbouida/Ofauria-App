@@ -134,7 +134,7 @@ export const ingredientRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string }) {
+  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string; storeId?: string | null }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -142,10 +142,14 @@ export const ingredientRepository = {
         `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
         [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre']
       );
-      // Create inventory entry
+      // Create inventory entry, scoped to the current store (multi-store).
+      // Sans store_id, le listing (WHERE inv.store_id = $1) ne montre pas
+      // l'ingredient pour les users avec un storeId. Le trigger
+      // trg_inventory_sync_lots corrigerait au premier restock mais on ne
+      // peut pas compter dessus (un ingredient sans stock initial reste invisible).
       await client.query(
-        `INSERT INTO inventory (ingredient_id) VALUES ($1)`,
-        [result.rows[0].id]
+        `INSERT INTO inventory (ingredient_id, store_id) VALUES ($1, $2)`,
+        [result.rows[0].id, data.storeId || null]
       );
       await client.query('COMMIT');
       return result.rows[0];

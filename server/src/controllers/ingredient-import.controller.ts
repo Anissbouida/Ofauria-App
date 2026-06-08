@@ -209,6 +209,11 @@ export const ingredientImportController = {
     }
     const plan = await buildPlan(parsed.rows);
 
+    // Multi-store : on cree l'inventaire dans le store de l'utilisateur courant.
+    // Sans ca, store_id = NULL et le listing (qui filtre WHERE inv.store_id = $1)
+    // n'affiche pas les ingredients importes pour les users avec un storeId.
+    const storeId = req.user!.storeId || null;
+
     const client = await db.getClient();
     let created = 0;
     let updated = 0;
@@ -225,7 +230,10 @@ export const ingredientImportController = {
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
             [row.name, row.unit, row.unitCost, row.supplier, row.allergens, row.category]
           );
-          await client.query(`INSERT INTO inventory (ingredient_id) VALUES ($1)`, [ins.rows[0].id]);
+          await client.query(
+            `INSERT INTO inventory (ingredient_id, store_id) VALUES ($1, $2)`,
+            [ins.rows[0].id, storeId]
+          );
           created++;
         } catch (e) {
           errors.push({
