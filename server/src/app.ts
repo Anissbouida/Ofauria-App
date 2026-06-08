@@ -17,6 +17,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const IS_PROD = env.NODE_ENV === 'production';
 
+// Cloud Run sits behind Google Front End (GFE), which sets X-Forwarded-For /
+// Forwarded headers. Without trust proxy, express-rate-limit detects the
+// header and throws ValidationError -> middleware hangs -> 504. Trust 1 hop
+// (only GFE) — pas plus, sinon spoofing possible. En dev (sans proxy), c'est
+// no-op : req.ip reste l'IP locale.
+app.set('trust proxy', 1);
+
 // OWASP A09 : log structure de chaque requete (method, url, status, latence, id).
 // Automatiquement applique la redaction definie dans logger.ts.
 app.use(pinoHttp({
