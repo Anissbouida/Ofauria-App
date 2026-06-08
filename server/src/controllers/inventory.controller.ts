@@ -240,11 +240,25 @@ export const ingredientController = {
   },
   async remove(req: AuthRequest, res: Response) {
     try {
-      await ingredientRepository.delete(req.params.id);
-      res.json({ success: true, data: null });
+      const force = req.query.force === 'true' || req.query.force === '1';
+      const result = await ingredientRepository.delete(req.params.id, { force });
+      if (!result.ok) {
+        // Blocage metier (recette active, stock restant sans force…) — 409 Conflict.
+        // On expose activeStock pour permettre au client de proposer "Forcer".
+        res.status(409).json({
+          success: false,
+          error: {
+            message: result.reason,
+            activeStock: result.activeStock,
+          },
+        });
+        return;
+      }
+      res.json({ success: true, data: { wastedQty: result.wastedQty ?? 0 } });
     } catch (err) {
       console.error('Error deleting ingredient:', err);
-      res.status(400).json({ success: false, error: { message: 'Erreur lors de la suppression' } });
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
+      res.status(500).json({ success: false, error: { message: msg } });
     }
   },
 };

@@ -10,8 +10,9 @@ import {
   AlertTriangle, Package, Search, TrendingUp,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
-  Plus, List, LayoutGrid, Save, ShoppingCart,
+  Plus, List, LayoutGrid, Save, ShoppingCart, Upload, Download,
 } from 'lucide-react';
+import IngredientImportModal from './IngredientImportModal';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -115,6 +116,8 @@ export default function InventoryPage() {
   const { settings } = useSettings();
   const { user } = useAuth();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
+  // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
+  const canManageIngredients = ['admin', 'manager'].includes(user?.role || '');
 
   // Onglets : "Stock economat" (defaut) + "Transferts demandes" (BSI a transferer)
   // + "Ingredients a commander" (BSI en rupture totale, cross-plans).
@@ -159,6 +162,8 @@ export default function InventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showAddIngredient, setShowAddIngredient] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [showAllExpired, setShowAllExpired] = useState(false);
   const [showAllExpiring, setShowAllExpiring] = useState(false);
 
@@ -274,6 +279,32 @@ export default function InventoryPage() {
           <button onClick={() => setShowAddIngredient(true)} className="odoo-btn-primary">
             <Plus size={14} /> Nouveau
           </button>
+        )}
+        {econoTab === 'stock' && canManageIngredients && (
+          <>
+            <button onClick={() => setShowImport(true)} className="odoo-btn-secondary" title="Importer des ingrédients depuis un fichier Excel">
+              <Upload size={14} /> Importer
+            </button>
+            <button
+              onClick={async () => {
+                setExportLoading(true);
+                try {
+                  const stamp = new Date().toISOString().slice(0, 10);
+                  await ingredientsApi.exportXlsx(`ingredients-economat-${stamp}.xlsx`);
+                  notify.success('Export téléchargé');
+                } catch {
+                  notify.error('Erreur lors de l\'export');
+                } finally {
+                  setExportLoading(false);
+                }
+              }}
+              disabled={exportLoading}
+              className="odoo-btn-secondary"
+              title="Exporter tous les ingrédients avec leur stock vers Excel"
+            >
+              <Download size={14} /> {exportLoading ? 'Export…' : 'Exporter'}
+            </button>
+          </>
         )}
         <div style={{ flex: 1 }} />
         {econoTab === 'stock' && totalItems > 0 && (
@@ -679,6 +710,9 @@ export default function InventoryPage() {
         onClose={() => setShowAddIngredient(false)}
         onSave={(data) => addIngredientMutation.mutate(data)}
         isLoading={addIngredientMutation.isPending} />}
+
+      {/* Import Ingredients Modal (admin/gérant) */}
+      {showImport && <IngredientImportModal onClose={() => setShowImport(false)} />}
       </>
       )}
     </div>

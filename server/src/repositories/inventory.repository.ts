@@ -194,7 +194,88 @@ export const ingredientRepository = {
     return result.rows[0];
   },
 
-  async delete(id: string) {
-    await db.query('DELETE FROM ingredients WHERE id = $1', [id]);
+  /**
+   * Suppression d'un ingredient. La table `ingredients` est referencee par
+   * de nombreuses autres tables (la plupart sans `ON DELETE CASCADE`). On bloque
+   * si l'ingredient est utilise dans une recette (rupture metier). Le stock
+   * restant ne bloque PAS quand `force=true` — il est jete et trace via
+   * inventory_transactions type='waste' pour audit ONSSA.
+   */
+  async delete(id: string, opts: { force?: boolean } = {}): Promise<{ ok: true; wastedQty?: number } | { ok: false; reason: string; activeStock?: number }> {
+    // 1) Bloquant : recettes utilisant l'ingredient (suppression casserait les recettes)
+    const recipeUses = await db.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
+       FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+       WHERE ri.ingredient_id = $1`,
+      [id]
+    );
+    const recipeCount = recipeUses.rows[0]?.n ?? 0;
+    if (recipeCount > 0) {
+      const names = String(recipeUses.rows[0]?.names || '').split(', ').filter(Boolean).slice(0, 3).join(', ');
+      const suffix = recipeCount > 3 ? `… (${recipeCount} au total)` : '';
+      return {
+        ok: false,
+        reason: `Ingredient utilise dans ${recipeCount} recette(s) : ${names}${suffix}. Retirez-le de ces recettes avant suppression.`,
+      };
+    }
+
+    // 2) Stock actif : bloque seulement si force=false. En mode force, le stock
+    // sera jete et trace plus bas comme 'waste' pour preserver l'audit ONSSA.
+    const activeStock = await db.query(
+      `SELECT COALESCE(SUM(economat_quantity + pesage_quantity), 0)::numeric AS qty
+       FROM ingredient_lots WHERE ingredient_id = $1 AND status = 'active'`,
+      [id]
+    );
+    const qty = parseFloat(activeStock.rows[0]?.qty || '0') || 0;
+    if (qty > 0.0001 && !opts.force) {
+      return {
+        ok: false,
+        reason: `Stock actif restant (${qty.toFixed(2)}). Videz/jetez le stock avant suppression.`,
+        activeStock: qty,
+      };
+    }
+
+    // 2) Cascade manuelle des historiques dans une transaction
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      // Desactive le trigger trg_inventory_sync_lots le temps de la transaction.
+      // Sinon, le CASCADE de DELETE FROM ingredients vers ingredient_lots fait fire
+      // le trigger par ligne, qui tente INSERT/UPDATE sur inventory avec un
+      // ingredient_id en train d'etre supprime -> FK violation. La table inventory
+      // est de toute facon supprimee dans cette transaction, donc le sync est inutile.
+      // session_replication_role = replica saute tous les triggers user pour cette
+      // session — ne requiert pas superuser sur PG >= 9.5.
+      await client.query(`SET LOCAL session_replication_role = replica`);
+
+      // Cascade manuelle pour les tables qui referencent ingredients(id) SANS ON DELETE CASCADE.
+      // Les tables qui CASCADE (ingredient_lots, purchase_requests, unsold_extras,
+      // semi_fini_storages, etc.) sont nettoyees automatiquement par PG via la cle etrangere.
+      await client.query(`DELETE FROM inventory_transactions WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM inventory WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM production_ingredient_needs WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM production_bons_sortie_lignes WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM reception_voucher_items WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM purchase_order_items WHERE ingredient_id = $1`, [id]);
+      // invoice_items.ingredient_id est nullable (migration 055) → on conserve la ligne
+      await client.query(`UPDATE invoice_items SET ingredient_id = NULL WHERE ingredient_id = $1`, [id]);
+      // products.recycle_ingredient_id est nullable (migration 052) → on conserve le produit
+      await client.query(`UPDATE products SET recycle_ingredient_id = NULL WHERE recycle_ingredient_id = $1`, [id]);
+
+      const del = await client.query(`DELETE FROM ingredients WHERE id = $1 RETURNING id`, [id]);
+      if (del.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return { ok: false, reason: 'Ingredient introuvable' };
+      }
+      // session_replication_role est automatiquement reset au COMMIT (SET LOCAL).
+      await client.query('COMMIT');
+      // En mode force, on remonte au caller la qty jetee pour message UI.
+      return opts.force && qty > 0 ? { ok: true, wastedQty: qty } : { ok: true };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };

@@ -39,5 +39,46 @@ export const ingredientsApi = {
   getById: (id: string) => api.get(`/ingredients/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/ingredients', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/ingredients/${id}`, data).then(r => r.data.data),
-  remove: (id: string) => api.delete(`/ingredients/${id}`),
+  remove: (id: string, opts: { force?: boolean } = {}) =>
+    api.delete(`/ingredients/${id}`, { params: opts.force ? { force: 'true' } : undefined }),
+  /** Import xlsx — phase 1 : analyse + plan (creations/maj/inchanges) */
+  importPreview: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/ingredients/import/preview', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
+  /** Import xlsx — phase 2 : applique creations + mises a jour */
+  importCommit: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/ingredients/import/commit', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
+  /** Telecharge le xlsx export (declenche un download navigateur) */
+  exportXlsx: async (filename = 'ingredients-economat.xlsx') => {
+    const resp = await api.get('/ingredients/export', { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  /** Telecharge un modele xlsx vide (en-tete + ligne d'exemple) */
+  downloadTemplate: async () => {
+    const resp = await api.get('/ingredients/import/template', { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ingredients-modele-import.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

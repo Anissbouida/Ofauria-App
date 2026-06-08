@@ -224,11 +224,23 @@ export default function IngredientDetailPage() {
   });
 
   const deleteIngredientMutation = useMutation({
-    mutationFn: () => ingredientsApi.remove(id!),
-    onSuccess: () => {
+    mutationFn: ({ force }: { force?: boolean } = {}) => ingredientsApi.remove(id!, { force }),
+    onSuccess: (resp: unknown) => {
+      const wasted = (resp as { data?: { data?: { wastedQty?: number } } })?.data?.data?.wastedQty || 0;
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      notify.success('Ingrédient supprimé');
+      notify.success(
+        wasted > 0
+          ? `Ingrédient supprimé (${wasted.toFixed(2)} unité(s) jetée(s))`
+          : 'Ingrédient supprimé'
+      );
+      setShowDelete(false);
       navigate('/inventory');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Suppression impossible');
     },
   });
 
@@ -595,22 +607,47 @@ export default function IngredientDetailPage() {
 
       {showDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
             <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#fdf0ed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trash2 size={16} style={{ color: '#dc3545' }} />
               <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#721c24' }}>Supprimer l'ingrédient</h2>
             </div>
             <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
                 Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
               </p>
+              {qty > 0 && (
+                <div style={{
+                  fontSize: '0.75rem', color: '#856404', backgroundColor: '#fff3cd',
+                  border: '1px solid #ffeeba', borderRadius: 4, padding: '0.5rem 0.625rem',
+                  marginBottom: '0.75rem',
+                }}>
+                  <strong>⚠ Stock actif : {qty.toFixed(2)} {unit}.</strong>{' '}
+                  Utilisez « Forcer la suppression » pour jeter le stock et supprimer quand même.
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem' }}>
                 <button onClick={() => setShowDelete(false)} className="odoo-btn-secondary">Annuler</button>
-                <button onClick={() => deleteIngredientMutation.mutate()}
-                  disabled={deleteIngredientMutation.isPending}
-                  className="odoo-btn-primary" style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}>
-                  <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression...' : 'Supprimer'}
-                </button>
+                {qty > 0 ? (
+                  <button
+                    onClick={() => deleteIngredientMutation.mutate({ force: true })}
+                    disabled={deleteIngredientMutation.isPending}
+                    className="odoo-btn-primary"
+                    style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}
+                    title="Jette le stock restant et supprime l'ingrédient"
+                  >
+                    <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Forcer la suppression'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => deleteIngredientMutation.mutate({})}
+                    disabled={deleteIngredientMutation.isPending}
+                    className="odoo-btn-primary"
+                    style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}
+                  >
+                    <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Supprimer'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
