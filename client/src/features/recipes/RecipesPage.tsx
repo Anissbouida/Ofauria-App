@@ -6,12 +6,14 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat, Upload, Download } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { useAuth } from '../../context/AuthContext';
+import RecipeImportModal from './RecipeImportModal';
 
 interface RecipeIngredient {
   ingredient_id?: string;
@@ -132,6 +134,8 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 export default function RecipesPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { data: recipes = [], isLoading } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -141,6 +145,7 @@ export default function RecipesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [showImport, setShowImport] = useState(false);
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -222,6 +227,25 @@ export default function RecipesPage() {
           <button onClick={openCreate} className="odoo-btn-primary">
             <Plus size={14} /> Nouveau
           </button>
+        )}
+        {/* Import/export xlsx — admin uniquement, pas sur l'onglet Contenants */}
+        {activeTab !== 'contenants' && isAdmin && (
+          <>
+            <button
+              onClick={() => setShowImport(true)}
+              className="odoo-btn-secondary"
+              title="Importer des recettes depuis un fichier Excel"
+            >
+              <Upload size={13} /> Importer
+            </button>
+            <button
+              onClick={() => recipesApi.exportXlsx(activeTab === 'base' ? 'base' : 'product')}
+              className="odoo-btn-secondary"
+              title={activeTab === 'base' ? 'Exporter les recettes de base en Excel' : 'Exporter les recettes produits en Excel'}
+            >
+              <Download size={13} /> Exporter
+            </button>
+          </>
         )}
         <div style={{ flex: 1 }} />
         {activeTab !== 'contenants' && (
@@ -472,6 +496,10 @@ export default function RecipesPage() {
             queryClient.invalidateQueries({ queryKey: ['recipes'] });
           }}
         />
+      )}
+
+      {showImport && isAdmin && (
+        <RecipeImportModal onClose={() => setShowImport(false)} />
       )}
       </>}
     </div>
