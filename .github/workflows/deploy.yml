@@ -98,16 +98,17 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      # Recupere DATABASE_URL depuis Secret Manager (le secret est deja utilise
-      # par Cloud Run via `secrets:` plus bas — il a probablement un host Unix
-      # socket `host=/cloudsql/<instance>`. On le reecrit vers 127.0.0.1:5432
-      # pour passer par le Cloud SQL Auth Proxy.).
-      - name: Fetch DATABASE_URL from Secret Manager
+      # Recupere DATABASE_URL et JWT_SECRET depuis Secret Manager.
+      # - DATABASE_URL : reecrit vers 127.0.0.1:5432 (Unix socket Cloud Run -> TCP proxy)
+      # - JWT_SECRET : requis par env.ts au demarrage de migrate.ts (validation
+      #   eager — env.ts est importe par database.ts qui est importe par migrate.ts).
+      - name: Fetch secrets from Secret Manager
         id: secrets
         uses: google-github-actions/get-secretmanager-secrets@v2
         with:
           secrets: |-
             DATABASE_URL:${{ vars.GCP_PROJECT_ID }}/DATABASE_URL
+            JWT_SECRET:${{ vars.GCP_PROJECT_ID }}/JWT_SECRET
 
       - name: Download Cloud SQL Auth Proxy
         run: |
@@ -138,6 +139,10 @@ jobs:
           # Node URL parser refuse le host vide (WHATWG URL strict).
           # On extrait USER:PASS et DBNAME via sed et on reforge avec TCP 127.0.0.1.
           RAW_DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
+          # env.ts valide JWT_SECRET au load (database.ts l'importe via env.ts).
+          # Migrate.ts n'utilise pas JWT mais doit le passer pour ne pas planter
+          # au boot.
+          JWT_SECRET: ${{ steps.secrets.outputs.JWT_SECRET }}
         run: |
           # Format attendu : postgres(ql)?://USER:PASS@/DBNAME?host=/cloudsql/...
           USER_PASS=$(printf '%s' "$RAW_DATABASE_URL" | sed -E 's|^postgres(ql)?://([^@]+)@.*$|\2|')
