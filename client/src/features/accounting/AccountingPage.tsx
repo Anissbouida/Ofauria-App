@@ -559,6 +559,10 @@ function ChargesTab() {
   const [filterLeaf, setFilterLeaf] = useState<string>('all');
   const [filterMethod, setFilterMethod] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  // Plage de dates pour filtrer dans la periode chargee (mois courant par defaut).
+  // Format ISO YYYY-MM-DD. Vide = pas de borne sur ce cote.
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   useEffect(() => {
@@ -778,6 +782,9 @@ function ChargesTab() {
     if (filterRoot !== 'all') list = list.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === filterRoot);
     if (filterLeaf !== 'all') list = list.filter(p => (p.category_name as string || '') === filterLeaf);
     if (filterMethod !== 'all') list = list.filter(p => (p.payment_method as string || '') === filterMethod);
+    // Filtre plage de dates : compare la portion YYYY-MM-DD (ISO lexicographique).
+    if (filterDateFrom) list = list.filter(p => String(p.payment_date || '').slice(0, 10) >= filterDateFrom);
+    if (filterDateTo) list = list.filter(p => String(p.payment_date || '').slice(0, 10) <= filterDateTo);
     // Recherche texte sur designation/description, beneficiaire, reference, N° facture, categorie
     const q = searchTerm.trim().toLowerCase();
     if (q) {
@@ -804,7 +811,7 @@ function ChargesTab() {
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [outgoing, filterRoot, filterLeaf, filterMethod, searchTerm, sortCol, sortDir, catMap]);
+  }, [outgoing, filterRoot, filterLeaf, filterMethod, filterDateFrom, filterDateTo, searchTerm, sortCol, sortDir, catMap]);
 
   const displayedTotal = useMemo(() => displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [displayed]);
 
@@ -893,8 +900,23 @@ function ChargesTab() {
           <option value="all">Toutes méthodes</option>
           {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
         </select>
-        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          title="Filtre date : restreint a une plage dans la periode chargee">
+          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>Du</span>
+          <input type="date" value={filterDateFrom}
+            onChange={e => setFilterDateFrom(e.target.value)}
+            min={dateFrom} max={dateTo}
+            className="odoo-filter-dropdown"
+            style={{ padding: '4px 6px' }} />
+          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>au</span>
+          <input type="date" value={filterDateTo}
+            onChange={e => setFilterDateTo(e.target.value)}
+            min={dateFrom} max={dateTo}
+            className="odoo-filter-dropdown"
+            style={{ padding: '4px 6px' }} />
+        </div>
+        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || filterDateFrom || filterDateTo || searchTerm) && (
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchTerm(''); }}
             className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={11} /> Réinitialiser
           </button>
@@ -919,7 +941,7 @@ function ChargesTab() {
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>Aucune sortie ne correspond à ces filtres</p>
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchTerm(''); }}
             style={{ marginTop: 8, color: '#0d6efd', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
             Réinitialiser les filtres
           </button>
