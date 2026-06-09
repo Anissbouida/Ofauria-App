@@ -652,7 +652,12 @@ function ChargesTab() {
       notify.success('Modifié avec succès');
       setEditingPayment(null);
     },
-    onError: () => notify.error('Erreur lors de la modification'),
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la modification');
+    },
   });
 
   const deleteMutation = useMutation({
