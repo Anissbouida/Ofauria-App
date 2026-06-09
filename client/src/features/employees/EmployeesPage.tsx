@@ -7,11 +7,12 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
-  ArrowUpDown, ArrowUp, ArrowDown, FileText,
+  ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
 import { ROLE_LABELS } from '@ofauria/shared';
+import { useAuth } from '../../context/AuthContext';
 
 type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'schedule';
 
@@ -85,6 +86,10 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const { data: employees = [], isLoading } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const { entries: roles, getLabel: getRoleLabel, getColor: getRoleColor } = useReferentiel('employee_roles');
   const { entries: contractTypes, getLabel: getContractLabel } = useReferentiel('contract_types');
+  // Suppression/reactivation employes : backend reserve admin. On masque les
+  // boutons aux non-admins pour eviter d'afficher une action qui retournerait 403.
+  const { user } = useAuth();
+  const canDeleteEmployee = user?.role === 'admin';
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, any>) =>
@@ -95,6 +100,35 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       setShowForm(false); setEditing(null);
     },
     onError: () => notify.error('Erreur'),
+  });
+
+  /**
+   * Suppression employe = soft delete (UPDATE is_active=false cote backend).
+   * On preserve l'historique attendance/paie/paiements lies via FK qui sont
+   * sans CASCADE — un DELETE physique echouerait de toute facon. L'employe
+   * peut etre reactive ulterieurement.
+   */
+  const deactivateMutation = useMutation({
+    mutationFn: (id: string) => employeesApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      notify.success('Employé désactivé — historique préservé');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la désactivation');
+    },
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (id: string) => employeesApi.update(id, { is_active: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      notify.success('Employé réactivé');
+    },
+    onError: () => notify.error('Erreur lors de la réactivation'),
   });
 
   const activeCount = employees.filter((e: Record<string, any>) => e.is_active).length;
@@ -244,6 +278,41 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                       <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
                         <Pencil size={15} className="text-gray-500" />
                       </button>
+                      {/* Desactiver (actif -> inactif) : conserve historique paie/attendance */}
+                      {e.is_active && canDeleteEmployee && (
+                        <button
+                          onClick={() => {
+                            const fullName = `${e.first_name} ${e.last_name}`;
+                            if (confirm(
+                              `Désactiver ${fullName} ?\n\n` +
+                              `L'employé sera masqué des listes actives.\n` +
+                              `Son historique (paie, présence, paiements) reste préservé.\n` +
+                              `Vous pourrez le réactiver à tout moment.`
+                            )) {
+                              deactivateMutation.mutate(e.id as string);
+                            }
+                          }}
+                          disabled={deactivateMutation.isPending}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Désactiver l'employé">
+                          <Trash2 size={15} className="text-red-500" />
+                        </button>
+                      )}
+                      {/* Reactiver (inactif -> actif) */}
+                      {!e.is_active && canDeleteEmployee && (
+                        <button
+                          onClick={() => {
+                            const fullName = `${e.first_name} ${e.last_name}`;
+                            if (confirm(`Réactiver ${fullName} ? Il réapparaitra dans les listes actives.`)) {
+                              reactivateMutation.mutate(e.id as string);
+                            }
+                          }}
+                          disabled={reactivateMutation.isPending}
+                          className="p-2 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Réactiver l'employé">
+                          <RotateCcw size={15} className="text-green-600" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
