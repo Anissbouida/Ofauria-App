@@ -25,6 +25,18 @@ const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
 ];
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+/**
+ * Extrait YYYY-MM-DD d'une date colonne PG sans passer par new Date().
+ * pg renvoie DATE comme Date object → JSON donne "YYYY-MM-DDT00:00:00.000Z"
+ * → `<input type="date">` n'accepte que "YYYY-MM-DD" pur, sinon affiche vide.
+ * Idem pour eviter les shifts timezone +/- 1 jour.
+ */
+function isoDate(raw: unknown): string {
+  if (!raw) return '';
+  const s = String(raw).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
 export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<HrTab>('employees');
@@ -449,13 +461,13 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {([
                   ['CIN', viewDetail.cin], ['Téléphone', viewDetail.phone],
-                  ['Date de naissance', viewDetail.birth_date ? format(new Date(viewDetail.birth_date as string), 'dd/MM/yyyy') : null],
+                  ['Date de naissance', (() => { const s = isoDate(viewDetail.birth_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
                   ['N° CNSS', viewDetail.cnss_number],
                   ['Type de contrat', getContractLabel(viewDetail.contract_type as string || 'cdi')],
-                  ['Début contrat', viewDetail.contract_start ? format(new Date(viewDetail.contract_start as string), 'dd/MM/yyyy') : null],
-                  ['Fin contrat', viewDetail.contract_end ? format(new Date(viewDetail.contract_end as string), 'dd/MM/yyyy') : null],
-                  ['Date d\'embauche', viewDetail.hire_date ? format(new Date(viewDetail.hire_date as string), 'dd/MM/yyyy') : null],
+                  ['Début contrat', (() => { const s = isoDate(viewDetail.contract_start); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+                  ['Fin contrat', (() => { const s = isoDate(viewDetail.contract_end); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+                  ['Date d\'embauche', (() => { const s = isoDate(viewDetail.hire_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
                   ['Contact urgence', viewDetail.emergency_contact_name],
                   ['Tel. urgence', viewDetail.emergency_contact_phone],
@@ -500,7 +512,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Date de naissance</label><input name="birthDate" type="date" defaultValue={editing?.birth_date as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Date de naissance</label><input name="birthDate" type="date" defaultValue={isoDate(editing?.birth_date)} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Ville</label><input name="city" defaultValue={editing?.city as string} className="input" /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Adresse</label><input name="address" defaultValue={editing?.address as string} className="input" /></div>
@@ -524,9 +536,9 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input" /></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Date d'embauche *</label><input name="hireDate" type="date" defaultValue={editing?.hire_date as string} className="input" required={!editing} /></div>
-                <div><label className="block text-sm font-medium mb-1">Début contrat</label><input name="contractStart" type="date" defaultValue={editing?.contract_start as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Fin contrat</label><input name="contractEnd" type="date" defaultValue={editing?.contract_end as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Date d'embauche *</label><input name="hireDate" type="date" defaultValue={isoDate(editing?.hire_date)} className="input" required={!editing} /></div>
+                <div><label className="block text-sm font-medium mb-1">Début contrat</label><input name="contractStart" type="date" defaultValue={isoDate(editing?.contract_start)} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">Fin contrat</label><input name="contractEnd" type="date" defaultValue={isoDate(editing?.contract_end)} className="input" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">N° CNSS</label><input name="cnssNumber" defaultValue={editing?.cnss_number as string} className="input" /></div>
