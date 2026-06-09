@@ -892,7 +892,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Quantité à produire</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{targetPortions} u.</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{targetPortions} {recipe.yield_unit || 'u.'}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût total matières</div>
