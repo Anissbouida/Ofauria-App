@@ -37,6 +37,11 @@ export const invoicesApi = {
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
   createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
+  /** Modification complete (admin + gerant) — sert aussi pour ajuster une facture. */
+  update: (id: string, data: Record<string, any>) => api.put(`/invoices/${id}`, data).then(r => r.data.data),
+  /** Suppression physique (admin + gerant). force=true cascade les paiements lies. */
+  remove: (id: string, opts: { force?: boolean } = {}) =>
+    api.delete(`/invoices/${id}`, { params: opts.force ? { force: 'true' } : undefined }).then(r => r.data.data),
   paymentAlerts: (days = 7) => api.get('/invoices/payment-alerts', { params: { days } }).then(r => r.data.data),
   updatePaymentTerms: (id: string, data: { dueDate?: string | null; expectedPaymentMode?: string | null; receptionDate?: string | null }) =>
     api.put(`/invoices/${id}/payment-terms`, data).then(r => r.data.data),

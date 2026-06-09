@@ -151,6 +151,79 @@ export const invoiceController = {
     const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
     res.json({ success: true, data: invoice });
   },
+  /**
+   * PUT /invoices/:id — Modification complete (admin + gerant).
+   * Sert aussi pour les ajustements (montant, dates, fournisseur, etc.).
+   * Champs additifs : seuls ceux fournis sont modifies.
+   */
+  async update(req: AuthRequest, res: Response) {
+    const invoice = await invoiceRepository.findById(req.params.id);
+    if (!invoice) {
+      res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } });
+      return;
+    }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+    // Validation mode de reglement
+    if (body.expectedPaymentMode && !['cash', 'check', 'transfer'].includes(body.expectedPaymentMode as string)) {
+      res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
+      return;
+    }
+
+    const num = (v: unknown): number | undefined => {
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    try {
+      const updated = await invoiceRepository.update(req.params.id, {
+        invoiceNumber: body.invoiceNumber as string | undefined,
+        supplierId: body.supplierId as string | null | undefined,
+        customerId: body.customerId as string | null | undefined,
+        categoryId: body.categoryId as string | null | undefined,
+        invoiceDate: body.invoiceDate as string | undefined,
+        dueDate: body.dueDate as string | null | undefined,
+        amount: num(body.amount),
+        taxAmount: num(body.taxAmount),
+        totalAmount: num(body.totalAmount),
+        notes: body.notes as string | null | undefined,
+        expectedPaymentMode: body.expectedPaymentMode as string | null | undefined,
+        receptionDate: body.receptionDate as string | null | undefined,
+      });
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
+  /**
+   * DELETE /invoices/:id — Suppression physique (admin + gerant).
+   * Bloquee par defaut si paiements lies. ?force=true cascade les paiements.
+   */
+  async remove(req: AuthRequest, res: Response) {
+    const invoice = await invoiceRepository.findById(req.params.id);
+    if (!invoice) {
+      res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } });
+      return;
+    }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
+    const force = String(req.query.force || '').toLowerCase() === 'true';
+    try {
+      const result = await invoiceRepository.deleteById(req.params.id, { force });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
   async paymentAlerts(req: AuthRequest, res: Response) {
     const alertDays = req.query.days ? Math.max(1, Math.min(60, parseInt(req.query.days as string) || 7)) : 7;
     const rows = await invoiceRepository.findPaymentAlerts({ storeId: req.user!.storeId, alertDays });

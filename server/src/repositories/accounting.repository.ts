@@ -611,6 +611,154 @@ export const invoiceRepository = {
   },
 
   /**
+   * Mise a jour complete d'une facture (admin/gerant). Champs additifs et
+   * optionnels — seuls ceux fournis dans `data` sont modifies.
+   *
+   * Cas particuliers :
+   *   - Si amount ou taxAmount change, total_amount est recalcule automatiquement
+   *     (sauf si totalAmount est explicitement fourni — ex: reduction commerciale)
+   *   - Si totalAmount baisse en-dessous de paid_amount, on rejette l'update
+   *     (sinon on aurait une facture "trop payee" — incoherence comptable)
+   *   - Les statuts derivees (pending/partial/paid) sont resynchronises a la fin
+   */
+  async update(id: string, data: {
+    invoiceNumber?: string;
+    supplierId?: string | null;
+    customerId?: string | null;
+    categoryId?: string | null;
+    invoiceDate?: string;
+    dueDate?: string | null;
+    amount?: number;
+    taxAmount?: number;
+    totalAmount?: number;
+    notes?: string | null;
+    expectedPaymentMode?: string | null;
+    receptionDate?: string | null;
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Lock + lecture etat courant pour valider totalAmount vs paid_amount
+      const current = await client.query(
+        `SELECT amount, tax_amount, total_amount, paid_amount FROM invoices WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (!current.rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      const currentAmount = parseFloat(current.rows[0].amount);
+      const currentTax = parseFloat(current.rows[0].tax_amount);
+      const paidAmount = parseFloat(current.rows[0].paid_amount || '0');
+
+      // Recalcule totalAmount si HT ou TVA change et qu'il n'est pas explicitement fourni
+      const nextAmount = data.amount !== undefined ? data.amount : currentAmount;
+      const nextTax = data.taxAmount !== undefined ? data.taxAmount : currentTax;
+      const nextTotal = data.totalAmount !== undefined
+        ? data.totalAmount
+        : (data.amount !== undefined || data.taxAmount !== undefined)
+        ? nextAmount + nextTax
+        : undefined;
+
+      if (nextTotal !== undefined && nextTotal < paidAmount) {
+        await client.query('ROLLBACK');
+        throw new Error(`Le montant total (${nextTotal.toFixed(2)} DH) ne peut etre inferieur au deja paye (${paidAmount.toFixed(2)} DH).`);
+      }
+
+      const sets: string[] = []; const values: unknown[] = []; let i = 1;
+      if (data.invoiceNumber !== undefined) { sets.push(`invoice_number = $${i++}`); values.push(data.invoiceNumber); }
+      if (data.supplierId !== undefined) { sets.push(`supplier_id = $${i++}`); values.push(data.supplierId || null); }
+      if (data.customerId !== undefined) { sets.push(`customer_id = $${i++}`); values.push(data.customerId || null); }
+      if (data.categoryId !== undefined) { sets.push(`category_id = $${i++}`); values.push(data.categoryId || null); }
+      if (data.invoiceDate !== undefined) { sets.push(`invoice_date = $${i++}`); values.push(data.invoiceDate); }
+      if (data.dueDate !== undefined) { sets.push(`due_date = $${i++}`); values.push(data.dueDate || null); }
+      if (data.amount !== undefined) { sets.push(`amount = $${i++}`); values.push(data.amount); }
+      if (data.taxAmount !== undefined) { sets.push(`tax_amount = $${i++}`); values.push(data.taxAmount); }
+      if (nextTotal !== undefined) { sets.push(`total_amount = $${i++}`); values.push(nextTotal); }
+      if (data.notes !== undefined) { sets.push(`notes = $${i++}`); values.push(data.notes || null); }
+      if (data.expectedPaymentMode !== undefined) {
+        sets.push(`expected_payment_mode = $${i++}`);
+        values.push(data.expectedPaymentMode || null);
+      }
+      if (data.receptionDate !== undefined) { sets.push(`reception_date = $${i++}`); values.push(data.receptionDate || null); }
+
+      if (sets.length === 0) {
+        await client.query('ROLLBACK');
+        return current.rows[0];
+      }
+
+      values.push(id);
+      await client.query(
+        `UPDATE invoices SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+        values
+      );
+
+      await client.query('COMMIT');
+      // Resync statut derive (pending/partial/paid) au cas ou totalAmount a change
+      if (nextTotal !== undefined) {
+        return await this.updatePaidAmount(id);
+      }
+      return await this.findById(id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Suppression physique d'une facture (admin/gerant).
+   *
+   * Politique :
+   *   - invoice_items est supprime en CASCADE (FK ON DELETE CASCADE en migration 055)
+   *   - payments lies bloquent par defaut (FK sans CASCADE — preserve la
+   *     coherence comptable). force=true supprime aussi les paiements.
+   *
+   * Retourne { deleted: true, deletedPayments: N } ou throws une erreur lisible
+   * si payments existent et force=false.
+   */
+  async deleteById(id: string, opts: { force?: boolean } = {}): Promise<{ deleted: boolean; deletedPayments: number }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const inv = await client.query(`SELECT id FROM invoices WHERE id = $1 FOR UPDATE`, [id]);
+      if (!inv.rows[0]) {
+        await client.query('ROLLBACK');
+        throw new Error('Facture introuvable');
+      }
+
+      const paymentsCount = await client.query(
+        `SELECT COUNT(*)::int AS n FROM payments WHERE invoice_id = $1`, [id]
+      );
+      const nPayments = paymentsCount.rows[0].n as number;
+
+      if (nPayments > 0 && !opts.force) {
+        await client.query('ROLLBACK');
+        throw new Error(`Cette facture a ${nPayments} paiement(s) lie(s). Utilisez force=true pour supprimer aussi les paiements, ou annulez la facture a la place.`);
+      }
+
+      let deletedPayments = 0;
+      if (nPayments > 0 && opts.force) {
+        const delPay = await client.query(`DELETE FROM payments WHERE invoice_id = $1`, [id]);
+        deletedPayments = delPay.rowCount || 0;
+      }
+
+      await client.query(`DELETE FROM invoices WHERE id = $1`, [id]);
+
+      await client.query('COMMIT');
+      return { deleted: true, deletedPayments };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
    * Retourne les factures fournisseurs dont l'echeance est dans <= alertDays
    * jours (defaut 7), et dont le statut est encore non finalise.
    * Inclut les factures deja en retard (due_date < CURRENT_DATE).

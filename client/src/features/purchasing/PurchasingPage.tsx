@@ -301,6 +301,8 @@ function InvoicesTab() {
 function ReceivedInvoicesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  // editInvoice = facture en cours de modification (null = creation, sinon edit)
+  const [editInvoice, setEditInvoice] = useState<Record<string, any> | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
@@ -319,10 +321,65 @@ function ReceivedInvoicesSection() {
     onError: () => notify.error('Erreur'),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) => invoicesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      notify.success('Facture modifiée');
+      setEditInvoice(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la modification');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, force }: { id: string; force: boolean }) => invoicesApi.remove(id, { force }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      notify.success('Facture supprimée');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la suppression');
+    },
+  });
+
   const cancelMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.cancel(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
   });
+
+  /**
+   * Suppression facture avec strategie 2 niveaux :
+   * 1er confirm : demande s'il faut supprimer
+   * Si paiements lies : 2eme confirm pour cascade (force=true)
+   * Si aucun paiement : suppression directe
+   */
+  function handleDelete(inv: Record<string, any>) {
+    const paid = parseFloat(inv.paid_amount as string || '0');
+    const hasPayments = paid > 0;
+    const baseMsg = `Supprimer DEFINITIVEMENT la facture « ${inv.invoice_number} » de ${inv.supplier_name} ?\n\nCette action est irreversible.`;
+    if (!confirm(baseMsg)) return;
+    if (hasPayments) {
+      const force = confirm(
+        `Cette facture a ${parseFloat(String(inv.paid_amount || '0')).toFixed(2)} DH de paiements enregistres.\n\n` +
+        `OK = supprimer AUSSI les paiements (perte de tracabilite comptable)\n` +
+        `Annuler = abandonner la suppression (utilisez plutot "Annuler la facture")`
+      );
+      if (!force) return;
+      deleteMutation.mutate({ id: inv.id as string, force: true });
+    } else {
+      deleteMutation.mutate({ id: inv.id as string, force: false });
+    }
+  }
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => invoicesApi.updateStatus(id, status),
@@ -571,6 +628,12 @@ function ReceivedInvoicesSection() {
                             <Banknote size={11} /> Payer
                           </button>
                         )}
+                        {/* Modifier : disponible meme apres paiement (ajustement comptable) */}
+                        <button
+                          onClick={() => setEditInvoice(inv)}
+                          className="odoo-pager-btn" title="Modifier la facture">
+                          <Pencil size={13} />
+                        </button>
                         {inv.status !== 'cancelled' && inv.status !== 'paid' && (
                           <button
                             onClick={() => {
@@ -582,6 +645,13 @@ function ReceivedInvoicesSection() {
                             <X size={13} />
                           </button>
                         )}
+                        {/* Supprimer DEFINITIVEMENT — distinct de "Annuler" qui marque seulement */}
+                        <button
+                          onClick={() => handleDelete(inv)}
+                          disabled={deleteMutation.isPending}
+                          className="odoo-pager-btn" title="Supprimer definitivement" style={{ color: '#b71c1c' }}>
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -592,86 +662,22 @@ function ReceivedInvoicesSection() {
         </div>
       )}
 
-      {/* Create invoice modal */}
-      {showForm && (
-        <ModalBackdrop onClose={() => setShowForm(false)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb">
-                <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span>Facture fournisseur</span>
-                <span className="odoo-breadcrumb-separator">/</span>
-                <span className="odoo-breadcrumb-current">Nouvelle</span>
-              </div>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setShowForm(false)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
-              fd.amount = parseFloat(fd.amount as string) || 0;
-              fd.taxAmount = parseFloat(fd.taxAmount as string) || 0;
-              fd.totalAmount = (fd.amount as number) + (fd.taxAmount as number);
-              if (!fd.expectedPaymentMode) delete fd.expectedPaymentMode;
-              if (!fd.receptionDate) delete fd.receptionDate;
-              if (!fd.dueDate) delete fd.dueDate;
-              createMutation.mutate(fd);
-            }} className="flex-1 overflow-y-auto">
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Facture *</label>
-                    <input name="invoiceNumber" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
-                    <input name="invoiceDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur *</label>
-                    <select name="supplierId" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required>
-                      <option value="">Choisir...</option>
-                      {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
-                        <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                      ))}
-                    </select></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-                    <select name="categoryId" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-                      <option value="">Choisir...</option>
-                      {(categories as Record<string, any>[]).filter(c => c.type === 'expense').map(c => (
-                        <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
-                      ))}
-                    </select></div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Montant HT *</label>
-                    <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>TVA</label>
-                    <input name="taxAmount" type="number" step="0.01" defaultValue="0" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Échéance</label>
-                    <input name="dueDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date de réception</label>
-                    <input name="receptionDate" type="date" defaultValue={format(new Date(), 'yyyy-MM-dd')} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Mode de règlement prévu</label>
-                    <select name="expectedPaymentMode" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-                      <option value="">— Non défini —</option>
-                      <option value="cash">Espèces</option>
-                      <option value="check">Chèque</option>
-                      <option value="transfer">Virement</option>
-                    </select></div>
-                </div>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
-                  <textarea name="notes" rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-              </div>
-              <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" onClick={() => setShowForm(false)} className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {createMutation.isPending && <Loader2 size={12} className="animate-spin" />} Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </ModalBackdrop>
+      {/* Create / Edit invoice modal — un seul composant, mode determine par editInvoice */}
+      {(showForm || editInvoice) && (
+        <ReceivedInvoiceFormModal
+          invoice={editInvoice}
+          suppliers={suppliers as Record<string, any>[]}
+          categories={categories as Record<string, any>[]}
+          onClose={() => { setShowForm(false); setEditInvoice(null); }}
+          onSubmit={(data) => {
+            if (editInvoice) {
+              updateMutation.mutate({ id: editInvoice.id as string, data });
+            } else {
+              createMutation.mutate(data);
+            }
+          }}
+          isPending={createMutation.isPending || updateMutation.isPending}
+        />
       )}
 
       {/* Pay invoice modal */}
@@ -747,3 +753,203 @@ function ReceivedInvoicesSection() {
 }
 
 /* EmittedInvoicesSection moved to ../sales/EmittedInvoicesTab.tsx */
+
+/**
+ * Modal de creation / modification d'une facture recue.
+ *
+ * Le calcul HT / TVA / TTC est synchronise live : si l'utilisateur edite HT ou
+ * TVA, le TTC est recalcule ; s'il edite le TTC, la TVA est deduite (HT - TTC).
+ * Cela couvre les 2 cas d'usage usuels :
+ *   1. La facture du fournisseur affiche un HT et un TVA explicites
+ *   2. La facture n'affiche que le TTC (cas frequent au Maroc pour les PME)
+ */
+function ReceivedInvoiceFormModal({
+  invoice, suppliers, categories, onClose, onSubmit, isPending,
+}: {
+  invoice: Record<string, any> | null;
+  suppliers: Record<string, any>[];
+  categories: Record<string, any>[];
+  onClose: () => void;
+  onSubmit: (data: Record<string, any>) => void;
+  isPending: boolean;
+}) {
+  const isEdit = !!invoice;
+
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(invoice?.invoice_number as string || '');
+  const [invoiceDate, setInvoiceDate] = useState<string>(
+    invoice?.invoice_date ? String(invoice.invoice_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd')
+  );
+  const [supplierId, setSupplierId] = useState<string>(invoice?.supplier_id as string || '');
+  const [categoryId, setCategoryId] = useState<string>(invoice?.category_id as string || '');
+  const [amountHT, setAmountHT] = useState<string>(
+    invoice?.amount !== undefined ? String(invoice.amount) : ''
+  );
+  const [taxAmount, setTaxAmount] = useState<string>(
+    invoice?.tax_amount !== undefined ? String(invoice.tax_amount) : '0'
+  );
+  const [totalTTC, setTotalTTC] = useState<string>(
+    invoice?.total_amount !== undefined ? String(invoice.total_amount) : ''
+  );
+  // Champ source de derniere edition : evite les boucles infinies dans le calcul live.
+  // 'ht_tva' : on a edite HT ou TVA -> TTC est derive
+  // 'ttc' : on a edite TTC -> TVA est derive (HT garde sa valeur)
+  const [lastEdit, setLastEdit] = useState<'ht_tva' | 'ttc'>('ht_tva');
+  const [dueDate, setDueDate] = useState<string>(
+    invoice?.due_date ? String(invoice.due_date).slice(0, 10) : ''
+  );
+  const [receptionDate, setReceptionDate] = useState<string>(
+    invoice?.reception_date ? String(invoice.reception_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd')
+  );
+  const [expectedPaymentMode, setExpectedPaymentMode] = useState<string>(
+    invoice?.expected_payment_mode as string || ''
+  );
+  const [notes, setNotes] = useState<string>(invoice?.notes as string || '');
+
+  // Recalcul live : HT + TVA = TTC OU TTC - HT = TVA
+  useEffect(() => {
+    const ht = parseFloat(amountHT) || 0;
+    if (lastEdit === 'ht_tva') {
+      const tva = parseFloat(taxAmount) || 0;
+      const newTTC = (ht + tva).toFixed(2);
+      if (newTTC !== totalTTC) setTotalTTC(newTTC);
+    } else {
+      const ttc = parseFloat(totalTTC) || 0;
+      const newTVA = (ttc - ht).toFixed(2);
+      if (newTVA !== taxAmount) setTaxAmount(newTVA);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountHT, taxAmount, totalTTC, lastEdit]);
+
+  // Pour les editions, paid_amount sert de borne basse — le user ne peut pas
+  // baisser le total en dessous de ce qui a deja ete encaisse.
+  const paidAmount = parseFloat(invoice?.paid_amount as string || '0');
+  const ttcNum = parseFloat(totalTTC) || 0;
+  const ttcBelowPaid = isEdit && paidAmount > 0 && ttcNum < paidAmount;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const data: Record<string, any> = {
+      invoiceNumber: invoiceNumber.trim() || undefined,
+      invoiceDate,
+      supplierId: supplierId || null,
+      categoryId: categoryId || null,
+      amount: parseFloat(amountHT) || 0,
+      taxAmount: parseFloat(taxAmount) || 0,
+      totalAmount: parseFloat(totalTTC) || 0,
+      notes: notes.trim() || null,
+    };
+    if (dueDate) data.dueDate = dueDate; else data.dueDate = null;
+    if (receptionDate) data.receptionDate = receptionDate; else data.receptionDate = null;
+    if (expectedPaymentMode) data.expectedPaymentMode = expectedPaymentMode;
+    else data.expectedPaymentMode = null;
+    onSubmit(data);
+  };
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Facture fournisseur</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">
+              {isEdit ? `Modifier ${invoice?.invoice_number as string}` : 'Nouvelle'}
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Facture *</label>
+                <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
+                <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur *</label>
+                <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required>
+                  <option value="">Choisir...</option>
+                  {suppliers.filter(s => s.is_active || s.id === supplierId).map(s => (
+                    <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
+                  ))}
+                </select></div>
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
+                <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                  <option value="">Choisir...</option>
+                  {categories.filter(c => c.type === 'expense').map(c => (
+                    <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                  ))}
+                </select></div>
+            </div>
+            {/* HT / TVA / TTC : ligne dediee avec live sync */}
+            <div className="grid grid-cols-3 gap-3" style={{ padding: '8px 10px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, border: '1px solid var(--theme-bg-separator)' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Montant HT *</label>
+                <input type="number" step="0.01" value={amountHT}
+                  onChange={e => { setAmountHT(e.target.value); setLastEdit('ht_tva'); }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>TVA</label>
+                <input type="number" step="0.01" value={taxAmount}
+                  onChange={e => { setTaxAmount(e.target.value); setLastEdit('ht_tva'); }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 4 }}>Montant TTC</label>
+                <input type="number" step="0.01" value={totalTTC}
+                  onChange={e => { setTotalTTC(e.target.value); setLastEdit('ttc'); }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  style={{ fontWeight: 600 }} />
+              </div>
+            </div>
+            {ttcBelowPaid && (
+              <div style={{ padding: '6px 10px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4 }}>
+                ⚠ Le montant TTC ({n(ttcNum)} DH) est inférieur au montant déjà payé ({n(paidAmount)} DH). Ajustez avant d'enregistrer.
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-3">
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Échéance</label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date de réception</label>
+                <input type="date" value={receptionDate} onChange={e => setReceptionDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+              <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Règlement prévu</label>
+                <select value={expectedPaymentMode} onChange={e => setExpectedPaymentMode(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                  <option value="">— Non défini —</option>
+                  <option value="cash">Espèces</option>
+                  <option value="check">Chèque</option>
+                  <option value="transfer">Virement</option>
+                </select></div>
+            </div>
+            <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+            {isEdit && paidAmount > 0 && (
+              <div style={{ padding: '6px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4 }}>
+                💡 Déjà payé : <strong>{n(paidAmount)} DH</strong>. Le statut sera recalculé automatiquement après modification.
+              </div>
+            )}
+          </div>
+          <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={isPending || ttcBelowPaid} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {isPending && <Loader2 size={12} className="animate-spin" />}
+              {isEdit ? 'Enregistrer' : 'Créer la facture'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </ModalBackdrop>
+  );
+}
