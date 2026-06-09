@@ -72,6 +72,8 @@ export const receptionVoucherRepository = {
     notes?: string;
     receivedBy: string;
     storeId?: string;
+    supplierInvoiceNumber?: string;
+    supplierInvoiceDate?: string;
     items: { poItemId: string; ingredientId: string; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[];
   }) {
     const client = await db.getClient();
@@ -87,14 +89,43 @@ export const receptionVoucherRepository = {
       const po = poResult.rows[0];
       if (!po) throw new Error('Bon de commande non trouve');
 
+      const supplierInvoiceNumber = data.supplierInvoiceNumber?.trim() || null;
+      const supplierInvoiceDate = data.supplierInvoiceDate || null;
+
+      // Garde : meme N° de facture fournisseur deja saisi sur une reception
+      // antecedente du meme fournisseur = doublon (facture saisie deux fois).
+      // On bloque pour eviter la creation d'une seconde facture en double.
+      if (supplierInvoiceNumber) {
+        const dup = await client.query(
+          `SELECT rv.voucher_number, po.order_number
+           FROM reception_vouchers rv
+           JOIN purchase_orders po ON po.id = rv.purchase_order_id
+           WHERE rv.supplier_invoice_number = $1
+             AND po.supplier_id = $2
+           LIMIT 1`,
+          [supplierInvoiceNumber, po.supplier_id]
+        );
+        if (dup.rows.length > 0) {
+          const e: Error & { statusCode?: number } = new Error(
+            `La facture fournisseur N° ${supplierInvoiceNumber} a déjà été enregistrée ` +
+            `(reception ${dup.rows[0].voucher_number} — BC ${dup.rows[0].order_number}). ` +
+            `Vérifie le numéro avant de valider.`
+          );
+          e.statusCode = 409;
+          throw e;
+        }
+      }
+
       // Generate voucher number (with advisory lock via client)
       const voucherNumber = await this.generateVoucherNumber(client);
 
       // Create reception voucher
       const rvResult = await client.query(
-        `INSERT INTO reception_vouchers (voucher_number, purchase_order_id, notes, received_by, store_id)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [voucherNumber, data.purchaseOrderId, data.notes || null, data.receivedBy, data.storeId || null]
+        `INSERT INTO reception_vouchers (voucher_number, purchase_order_id, notes, received_by, store_id,
+                                          supplier_invoice_number, supplier_invoice_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [voucherNumber, data.purchaseOrderId, data.notes || null, data.receivedBy, data.storeId || null,
+         supplierInvoiceNumber, supplierInvoiceDate]
       );
       const rv = rvResult.rows[0];
 
@@ -253,15 +284,39 @@ export const receptionVoucherRepository = {
           });
 
           const amount = invoiceItems.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
-          const invoiceNumber = await invoiceRepository.generateInvoiceNumber('received');
+
+          // N° et date facture : on prefere ceux du fournisseur (saisis lors
+          // de la reception). Fallback sur auto-genere si non renseignes
+          // (anciennes receptions, livraisons sans facture physique).
+          //
+          // Recherche le supplier_invoice_number sur la reception courante OU
+          // sur une reception anterieure du meme BC (cas livraison echelonnee
+          // ou la facture arrive avec la derniere livraison).
+          const supplierInvoiceLookup = await client.query<{ number: string | null; date: string | null }>(
+            `SELECT supplier_invoice_number AS number, supplier_invoice_date::text AS date
+             FROM reception_vouchers
+             WHERE purchase_order_id = $1 AND supplier_invoice_number IS NOT NULL
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [data.purchaseOrderId]
+          );
+          const lookedUpNumber = supplierInvoiceLookup.rows[0]?.number || null;
+          const lookedUpDate = supplierInvoiceLookup.rows[0]?.date || null;
+
+          const invoiceNumber = lookedUpNumber || await invoiceRepository.generateInvoiceNumber('received');
+          const invoiceDate = lookedUpDate; // null => DB DEFAULT CURRENT_DATE handled below
+          const notesLabel = lookedUpNumber
+            ? `Facture fournisseur ${lookedUpNumber} — reception depuis ${po.order_number}`
+            : `Facture auto-generee depuis ${po.order_number}`;
 
           const invResult = await client.query(
             `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, purchase_order_id, reception_voucher_id,
               invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
-             VALUES ($1, 'received', $2, $3, $4, CURRENT_DATE, $5, 0, $5, $6, $7, $8) RETURNING *`,
+             VALUES ($1, 'received', $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, 0, $6, $7, $8, $9) RETURNING *`,
             [invoiceNumber, po.supplier_id, data.purchaseOrderId, rv.id,
+             invoiceDate,
              amount,
-             `Facture auto-generee depuis ${po.order_number}`,
+             notesLabel,
              data.receivedBy, data.storeId || null]
           );
           autoInvoice = invResult.rows[0];

@@ -949,9 +949,11 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   const [deliveries, setDeliveries] = useState<Record<string, number>>({});
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
+  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('');
 
   const confirmMutation = useMutation({
-    mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[] }) =>
+    mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string }) =>
       purchaseOrdersApi.confirmDelivery(poId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -961,7 +963,12 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
       notify.success('Réception confirmée — stock et facture mis à jour');
       onClose();
     },
-    onError: () => notify.error('Erreur lors de la confirmation'),
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la confirmation');
+    },
   });
 
   if (isLoading) return (
@@ -976,6 +983,15 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
   const items = (po.items || []) as POItem[];
 
+  // Cette reception va-t-elle completer entierement le BC ?
+  // (impacte la creation automatique de la facture cote backend)
+  const willCompletePO = items.every((item) => {
+    const ordered = parseFloat(item.quantity_ordered);
+    const alreadyDelivered = parseFloat(item.quantity_delivered);
+    const beingDelivered = deliveries[item.id] || 0;
+    return alreadyDelivered + beingDelivered >= ordered;
+  });
+
   const handleSubmit = () => {
     const deliveredItems = Object.entries(deliveries)
       .filter(([, qty]) => qty > 0)
@@ -985,7 +1001,24 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         ...lotInfo[itemId],
       }));
     if (deliveredItems.length === 0) { notify.error('Saisissez au moins une quantité livrée'); return; }
-    confirmMutation.mutate({ items: deliveredItems });
+    // Si cette reception va creer la facture (livraison complete), on conseille
+    // fortement le N° de facture fournisseur — sinon le systeme retombera
+    // sur un numero auto-genere (legacy, non recommande).
+    if (willCompletePO && !supplierInvoiceNumber.trim()) {
+      const proceed = confirm(
+        'Aucun N° de facture fournisseur saisi.\n\n' +
+        'Cette réception va clôturer le BC et créer automatiquement la facture. ' +
+        'Sans N° de facture fournisseur, le système générera un numéro interne ' +
+        '(non recommandé — il vaut mieux saisir celui imprimé sur la facture papier).\n\n' +
+        'Continuer sans le numéro ?'
+      );
+      if (!proceed) return;
+    }
+    confirmMutation.mutate({
+      items: deliveredItems,
+      ...(supplierInvoiceNumber.trim() ? { supplierInvoiceNumber: supplierInvoiceNumber.trim() } : {}),
+      ...(supplierInvoiceDate ? { supplierInvoiceDate } : {}),
+    });
   };
 
   const fillAll = () => {
@@ -1027,6 +1060,40 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         </div>
 
         <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+          {/* Facture fournisseur — N° et date imprimes sur le document papier */}
+          <div className={`rounded-xl p-4 border ${willCompletePO ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-start gap-2 mb-3">
+              <FileText size={16} className={willCompletePO ? 'text-amber-600 mt-0.5' : 'text-gray-500 mt-0.5'} />
+              <div className="flex-1">
+                <h3 className={`text-sm font-semibold ${willCompletePO ? 'text-amber-800' : 'text-gray-700'}`}>
+                  Facture fournisseur
+                </h3>
+                <p className={`text-xs mt-0.5 ${willCompletePO ? 'text-amber-700' : 'text-gray-500'}`}>
+                  {willCompletePO
+                    ? 'Cette réception va clôturer le BC. Saisis le N° imprimé sur la facture papier du fournisseur (il sera utilisé tel quel, pas auto-généré).'
+                    : 'Optionnel pour une livraison partielle. Tu pourras le saisir lors de la livraison finale.'}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  N° facture fournisseur {willCompletePO && <span className="text-amber-600">*</span>}
+                </label>
+                <input type="text" value={supplierInvoiceNumber}
+                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                  placeholder="Ex: FAC-2026-12345"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date de la facture</label>
+                <input type="date" value={supplierInvoiceDate}
+                  onChange={(e) => setSupplierInvoiceDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" />
+              </div>
+            </div>
+          </div>
+
           {/* Fill all button */}
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">Saisissez les quantités reçues pour chaque article</p>

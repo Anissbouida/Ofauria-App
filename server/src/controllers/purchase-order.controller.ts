@@ -64,19 +64,21 @@ export const purchaseOrderController = {
         res.status(409).json({ success: false, error: { message: 'Le bon doit être envoyé ou en livraison partielle' } });
         return;
       }
-      const { items } = req.body;
+      const { items, supplierInvoiceNumber, supplierInvoiceDate } = req.body;
       if (!items || items.length === 0) {
         res.status(400).json({ success: false, error: { message: 'Articles livrés requis' } });
         return;
       }
       const result = await purchaseOrderRepository.confirmDelivery(
-        req.params.id, items, req.user!.userId, req.user!.storeId
+        req.params.id, items, req.user!.userId, req.user!.storeId,
+        supplierInvoiceNumber, supplierInvoiceDate
       );
       res.json({ success: true, data: result });
     } catch (err: unknown) {
       console.error('[confirmDelivery] Error:', err);
       const message = err instanceof Error ? err.message : 'Erreur lors de la confirmation de livraison';
-      res.status(400).json({ success: false, error: { message } });
+      const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
+      res.status(statusCode).json({ success: false, error: { message } });
     }
   },
 

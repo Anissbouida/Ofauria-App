@@ -133,7 +133,9 @@ export const purchaseOrderRepository = {
     id: string,
     items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[],
     performedBy: string,
-    storeId?: string
+    storeId?: string,
+    supplierInvoiceNumber?: string,
+    supplierInvoiceDate?: string,
   ) {
     // Get PO items to map ingredientId
     const po = await this.findById(id);
@@ -159,6 +161,8 @@ export const purchaseOrderRepository = {
       notes: `Reception depuis confirmation de livraison BC ${po.order_number}`,
       receivedBy: performedBy,
       storeId,
+      supplierInvoiceNumber,
+      supplierInvoiceDate,
       items: rvItems,
     });
 
