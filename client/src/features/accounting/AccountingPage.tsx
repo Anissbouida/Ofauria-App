@@ -10,7 +10,7 @@ import {
   X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale,
-  ArrowUpRight, ArrowDownRight, Upload,
+  ArrowUpRight, ArrowDownRight, Upload, Search,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -558,6 +558,7 @@ function ChargesTab() {
   const [filterRoot, setFilterRoot] = useState<string>('all');
   const [filterLeaf, setFilterLeaf] = useState<string>('all');
   const [filterMethod, setFilterMethod] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   useEffect(() => {
@@ -777,6 +778,22 @@ function ChargesTab() {
     if (filterRoot !== 'all') list = list.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === filterRoot);
     if (filterLeaf !== 'all') list = list.filter(p => (p.category_name as string || '') === filterLeaf);
     if (filterMethod !== 'all') list = list.filter(p => (p.payment_method as string || '') === filterMethod);
+    // Recherche texte sur designation/description, beneficiaire, reference, N° facture, categorie
+    const q = searchTerm.trim().toLowerCase();
+    if (q) {
+      list = list.filter(p => {
+        const beneficiaire = (p.supplier_name as string) ||
+          (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : '');
+        const rid = getRootId(p.category_id as string | null);
+        const rootName = rid ? (catMap[rid]?.name as string || '') : '';
+        const fields = [
+          p.description as string, p.designation as string,
+          p.reference as string, p.invoice_number as string,
+          beneficiaire, p.category_name as string, rootName,
+        ];
+        return fields.some(f => (f || '').toLowerCase().includes(q));
+      });
+    }
     return [...list].sort((a, b) => {
       let va: any = '', vb: any = '';
       if (sortCol === 'date') { va = a.payment_date; vb = b.payment_date; }
@@ -787,7 +804,7 @@ function ChargesTab() {
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [outgoing, filterRoot, filterLeaf, filterMethod, sortCol, sortDir, catMap]);
+  }, [outgoing, filterRoot, filterLeaf, filterMethod, searchTerm, sortCol, sortDir, catMap]);
 
   const displayedTotal = useMemo(() => displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [displayed]);
 
@@ -847,8 +864,23 @@ function ChargesTab() {
         ))}
       </div>
 
-      {/* Filter bar */}
+      {/* Filter bar : recherche + filtres + reset */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
+          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+          <input type="text"
+            placeholder="Rechercher (description, bénéficiaire, réf, catégorie...)"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="odoo-search-input"
+            style={{ flex: 1, minWidth: 0 }} />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} title="Effacer la recherche"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
+              <X size={12} />
+            </button>
+          )}
+        </div>
         <select value={filterRoot} onChange={e => { setFilterRoot(e.target.value); setFilterLeaf('all'); }} className="odoo-filter-dropdown">
           <option value="all">Toutes catégories</option>
           {rootCatsWithPayments.map(rc => <option key={String(rc.id)} value={String(rc.id)}>{rc.name}</option>)}
@@ -861,8 +893,8 @@ function ChargesTab() {
           <option value="all">Toutes méthodes</option>
           {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
         </select>
-        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all') && (
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); }}
+        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
             className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={11} /> Réinitialiser
           </button>
@@ -882,6 +914,15 @@ function ChargesTab() {
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>Aucune sortie pour cette période</p>
+        </div>
+      ) : displayed.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucune sortie ne correspond à ces filtres</p>
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
+            style={{ marginTop: 8, color: '#0d6efd', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
+            Réinitialiser les filtres
+          </button>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
