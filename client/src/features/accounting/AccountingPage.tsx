@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
+import { employeesApi } from '../../api/employees.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -561,6 +562,7 @@ function ChargesTab() {
   });
   const isLoading = isLoadingPayments || isLoadingLines;
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
+  const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
   const { data: eligiblePOs = [] } = useQuery({ queryKey: ['eligible-pos'], queryFn: purchaseOrdersApi.eligible });
 
@@ -573,6 +575,31 @@ function ChargesTab() {
   // Check if selected category requires a PO (look up the leaf category)
   const selectedCategory = (categories as Record<string, any>[]).find(c => String(c.id) === formCategoryId);
   const requiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
+
+  /**
+   * Detection "depense de personnel" : on remonte les parents de la categorie
+   * selectionnee jusqu'a la racine (level 1). Si la racine est "Charges de
+   * personnel", on bascule le selecteur Fournisseur en selecteur Employe.
+   * UUID stable du seed migrations/019.
+   */
+  const PERSONNEL_ROOT_ID = '10000000-0000-0000-0000-000000000004';
+  const isPersonnelCategory = (catId: string | null): boolean => {
+    if (!catId) return false;
+    const all = categories as Record<string, any>[];
+    let current = all.find(c => String(c.id) === catId);
+    // Garde-fou contre les boucles dans le graphe categories
+    const seen = new Set<string>();
+    while (current) {
+      const id = String(current.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      if (id === PERSONNEL_ROOT_ID) return true;
+      if (!current.parent_id) return false;
+      current = all.find(c => String(c.id) === String(current!.parent_id));
+    }
+    return false;
+  };
+  const isPersonnelExpense = isPersonnelCategory(formCategoryId);
 
   // Build full path label for display: "Categorie > Sous-cat > Type"
   const getCategoryPath = (catId: string) => {
@@ -925,6 +952,14 @@ function ChargesTab() {
                 if (selectedPO) fd.supplierId = selectedPO.supplier_id as string;
               }
               if (!fd.supplierId) delete fd.supplierId;
+              // Pour les depenses de personnel : on a un employeeId au lieu d'un supplierId.
+              // Le payload backend (payments.create) supporte deja les deux champs.
+              if (isPersonnelExpense) {
+                delete fd.supplierId;
+                if (!fd.employeeId) delete fd.employeeId;
+              } else {
+                delete fd.employeeId;
+              }
               if (!fd.categoryId) { notify.error('Veuillez sélectionner une catégorie'); return; }
               if (requiresPO && !formPOId) { notify.error('Cette catégorie nécessite un bon de commande'); return; }
               createMutation.mutate(fd);
@@ -978,13 +1013,34 @@ function ChargesTab() {
                   <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                     {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select></div>
-                {!requiresPO && (
+                {!requiresPO && !isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
                     <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
                       <option value="">Aucun</option>
                       {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
                         <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
                       ))}
+                    </select></div>
+                )}
+                {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
+                    Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
+                {!requiresPO && isPersonnelExpense && (
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
+                    <select name="employeeId" required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                      <option value="">Choisir un employé...</option>
+                      {(employees as Record<string, any>[])
+                        .filter(emp => emp.is_active !== false)
+                        .sort((a, b) => String(a.first_name || a.name || '').localeCompare(String(b.first_name || b.name || '')))
+                        .map(emp => {
+                          const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ')
+                            || (emp.name as string) || (emp.email as string) || 'Sans nom';
+                          const role = emp.role || emp.position;
+                          return (
+                            <option key={emp.id as string} value={emp.id as string}>
+                              {fullName}{role ? ` — ${role}` : ''}
+                            </option>
+                          );
+                        })}
                     </select></div>
                 )}
               </div>
