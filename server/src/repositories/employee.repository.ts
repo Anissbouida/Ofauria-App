@@ -71,6 +71,100 @@ export const employeeRepository = {
   async delete(id: string) {
     await db.query('UPDATE employees SET is_active = false WHERE id = $1', [id]);
   },
+
+  /**
+   * Suppression PHYSIQUE de l'employe + cascade manuelle sur toutes les
+   * tables qui le referencent (FK sans ON DELETE CASCADE en migration 009/018/019/090).
+   *
+   * Action irreversible. Reservee admin. A utiliser uniquement pour purger
+   * un employe cree par erreur ou dont on veut effacer toute trace
+   * (cas RGPD/droit a l'oubli).
+   *
+   * Retourne le nombre de lignes supprimees par table pour audit/log.
+   */
+  async hardDelete(id: string): Promise<{
+    payments: number; payroll: number; leaves: number; attendance: number;
+    schedules: number; productionCoutReel: number; employee: number;
+  }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Verrouille la ligne pour eviter une suppression concurrente
+      const exists = await client.query('SELECT id FROM employees WHERE id = $1 FOR UPDATE', [id]);
+      if (!exists.rows[0]) {
+        await client.query('ROLLBACK');
+        throw new Error('Employe introuvable');
+      }
+
+      // Cascade manuelle. Ordre : enfants d'abord, puis l'employe.
+      // Pas de CASCADE en FK -> impossible de supprimer l'employe sans
+      // d'abord nettoyer les references.
+      const r1 = await client.query('DELETE FROM payments WHERE employee_id = $1', [id]);
+      const r2 = await client.query('DELETE FROM payroll WHERE employee_id = $1', [id]);
+      const r3 = await client.query('DELETE FROM leaves WHERE employee_id = $1', [id]);
+      const r4 = await client.query('DELETE FROM attendance WHERE employee_id = $1', [id]);
+      const r5 = await client.query('DELETE FROM schedules WHERE employee_id = $1', [id]);
+      // production_cout_reel : optionnelle (existe seulement si migration 090 appliquee)
+      let r6Count = 0;
+      try {
+        const r6 = await client.query('DELETE FROM production_cout_reel WHERE employee_id = $1', [id]);
+        r6Count = r6.rowCount || 0;
+      } catch (e) {
+        // Table absente sur certains environnements — on ignore silencieusement.
+        // Toute autre erreur (FK supplementaire) annule la transaction.
+        const code = (e as { code?: string }).code;
+        if (code !== '42P01') throw e; // 42P01 = undefined_table
+      }
+
+      const r7 = await client.query('DELETE FROM employees WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+
+      return {
+        payments: r1.rowCount || 0,
+        payroll: r2.rowCount || 0,
+        leaves: r3.rowCount || 0,
+        attendance: r4.rowCount || 0,
+        schedules: r5.rowCount || 0,
+        productionCoutReel: r6Count,
+        employee: r7.rowCount || 0,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Compte les references vers cet employe (pour previewer ce qu'un hard
+   * delete supprimerait avant que l'admin confirme).
+   */
+  async countDependencies(id: string): Promise<{
+    payments: number; payroll: number; leaves: number; attendance: number;
+    schedules: number; productionCoutReel: number;
+  }> {
+    const q = async (sql: string): Promise<number> => {
+      try {
+        const r = await db.query(sql, [id]);
+        return parseInt(String(r.rows[0]?.n || '0'), 10) || 0;
+      } catch (e) {
+        if ((e as { code?: string }).code === '42P01') return 0;
+        throw e;
+      }
+    };
+    const [payments, payroll, leaves, attendance, schedules, productionCoutReel] = await Promise.all([
+      q('SELECT COUNT(*)::int AS n FROM payments WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM payroll WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM leaves WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM attendance WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM schedules WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM production_cout_reel WHERE employee_id = $1'),
+    ]);
+    return { payments, payroll, leaves, attendance, schedules, productionCoutReel };
+  },
 };
 
 export const scheduleRepository = {

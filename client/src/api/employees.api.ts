@@ -6,6 +6,11 @@ export const employeesApi = {
   create: (data: Record<string, any>) => api.post('/employees', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/employees/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/employees/${id}`),
+  /** Hard delete : supprime l'employe + cascade FK (paie, attendance, paiements, etc.).
+   *  Action IRREVERSIBLE — admin uniquement. */
+  hardDelete: (id: string) => api.delete(`/employees/${id}`, { params: { hard: 'true' } }).then(r => r.data.data),
+  /** Compte les references vers l'employe (preview avant hard delete). */
+  dependencies: (id: string) => api.get(`/employees/${id}/dependencies`).then(r => r.data.data),
 };
 
 export const schedulesApi = {

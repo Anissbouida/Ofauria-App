@@ -10,6 +10,9 @@ router.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), employeeC
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), employeeController.getById);
 router.post('/', authenticate, authorize(ROLES.ADMIN), employeeController.create);
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), employeeController.update);
+// GET /:id/dependencies : compte les references vers l'employe (pour preview hard delete).
+router.get('/:id/dependencies', authenticate, authorize(ROLES.ADMIN), employeeController.dependencies);
+// DELETE /:id : soft delete par defaut. ?hard=true cascade les enfants + supprime l'employe.
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), employeeController.remove);
 
 export default router;

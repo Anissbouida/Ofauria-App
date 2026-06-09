@@ -7,7 +7,7 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
-  ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw,
+  ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
@@ -130,6 +130,77 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
     },
     onError: () => notify.error('Erreur lors de la réactivation'),
   });
+
+  /**
+   * Hard delete : suppression PHYSIQUE de l'employe + cascade sur attendance,
+   * paie, conges, paiements, etc. Irreversible.
+   *
+   * Flow : preview (compte les references) -> confirm avec details -> delete.
+   */
+  const hardDeleteMutation = useMutation({
+    mutationFn: (id: string) => employeesApi.hardDelete(id),
+    onSuccess: (result: Record<string, number>) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      const totalLinked = (result.payments || 0) + (result.payroll || 0)
+        + (result.leaves || 0) + (result.attendance || 0)
+        + (result.schedules || 0) + (result.productionCoutReel || 0);
+      notify.success(`Employé supprimé définitivement${totalLinked > 0 ? ` (+ ${totalLinked} enregistrement(s) lié(s))` : ''}`);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la suppression définitive');
+    },
+  });
+
+  /**
+   * Trigger hard delete avec preview + double confirmation.
+   */
+  async function handleHardDelete(emp: Record<string, any>) {
+    const fullName = `${emp.first_name} ${emp.last_name}`;
+
+    if (!confirm(
+      `⚠️ SUPPRESSION DÉFINITIVE\n\n` +
+      `Vous êtes sur le point d'effacer ${fullName} DE LA BASE DE DONNÉES.\n\n` +
+      `Cette action est IRRÉVERSIBLE. Toutes les références (paie, présence,\n` +
+      `congés, paiements) seront aussi supprimées.\n\n` +
+      `Si vous voulez juste masquer l'employé en gardant l'historique,\n` +
+      `utilisez plutôt le bouton "Désactiver".\n\n` +
+      `Continuer vers le détail des données qui seront supprimées ?`
+    )) return;
+
+    // Fetch counts pour montrer ce qui sera detruit
+    let counts: Record<string, number>;
+    try {
+      counts = await employeesApi.dependencies(emp.id as string);
+    } catch {
+      notify.error('Impossible de prévisualiser les données liées');
+      return;
+    }
+
+    const lines: string[] = [];
+    if (counts.payroll) lines.push(`• ${counts.payroll} fiche(s) de paie`);
+    if (counts.attendance) lines.push(`• ${counts.attendance} pointage(s) / présence(s)`);
+    if (counts.leaves) lines.push(`• ${counts.leaves} congé(s)`);
+    if (counts.schedules) lines.push(`• ${counts.schedules} planning(s)`);
+    if (counts.payments) lines.push(`• ${counts.payments} paiement(s) lié(s)`);
+    if (counts.productionCoutReel) lines.push(`• ${counts.productionCoutReel} temps de production`);
+
+    const details = lines.length > 0
+      ? `Données qui seront EFFACÉES en cascade :\n${lines.join('\n')}\n\n`
+      : `Aucune donnée liée — suppression propre.\n\n`;
+
+    if (!confirm(
+      `${details}` +
+      `Confirmer la suppression DÉFINITIVE de ${fullName} ?\n\n` +
+      `OK = supprimer (action irréversible)\n` +
+      `Annuler = abandonner`
+    )) return;
+
+    hardDeleteMutation.mutate(emp.id as string);
+  }
 
   const activeCount = employees.filter((e: Record<string, any>) => e.is_active).length;
 
@@ -296,6 +367,16 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                           className="p-2 hover:bg-red-50 rounded-lg transition-colors"
                           title="Désactiver l'employé">
                           <Trash2 size={15} className="text-red-500" />
+                        </button>
+                      )}
+                      {/* Suppression DEFINITIVE (cascade FK) — admin only */}
+                      {canDeleteEmployee && (
+                        <button
+                          onClick={() => handleHardDelete(e)}
+                          disabled={hardDeleteMutation.isPending}
+                          className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Supprimer définitivement (cascade DB)">
+                          <AlertOctagon size={15} className="text-red-700" />
                         </button>
                       )}
                       {/* Reactiver (inactif -> actif) */}

@@ -21,8 +21,24 @@ export const employeeController = {
     res.json({ success: true, data: employee });
   },
   async remove(req: AuthRequest, res: Response) {
+    const hard = String(req.query.hard || '').toLowerCase() === 'true';
+    if (hard) {
+      try {
+        const result = await employeeRepository.hardDelete(req.params.id);
+        res.json({ success: true, data: result });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
+        res.status(400).json({ success: false, error: { message: msg } });
+      }
+      return;
+    }
+    // Soft delete par defaut (UPDATE is_active = false) — preserve l'historique
     await employeeRepository.delete(req.params.id);
     res.json({ success: true, data: null });
+  },
+  async dependencies(req: AuthRequest, res: Response) {
+    const counts = await employeeRepository.countDependencies(req.params.id);
+    res.json({ success: true, data: counts });
   },
 };
 
