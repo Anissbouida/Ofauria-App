@@ -194,6 +194,7 @@ export const invoiceController = {
         notes: body.notes as string | null | undefined,
         expectedPaymentMode: body.expectedPaymentMode as string | null | undefined,
         receptionDate: body.receptionDate as string | null | undefined,
+        checkNumber: body.checkNumber as string | null | undefined,
       });
       res.json({ success: true, data: updated });
     } catch (err) {

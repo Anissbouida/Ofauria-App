@@ -622,7 +622,12 @@ function ReceivedInvoicesSection() {
                           </button>
                         )}
                         {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                          <button onClick={() => { setShowPayForm(inv); setPayMethod('cash'); }}
+                          <button onClick={() => {
+                            setShowPayForm(inv);
+                            // Pre-selectionne le mode prevu sur la facture (ex: cheque)
+                            const preMode = (inv.expected_payment_mode as string) || 'cash';
+                            setPayMethod(preMode);
+                          }}
                             className="odoo-btn-primary"
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
                             <Banknote size={11} /> Payer
@@ -728,7 +733,8 @@ function ReceivedInvoicesSection() {
                     <strong style={{ fontSize: '0.75rem' }}>Détails du chèque</strong>
                     <div className="grid grid-cols-2 gap-3">
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Chèque *</label>
-                        <input name="checkNumber" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
+                        <input name="checkNumber" defaultValue={(showPayForm.check_number as string) || ''}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date du chèque</label>
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
@@ -803,6 +809,11 @@ function ReceivedInvoiceFormModal({
   const [expectedPaymentMode, setExpectedPaymentMode] = useState<string>(
     invoice?.expected_payment_mode as string || ''
   );
+  // N° cheque saisi des la creation/edition facture quand mode = cheque.
+  // Servira de pre-remplissage du payment.check_number au moment du paiement.
+  const [checkNumber, setCheckNumber] = useState<string>(
+    invoice?.check_number as string || ''
+  );
   const [notes, setNotes] = useState<string>(invoice?.notes as string || '');
 
   // Recalcul live : HT + TVA = TTC OU TTC - HT = TVA
@@ -842,6 +853,9 @@ function ReceivedInvoiceFormModal({
     if (receptionDate) data.receptionDate = receptionDate; else data.receptionDate = null;
     if (expectedPaymentMode) data.expectedPaymentMode = expectedPaymentMode;
     else data.expectedPaymentMode = null;
+    // N° cheque : seulement si mode = cheque (sinon on neutralise pour eviter
+    // les valeurs orphelines apres un changement de mode)
+    data.checkNumber = expectedPaymentMode === 'check' ? (checkNumber.trim() || null) : null;
     onSubmit(data);
   };
 
@@ -932,6 +946,21 @@ function ReceivedInvoiceFormModal({
                   <option value="transfer">Virement</option>
                 </select></div>
             </div>
+            {/* N° cheque : affiche uniquement quand le mode est "Cheque".
+                Pre-remplira automatiquement le payment.check_number au moment du reglement. */}
+            {expectedPaymentMode === 'check' && (
+              <div style={{ padding: '8px 10px', backgroundColor: '#fef3c7', borderRadius: 4, border: '1px solid #fde68a' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
+                  N° Chèque
+                </label>
+                <input type="text" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
+                  placeholder="Ex: 1234567"
+                  className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                <p style={{ fontSize: '0.6875rem', color: '#92400e', marginTop: 4 }}>
+                  💡 Sera pré-rempli au moment du paiement.
+                </p>
+              </div>
+            )}
             <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>

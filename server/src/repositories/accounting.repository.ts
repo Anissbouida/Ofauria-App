@@ -430,6 +430,7 @@ export const invoiceRepository = {
     invoiceDate: string; dueDate?: string; amount: number;
     taxAmount?: number; totalAmount?: number; notes?: string; createdBy: string; storeId?: string;
     expectedPaymentMode?: string; receptionDate?: string;
+    checkNumber?: string;
     items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number }[];
   }) {
     const client = await db.getClient();
@@ -444,14 +445,15 @@ export const invoiceRepository = {
         `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
           purchase_order_id, reception_voucher_id, order_id,
           invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id,
-          expected_payment_mode, reception_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+          expected_payment_mode, reception_date, check_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
          data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
          data.orderId || null, data.invoiceDate, data.dueDate || null,
          data.amount, data.taxAmount || 0, totalAmount,
          data.notes || null, data.createdBy, data.storeId || null,
-         data.expectedPaymentMode || null, data.receptionDate || null]
+         data.expectedPaymentMode || null, data.receptionDate || null,
+         data.checkNumber || null]
       );
 
       // Insert invoice items if provided
@@ -634,6 +636,7 @@ export const invoiceRepository = {
     notes?: string | null;
     expectedPaymentMode?: string | null;
     receptionDate?: string | null;
+    checkNumber?: string | null;
   }) {
     const client = await db.getClient();
     try {
@@ -682,6 +685,7 @@ export const invoiceRepository = {
         values.push(data.expectedPaymentMode || null);
       }
       if (data.receptionDate !== undefined) { sets.push(`reception_date = $${i++}`); values.push(data.receptionDate || null); }
+      if (data.checkNumber !== undefined) { sets.push(`check_number = $${i++}`); values.push(data.checkNumber || null); }
 
       if (sets.length === 0) {
         await client.query('ROLLBACK');
