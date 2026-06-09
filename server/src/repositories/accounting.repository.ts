@@ -48,18 +48,39 @@ export const caisseRepository = {
     // Daily sales totals with payment method breakdown (source of truth for cash/card).
     // Une vente a plus tard est rattachee au jour de son encaissement (paid_at)
     // et exclue tant qu'elle n'est pas encaissee.
+    // On UNION ALL les saisies manuelles (matin+soir, montants `_reel`) — le temps
+    // que le POS soit adopte. Voir migration 149.
+    const storeFilterManual = storeId ? ' AND store_id = $3' : '';
     const sales = await db.query(
-      `SELECT TO_CHAR(DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
-              COALESCE(SUM(total), 0) as total_sales,
-              COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
-              COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
-              COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
-              COUNT(*) as sale_count
-       FROM sales
-       WHERE payment_status IS DISTINCT FROM 'unpaid'
-         AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
-       GROUP BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')
-       ORDER BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')`,
+      `SELECT sale_date,
+              SUM(total_sales) as total_sales,
+              SUM(cash_sales) as cash_sales,
+              SUM(card_sales) as card_sales,
+              SUM(mobile_sales) as mobile_sales,
+              SUM(sale_count) as sale_count
+       FROM (
+         SELECT TO_CHAR(DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
+                COALESCE(SUM(total), 0) as total_sales,
+                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
+                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
+                COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
+                COUNT(*) as sale_count
+         FROM sales
+         WHERE payment_status IS DISTINCT FROM 'unpaid'
+           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
+         GROUP BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')
+         UNION ALL
+         SELECT TO_CHAR(entry_date, 'YYYY-MM-DD') as sale_date,
+                COALESCE(matin_cash_reel,0)+COALESCE(matin_carte_reel,0)+COALESCE(soir_cash_reel,0)+COALESCE(soir_carte_reel,0) as total_sales,
+                COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0) as cash_sales,
+                COALESCE(matin_carte_reel,0)+COALESCE(soir_carte_reel,0) as card_sales,
+                0 as mobile_sales,
+                0 as sale_count
+         FROM manual_shift_entries
+         WHERE entry_date BETWEEN $1 AND $2${storeFilterManual}
+       ) combined
+       GROUP BY sale_date
+       ORDER BY sale_date`,
       params
     );
 
@@ -90,17 +111,28 @@ export const caisseRepository = {
       prevSessionParams
     );
 
-    // Previous sales totals (cash + card) from actual sales
+    // Previous sales totals (cash + card) from actual sales + saisies manuelles
     const prevSalesFilterS = storeId ? ' AND store_id = $2' : '';
     const prevSalesParams = storeId ? [startDate, storeId] : [startDate];
 
     const prevSales = await db.query(
       `SELECT
-        COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
-        COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
-       FROM sales
-       WHERE payment_status IS DISTINCT FROM 'unpaid'
-         AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1${prevSalesFilterS}`,
+        SUM(cash_total) as cash_total,
+        SUM(card_total) as card_total
+       FROM (
+         SELECT
+           COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
+           COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
+         FROM sales
+         WHERE payment_status IS DISTINCT FROM 'unpaid'
+           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1${prevSalesFilterS}
+         UNION ALL
+         SELECT
+           COALESCE(SUM(COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0)), 0) as cash_total,
+           COALESCE(SUM(COALESCE(matin_carte_reel,0)+COALESCE(soir_carte_reel,0)), 0) as card_total
+         FROM manual_shift_entries
+         WHERE entry_date < $1${prevSalesFilterS}
+       ) combined`,
       prevSalesParams
     );
 

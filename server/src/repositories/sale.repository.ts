@@ -500,17 +500,57 @@ export const saleRepository = {
     }
 
     if (params.groupBy === 'payment') {
-      const result = await db.query(
-        `SELECT s.payment_method as label,
-                COUNT(s.id) as sale_count,
-                SUM(s.total) as total_revenue
-         FROM sales s
-         ${where}
-         GROUP BY s.payment_method
-         ORDER BY total_revenue DESC`,
-        values
-      );
-      return result.rows;
+      // On UNION ALL les saisies manuelles (matin+soir, montants `_reel`) — le temps
+      // que le POS soit adopte. Voir migration 149.
+      const manualConditions: string[] = [];
+      const manualValues: unknown[] = [];
+      let mi = 1;
+      if (params.storeId) { manualConditions.push(`store_id = $${mi++}`); manualValues.push(params.storeId); }
+      if (params.dateFrom) { manualConditions.push(`entry_date >= $${mi++}`); manualValues.push(params.dateFrom); }
+      if (params.dateTo) { manualConditions.push(`entry_date <= $${mi++}`); manualValues.push(params.dateTo); }
+      const manualWhere = manualConditions.length ? `WHERE ${manualConditions.join(' AND ')}` : '';
+
+      const [salesAgg, manualAgg] = await Promise.all([
+        db.query(
+          `SELECT s.payment_method as label,
+                  COUNT(s.id) as sale_count,
+                  SUM(s.total) as total_revenue
+           FROM sales s
+           ${where}
+           GROUP BY s.payment_method`,
+          values
+        ),
+        db.query(
+          `SELECT
+             COALESCE(SUM(COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0)), 0) as cash_total,
+             COALESCE(SUM(COALESCE(matin_carte_reel,0)+COALESCE(soir_carte_reel,0)), 0) as card_total
+           FROM manual_shift_entries
+           ${manualWhere}`,
+          manualValues
+        ),
+      ]);
+
+      const byMethod = new Map<string, { sale_count: number; total_revenue: number }>();
+      for (const r of salesAgg.rows) {
+        byMethod.set(r.label as string, {
+          sale_count: parseInt(r.sale_count as string) || 0,
+          total_revenue: parseFloat(r.total_revenue as string) || 0,
+        });
+      }
+      const manualCash = parseFloat(manualAgg.rows[0]?.cash_total as string) || 0;
+      const manualCard = parseFloat(manualAgg.rows[0]?.card_total as string) || 0;
+      if (manualCash > 0) {
+        const cur = byMethod.get('cash') || { sale_count: 0, total_revenue: 0 };
+        byMethod.set('cash', { sale_count: cur.sale_count, total_revenue: cur.total_revenue + manualCash });
+      }
+      if (manualCard > 0) {
+        const cur = byMethod.get('card') || { sale_count: 0, total_revenue: 0 };
+        byMethod.set('card', { sale_count: cur.sale_count, total_revenue: cur.total_revenue + manualCard });
+      }
+
+      return Array.from(byMethod.entries())
+        .map(([label, v]) => ({ label, sale_count: v.sale_count, total_revenue: v.total_revenue }))
+        .sort((a, b) => b.total_revenue - a.total_revenue);
     }
 
     return [];

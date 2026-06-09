@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
+import { manualShiftEntriesApi } from '../../api/manual-shift-entries.api';
 import { returnsApi } from '../../api/returns.api';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,6 +18,7 @@ import {
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
+import ManualShiftEntries from './ManualShiftEntries';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', manager: 'Gérant', cashier: 'Caissier', baker: 'Boulanger',
@@ -201,6 +203,22 @@ export default function SalesPage() {
     enabled: mainTab === 'sessions',
   });
 
+  // Saisies manuelles (montants _reel matin+soir) — additionnees au CA de
+  // l'onglet Ventes le temps que le POS soit adopte. Voir migration 149.
+  const { data: manualEntriesData = [] } = useQuery({
+    queryKey: ['manual-shift-entries-summary', { dateFrom, dateTo }],
+    queryFn: () => manualShiftEntriesApi.list({ dateFrom, dateTo }),
+    enabled: mainTab === 'sales',
+  });
+  const manualRevenue = useMemo(() => {
+    let sum = 0;
+    for (const e of manualEntriesData) {
+      sum += parseFloat(e.matin_cash_reel || '0') + parseFloat(e.matin_carte_reel || '0');
+      sum += parseFloat(e.soir_cash_reel || '0') + parseFloat(e.soir_carte_reel || '0');
+    }
+    return sum;
+  }, [manualEntriesData]);
+
   // Returns query
   const { data: returnsData, isLoading: returnsLoading } = useQuery({
     queryKey: ['returns', { dateFrom, dateTo }],
@@ -380,9 +398,13 @@ export default function SalesPage() {
     }
   };
 
-  const grossRevenue = view === 'receipt'
+  // Vue receipt : on additionne les recettes manuelles au CA (cf. migration 149).
+  // Vue summary (category/product/cashier/payment) : 'payment' inclut deja les
+  // saisies manuelles cote backend ; les autres vues restent POS uniquement.
+  const salesGross = view === 'receipt'
     ? sales.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total as string), 0)
     : summary.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
+  const grossRevenue = view === 'receipt' ? salesGross + manualRevenue : salesGross;
   const totalRevenue = view === 'receipt' ? grossRevenue - totalRefunds : grossRevenue;
   const totalCount = view === 'receipt'
     ? sales.length
@@ -1063,6 +1085,7 @@ export default function SalesPage() {
       {mainTab === 'sessions' && (
         sessionsLoading ? <LoadingState /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ManualShiftEntries dateFrom={dateFrom} dateTo={dateTo} />
             {sessions.map((s: Record<string, any>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
               const isClosed = s.status === 'closed';

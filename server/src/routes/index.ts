@@ -38,6 +38,7 @@ import openingInventoryCheckRoutes from './opening-inventory-check.routes.js';
 import printerRoutes from './printer.routes.js';
 import sachetConfigRoutes from './sachet-config.routes.js';
 import productionMarkupRoutes from './production-markup.routes.js';
+import manualShiftEntryRoutes from './manual-shift-entry.routes.js';
 
 const router = Router();
 
@@ -91,5 +92,6 @@ router.use('/inventory-checks', openingInventoryCheckRoutes);
 router.use('/printers', printerRoutes);
 router.use('/sachet-config', sachetConfigRoutes);
 router.use('/production-markup', productionMarkupRoutes);
+router.use('/manual-shift-entries', manualShiftEntryRoutes);
 
 export default router;
