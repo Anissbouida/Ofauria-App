@@ -511,9 +511,10 @@ export default function RecipesPage() {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; onClose: () => void; onEdit: () => void }) {
-  const { data: recipe, isLoading } = useQuery<RecipeDetail>({
+  const { data: recipe, isLoading, error } = useQuery<RecipeDetail>({
     queryKey: ['recipe', recipeId],
     queryFn: () => recipesApi.getById(recipeId),
+    retry: 1,
   });
 
   const { data: versions = [] } = useQuery<Array<{
@@ -663,6 +664,18 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
           {isLoading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
               <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            </div>
+          ) : error ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#dc3545' }}>
+              <p style={{ fontWeight: 600, marginBottom: 8 }}>Erreur de chargement</p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                {(() => {
+                  const e = error as { response?: { status?: number; data?: { error?: { message?: string } } }; message?: string };
+                  const status = e?.response?.status;
+                  const msg = e?.response?.data?.error?.message || e?.message || 'Erreur inconnue';
+                  return status ? `${status} — ${msg}` : msg;
+                })()}
+              </p>
             </div>
           ) : recipe ? (
             <>
