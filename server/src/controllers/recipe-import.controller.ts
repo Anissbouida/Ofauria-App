@@ -24,10 +24,18 @@ interface RecipePlanRow {
   marginMultiplier: number | null;
   instructions: string | null;
   existingId: string | null;
-  ingredients: { ingredientId: string; quantity: number; unit: string | null }[];
+  // ingredientId = null + ingredientName renseigne => sera resolu au commit
+  // apres auto-creation des ingredients manquants.
+  ingredients: { ingredientId: string | null; ingredientName: string; quantity: number; unit: string | null }[];
   subRecipes: { subRecipeId: string; quantity: number }[];
   packaging: { packagingId: string; quantity: number; unit: string | null }[];
   changes?: string[];               // pour preview : liste champs modifies
+}
+
+interface MissingIngredient {
+  name: string;
+  unit: string;        // unite du fichier (premiere occurrence)
+  firstRow: number;    // ligne du fichier ou il apparait pour la 1ere fois
 }
 
 interface RecipePlan {
@@ -35,6 +43,9 @@ interface RecipePlan {
   toUpdate: RecipePlanRow[];
   unchanged: RecipePlanRow[];
   lookupErrors: { sheet: string; sourceRow: number; message: string }[];
+  // Ingredients absents de l'economat — seront crees automatiquement au commit
+  // (unit du fichier, cout=0, categorie='autre'). L'admin met a jour les couts apres.
+  ingredientsToCreate: MissingIngredient[];
 }
 
 /**
@@ -50,6 +61,8 @@ interface RecipePlan {
  */
 async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
   const lookupErrors: { sheet: string; sourceRow: number; message: string }[] = [];
+  // Cle UPPERCASE -> { name original, unit du fichier, ligne }. Dedupe par cle.
+  const missingIngredientsMap = new Map<string, MissingIngredient>();
 
   // Lookup tables — recuperees une seule fois en debut de plan
   const recipesByName = new Map<string, {
@@ -128,24 +141,37 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
       productId = pid;
     }
 
-    // Lookup ingredients
-    const ingredients: { ingredientId: string; quantity: number; unit: string | null }[] = [];
+    // Lookup ingredients — auto-creation differee si introuvable
+    const ingredients: { ingredientId: string | null; ingredientName: string; quantity: number; unit: string | null }[] = [];
     const ingredientRows = ingByRecipe.get(nameKey) || [];
-    let ingredientError = false;
     for (const ing of ingredientRows) {
-      const ingId = ingredientsByName.get(ing.ingredientName.toUpperCase());
+      const key = ing.ingredientName.toUpperCase();
+      const ingId = ingredientsByName.get(key);
       if (!ingId) {
-        lookupErrors.push({
-          sheet: 'Ingredients',
-          sourceRow: ing.sourceRow,
-          message: `Ingredient "${ing.ingredientName}" introuvable dans l'economat. Creer l'ingredient d'abord.`,
+        // Marque pour auto-creation. Le commit creera l'ingredient avec
+        // unit=fichier, cout=0, categorie='autre' avant de monter la recette.
+        if (!missingIngredientsMap.has(key)) {
+          missingIngredientsMap.set(key, {
+            name: ing.ingredientName,
+            unit: ing.unit,
+            firstRow: ing.sourceRow,
+          });
+        }
+        ingredients.push({
+          ingredientId: null,
+          ingredientName: ing.ingredientName,
+          quantity: ing.quantity,
+          unit: ing.unit,
         });
-        ingredientError = true;
         continue;
       }
-      ingredients.push({ ingredientId: ingId, quantity: ing.quantity, unit: ing.unit });
+      ingredients.push({
+        ingredientId: ingId,
+        ingredientName: ing.ingredientName,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      });
     }
-    if (ingredientError) continue;
 
     // Lookup sous-recettes (peuvent venir du fichier OU de la DB)
     // On stocke null pour les sous-recettes a creer dans le meme batch — sera
@@ -260,7 +286,10 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
     }
   }
 
-  return { toCreate, toUpdate, unchanged, lookupErrors };
+  return {
+    toCreate, toUpdate, unchanged, lookupErrors,
+    ingredientsToCreate: Array.from(missingIngredientsMap.values()),
+  };
 }
 
 /**
@@ -412,6 +441,7 @@ export const recipeImportController = {
             toUpdate: plan.toUpdate.length,
             unchanged: plan.unchanged.length,
             errors: allErrors.length,
+            ingredientsToCreate: plan.ingredientsToCreate.length,
           },
           toCreate: plan.toCreate.map(r => ({
             sourceRow: r.sourceRow, name: r.name, isBase: r.isBase,
@@ -430,6 +460,7 @@ export const recipeImportController = {
             packagingCount: r.packaging.length,
             changes: r.changes || [],
           })),
+          ingredientsToCreate: plan.ingredientsToCreate,
           errors: allErrors,
           warnings: parsed.warnings,
         },
@@ -486,7 +517,67 @@ export const recipeImportController = {
 
     let created = 0;
     let updated = 0;
+    let ingredientsCreated = 0;
     const errors: { row: number; sheet?: string; message: string }[] = [];
+
+    // === Auto-creation des ingredients manquants ===
+    // Avant de monter les recettes, on cree les ingredients absents de l'economat
+    // avec : unit = celle du fichier, cout = 0, categorie = 'autre'.
+    // L'admin completera les couts apres via l'economat (cela recalculera les
+    // recettes via la cascade existante sur unit_cost).
+    const ingredientNameToId = new Map<string, string>();
+    const existingIngredients = await db.query(`SELECT id, name FROM ingredients`);
+    for (const r of existingIngredients.rows) {
+      ingredientNameToId.set(String(r.name).trim().toUpperCase(), r.id);
+    }
+
+    if (plan.ingredientsToCreate.length > 0) {
+      const storeId = req.user?.storeId || null;
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        for (const missing of plan.ingredientsToCreate) {
+          const ins = await client.query(
+            `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category)
+             VALUES ($1, $2, 0, NULL, '{}', 'autre') RETURNING id`,
+            [missing.name, missing.unit]
+          );
+          const newId = ins.rows[0].id as string;
+          await client.query(
+            `INSERT INTO inventory (ingredient_id, store_id) VALUES ($1, $2)`,
+            [newId, storeId]
+          );
+          ingredientNameToId.set(missing.name.toUpperCase(), newId);
+          ingredientsCreated++;
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        const msg = err instanceof Error ? err.message : 'Erreur creation ingredients';
+        res.status(500).json({ success: false, error: { message: `Auto-creation ingredients : ${msg}` } });
+        return;
+      } finally {
+        client.release();
+      }
+    }
+
+    /** Resout les ingredients en attente (ingredientId=null) depuis ingredientNameToId. */
+    function resolveIngredients(planRow: RecipePlanRow): boolean {
+      for (const ing of planRow.ingredients) {
+        if (ing.ingredientId) continue;
+        const id = ingredientNameToId.get(ing.ingredientName.toUpperCase());
+        if (!id) {
+          errors.push({
+            row: planRow.sourceRow,
+            sheet: 'Ingredients',
+            message: `Ingredient "${ing.ingredientName}" introuvable apres auto-creation — bug interne`,
+          });
+          return false;
+        }
+        ing.ingredientId = id;
+      }
+      return true;
+    }
 
     // === Tri topologique simplifie ===
     // Les recettes a creer qui sont REFERENCEES par d'autres recettes du batch
@@ -511,6 +602,7 @@ export const recipeImportController = {
     }
 
     async function createOne(planRow: RecipePlanRow) {
+      if (!resolveIngredients(planRow)) return false;
       try {
         const result = await recipeRepository.create({
           productId: planRow.productId || undefined,
@@ -520,7 +612,11 @@ export const recipeImportController = {
           yieldUnit: planRow.yieldUnit,
           isBase: planRow.isBase,
           marginMultiplier: planRow.marginMultiplier || undefined,
-          ingredients: planRow.ingredients,
+          ingredients: planRow.ingredients.map(i => ({
+            ingredientId: i.ingredientId as string,
+            quantity: i.quantity,
+            unit: i.unit,
+          })),
           subRecipes: planRow.subRecipes,
           packaging: planRow.packaging,
         });
@@ -587,6 +683,7 @@ export const recipeImportController = {
           errors.push({ row: row.sourceRow, sheet: 'Recettes', message: 'Id manquant pour update' });
           continue;
         }
+        if (!resolveIngredients(row)) continue;
         try {
           await recipeRepository.update(row.existingId, {
             name: row.name,
@@ -595,7 +692,11 @@ export const recipeImportController = {
             yieldUnit: row.yieldUnit,
             isBase: row.isBase,
             marginMultiplier: row.marginMultiplier || undefined,
-            ingredients: row.ingredients,
+            ingredients: row.ingredients.map(i => ({
+              ingredientId: i.ingredientId as string,
+              quantity: i.quantity,
+              unit: i.unit,
+            })),
             subRecipes: row.subRecipes,
             packaging: row.packaging,
             changedBy: req.user?.userId,
@@ -628,6 +729,7 @@ export const recipeImportController = {
         created,
         updated,
         unchanged: plan.unchanged.length,
+        ingredientsCreated,
         warnings: parsed.warnings,
         errors,
       },

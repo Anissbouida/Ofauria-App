@@ -20,13 +20,20 @@ interface PreviewRow {
   changes?: string[];
 }
 
+interface MissingIngredient {
+  name: string;
+  unit: string;
+  firstRow: number;
+}
+
 interface PreviewData {
   summary: {
     totalRows: number; toCreate: number; toUpdate: number;
-    unchanged: number; errors: number;
+    unchanged: number; errors: number; ingredientsToCreate: number;
   };
   toCreate: PreviewRow[];
   toUpdate: PreviewRow[];
+  ingredientsToCreate: MissingIngredient[];
   errors: { sheet: string; sourceRow: number; message: string }[];
   warnings: string[];
 }
@@ -35,6 +42,7 @@ interface CommitResult {
   created: number;
   updated: number;
   unchanged: number;
+  ingredientsCreated: number;
   warnings: string[];
   errors: { row: number; sheet?: string; message: string }[];
 }
@@ -63,9 +71,11 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
       const parts: string[] = [];
       if (data.created) parts.push(`${data.created} cree(s)`);
       if (data.updated) parts.push(`${data.updated} mise(s) a jour`);
+      if (data.ingredientsCreated) parts.push(`${data.ingredientsCreated} ingredient(s) auto-cree(s)`);
       notify.success(`Import termine — ${parts.join(', ') || 'aucun changement'}`);
       qc.invalidateQueries({ queryKey: ['recipes'] });
       qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: ['inventory'] });
     },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -149,7 +159,9 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                 <p><strong>Emballages</strong> : Recette | Emballage | Quantite | Unite</p>
                 <p className="text-blue-700 pt-1">
                   Les recettes existantes (meme nom) seront mises a jour, les nouvelles creees.
-                  Produits, ingredients et emballages doivent deja exister en DB.
+                  Les <strong>ingredients absents</strong> de l'economat seront <strong>auto-crees</strong>
+                  (cout 0, categorie "autre") — a completer apres dans l'economat.
+                  Les <strong>produits</strong> et <strong>emballages</strong> doivent deja exister.
                 </p>
               </div>
             </>
@@ -158,12 +170,47 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
           {/* Preview */}
           {preview && !result && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <Kpi label="Total recettes" value={String(preview.summary.totalRows)} />
                 <Kpi label="A creer" value={String(preview.summary.toCreate)} tone="emerald" />
                 <Kpi label="A mettre a jour" value={String(preview.summary.toUpdate)} tone="amber" />
                 <Kpi label="Inchangees" value={String(preview.summary.unchanged)} tone="gray" />
+                <Kpi label="Ing. auto-crees" value={String(preview.summary.ingredientsToCreate)} tone="blue" />
               </div>
+
+              {preview.ingredientsToCreate.length > 0 && (
+                <details className="border border-blue-200 rounded" open>
+                  <summary className="p-2 bg-blue-50 cursor-pointer text-sm font-medium text-blue-900">
+                    Ingredients absents de l'economat ({preview.ingredientsToCreate.length}) — seront auto-crees
+                  </summary>
+                  <div className="p-2 bg-white text-xs">
+                    <p className="text-blue-800 mb-2">
+                      Cout = 0 DH, categorie = "autre", unite = celle du fichier.
+                      A completer apres dans l'economat.
+                    </p>
+                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="p-1.5 text-left">Nom</th>
+                            <th className="p-1.5 text-left">Unite</th>
+                            <th className="p-1.5 text-left">1re apparition (ligne)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.ingredientsToCreate.map((ing, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="p-1.5 font-medium">{ing.name}</td>
+                              <td className="p-1.5">{ing.unit}</td>
+                              <td className="p-1.5 text-gray-500">{ing.firstRow}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </details>
+              )}
 
               {preview.errors.length > 0 && (
                 <div className="border border-red-200 rounded">
@@ -228,6 +275,11 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                   <div className="text-sm text-green-800 mt-1">
                     {result.created} creee(s), {result.updated} mise(s) a jour, {result.unchanged} inchangee(s)
                   </div>
+                  {result.ingredientsCreated > 0 && (
+                    <div className="text-sm text-blue-800 mt-1">
+                      {result.ingredientsCreated} ingredient(s) auto-cree(s) — completer les couts dans l'economat.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -268,10 +320,11 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'gray' }) {
+function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'gray' | 'blue' }) {
   const color =
     tone === 'emerald' ? 'text-emerald-700' :
     tone === 'amber' ? 'text-amber-700' :
+    tone === 'blue' ? 'text-blue-700' :
     tone === 'gray' ? 'text-gray-500' : 'text-gray-900';
   return (
     <div className="p-3 bg-white border rounded">
