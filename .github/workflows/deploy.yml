@@ -60,10 +60,116 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  migrate:
+    name: Run DB migrations
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    timeout-minutes: 10
+
+    # Meme env que le deploy : reuse les meme secrets/approvers
+    environment:
+      name: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps (server + shared)
+        run: npm ci --workspaces --include-workspace-root --ignore-scripts
+
+      - name: Build shared package
+        run: cd shared && npx tsc --project tsconfig.json --composite false --declaration --outDir dist
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Recupere DATABASE_URL depuis Secret Manager (le secret est deja utilise
+      # par Cloud Run via `secrets:` plus bas — il a probablement un host Unix
+      # socket `host=/cloudsql/<instance>`. On le reecrit vers 127.0.0.1:5432
+      # pour passer par le Cloud SQL Auth Proxy.).
+      - name: Fetch DATABASE_URL from Secret Manager
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@v2
+        with:
+          secrets: |-
+            DATABASE_URL:${{ vars.GCP_PROJECT_ID }}/DATABASE_URL
+
+      - name: Download Cloud SQL Auth Proxy
+        run: |
+          curl -fSL -o cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.13.0/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+
+      - name: Start Cloud SQL Auth Proxy (TCP localhost:5432)
+        run: |
+          ./cloud-sql-proxy --port=5432 ofauria:europe-west1:ofauria-db &
+          PROXY_PID=$!
+          echo "PROXY_PID=$PROXY_PID" >> "$GITHUB_ENV"
+          # Attente readiness max 30s
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 5432; then
+              echo "Cloud SQL Auth Proxy ready on 127.0.0.1:5432"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Cloud SQL Auth Proxy ne demarre pas — abandon"
+          exit 1
+
+      - name: Run migrations via proxy
+        env:
+          # Le secret peut avoir un host=/cloudsql/... (Unix socket Cloud Run)
+          # ou directement un host IP. On normalise vers 127.0.0.1:5432.
+          RAW_DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
+        run: |
+          # Reecriture du DATABASE_URL avec Node URL parser (robuste)
+          PROXY_URL=$(node -e "
+            const raw = process.env.RAW_DATABASE_URL || '';
+            try {
+              const u = new URL(raw);
+              u.host = '127.0.0.1:5432';
+              u.searchParams.delete('host');
+              process.stdout.write(u.toString());
+            } catch (e) {
+              process.stderr.write('Cannot parse DATABASE_URL : ' + e.message + '\n');
+              process.exit(1);
+            }
+          ")
+          if [[ -z "$PROXY_URL" ]]; then
+            echo "Erreur reecriture DATABASE_URL"
+            exit 1
+          fi
+          export DATABASE_URL="$PROXY_URL"
+          # On masque l'URL pour eviter de leaker le password dans les logs
+          echo "::add-mask::$DATABASE_URL"
+          npm run migrate --workspace=server
+
+      - name: Stop Cloud SQL Auth Proxy
+        if: always()
+        run: |
+          if [[ -n "${PROXY_PID:-}" ]]; then
+            kill "$PROXY_PID" 2>/dev/null || true
+          fi
+
   deploy:
     name: Deploy to Cloud Run
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: [build-and-push, migrate]
     timeout-minutes: 15
 
     # 🔒 Approbation manuelle: configurer le reviewer dans
