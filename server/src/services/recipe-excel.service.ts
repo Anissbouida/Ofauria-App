@@ -68,7 +68,7 @@ export interface ParsedRecipeMain {
   isBase: boolean;
   productName: string | null;        // nom du produit lie (null si recette de base)
   yieldQuantity: number;
-  yieldUnit: RecipeUnit;
+  yieldUnit: string;                 // standard (kg/g/l/cl/ml/unit) ou metier (cadre, plaque, etc.)
   marginMultiplier: number | null;   // null => garde la valeur par defaut serveur (3)
   instructions: string | null;
 }
@@ -192,10 +192,22 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
       continue;
     }
 
-    const yieldUnit = normalizeUnit(row[4]);
-    if (!yieldUnit) {
-      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Unite de rendement invalide (colonne E) : "${row[4] ?? ''}". Valeurs : kg, g, l, cl, ml, unit` });
+    // yield_unit : accepter toute chaine non vide (peut etre "cadre", "plaque", etc.
+    // — termes metier). Si non standard, on warn mais on accepte. Defaut : 'unit'.
+    const yieldUnitRaw = toCleanString(row[4]);
+    let yieldUnit: string;
+    if (!yieldUnitRaw) {
+      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Unite de rendement manquante (colonne E)` });
       continue;
+    }
+    const yieldUnitNormalized = normalizeUnit(yieldUnitRaw);
+    if (yieldUnitNormalized) {
+      yieldUnit = yieldUnitNormalized;
+    } else {
+      // Unite metier non standard (cadre, plaque, etc.) — on garde la valeur brute,
+      // mais on warn pour signaler que les conversions de cout ne s'appliqueront pas.
+      yieldUnit = yieldUnitRaw.toLowerCase();
+      warnings.push(`Ligne ${sourceRow} (${SHEET_RECIPES}) : unite "${yieldUnitRaw}" non standard — acceptee telle quelle (kg/g/l/cl/ml/unit sont standards).`);
     }
 
     const marginRaw = row[5];
@@ -317,35 +329,9 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
     }
   }
 
-  // === Validation croisee : chaque ingredient/sous-recette/emballage doit reference une recette listee ===
-  const recipeNamesUpper = new Set(recipes.map(r => r.name.toUpperCase()));
-  for (const ing of ingredients) {
-    if (!recipeNamesUpper.has(ing.recipeName.toUpperCase())) {
-      errors.push({
-        sheet: SHEET_INGREDIENTS,
-        sourceRow: ing.sourceRow,
-        message: `Recette "${ing.recipeName}" introuvable dans la feuille "${SHEET_RECIPES}"`,
-      });
-    }
-  }
-  for (const sr of subRecipes) {
-    if (!recipeNamesUpper.has(sr.recipeName.toUpperCase())) {
-      errors.push({
-        sheet: SHEET_SUB_RECIPES,
-        sourceRow: sr.sourceRow,
-        message: `Recette "${sr.recipeName}" introuvable dans la feuille "${SHEET_RECIPES}"`,
-      });
-    }
-  }
-  for (const pk of packaging) {
-    if (!recipeNamesUpper.has(pk.recipeName.toUpperCase())) {
-      errors.push({
-        sheet: SHEET_PACKAGING,
-        sourceRow: pk.sourceRow,
-        message: `Recette "${pk.recipeName}" introuvable dans la feuille "${SHEET_RECIPES}"`,
-      });
-    }
-  }
+  // Validation croisee deplacee dans le controller (buildPlan) — la, on peut
+  // distinguer "recette parent absente du fichier mais existe en DB" (= update
+  // implicite, autorise) du vrai cas d'erreur (absente partout).
 
   return { recipes, ingredients, subRecipes, packaging, errors, warnings };
 }

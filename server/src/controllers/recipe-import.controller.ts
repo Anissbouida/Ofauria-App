@@ -17,8 +17,8 @@ interface RecipePlanRow {
   sourceRow: number;
   name: string;
   isBase: boolean;
-  productId: string | null;        // null si recette de base ou produit non trouve
-  productName: string | null;
+  productId: string | null;        // null si recette de base ou produit pas encore cree
+  productName: string | null;      // nom du produit lie (utile pour resoudre productId au commit)
   yieldQuantity: number;
   yieldUnit: string;
   marginMultiplier: number | null;
@@ -30,12 +30,18 @@ interface RecipePlanRow {
   subRecipes: { subRecipeId: string; quantity: number }[];
   packaging: { packagingId: string; quantity: number; unit: string | null }[];
   changes?: string[];               // pour preview : liste champs modifies
+  implicitUpdate?: boolean;         // true si la recette n'etait pas dans Recettes mais en DB
 }
 
 interface MissingIngredient {
   name: string;
   unit: string;        // unite du fichier (premiere occurrence)
   firstRow: number;    // ligne du fichier ou il apparait pour la 1ere fois
+}
+
+interface MissingProduct {
+  name: string;
+  firstRow: number;    // ligne du fichier (feuille Recettes) ou il apparait
 }
 
 interface RecipePlan {
@@ -46,6 +52,8 @@ interface RecipePlan {
   // Ingredients absents de l'economat — seront crees automatiquement au commit
   // (unit du fichier, cout=0, categorie='autre'). L'admin met a jour les couts apres.
   ingredientsToCreate: MissingIngredient[];
+  // Produits absents du catalogue — auto-crees au commit (prix=0, 1re categorie).
+  productsToCreate: MissingProduct[];
 }
 
 /**
@@ -63,6 +71,8 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
   const lookupErrors: { sheet: string; sourceRow: number; message: string }[] = [];
   // Cle UPPERCASE -> { name original, unit du fichier, ligne }. Dedupe par cle.
   const missingIngredientsMap = new Map<string, MissingIngredient>();
+  // Idem pour les produits manquants (lien produit dans la feuille Recettes).
+  const missingProductsMap = new Map<string, MissingProduct>();
 
   // Lookup tables — recuperees une seule fois en debut de plan
   const recipesByName = new Map<string, {
@@ -126,19 +136,20 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
     const nameKey = rec.name.toUpperCase();
     const existing = recipesByName.get(nameKey);
 
-    // Lookup produit (si recette produit fini)
+    // Lookup produit (si recette produit fini) — auto-creation differee si absent.
     let productId: string | null = null;
     if (!rec.isBase && rec.productName) {
-      const pid = productsByName.get(rec.productName.toUpperCase());
-      if (!pid) {
-        lookupErrors.push({
-          sheet: 'Recettes',
-          sourceRow: rec.sourceRow,
-          message: `Produit "${rec.productName}" introuvable. Creer le produit d'abord ou laisser la colonne vide.`,
-        });
-        continue;
+      const pkey = rec.productName.toUpperCase();
+      const pid = productsByName.get(pkey);
+      if (pid) {
+        productId = pid;
+      } else {
+        // Marque pour auto-creation au commit. productId reste null, sera resolu
+        // via productName lors du commit apres INSERT.
+        if (!missingProductsMap.has(pkey)) {
+          missingProductsMap.set(pkey, { name: rec.productName, firstRow: rec.sourceRow });
+        }
       }
-      productId = pid;
     }
 
     // Lookup ingredients — auto-creation differee si introuvable
@@ -286,9 +297,192 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
     }
   }
 
+  // === Gestion des recettes parent absentes du fichier mais presentes en DB ===
+  // Exemple : la feuille "Sous-recettes" reference "OFAURIA" comme parent, mais
+  // "OFAURIA" n'est pas dans la feuille "Recettes". On verifie en DB :
+  //   - Si la recette existe -> on cree un "update implicite" : on garde la
+  //     composition actuelle de DB et on remplace UNIQUEMENT les sections
+  //     presentes dans le fichier (sous-recettes/ingredients/emballages).
+  //   - Si la recette n'existe nulle part -> erreur.
+  const fileRecipeKeys = new Set(parsed.recipes.map(r => r.name.toUpperCase()));
+  const orphanParents = new Set<string>();
+  for (const ing of parsed.ingredients) if (!fileRecipeKeys.has(ing.recipeName.toUpperCase())) orphanParents.add(ing.recipeName);
+  for (const sr of parsed.subRecipes) if (!fileRecipeKeys.has(sr.recipeName.toUpperCase())) orphanParents.add(sr.recipeName);
+  for (const pk of parsed.packaging) if (!fileRecipeKeys.has(pk.recipeName.toUpperCase())) orphanParents.add(pk.recipeName);
+
+  for (const orphanName of orphanParents) {
+    const orphanKey = orphanName.toUpperCase();
+    const dbRecipe = recipesByName.get(orphanKey);
+    if (!dbRecipe) {
+      // Pas dans le fichier ET pas dans DB -> erreur sur toutes les lignes concernees
+      for (const ing of parsed.ingredients) {
+        if (ing.recipeName.toUpperCase() === orphanKey) {
+          lookupErrors.push({
+            sheet: 'Ingredients',
+            sourceRow: ing.sourceRow,
+            message: `Recette "${ing.recipeName}" introuvable (ni dans la feuille Recettes, ni en DB).`,
+          });
+        }
+      }
+      for (const sr of parsed.subRecipes) {
+        if (sr.recipeName.toUpperCase() === orphanKey) {
+          lookupErrors.push({
+            sheet: 'Sous-recettes',
+            sourceRow: sr.sourceRow,
+            message: `Recette "${sr.recipeName}" introuvable (ni dans la feuille Recettes, ni en DB).`,
+          });
+        }
+      }
+      for (const pk of parsed.packaging) {
+        if (pk.recipeName.toUpperCase() === orphanKey) {
+          lookupErrors.push({
+            sheet: 'Emballages',
+            sourceRow: pk.sourceRow,
+            message: `Recette "${pk.recipeName}" introuvable (ni dans la feuille Recettes, ni en DB).`,
+          });
+        }
+      }
+      continue;
+    }
+
+    // Charge la composition existante depuis la DB
+    const existingIngRes = await db.query(
+      `SELECT ri.ingredient_id, ri.quantity, ri.unit, ing.name AS ingredient_name
+       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
+       WHERE ri.recipe_id = $1`,
+      [dbRecipe.id]
+    );
+    const existingSubRes = await db.query(
+      `SELECT sub_recipe_id, quantity FROM recipe_sub_recipes WHERE recipe_id = $1`,
+      [dbRecipe.id]
+    );
+    const existingPkgRes = await db.query(
+      `SELECT packaging_id, quantity, unit FROM recipe_packaging WHERE recipe_id = $1`,
+      [dbRecipe.id]
+    );
+
+    // Bati la ligne de plan en partant de l'etat DB
+    const planRow: RecipePlanRow = {
+      sourceRow: 0,
+      name: dbRecipe.name,
+      isBase: dbRecipe.is_base,
+      productId: dbRecipe.product_id,
+      productName: null,
+      yieldQuantity: parseFloat(String(dbRecipe.yield_quantity || '1')) || 1,
+      yieldUnit: dbRecipe.yield_unit,
+      marginMultiplier: dbRecipe.margin_multiplier !== null ? parseFloat(String(dbRecipe.margin_multiplier)) : null,
+      instructions: dbRecipe.instructions,
+      existingId: dbRecipe.id,
+      ingredients: existingIngRes.rows.map(r => ({
+        ingredientId: r.ingredient_id as string,
+        ingredientName: r.ingredient_name as string,
+        quantity: parseFloat(String(r.quantity || '0')),
+        unit: r.unit as string | null,
+      })),
+      subRecipes: existingSubRes.rows.map(r => ({
+        subRecipeId: r.sub_recipe_id as string,
+        quantity: parseFloat(String(r.quantity || '0')),
+      })),
+      packaging: existingPkgRes.rows.map(r => ({
+        packagingId: r.packaging_id as string,
+        quantity: parseFloat(String(r.quantity || '0')),
+        unit: r.unit as string | null,
+      })),
+      implicitUpdate: true,
+      changes: ['composition (update implicite)'],
+    };
+
+    // Remplace les sections presentes dans le fichier
+    const fileIng = parsed.ingredients.filter(i => i.recipeName.toUpperCase() === orphanKey);
+    if (fileIng.length > 0) {
+      const newIng: typeof planRow.ingredients = [];
+      let hadError = false;
+      for (const ing of fileIng) {
+        const ingId = ingredientsByName.get(ing.ingredientName.toUpperCase());
+        if (!ingId) {
+          // Auto-creation differee comme pour les recettes normales
+          const ikey = ing.ingredientName.toUpperCase();
+          if (!missingIngredientsMap.has(ikey)) {
+            missingIngredientsMap.set(ikey, {
+              name: ing.ingredientName, unit: ing.unit, firstRow: ing.sourceRow,
+            });
+          }
+          newIng.push({
+            ingredientId: null, ingredientName: ing.ingredientName,
+            quantity: ing.quantity, unit: ing.unit,
+          });
+        } else {
+          newIng.push({
+            ingredientId: ingId, ingredientName: ing.ingredientName,
+            quantity: ing.quantity, unit: ing.unit,
+          });
+        }
+      }
+      if (!hadError) planRow.ingredients = newIng;
+    }
+
+    const fileSub = parsed.subRecipes.filter(s => s.recipeName.toUpperCase() === orphanKey);
+    if (fileSub.length > 0) {
+      const newSub: typeof planRow.subRecipes = [];
+      const pendingSub: { name: string; quantity: number; sourceRow: number }[] = [];
+      let subErr = false;
+      for (const sr of fileSub) {
+        const subKey = sr.subRecipeName.toUpperCase();
+        const existingSub = recipesByName.get(subKey);
+        if (existingSub) {
+          if (!existingSub.is_base) {
+            lookupErrors.push({
+              sheet: 'Sous-recettes', sourceRow: sr.sourceRow,
+              message: `"${sr.subRecipeName}" n'est pas une recette de base.`,
+            });
+            subErr = true;
+            continue;
+          }
+          newSub.push({ subRecipeId: existingSub.id, quantity: sr.quantity });
+        } else if (fileRecipeKeys.has(subKey)) {
+          pendingSub.push({ name: sr.subRecipeName, quantity: sr.quantity, sourceRow: sr.sourceRow });
+        } else {
+          lookupErrors.push({
+            sheet: 'Sous-recettes', sourceRow: sr.sourceRow,
+            message: `Sous-recette "${sr.subRecipeName}" introuvable.`,
+          });
+          subErr = true;
+        }
+      }
+      if (!subErr) {
+        planRow.subRecipes = newSub;
+        if (pendingSub.length > 0) {
+          (planRow as RecipePlanRow & { _pendingSubRecipes?: typeof pendingSub })._pendingSubRecipes = pendingSub;
+        }
+      }
+    }
+
+    const filePkg = parsed.packaging.filter(p => p.recipeName.toUpperCase() === orphanKey);
+    if (filePkg.length > 0) {
+      const newPkg: typeof planRow.packaging = [];
+      let pkgErr = false;
+      for (const pk of filePkg) {
+        const pkgId = packagingByName.get(pk.packagingName.toUpperCase());
+        if (!pkgId) {
+          lookupErrors.push({
+            sheet: 'Emballages', sourceRow: pk.sourceRow,
+            message: `Emballage "${pk.packagingName}" introuvable.`,
+          });
+          pkgErr = true;
+          continue;
+        }
+        newPkg.push({ packagingId: pkgId, quantity: pk.quantity, unit: pk.unit });
+      }
+      if (!pkgErr) planRow.packaging = newPkg;
+    }
+
+    toUpdate.push(planRow);
+  }
+
   return {
     toCreate, toUpdate, unchanged, lookupErrors,
     ingredientsToCreate: Array.from(missingIngredientsMap.values()),
+    productsToCreate: Array.from(missingProductsMap.values()),
   };
 }
 
@@ -442,6 +636,7 @@ export const recipeImportController = {
             unchanged: plan.unchanged.length,
             errors: allErrors.length,
             ingredientsToCreate: plan.ingredientsToCreate.length,
+            productsToCreate: plan.productsToCreate.length,
           },
           toCreate: plan.toCreate.map(r => ({
             sourceRow: r.sourceRow, name: r.name, isBase: r.isBase,
@@ -461,6 +656,7 @@ export const recipeImportController = {
             changes: r.changes || [],
           })),
           ingredientsToCreate: plan.ingredientsToCreate,
+          productsToCreate: plan.productsToCreate,
           errors: allErrors,
           warnings: parsed.warnings,
         },
@@ -518,7 +714,15 @@ export const recipeImportController = {
     let created = 0;
     let updated = 0;
     let ingredientsCreated = 0;
+    let productsCreated = 0;
     const errors: { row: number; sheet?: string; message: string }[] = [];
+
+    // Map nom produit -> id (peuplee depuis DB puis enrichie apres auto-creations)
+    const productNameToId = new Map<string, string>();
+    const existingProducts = await db.query(`SELECT id, name FROM products`);
+    for (const r of existingProducts.rows) {
+      productNameToId.set(String(r.name).trim().toUpperCase(), r.id);
+    }
 
     // === Auto-creation des ingredients manquants ===
     // Avant de monter les recettes, on cree les ingredients absents de l'economat
@@ -530,6 +734,72 @@ export const recipeImportController = {
     for (const r of existingIngredients.rows) {
       ingredientNameToId.set(String(r.name).trim().toUpperCase(), r.id);
     }
+
+    // === Auto-creation des produits manquants ===
+    // Avant les recettes : INSERT products (name, slug, category_id, price=0,
+    // cost_price=0, is_available=true). Categorie par defaut = la 1ere
+    // disponible (display_order, id). L'admin reaffectera + completera les prix.
+    if (plan.productsToCreate.length > 0) {
+      const catRes = await db.query(
+        `SELECT id FROM categories ORDER BY display_order, id LIMIT 1`
+      );
+      const defaultCategoryId = catRes.rows[0]?.id;
+      if (!defaultCategoryId) {
+        res.status(500).json({
+          success: false,
+          error: { message: 'Aucune categorie produit en DB — creer une categorie avant l\'import' },
+        });
+        return;
+      }
+
+      const slugify = (s: string) => s.toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 90) || 'produit-import';
+
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        for (const missing of plan.productsToCreate) {
+          let slug = slugify(missing.name);
+          // Garantit l'unicite du slug (collisions possibles entre 'Brioche carrée'
+          // et 'Brioche carrée 2'). On suffixe avec un compteur en cas de conflit.
+          let attempts = 0;
+          while (attempts < 50) {
+            const slugCheck = await client.query(`SELECT 1 FROM products WHERE slug = $1 LIMIT 1`, [slug]);
+            if (slugCheck.rowCount === 0) break;
+            attempts++;
+            slug = `${slugify(missing.name)}-${attempts + 1}`;
+          }
+          const ins = await client.query(
+            `INSERT INTO products (name, slug, category_id, price, cost_price, is_available)
+             VALUES ($1, $2, $3, 0, 0, true) RETURNING id`,
+            [missing.name, slug, defaultCategoryId]
+          );
+          productNameToId.set(missing.name.toUpperCase(), ins.rows[0].id as string);
+          productsCreated++;
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        const msg = err instanceof Error ? err.message : 'Erreur creation produits';
+        res.status(500).json({ success: false, error: { message: `Auto-creation produits : ${msg}` } });
+        return;
+      } finally {
+        client.release();
+      }
+    }
+
+    // Resout les productId=null dans les plan rows (le buildPlan a laisse null
+    // quand le produit n'existait pas — maintenant il existe dans productNameToId).
+    function resolveProductId(planRow: RecipePlanRow): void {
+      if (planRow.productId || !planRow.productName || planRow.isBase) return;
+      const id = productNameToId.get(planRow.productName.toUpperCase());
+      if (id) planRow.productId = id;
+    }
+    for (const row of plan.toCreate) resolveProductId(row);
+    for (const row of plan.toUpdate) resolveProductId(row);
 
     if (plan.ingredientsToCreate.length > 0) {
       const storeId = req.user?.storeId || null;
@@ -730,6 +1000,7 @@ export const recipeImportController = {
         updated,
         unchanged: plan.unchanged.length,
         ingredientsCreated,
+        productsCreated,
         warnings: parsed.warnings,
         errors,
       },

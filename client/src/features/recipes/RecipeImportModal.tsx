@@ -26,14 +26,21 @@ interface MissingIngredient {
   firstRow: number;
 }
 
+interface MissingProduct {
+  name: string;
+  firstRow: number;
+}
+
 interface PreviewData {
   summary: {
     totalRows: number; toCreate: number; toUpdate: number;
-    unchanged: number; errors: number; ingredientsToCreate: number;
+    unchanged: number; errors: number;
+    ingredientsToCreate: number; productsToCreate: number;
   };
   toCreate: PreviewRow[];
   toUpdate: PreviewRow[];
   ingredientsToCreate: MissingIngredient[];
+  productsToCreate: MissingProduct[];
   errors: { sheet: string; sourceRow: number; message: string }[];
   warnings: string[];
 }
@@ -43,6 +50,7 @@ interface CommitResult {
   updated: number;
   unchanged: number;
   ingredientsCreated: number;
+  productsCreated: number;
   warnings: string[];
   errors: { row: number; sheet?: string; message: string }[];
 }
@@ -72,6 +80,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
       if (data.created) parts.push(`${data.created} cree(s)`);
       if (data.updated) parts.push(`${data.updated} mise(s) a jour`);
       if (data.ingredientsCreated) parts.push(`${data.ingredientsCreated} ingredient(s) auto-cree(s)`);
+      if (data.productsCreated) parts.push(`${data.productsCreated} produit(s) auto-cree(s)`);
       notify.success(`Import termine — ${parts.join(', ') || 'aucun changement'}`);
       qc.invalidateQueries({ queryKey: ['recipes'] });
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -159,9 +168,9 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                 <p><strong>Emballages</strong> : Recette | Emballage | Quantite | Unite</p>
                 <p className="text-blue-700 pt-1">
                   Les recettes existantes (meme nom) seront mises a jour, les nouvelles creees.
-                  Les <strong>ingredients absents</strong> de l'economat seront <strong>auto-crees</strong>
-                  (cout 0, categorie "autre") — a completer apres dans l'economat.
-                  Les <strong>produits</strong> et <strong>emballages</strong> doivent deja exister.
+                  Les <strong>ingredients</strong> et <strong>produits</strong> absents seront <strong>auto-crees</strong>
+                  (cout/prix = 0) — a completer apres. Les unites non standards (ex: "cadre") sont acceptees.
+                  Les <strong>emballages</strong> doivent deja exister.
                 </p>
               </div>
             </>
@@ -170,12 +179,13 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
           {/* Preview */}
           {preview && !result && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 <Kpi label="Total recettes" value={String(preview.summary.totalRows)} />
                 <Kpi label="A creer" value={String(preview.summary.toCreate)} tone="emerald" />
                 <Kpi label="A mettre a jour" value={String(preview.summary.toUpdate)} tone="amber" />
                 <Kpi label="Inchangees" value={String(preview.summary.unchanged)} tone="gray" />
                 <Kpi label="Ing. auto-crees" value={String(preview.summary.ingredientsToCreate)} tone="blue" />
+                <Kpi label="Prod. auto-crees" value={String(preview.summary.productsToCreate)} tone="blue" />
               </div>
 
               {preview.ingredientsToCreate.length > 0 && (
@@ -203,6 +213,38 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                               <td className="p-1.5 font-medium">{ing.name}</td>
                               <td className="p-1.5">{ing.unit}</td>
                               <td className="p-1.5 text-gray-500">{ing.firstRow}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </details>
+              )}
+
+              {preview.productsToCreate.length > 0 && (
+                <details className="border border-blue-200 rounded" open>
+                  <summary className="p-2 bg-blue-50 cursor-pointer text-sm font-medium text-blue-900">
+                    Produits absents du catalogue ({preview.productsToCreate.length}) — seront auto-crees
+                  </summary>
+                  <div className="p-2 bg-white text-xs">
+                    <p className="text-blue-800 mb-2">
+                      Prix = 0 DH, categorie par defaut, marque disponible.
+                      A completer apres dans le catalogue produits.
+                    </p>
+                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="p-1.5 text-left">Nom du produit</th>
+                            <th className="p-1.5 text-left">1re apparition (ligne Recettes)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.productsToCreate.map((p, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="p-1.5 font-medium">{p.name}</td>
+                              <td className="p-1.5 text-gray-500">{p.firstRow}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -278,6 +320,11 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                   {result.ingredientsCreated > 0 && (
                     <div className="text-sm text-blue-800 mt-1">
                       {result.ingredientsCreated} ingredient(s) auto-cree(s) — completer les couts dans l'economat.
+                    </div>
+                  )}
+                  {result.productsCreated > 0 && (
+                    <div className="text-sm text-blue-800 mt-1">
+                      {result.productsCreated} produit(s) auto-cree(s) — completer les prix dans le catalogue.
                     </div>
                   )}
                 </div>
