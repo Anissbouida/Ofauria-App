@@ -180,17 +180,22 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       return;
     }
 
-    const lines: string[] = [];
-    if (counts.payroll) lines.push(`• ${counts.payroll} fiche(s) de paie`);
-    if (counts.attendance) lines.push(`• ${counts.attendance} pointage(s) / présence(s)`);
-    if (counts.leaves) lines.push(`• ${counts.leaves} congé(s)`);
-    if (counts.schedules) lines.push(`• ${counts.schedules} planning(s)`);
-    if (counts.payments) lines.push(`• ${counts.payments} paiement(s) lié(s)`);
-    if (counts.productionCoutReel) lines.push(`• ${counts.productionCoutReel} temps de production`);
+    const deleteLines: string[] = [];
+    if (counts.payroll) deleteLines.push(`• ${counts.payroll} fiche(s) de paie`);
+    if (counts.attendance) deleteLines.push(`• ${counts.attendance} pointage(s) / présence(s)`);
+    if (counts.leaves) deleteLines.push(`• ${counts.leaves} congé(s)`);
+    if (counts.schedules) deleteLines.push(`• ${counts.schedules} planning(s)`);
+    if (counts.payments) deleteLines.push(`• ${counts.payments} paiement(s) lié(s)`);
+    if (counts.productionTempsTravail) deleteLines.push(`• ${counts.productionTempsTravail} temps de production`);
 
-    const details = lines.length > 0
-      ? `Données qui seront EFFACÉES en cascade :\n${lines.join('\n')}\n\n`
-      : `Aucune donnée liée — suppression propre.\n\n`;
+    // Ventes : preservees (NULL employee_id) — historique chiffre d'affaires garde
+    const salesNote = counts.sales
+      ? `\nVentes liées (${counts.sales}) : préservées — l'employé sera juste détaché des ventes.\n`
+      : '';
+
+    const details = deleteLines.length > 0
+      ? `Données qui seront EFFACÉES en cascade :\n${deleteLines.join('\n')}\n${salesNote}\n`
+      : `Aucune donnée liée à effacer.${salesNote}\n`;
 
     if (!confirm(
       `${details}` +

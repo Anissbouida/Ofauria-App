@@ -84,7 +84,8 @@ export const employeeRepository = {
    */
   async hardDelete(id: string): Promise<{
     payments: number; payroll: number; leaves: number; attendance: number;
-    schedules: number; productionCoutReel: number; employee: number;
+    schedules: number; productionTempsTravail: number;
+    salesUnlinked: number; employee: number;
   }> {
     const client = await db.getClient();
     try {
@@ -97,38 +98,49 @@ export const employeeRepository = {
         throw new Error('Employe introuvable');
       }
 
-      // Cascade manuelle. Ordre : enfants d'abord, puis l'employe.
-      // Pas de CASCADE en FK -> impossible de supprimer l'employe sans
-      // d'abord nettoyer les references.
-      const r1 = await client.query('DELETE FROM payments WHERE employee_id = $1', [id]);
-      const r2 = await client.query('DELETE FROM payroll WHERE employee_id = $1', [id]);
-      const r3 = await client.query('DELETE FROM leaves WHERE employee_id = $1', [id]);
-      const r4 = await client.query('DELETE FROM attendance WHERE employee_id = $1', [id]);
-      const r5 = await client.query('DELETE FROM schedules WHERE employee_id = $1', [id]);
-      // production_cout_reel : optionnelle (existe seulement si migration 090 appliquee)
-      let r6Count = 0;
-      try {
-        const r6 = await client.query('DELETE FROM production_cout_reel WHERE employee_id = $1', [id]);
-        r6Count = r6.rowCount || 0;
-      } catch (e) {
-        // Table absente sur certains environnements — on ignore silencieusement.
-        // Toute autre erreur (FK supplementaire) annule la transaction.
-        const code = (e as { code?: string }).code;
-        if (code !== '42P01') throw e; // 42P01 = undefined_table
-      }
+      // Strategie cascade :
+      // - DELETE pour les donnees 1:1 employe (paie, presence, paiements, conges, planning, temps)
+      // - UPDATE NULL pour les ventes (preserve le chiffre d'affaires, perd seulement
+      //   l'attribution employe — destruction des sales = destruction historique CA)
+      // - employee_commissions: ON DELETE CASCADE automatique au niveau DB
+      const tryQuery = async (sql: string, label: string): Promise<number> => {
+        try {
+          const r = await client.query(sql, [id]);
+          return r.rowCount || 0;
+        } catch (e) {
+          const code = (e as { code?: string }).code;
+          if (code === '42P01') {
+            // Table absente sur cet environnement — on ignore
+            return 0;
+          }
+          // Toute autre erreur (FK supplementaire, contrainte) annule la transaction
+          throw new Error(`${label}: ${(e as Error).message}`);
+        }
+      };
 
-      const r7 = await client.query('DELETE FROM employees WHERE id = $1', [id]);
+      const payments = await tryQuery('DELETE FROM payments WHERE employee_id = $1', 'payments');
+      const payroll = await tryQuery('DELETE FROM payroll WHERE employee_id = $1', 'payroll');
+      const leaves = await tryQuery('DELETE FROM leaves WHERE employee_id = $1', 'leaves');
+      const attendance = await tryQuery('DELETE FROM attendance WHERE employee_id = $1', 'attendance');
+      const schedules = await tryQuery('DELETE FROM schedules WHERE employee_id = $1', 'schedules');
+      const productionTempsTravail = await tryQuery(
+        'DELETE FROM production_temps_travail WHERE employee_id = $1',
+        'production_temps_travail'
+      );
+      // Ventes : on NULL le lien plutot que de detruire la vente
+      const salesUnlinked = await tryQuery(
+        'UPDATE sales SET employee_id = NULL WHERE employee_id = $1',
+        'sales'
+      );
+
+      const empResult = await client.query('DELETE FROM employees WHERE id = $1', [id]);
 
       await client.query('COMMIT');
 
       return {
-        payments: r1.rowCount || 0,
-        payroll: r2.rowCount || 0,
-        leaves: r3.rowCount || 0,
-        attendance: r4.rowCount || 0,
-        schedules: r5.rowCount || 0,
-        productionCoutReel: r6Count,
-        employee: r7.rowCount || 0,
+        payments, payroll, leaves, attendance, schedules,
+        productionTempsTravail, salesUnlinked,
+        employee: empResult.rowCount || 0,
       };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -144,7 +156,7 @@ export const employeeRepository = {
    */
   async countDependencies(id: string): Promise<{
     payments: number; payroll: number; leaves: number; attendance: number;
-    schedules: number; productionCoutReel: number;
+    schedules: number; productionTempsTravail: number; sales: number;
   }> {
     const q = async (sql: string): Promise<number> => {
       try {
@@ -155,15 +167,16 @@ export const employeeRepository = {
         throw e;
       }
     };
-    const [payments, payroll, leaves, attendance, schedules, productionCoutReel] = await Promise.all([
+    const [payments, payroll, leaves, attendance, schedules, productionTempsTravail, sales] = await Promise.all([
       q('SELECT COUNT(*)::int AS n FROM payments WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM payroll WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM leaves WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM attendance WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM schedules WHERE employee_id = $1'),
-      q('SELECT COUNT(*)::int AS n FROM production_cout_reel WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM production_temps_travail WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM sales WHERE employee_id = $1'),
     ]);
-    return { payments, payroll, leaves, attendance, schedules, productionCoutReel };
+    return { payments, payroll, leaves, attendance, schedules, productionTempsTravail, sales };
   },
 };
 
