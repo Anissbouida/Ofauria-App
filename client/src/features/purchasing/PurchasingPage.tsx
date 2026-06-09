@@ -7,7 +7,7 @@ import {
   Plus, Pencil, Truck, FileText, Banknote,
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
-  Loader2, Search, Coins, ArrowDownRight,
+  Loader2, Search, Coins, ArrowDownRight, Filter, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -306,6 +306,11 @@ function ReceivedInvoicesSection() {
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [sortBy, setSortBy] = useState<string>('invoice_date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
 
   const { data: invoices = [], isLoading } = useQuery({
@@ -434,6 +439,92 @@ function ReceivedInvoicesSection() {
   const totalFacture = invoicesList.reduce((s, inv) => s + parseFloat(inv.total_amount as string || '0'), 0);
   const totalPaid = invoicesList.reduce((s, inv) => s + parseFloat(inv.paid_amount as string || '0'), 0);
 
+  // Liste des fournisseurs et categories presents dans les factures, pour les dropdowns
+  const invoiceSuppliers = useMemo(() => {
+    const map = new Map<string, string>();
+    invoicesList.forEach(inv => {
+      if (inv.supplier_id) map.set(inv.supplier_id as string, (inv.supplier_name as string) || '');
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [invoicesList]);
+
+  const invoiceCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    invoicesList.forEach(inv => {
+      if (inv.category_id) map.set(inv.category_id as string, (inv.category_name as string) || '');
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [invoicesList]);
+
+  // Application des filtres (recherche, fournisseur, categorie) puis tri
+  const displayedInvoices = useMemo(() => {
+    let list = invoicesList;
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(inv =>
+        ((inv.invoice_number as string) || '').toLowerCase().includes(q) ||
+        ((inv.supplier_name as string) || '').toLowerCase().includes(q) ||
+        ((inv.purchase_order_number as string) || '').toLowerCase().includes(q) ||
+        ((inv.category_name as string) || '').toLowerCase().includes(q)
+      );
+    }
+    if (supplierFilter) {
+      list = list.filter(inv => inv.supplier_id === supplierFilter);
+    }
+    if (categoryFilter) {
+      list = list.filter(inv => inv.category_id === categoryFilter);
+    }
+    const sorted = [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case 'invoice_number':
+          cmp = String(a.invoice_number || '').localeCompare(String(b.invoice_number || ''));
+          break;
+        case 'supplier_name':
+          cmp = String(a.supplier_name || '').localeCompare(String(b.supplier_name || ''));
+          break;
+        case 'invoice_date':
+          cmp = new Date(a.invoice_date as string).getTime() - new Date(b.invoice_date as string).getTime();
+          break;
+        case 'due_date': {
+          const ad = a.due_date ? new Date(a.due_date as string).getTime() : 0;
+          const bd = b.due_date ? new Date(b.due_date as string).getTime() : 0;
+          cmp = ad - bd;
+          break;
+        }
+        case 'category_name':
+          cmp = String(a.category_name || '').localeCompare(String(b.category_name || ''));
+          break;
+        case 'status':
+          cmp = String(a.status || '').localeCompare(String(b.status || ''));
+          break;
+        case 'total_amount':
+          cmp = parseFloat(a.total_amount as string || '0') - parseFloat(b.total_amount as string || '0');
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [invoicesList, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
+
+  const toggleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortIcon = (field: string) => {
+    if (sortBy !== field) return <ArrowUpDown size={10} style={{ opacity: 0.3, marginLeft: 4, verticalAlign: 'middle' }} />;
+    return sortDir === 'asc'
+      ? <ArrowUp size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
+      : <ArrowDown size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />;
+  };
+
+  const hasActiveFilters = !!(searchTerm || supplierFilter || categoryFilter);
+
   return (
     <>
       {/* Stat tiles */}
@@ -460,7 +551,7 @@ function ReceivedInvoicesSection() {
         </div>
       </div>
 
-      {/* Search panel */}
+      {/* Search panel — statut + bouton nouvelle facture */}
       <div className="odoo-search-panel">
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="odoo-filter-dropdown">
           <option value="">Tous les statuts</option>
@@ -477,16 +568,51 @@ function ReceivedInvoicesSection() {
         </button>
       </div>
 
+      {/* Search panel — recherche texte + filtres fournisseur / categorie */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher par N° facture, fournisseur, BC ou catégorie..."
+          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
+        {invoiceSuppliers.length > 1 && (
+          <>
+            <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
+            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
+              <option value="">Tous les fournisseurs</option>
+              {invoiceSuppliers.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {invoiceCategories.length > 1 && (
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="odoo-filter-dropdown">
+            <option value="">Toutes les catégories</option>
+            {invoiceCategories.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </select>
+        )}
+        {hasActiveFilters && (
+          <button onClick={() => { setSearchTerm(''); setSupplierFilter(''); setCategoryFilter(''); }}
+            className="odoo-filter-dropdown"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <X size={11} /> Effacer
+          </button>
+        )}
+      </div>
+
       {/* Table */}
       {isLoading ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
           <p style={{ fontSize: '0.8125rem' }}>Chargement des factures...</p>
         </div>
-      ) : invoicesList.length === 0 ? (
+      ) : displayedInvoices.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <FileText size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune facture reçue</p>
+          <p style={{ fontSize: '0.8125rem' }}>
+            {(hasActiveFilters || statusFilter) ? 'Aucune facture ne correspond à ces filtres' : 'Aucune facture reçue'}
+          </p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -494,19 +620,33 @@ function ReceivedInvoicesSection() {
             <thead>
               <tr>
                 <th style={{ width: 24 }}></th>
-                <th>N° Facture</th>
-                <th>Fournisseur</th>
-                <th>Date</th>
-                <th>Échéance / Mode</th>
+                <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  N° Facture {sortIcon('invoice_number')}
+                </th>
+                <th onClick={() => toggleSort('supplier_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Fournisseur {sortIcon('supplier_name')}
+                </th>
+                <th onClick={() => toggleSort('invoice_date')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Date {sortIcon('invoice_date')}
+                </th>
+                <th onClick={() => toggleSort('due_date')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Échéance / Mode {sortIcon('due_date')}
+                </th>
                 <th>BC</th>
-                <th>Catégorie</th>
-                <th>Statut</th>
-                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th onClick={() => toggleSort('category_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Catégorie {sortIcon('category_name')}
+                </th>
+                <th onClick={() => toggleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Statut {sortIcon('status')}
+                </th>
+                <th onClick={() => toggleSort('total_amount')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+                  Montant {sortIcon('total_amount')}
+                </th>
                 <th style={{ textAlign: 'right', width: 160 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {invoicesList.map(inv => {
+              {displayedInvoices.map(inv => {
                 const total = parseFloat(inv.total_amount as string);
                 const paid = parseFloat(inv.paid_amount as string);
                 const remaining = total - paid;
