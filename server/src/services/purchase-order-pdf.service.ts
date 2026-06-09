@@ -2,7 +2,6 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { numberToWordsFR } from './invoice-pdf.service.js';
 
 // Resolve logo
 function findDefaultLogo(): string {
@@ -63,7 +62,11 @@ const BORDER = '#D6CFC4';
 const WHITE = '#FFFFFF';
 
 function n(val: number): string {
-  return val.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Helvetica (PDFKit built-in) n'a pas les espaces Unicode U+202F / U+00A0
+  // utilises comme separateurs de milliers en fr-FR → rendus comme "/" dans le PDF
+  return val
+    .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .replace(/[  ]/g, ' ');
 }
 
 function drawRect(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number, fill: string) {
@@ -199,8 +202,8 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
   // ════════════════════════════════════════════════════════════
   // ITEMS TABLE
   // ════════════════════════════════════════════════════════════
-  const colWidths = [CW * 0.40, CW * 0.12, CW * 0.12, CW * 0.16, CW * 0.20];
-  const colHeaders = ['D\u00C9SIGNATION', 'UNIT\u00C9', 'QT\u00C9', 'PRIX U. (DH)', 'MONTANT (DH)'];
+  const colWidths = [CW * 0.65, CW * 0.17, CW * 0.18];
+  const colHeaders = ['D\u00C9SIGNATION', 'UNIT\u00C9', 'QT\u00C9'];
   const rowH = 22;
   const tblHeaderH = 26;
 
@@ -209,7 +212,7 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
     drawRect(doc, x, y, colWidths[i], tblHeaderH, BROWN);
     doc.rect(x, y, colWidths[i], tblHeaderH).lineWidth(0.3).stroke(BROWN);
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(WHITE);
-    const align = i >= 3 ? 'right' : i >= 1 ? 'center' : 'left';
+    const align = i === 0 ? 'left' : 'center';
     txt(doc, colHeaders[i], x + 5, y + 8, { width: colWidths[i] - 10, align });
     x += colWidths[i];
   }
@@ -224,11 +227,9 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
       { text: item.ingredientName, font: 'Helvetica-Bold', align: 'left' },
       { text: item.unit, font: 'Helvetica', align: 'center' },
       { text: String(item.quantity), font: 'Helvetica', align: 'center' },
-      { text: item.unitPrice != null ? n(item.unitPrice) : '\u00C0 d\u00e9finir', font: 'Helvetica', align: 'right' },
-      { text: item.subtotal != null && item.subtotal > 0 ? n(item.subtotal) : '\u2014', font: 'Helvetica-Bold', align: 'right' },
     ];
 
-    for (let col = 0; col < 5; col++) {
+    for (let col = 0; col < colWidths.length; col++) {
       drawRect(doc, x, y, colWidths[col], rowH, bg);
       doc.rect(x, y, colWidths[col], rowH).lineWidth(0.3).stroke(BORDER);
       doc.font(cellData[col].font).fontSize(8.5).fillColor(TEXT_DARK);
@@ -238,71 +239,30 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
     y += rowH;
   }
 
-  y += 8;
+  y += 10;
 
   // ════════════════════════════════════════════════════════════
-  // BOTTOM: Notes (left) + Total (right)
+  // NOTES & INSTRUCTIONS (pleine largeur, sans totaux)
   // ════════════════════════════════════════════════════════════
-  const notesW = CW * 0.52;
-  const totalsW = CW - notesW - 8;
-  const totalsX = M + notesW + 8;
-  const totalRowH = 22;
-  const bottomStartY = y;
+  const notesW = CW;
+  const notesHeaderH = 18;
+  const notesContentH = 60;
 
-  // ── Notes box ──
-  drawRect(doc, M, y, notesW, 18, BEIGE);
-  doc.rect(M, y, notesW, 18).lineWidth(0.3).stroke(BORDER);
+  drawRect(doc, M, y, notesW, notesHeaderH, BEIGE);
+  doc.rect(M, y, notesW, notesHeaderH).lineWidth(0.3).stroke(BORDER);
   doc.font('Helvetica-Bold').fontSize(6.5).fillColor(BROWN);
   txt(doc, 'NOTES & INSTRUCTIONS', M + 6, y + 5, { width: notesW - 12 });
+  y += notesHeaderH;
 
-  const notesContentY = y + 18;
-  const notesContentH = totalRowH * 3 - 18;
-  drawRect(doc, M, notesContentY, notesW, notesContentH, BEIGE);
-  doc.rect(M, notesContentY, notesW, notesContentH).lineWidth(0.3).stroke(BORDER);
+  drawRect(doc, M, y, notesW, notesContentH, BEIGE);
+  doc.rect(M, y, notesW, notesContentH).lineWidth(0.3).stroke(BORDER);
 
-  let ny = notesContentY + 6;
   if (data.notes) {
     doc.font('Helvetica').fontSize(8).fillColor(TEXT_DARK);
-    txt(doc, data.notes, M + 6, ny, { width: notesW - 12 });
-    ny += 14;
+    txt(doc, data.notes, M + 6, y + 6, { width: notesW - 12 });
   }
 
-  const hasPrices = data.totalHT > 0;
-  if (hasPrices) {
-    const amountWords = numberToWordsFR(data.totalHT);
-    doc.font('Helvetica-Bold').fontSize(7).fillColor(TEXT_DARK);
-    txt(doc, 'TOTAL ESTIM\u00C9 :', M + 6, ny, { width: notesW - 12 });
-    ny += 12;
-    doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(GOLD);
-    txt(doc, amountWords, M + 6, ny, { width: notesW - 12 });
-  }
-
-  // ── Total ──
-  let ty = bottomStartY;
-
-  function drawTotalRow(label: string, value: string, opts: { bg?: string; textColor?: string; bold?: boolean; height?: number } = {}) {
-    const h = opts.height || totalRowH;
-    const bg = opts.bg || WHITE;
-    const tc = opts.textColor || TEXT_DARK;
-
-    drawRect(doc, totalsX, ty, totalsW * 0.55, h, bg);
-    doc.rect(totalsX, ty, totalsW * 0.55, h).lineWidth(0.3).stroke(BORDER);
-    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(tc);
-    txt(doc, label, totalsX + 6, ty + 6, { width: totalsW * 0.55 - 12 });
-
-    drawRect(doc, totalsX + totalsW * 0.55, ty, totalsW * 0.45, h, bg);
-    doc.rect(totalsX + totalsW * 0.55, ty, totalsW * 0.45, h).lineWidth(0.3).stroke(BORDER);
-    doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.bold ? 10 : 9).fillColor(tc);
-    txt(doc, value, totalsX + totalsW * 0.55 + 4, ty + (opts.bold ? 5 : 6), { width: totalsW * 0.45 - 10, align: 'right' });
-
-    ty += h;
-  }
-
-  drawTotalRow('ARTICLES', `${data.items.length}`, {});
-  drawTotalRow('SOUS-TOTAL HT', hasPrices ? `${n(data.totalHT)} DH` : '\u00C0 d\u00e9finir', { bold: true });
-  drawTotalRow('TOTAL ESTIM\u00C9', hasPrices ? `${n(data.totalHT)} DH` : '\u00C0 d\u00e9finir', { bg: BROWN, textColor: WHITE, bold: true, height: 28 });
-
-  y = Math.max(y + notesContentH + 18, ty + 8);
+  y += notesContentH + 12;
 
   // ════════════════════════════════════════════════════════════
   // SIGNATURE
