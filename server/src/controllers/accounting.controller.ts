@@ -416,8 +416,11 @@ export const paymentController = {
   async create(req: AuthRequest, res: Response) {
     const data = { ...req.body, createdBy: req.user!.userId, storeId: req.user!.storeId };
 
-    // Enforce PO linkage for expense categories that require it
-    if (data.type === 'expense' && data.categoryId) {
+    // ─── BC OBLIGATOIRE — DESACTIVE TEMPORAIREMENT ───────────────────
+    // Pour reactiver : passer ENFORCE_PO_REQUIREMENT a true.
+    // Doit etre coherent avec le flag client (AccountingPage.tsx).
+    const ENFORCE_PO_REQUIREMENT = false;
+    if (ENFORCE_PO_REQUIREMENT && data.type === 'expense' && data.categoryId) {
       const category = await expenseCategoryRepository.findById(data.categoryId);
       if (category && category.requires_po && !data.purchaseOrderId) {
         res.status(400).json({

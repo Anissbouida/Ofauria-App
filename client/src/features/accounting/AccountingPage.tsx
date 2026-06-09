@@ -636,7 +636,12 @@ function ChargesTab() {
       setFormCategoryId('');
       setFormPOId('');
     },
-    onError: () => notify.error('Erreur'),
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'enregistrement');
+    },
   });
 
   const updateMutation = useMutation({
