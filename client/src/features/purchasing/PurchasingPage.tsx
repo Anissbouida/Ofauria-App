@@ -946,6 +946,20 @@ function ReceivedInvoiceFormModal({
   // 'ht_tva' : on a edite HT ou TVA -> TTC est derive
   // 'ttc' : on a edite TTC -> TVA est derive (HT garde sa valeur)
   const [lastEdit, setLastEdit] = useState<'ht_tva' | 'ttc'>('ht_tva');
+  // Taux TVA selectionne (Maroc : 0/7/10/14/20%). '' = mode manuel (montant libre).
+  // Quand un taux est selectionne, TVA = HT * taux/100 et TTC suit automatiquement.
+  // Detecte a l'initialisation si le ratio TVA/HT correspond a un taux usuel.
+  const [vatRate, setVatRate] = useState<string>(() => {
+    const ht = parseFloat(invoice?.amount as string) || 0;
+    const tva = parseFloat(invoice?.tax_amount as string) || 0;
+    if (ht <= 0) return '';
+    if (tva === 0) return '0';
+    const rate = (tva / ht) * 100;
+    for (const r of [7, 10, 14, 20]) {
+      if (Math.abs(rate - r) < 0.05) return String(r);
+    }
+    return '';
+  });
   const [dueDate, setDueDate] = useState<string>(
     invoice?.due_date ? String(invoice.due_date).slice(0, 10) : ''
   );
@@ -961,6 +975,20 @@ function ReceivedInvoiceFormModal({
     invoice?.check_number as string || ''
   );
   const [notes, setNotes] = useState<string>(invoice?.notes as string || '');
+
+  // Quand un taux TVA est selectionne, on derive le montant TVA depuis HT.
+  // Le useEffect HT+TVA=TTC en aval s'occupera de mettre a jour le TTC.
+  useEffect(() => {
+    if (vatRate === '') return;
+    const ht = parseFloat(amountHT) || 0;
+    const rate = parseFloat(vatRate);
+    const newTVA = (ht * rate / 100).toFixed(2);
+    if (newTVA !== taxAmount) {
+      setTaxAmount(newTVA);
+      setLastEdit('ht_tva');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vatRate, amountHT]);
 
   // Recalcul live : HT + TVA = TTC OU TTC - HT = TVA
   useEffect(() => {
@@ -1059,9 +1087,23 @@ function ReceivedInvoiceFormModal({
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>TVA</label>
-                <input type="number" step="0.01" value={taxAmount}
-                  onChange={e => { setTaxAmount(e.target.value); setLastEdit('ht_tva'); }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <select value={vatRate} onChange={e => setVatRate(e.target.value)}
+                    title="Taux TVA — applique HT × taux/100"
+                    className="px-2 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    style={{ width: 68, flexShrink: 0 }}>
+                    <option value="">—</option>
+                    <option value="0">0%</option>
+                    <option value="7">7%</option>
+                    <option value="10">10%</option>
+                    <option value="14">14%</option>
+                    <option value="20">20%</option>
+                  </select>
+                  <input type="number" step="0.01" value={taxAmount}
+                    onChange={e => { setTaxAmount(e.target.value); setLastEdit('ht_tva'); setVatRate(''); }}
+                    className="px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    style={{ flex: 1, minWidth: 0 }} />
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 4 }}>Montant TTC</label>
