@@ -939,22 +939,94 @@ export const paymentRepository = {
     paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
     purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
   }) {
-    const result = await db.query(
-      `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
-        amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-        check_number, check_date, check_attachment_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [data.reference || null, data.type, data.categoryId || null, data.invoiceId || null,
-       data.supplierId || null, data.employeeId || null, data.amount,
-       data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
-       data.storeId || null, data.purchaseOrderId || null,
-       data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
-    );
-    // Update invoice paid amount if linked
-    if (data.invoiceId) {
-      await invoiceRepository.updatePaidAmount(data.invoiceId);
+    // ─── Cas simple : pas de facture liee, INSERT direct ──────────────────
+    if (!data.invoiceId) {
+      const result = await db.query(
+        `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
+          amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
+          check_number, check_date, check_attachment_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [data.reference || null, data.type, data.categoryId || null, null,
+         data.supplierId || null, data.employeeId || null, data.amount,
+         data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+         data.storeId || null, data.purchaseOrderId || null,
+         data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+      );
+      return result.rows[0];
     }
-    return result.rows[0];
+
+    // ─── Cas facture liee : transaction + FOR UPDATE pour eviter ──────────
+    // les doublons et sur-paiements en cas de double-clic / requetes concurrentes.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Lock la facture + lit l'etat courant
+      const inv = await client.query(
+        `SELECT total_amount, paid_amount, invoice_number FROM invoices WHERE id = $1 FOR UPDATE`,
+        [data.invoiceId]
+      );
+      if (!inv.rows[0]) {
+        const e: Error & { statusCode?: number } = new Error('Facture introuvable');
+        e.statusCode = 404;
+        throw e;
+      }
+      const totalAmount = parseFloat(inv.rows[0].total_amount);
+      const currentPaid = parseFloat(inv.rows[0].paid_amount || '0');
+      const invoiceNumber = inv.rows[0].invoice_number as string;
+
+      // Garde 1 — sur-paiement : refuse si le cumul depasse le total.
+      // Tolerance de 0.01 DH pour arrondis flottants.
+      if (currentPaid + data.amount > totalAmount + 0.01) {
+        const remaining = Math.max(0, totalAmount - currentPaid);
+        const e: Error & { statusCode?: number } = new Error(
+          `Le paiement de ${data.amount.toFixed(2)} DH dépasse le reste à payer ` +
+          `(${remaining.toFixed(2)} DH sur ${totalAmount.toFixed(2)} DH) pour la facture ${invoiceNumber}.`
+        );
+        e.statusCode = 409;
+        throw e;
+      }
+
+      // Garde 2 — doublon de cheque : un meme N° de cheque ne peut pas etre
+      // saisi deux fois pour la meme facture (cas concret du bug observe).
+      if (data.checkNumber && data.checkNumber.trim()) {
+        const dup = await client.query(
+          `SELECT id FROM payments WHERE invoice_id = $1 AND check_number = $2 LIMIT 1`,
+          [data.invoiceId, data.checkNumber.trim()]
+        );
+        if (dup.rows.length > 0) {
+          const e: Error & { statusCode?: number } = new Error(
+            `Un paiement avec le chèque N° ${data.checkNumber.trim()} existe déjà pour la facture ${invoiceNumber}.`
+          );
+          e.statusCode = 409;
+          throw e;
+        }
+      }
+
+      const result = await client.query(
+        `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
+          amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
+          check_number, check_date, check_attachment_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [data.reference || null, data.type, data.categoryId || null, data.invoiceId,
+         data.supplierId || null, data.employeeId || null, data.amount,
+         data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+         data.storeId || null, data.purchaseOrderId || null,
+         data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+      );
+
+      await client.query('COMMIT');
+
+      // Resync paid_amount + status (sa propre transaction, hors lock)
+      await invoiceRepository.updatePaidAmount(data.invoiceId);
+
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
   async update(id: string, data: { categoryId?: string; description?: string; amount?: number; paymentMethod?: string; paymentDate?: string }) {
     const sets: string[] = []; const values: unknown[] = []; let i = 1;

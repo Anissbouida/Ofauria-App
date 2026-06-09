@@ -406,7 +406,13 @@ function ReceivedInvoicesSection() {
       notify.success('Paiement enregistré');
       setShowPayForm(null);
     },
-    onError: () => notify.error('Erreur'),
+    onError: (err: unknown) => {
+      // Affiche le message precis du backend (sur-paiement, doublon de cheque, etc.)
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'enregistrement du paiement');
+    },
   });
 
   const attachMutation = useMutation({
