@@ -574,7 +574,14 @@ function ChargesTab() {
 
   // Check if selected category requires a PO (look up the leaf category)
   const selectedCategory = (categories as Record<string, any>[]).find(c => String(c.id) === formCategoryId);
-  const requiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
+  // ─── BC OBLIGATOIRE — DESACTIVE TEMPORAIREMENT ───────────────────
+  // Pour reactiver : passer ENFORCE_PO_REQUIREMENT a true.
+  // L'info `categoryRequiresPO` reste calculee pour afficher une banniere
+  // d'avertissement sur les categories concernees.
+  const ENFORCE_PO_REQUIREMENT = false;
+  const categoryRequiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
+  const requiresPO = ENFORCE_PO_REQUIREMENT && categoryRequiresPO;
+  const showPOWaivedBanner = !ENFORCE_PO_REQUIREMENT && categoryRequiresPO;
 
   /**
    * Detection "depense de personnel" : on remonte les parents de la categorie
@@ -973,6 +980,11 @@ function ChargesTab() {
                 />
               </div>
 
+              {showPOWaivedBanner && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+                  ℹ️ Cette catégorie demande normalement un bon de commande, mais l'obligation est <strong>temporairement désactivée</strong>. Tu peux saisir la dépense directement.
+                </div>
+              )}
               {requiresPO && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <label className="block text-sm font-medium mb-1.5 text-amber-800">
