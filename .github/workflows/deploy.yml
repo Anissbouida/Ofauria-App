@@ -133,30 +133,24 @@ jobs:
 
       - name: Run migrations via proxy
         env:
-          # Le secret peut avoir un host=/cloudsql/... (Unix socket Cloud Run)
-          # ou directement un host IP. On normalise vers 127.0.0.1:5432.
+          # Le secret a un format Cloud Run typique :
+          #   postgres://USER:PASS@/DBNAME?host=/cloudsql/INSTANCE
+          # Node URL parser refuse le host vide (WHATWG URL strict).
+          # On extrait USER:PASS et DBNAME via sed et on reforge avec TCP 127.0.0.1.
           RAW_DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
         run: |
-          # Reecriture du DATABASE_URL avec Node URL parser (robuste)
-          PROXY_URL=$(node -e "
-            const raw = process.env.RAW_DATABASE_URL || '';
-            try {
-              const u = new URL(raw);
-              u.host = '127.0.0.1:5432';
-              u.searchParams.delete('host');
-              process.stdout.write(u.toString());
-            } catch (e) {
-              process.stderr.write('Cannot parse DATABASE_URL : ' + e.message + '\n');
-              process.exit(1);
-            }
-          ")
-          if [[ -z "$PROXY_URL" ]]; then
-            echo "Erreur reecriture DATABASE_URL"
+          # Format attendu : postgres(ql)?://USER:PASS@/DBNAME?host=/cloudsql/...
+          USER_PASS=$(printf '%s' "$RAW_DATABASE_URL" | sed -E 's|^postgres(ql)?://([^@]+)@.*$|\2|')
+          DBNAME=$(printf '%s' "$RAW_DATABASE_URL" | sed -E 's|^.*@/([^?]+)(\?.*)?$|\1|')
+          if [[ -z "$USER_PASS" || -z "$DBNAME" || "$USER_PASS" == "$RAW_DATABASE_URL" ]]; then
+            echo "Cannot parse DATABASE_URL (format attendu : postgres://user:pass@/dbname?host=...)"
             exit 1
           fi
+          PROXY_URL="postgres://${USER_PASS}@127.0.0.1:5432/${DBNAME}"
+          # Masque pour eviter le leak du password dans les logs GitHub Actions
+          echo "::add-mask::$PROXY_URL"
+          echo "::add-mask::$USER_PASS"
           export DATABASE_URL="$PROXY_URL"
-          # On masque l'URL pour eviter de leaker le password dans les logs
-          echo "::add-mask::$DATABASE_URL"
           npm run migrate --workspace=server
 
       - name: Stop Cloud SQL Auth Proxy
