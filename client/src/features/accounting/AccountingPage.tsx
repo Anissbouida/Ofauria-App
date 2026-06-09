@@ -42,6 +42,25 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
 }
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+/**
+ * Formatte une date payment_date (colonne DATE PG) en evitant le piege timezone.
+ * pg renvoie DATE sous forme de Date object → JSON donne "YYYY-MM-DDT00:00:00.000Z"
+ * → `new Date(...)` + `format()` peuvent shifter de +/- 1 jour selon le fuseau
+ * du serveur ET du navigateur. On parse directement les premiers 10 caracteres
+ * ("YYYY-MM-DD") sans passer par Date, ce qui evite tout shift.
+ *
+ * @param raw  Date ISO "2026-05-31T00:00:00.000Z" ou "2026-05-31" ou Date object
+ * @param fmt  'iso' (defaut: yyyy-MM-dd) ou 'fr' (dd/MM/yyyy)
+ */
+function fmtPaymentDate(raw: unknown, fmt: 'iso' | 'fr' = 'iso'): string {
+  if (!raw) return '';
+  const s = String(raw).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // format inattendu — on retourne tel quel
+  if (fmt === 'iso') return s;
+  const [y, m, d] = s.split('-');
+  return `${d}/${m}/${y}`;
+}
 function parseLocalDate(s: string) {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -777,7 +796,7 @@ function ChargesTab() {
 
   const handleExport = () => {
     const rows = displayed.map(p => [
-      format(new Date(p.payment_date as string), 'dd/MM/yyyy'),
+      fmtPaymentDate(p.payment_date, 'fr'),
       (p.reference as string) || '',
       (() => { const rid = getRootId(p.category_id as string | null); return rid ? catMap[rid]?.name || '' : ''; })(),
       (p.category_name as string) || '',
@@ -887,7 +906,7 @@ function ChargesTab() {
                 const isRootLeaf = rootId && catMap[rootId]?.name === leafName;
                 return (
                   <tr key={p.id as string}>
-                    <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{format(new Date(p.payment_date as string), 'dd/MM/yyyy')}</td>
+                    <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtPaymentDate(p.payment_date, 'fr')}</td>
                     <td style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {(p.description as string) || '—'}
                     </td>
@@ -1113,7 +1132,7 @@ function ChargesTab() {
                     defaultValue={parseFloat(editingPayment.amount as string) || 0} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
                   <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required
-                    defaultValue={format(new Date(editingPayment.payment_date as string), 'yyyy-MM-dd')} /></div>
+                    defaultValue={fmtPaymentDate(editingPayment.payment_date)} /></div>
               </div>
 
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
