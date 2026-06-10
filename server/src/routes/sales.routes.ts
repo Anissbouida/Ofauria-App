@@ -5,7 +5,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { checkoutSchema, paySaleSchema, specialSaleSchema } from '../validators/sale.validator.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { ROLE_GROUPS, ROLES } from '@ofauria/shared';
 
 const router = Router();
 
@@ -30,6 +30,21 @@ router.post(
   authorize(...ROLE_GROUPS.ADMIN_MANAGER),
   validate(specialSaleSchema),
   saleController.createSpecial,
+);
+// Edition / suppression d'une vente speciale : admin uniquement (correction
+// retroactive d'erreurs de saisie). Restreint a sale_type='special' cote repo.
+router.put(
+  '/special/:id',
+  authenticate,
+  authorize(ROLES.ADMIN),
+  validate(specialSaleSchema),
+  saleController.updateSpecial,
+);
+router.delete(
+  '/special/:id',
+  authenticate,
+  authorize(ROLES.ADMIN),
+  saleController.deleteSpecial,
 );
 router.post(
   '/:id/pay',

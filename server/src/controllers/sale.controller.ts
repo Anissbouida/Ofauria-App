@@ -303,6 +303,98 @@ export const saleController = {
     res.status(201).json({ success: true, data: sale });
   },
 
+  // Modification d'une vente speciale B2B : reservee a l'admin.
+  async updateSpecial(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const {
+      customerId, items, paymentMethod,
+      paymentStatus = 'paid', discountAmount = 0, notes, saleDate,
+    } = req.body as {
+      customerId: string;
+      items: { productId: string; quantity: number; unitPrice: number }[];
+      paymentMethod: string;
+      paymentStatus?: 'paid' | 'unpaid';
+      discountAmount?: number;
+      notes?: string;
+      saleDate?: string;
+    };
+
+    const existing = await saleRepository.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      return;
+    }
+    if (existing.store_id && req.user!.storeId && existing.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
+
+    const enrichedItems = items.map(it => ({
+      productId: it.productId,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      subtotal: Number((it.quantity * it.unitPrice).toFixed(2)),
+    }));
+    const subtotal = Number(enrichedItems.reduce((sum, it) => sum + it.subtotal, 0).toFixed(2));
+
+    if (discountAmount > subtotal) {
+      res.status(400).json({ success: false, error: { message: 'Remise superieure au sous-total' } });
+      return;
+    }
+    const total = Number((subtotal - discountAmount).toFixed(2));
+    const createdAt = saleDate ? new Date(`${saleDate}T12:00:00`).toISOString() : undefined;
+
+    const result = await saleRepository.updateSpecial(id, {
+      customerId,
+      subtotal, discountAmount, total,
+      paymentMethod,
+      paymentStatus,
+      notes,
+      createdAt,
+      items: enrichedItems,
+    });
+    if (!result.ok) {
+      if (result.reason === 'not_found') {
+        res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+        return;
+      }
+      if (result.reason === 'not_special') {
+        res.status(400).json({ success: false, error: { message: 'Seules les ventes speciales B2B peuvent etre modifiees' } });
+        return;
+      }
+    } else {
+      res.json({ success: true, data: result.sale });
+    }
+  },
+
+  // Suppression d'une vente speciale B2B : hard delete, admin seulement.
+  async deleteSpecial(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const existing = await saleRepository.findById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      return;
+    }
+    if (existing.store_id && req.user!.storeId && existing.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      return;
+    }
+
+    const result = await saleRepository.deleteSpecial(id);
+    if (!result.ok) {
+      if (result.reason === 'not_found') {
+        res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+        return;
+      }
+      if (result.reason === 'not_special') {
+        res.status(400).json({ success: false, error: { message: 'Seules les ventes speciales B2B peuvent etre supprimees' } });
+        return;
+      }
+    } else {
+      res.json({ success: true, data: null });
+    }
+  },
+
   async todayStats(req: AuthRequest, res: Response) {
     const stats = await saleRepository.todayStats(req.user!.storeId);
     res.json({ success: true, data: stats });

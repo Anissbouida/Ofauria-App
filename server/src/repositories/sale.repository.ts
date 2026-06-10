@@ -266,6 +266,152 @@ export const saleRepository = {
     }
   },
 
+  // Modification d'une vente speciale B2B : reservee a l'admin, restreinte
+  // aux ventes sale_type='special' (les ventes POS standard ne sont pas
+  // editables retroactivement pour preserver l'integrite comptable).
+  // On remplace tous les sale_items (delete + reinsert) pour simplifier
+  // la gestion des ajouts/suppressions de lignes.
+  async updateSpecial(saleId: string, data: {
+    customerId: string;
+    subtotal: number; discountAmount: number; total: number;
+    paymentMethod: string;
+    paymentStatus: 'paid' | 'unpaid';
+    notes?: string;
+    createdAt?: string;
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number }[];
+  }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query(
+        `SELECT id, sale_type, customer_id, total, payment_status FROM sales WHERE id = $1 FOR UPDATE`,
+        [saleId]
+      );
+      if (!existing.rows[0]) {
+        await client.query('ROLLBACK');
+        return { ok: false as const, reason: 'not_found' as const };
+      }
+      if (existing.rows[0].sale_type !== 'special') {
+        await client.query('ROLLBACK');
+        return { ok: false as const, reason: 'not_special' as const };
+      }
+
+      const prev = existing.rows[0];
+      // Rollback loyalty effet de la vente precedente (si elle etait payee).
+      if (prev.customer_id && prev.payment_status === 'paid') {
+        const prevPoints = Math.floor(parseFloat(prev.total as string) || 0);
+        await client.query(
+          `UPDATE customers SET total_spent = GREATEST(0, total_spent - $1), loyalty_points = GREATEST(0, loyalty_points - $2) WHERE id = $3`,
+          [parseFloat(prev.total as string) || 0, prevPoints, prev.customer_id]
+        );
+      }
+
+      const paidAtExpr = data.paymentStatus === 'paid'
+        ? (data.createdAt ? `$8::timestamptz` : 'NOW()')
+        : 'NULL';
+      const createdAtExpr = data.createdAt ? `$8::timestamptz` : 'created_at';
+      // Quand impaye : payment_method = 'credit' (cf. controller createSpecial).
+      const effectiveMethod = data.paymentStatus === 'unpaid' ? 'credit' : data.paymentMethod;
+
+      const updateValues: unknown[] = [
+        data.customerId,
+        data.subtotal, data.discountAmount, data.total,
+        effectiveMethod, data.notes || null, data.paymentStatus,
+      ];
+      if (data.createdAt) updateValues.push(data.createdAt);
+      updateValues.push(saleId);
+      const saleIdParam = `$${updateValues.length}`;
+
+      const updateResult = await client.query(
+        `UPDATE sales SET
+           customer_id = $1,
+           subtotal = $2,
+           discount_amount = $3,
+           total = $4,
+           payment_method = $5,
+           notes = $6,
+           payment_status = $7,
+           paid_at = ${paidAtExpr},
+           created_at = ${createdAtExpr}
+         WHERE id = ${saleIdParam}
+         RETURNING *`,
+        updateValues
+      );
+
+      // Remplace les lignes : delete + reinsert. Pas de stock vitrine a gerer
+      // car les ventes speciales sont skipStockDeduction par construction.
+      await client.query(`DELETE FROM sale_items WHERE sale_id = $1`, [saleId]);
+      for (const item of data.items) {
+        await client.query(
+          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit)
+           VALUES ($1, $2, $3, $4, $5, 'unit')`,
+          [saleId, item.productId, item.quantity, item.unitPrice, item.subtotal]
+        );
+      }
+
+      // Reapplique loyalty avec le nouveau montant (si paye).
+      if (data.paymentStatus === 'paid') {
+        const newPoints = Math.floor(data.total);
+        await client.query(
+          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
+          [data.total, newPoints, data.customerId]
+        );
+      }
+
+      await client.query('COMMIT');
+      return { ok: true as const, sale: updateResult.rows[0] };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Suppression d'une vente speciale : hard delete. Reservee a l'admin.
+  // Restreinte aux ventes sale_type='special' pour proteger l'integrite des
+  // ventes POS (qui ont decremente du stock et generent l'audit caisse).
+  // FK ON DELETE CASCADE sur sale_items.
+  async deleteSpecial(saleId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query(
+        `SELECT id, sale_type, customer_id, total, payment_status FROM sales WHERE id = $1 FOR UPDATE`,
+        [saleId]
+      );
+      if (!existing.rows[0]) {
+        await client.query('ROLLBACK');
+        return { ok: false as const, reason: 'not_found' as const };
+      }
+      if (existing.rows[0].sale_type !== 'special') {
+        await client.query('ROLLBACK');
+        return { ok: false as const, reason: 'not_special' as const };
+      }
+
+      const prev = existing.rows[0];
+      // Rollback loyalty si la vente etait payee.
+      if (prev.customer_id && prev.payment_status === 'paid') {
+        const prevPoints = Math.floor(parseFloat(prev.total as string) || 0);
+        await client.query(
+          `UPDATE customers SET total_spent = GREATEST(0, total_spent - $1), loyalty_points = GREATEST(0, loyalty_points - $2) WHERE id = $3`,
+          [parseFloat(prev.total as string) || 0, prevPoints, prev.customer_id]
+        );
+      }
+
+      await client.query(`DELETE FROM sales WHERE id = $1`, [saleId]);
+      await client.query('COMMIT');
+      return { ok: true as const };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   // sessionId : session de caisse encaissante (null si reglement hors caisse,
   // p.ex. un admin qui solde un impaye depuis l'onglet Impayes).
   // paidAt : date d'encaissement choisie (defaut : maintenant). C'est cette

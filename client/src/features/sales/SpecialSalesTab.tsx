@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Briefcase, Plus, X, Trash2, Search, Banknote, CreditCard,
-  Clock, CheckCircle, AlertTriangle, User as UserIcon, Save,
+  Clock, CheckCircle, AlertTriangle, User as UserIcon, Save, Pencil,
 } from 'lucide-react';
 import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
@@ -12,6 +12,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { getApiErrorMessage } from '../../utils/api-error';
+import { useAuth } from '../../context/AuthContext';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
@@ -42,13 +43,43 @@ const PAYMENT_OPTIONS: { value: string; label: string }[] = [
 
 export default function SpecialSalesTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [showForm, setShowForm] = useState(false);
+  const [editingSale, setEditingSale] = useState<Record<string, any> | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Record<string, any> | null>(null);
 
   const { data: listData, isLoading } = useQuery({
     queryKey: ['sales-special', { dateFrom, dateTo }],
     queryFn: () => salesApi.list({ dateFrom, dateTo, saleType: 'special', limit: '500' }),
   });
   const rows: Record<string, any>[] = listData?.data || [];
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['sales-special'] });
+    queryClient.invalidateQueries({ queryKey: ['sales'] });
+    queryClient.invalidateQueries({ queryKey: ['sales-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => salesApi.deleteSpecial(id),
+    onSuccess: () => {
+      notify.success('Vente supprimée');
+      invalidateAll();
+      setDeleteTarget(null);
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la suppression')),
+  });
+
+  const openEdit = async (saleSummary: Record<string, any>) => {
+    try {
+      const full = await salesApi.getById(saleSummary.id as string);
+      setEditingSale(full);
+    } catch (e) {
+      notify.error(getApiErrorMessage(e, 'Impossible de charger la vente'));
+    }
+  };
 
   const totals = useMemo(() => {
     let revenue = 0;
@@ -135,6 +166,7 @@ export default function SpecialSalesTab({ dateFrom, dateTo }: { dateFrom: string
                 <th>Paiement</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
                 <th>Statut</th>
+                {isAdmin && <th style={{ textAlign: 'right', width: 90 }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -169,6 +201,24 @@ export default function SpecialSalesTab({ dateFrom, dateTo }: { dateFrom: string
                         </span>
                       )}
                     </td>
+                    {isAdmin && (
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          onClick={() => openEdit(s)}
+                          title="Modifier"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--theme-accent)', padding: 4, marginRight: 4 }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(s)}
+                          title="Supprimer"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d9534f', padding: 4 }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -181,29 +231,100 @@ export default function SpecialSalesTab({ dateFrom, dateTo }: { dateFrom: string
         <SpecialSaleFormModal
           onClose={() => setShowForm(false)}
           onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ['sales-special'] });
-            queryClient.invalidateQueries({ queryKey: ['sales'] });
-            queryClient.invalidateQueries({ queryKey: ['sales-summary'] });
-            queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+            invalidateAll();
             setShowForm(false);
           }}
         />
+      )}
+
+      {editingSale && (
+        <SpecialSaleFormModal
+          editing={editingSale}
+          onClose={() => setEditingSale(null)}
+          onSaved={() => {
+            invalidateAll();
+            setEditingSale(null);
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ModalBackdrop onClose={() => setDeleteTarget(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--theme-bg-card)', borderRadius: 8, padding: 20,
+              width: '90vw', maxWidth: 420, boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <AlertTriangle size={18} style={{ color: '#d9534f' }} />
+              <strong style={{ fontSize: '0.9375rem' }}>Supprimer la vente spéciale ?</strong>
+            </div>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', marginBottom: 8 }}>
+              Vente <strong style={{ fontFamily: 'monospace' }}>{deleteTarget.sale_number as string}</strong>
+              {' · '}
+              {formatCurrency(parseFloat(deleteTarget.total as string))}
+            </p>
+            <p style={{ fontSize: '0.75rem', color: '#d9534f', marginBottom: 16 }}>
+              Cette action est irréversible. La vente et ses lignes seront définitivement supprimées.
+              Les points de fidélité du client seront retirés.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeleteTarget(null)} className="odoo-btn-secondary">Annuler</button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id as string)}
+                disabled={deleteMutation.isPending}
+                className="odoo-btn-primary"
+                style={{ background: '#d9534f', borderColor: '#d9534f', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <Trash2 size={13} />
+                {deleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </ModalBackdrop>
       )}
     </>
   );
 }
 
-function SpecialSaleFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [customerId, setCustomerId] = useState('');
+function SpecialSaleFormModal({ onClose, onSaved, editing }: {
+  onClose: () => void;
+  onSaved: () => void;
+  editing?: Record<string, any> | null;
+}) {
+  const isEdit = !!editing;
+  // En edition, payment_method = 'credit' signifie unpaid : on rebascule sur
+  // un mode lisible et coche la case "vente a credit".
+  const editingPaymentMethod = (editing?.payment_method as string) || 'cash';
+  const editingIsUnpaid = editing?.payment_status === 'unpaid';
+  const initialPaymentMethod = editingIsUnpaid ? 'cash' : editingPaymentMethod;
+
+  const [customerId, setCustomerId] = useState<string>((editing?.customer_id as string) || '');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid');
-  const [discountAmount, setDiscountAmount] = useState('0');
-  const [notes, setNotes] = useState('');
-  const [saleDate, setSaleDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [lines, setLines] = useState<LineDraft[]>([
-    { productId: '', productName: '', quantity: '1', unitPrice: '0' },
-  ]);
+  const [paymentMethod, setPaymentMethod] = useState<string>(initialPaymentMethod);
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>(editingIsUnpaid ? 'unpaid' : 'paid');
+  const [discountAmount, setDiscountAmount] = useState(
+    editing?.discount_amount ? String(editing.discount_amount) : '0'
+  );
+  const [notes, setNotes] = useState((editing?.notes as string) || '');
+  const [saleDate, setSaleDate] = useState(
+    editing?.created_at
+      ? format(new Date(editing.created_at as string), 'yyyy-MM-dd')
+      : format(new Date(), 'yyyy-MM-dd')
+  );
+  const [lines, setLines] = useState<LineDraft[]>(() => {
+    if (editing?.items && Array.isArray(editing.items) && editing.items.length > 0) {
+      return (editing.items as Record<string, any>[]).map(it => ({
+        productId: it.product_id as string,
+        productName: (it.product_name as string) || '',
+        quantity: String(it.quantity),
+        unitPrice: String(it.unit_price),
+      }));
+    }
+    return [{ productId: '', productName: '', quantity: '1', unitPrice: '0' }];
+  });
   const [productSearch, setProductSearch] = useState<Record<number, string>>({});
 
   const { data: customersResp } = useQuery({
@@ -211,6 +332,18 @@ function SpecialSaleFormModal({ onClose, onSaved }: { onClose: () => void; onSav
     queryFn: () => customersApi.list({ customerType: 'professionnel', search: customerSearch, limit: '50' }),
   });
   const customers: Record<string, any>[] = customersResp?.data || [];
+
+  // En edition : si le client de la vente n'est pas dans la liste filtree
+  // (search vide), on l'injecte virtuellement pour pre-remplir le label.
+  useEffect(() => {
+    if (isEdit && editing && customerId && customerSearch === '') {
+      const label = (editing.customer_first_name as string)
+        ? `${editing.customer_first_name as string} ${(editing.customer_last_name as string) || ''}`.trim()
+        : '';
+      if (label) setCustomerSearch(label);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: productsResp } = useQuery({
     queryKey: ['products-special-form'],
@@ -256,26 +389,31 @@ function SpecialSaleFormModal({ onClose, onSaved }: { onClose: () => void; onSav
   };
 
   const mutation = useMutation({
-    mutationFn: () => salesApi.createSpecial({
-      customerId,
-      items: lines
-        .filter(l => l.productId && parseFloat(l.quantity || '0') > 0)
-        .map(l => ({
-          productId: l.productId,
-          quantity: parseInt(l.quantity, 10),
-          unitPrice: parseFloat(l.unitPrice),
-        })),
-      paymentMethod,
-      paymentStatus,
-      discountAmount: discount,
-      notes: notes.trim() || undefined,
-      saleDate,
-    }),
+    mutationFn: () => {
+      const payload = {
+        customerId,
+        items: lines
+          .filter(l => l.productId && parseFloat(l.quantity || '0') > 0)
+          .map(l => ({
+            productId: l.productId,
+            quantity: parseInt(l.quantity, 10),
+            unitPrice: parseFloat(l.unitPrice),
+          })),
+        paymentMethod,
+        paymentStatus,
+        discountAmount: discount,
+        notes: notes.trim() || undefined,
+        saleDate,
+      };
+      return isEdit
+        ? salesApi.updateSpecial(editing!.id as string, payload)
+        : salesApi.createSpecial(payload);
+    },
     onSuccess: () => {
-      notify.success('Vente spéciale créée');
+      notify.success(isEdit ? 'Vente spéciale modifiée' : 'Vente spéciale créée');
       onSaved();
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la création')),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, isEdit ? 'Erreur lors de la modification' : 'Erreur lors de la création')),
   });
 
   const validLines = lines.filter(l => l.productId && parseFloat(l.quantity || '0') > 0 && parseFloat(l.unitPrice || '0') >= 0);
@@ -298,7 +436,9 @@ function SpecialSaleFormModal({ onClose, onSaved }: { onClose: () => void; onSav
       >
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Briefcase size={15} style={{ color: 'var(--theme-accent)' }} />
-          <strong style={{ fontSize: '0.9375rem' }}>Nouvelle vente spéciale B2B</strong>
+          <strong style={{ fontSize: '0.9375rem' }}>
+            {isEdit ? `Modifier la vente ${editing!.sale_number as string}` : 'Nouvelle vente spéciale B2B'}
+          </strong>
           <span style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
             <X size={16} />
@@ -557,7 +697,7 @@ function SpecialSaleFormModal({ onClose, onSaved }: { onClose: () => void; onSav
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <Save size={13} />
-            {mutation.isPending ? 'Enregistrement…' : 'Enregistrer la vente'}
+            {mutation.isPending ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Enregistrer la vente')}
           </button>
         </div>
       </div>

@@ -20,4 +20,14 @@ export const salesApi = {
     notes?: string;
     saleDate?: string;
   }) => api.post('/sales/special', data).then(r => r.data.data),
+  updateSpecial: (id: string, data: {
+    customerId: string;
+    items: { productId: string; quantity: number; unitPrice: number }[];
+    paymentMethod: string;
+    paymentStatus?: 'paid' | 'unpaid';
+    discountAmount?: number;
+    notes?: string;
+    saleDate?: string;
+  }) => api.put(`/sales/special/${id}`, data).then(r => r.data.data),
+  deleteSpecial: (id: string) => api.delete(`/sales/special/${id}`).then(r => r.data),
 };
