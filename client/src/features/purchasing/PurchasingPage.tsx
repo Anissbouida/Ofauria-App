@@ -1253,6 +1253,9 @@ function InvoiceLinesEditorModal({
 
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [initialized, setInitialized] = useState(false);
+  // Quand le nouveau total est < deja paye, l'utilisateur doit gerer les
+  // paiements d'abord. Ce flag ouvre le modal Paiements par-dessus.
+  const [showPayments, setShowPayments] = useState(false);
 
   // Initialise les lignes depuis la facture une seule fois (sinon on ecrase l'edition)
   useEffect(() => {
@@ -1442,8 +1445,15 @@ function InvoiceLinesEditorModal({
                   </div>
                 )}
                 {ttcBelowPaid && (
-                  <div style={{ padding: '6px 10px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4, marginTop: 4 }}>
-                    ⚠ Le nouveau total TTC est inferieur au deja paye. Rembourse ou supprime des paiements avant d'enregistrer.
+                  <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4, marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ flex: 1, minWidth: 250 }}>
+                      ⚠ Le nouveau total TTC ({n(newTtc)} DH) est inferieur au deja paye ({n(paidAmount)} DH).
+                      Supprime ou ajuste les paiements pour pouvoir baisser le total.
+                    </span>
+                    <button type="button" onClick={() => setShowPayments(true)}
+                      className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                      <Coins size={11} /> Gerer les paiements
+                    </button>
                   </div>
                 )}
               </div>
@@ -1460,6 +1470,16 @@ function InvoiceLinesEditorModal({
           </button>
         </div>
       </div>
+
+      {/* Modal Paiements ouvert au-dessus pour resoudre le blocage 'TTC < deja paye'.
+          A la fermeture, la query 'invoice' est invalide et le paid_amount est
+          rafraichi -> l'alerte disparait quand la condition n'est plus vraie. */}
+      {showPayments && (
+        <InvoicePaymentsModal
+          invoiceId={invoiceId}
+          onClose={() => setShowPayments(false)}
+        />
+      )}
     </ModalBackdrop>
   );
 }
