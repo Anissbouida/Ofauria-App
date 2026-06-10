@@ -306,6 +306,9 @@ function ReceivedInvoicesSection() {
   const [editInvoice, setEditInvoice] = useState<Record<string, any> | null>(null);
   // editLinesInvoiceId = ouvre le modal d'edition des lignes (qty x prix) d'une facture
   const [editLinesInvoiceId, setEditLinesInvoiceId] = useState<string | null>(null);
+  // paymentsInvoiceId = ouvre le panneau "Voir et gerer les paiements" d'une facture
+  // (consulter les paiements existants + supprimer un paiement erroné)
+  const [paymentsInvoiceId, setPaymentsInvoiceId] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
@@ -794,6 +797,15 @@ function ReceivedInvoicesSection() {
                           className="odoo-pager-btn" title="Editer les lignes (corrige qty/prix)">
                           <ClipboardList size={13} />
                         </button>
+                        {/* Voir/gerer les paiements (annuler un paiement errone) — visible
+                            seulement s'il y a au moins un paiement enregistre */}
+                        {parseFloat((inv.paid_amount as string) || '0') > 0 && (
+                          <button
+                            onClick={() => setPaymentsInvoiceId(inv.id as string)}
+                            className="odoo-pager-btn" title="Voir / gerer les paiements">
+                            <Coins size={13} />
+                          </button>
+                        )}
                         {inv.status !== 'cancelled' && inv.status !== 'paid' && (
                           <button
                             onClick={() => {
@@ -852,6 +864,14 @@ function ReceivedInvoicesSection() {
             notify.success('Lignes de facture mises a jour');
             setEditLinesInvoiceId(null);
           }}
+        />
+      )}
+
+      {/* Voir et gerer les paiements d'une facture (annuler un paiement errone) */}
+      {paymentsInvoiceId && (
+        <InvoicePaymentsModal
+          invoiceId={paymentsInvoiceId}
+          onClose={() => setPaymentsInvoiceId(null)}
         />
       )}
 
@@ -1438,6 +1458,194 @@ function InvoiceLinesEditorModal({
             {mutation.isPending && <Loader2 size={12} className="animate-spin" />}
             <Check size={13} /> Enregistrer les lignes
           </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/**
+ * Modal "Voir et gerer les paiements d'une facture".
+ *
+ * Sert a :
+ *   - Visualiser tous les paiements enregistres pour la facture (date, montant,
+ *     methode, N° cheque, encaissement)
+ *   - Supprimer un paiement saisi par erreur (mauvais montant, faux N° cheque,
+ *     doublon). Le backend recalcule paid_amount + status automatiquement.
+ *
+ * Distinct de la modal "Editer lignes" (qui change le total HT/TTC) et de
+ * "Modifier facture" (en-tete). Ici on touche aux REGLEMENTS, pas a la facture.
+ *
+ * Acces : ADMIN + MANAGER (cf. backend DELETE /payments/:id elargi).
+ */
+function InvoicePaymentsModal({
+  invoiceId, onClose,
+}: {
+  invoiceId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: invoice, isLoading } = useQuery({
+    queryKey: ['invoice', invoiceId],
+    queryFn: () => invoicesApi.getById(invoiceId),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (paymentId: string) => paymentsApi.remove(paymentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+      notify.success('Paiement supprime — facture mise a jour');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la suppression');
+    },
+  });
+
+  const payments = ((invoice?.payments as Record<string, any>[]) || []);
+  const totalAmount = parseFloat((invoice?.total_amount as string) || '0');
+  const paidAmount = parseFloat((invoice?.paid_amount as string) || '0');
+  const remaining = totalAmount - paidAmount;
+
+  const fmtDate = (iso: string | null | undefined) => {
+    if (!iso) return '—';
+    try { return format(new Date(String(iso).slice(0, 10)), 'dd/MM/yyyy'); }
+    catch { return String(iso); }
+  };
+
+  const methodLabel = (m: string) => {
+    if (m === 'cash') return 'Espèces';
+    if (m === 'check') return 'Chèque';
+    if (m === 'transfer') return 'Virement';
+    if (m === 'bank') return 'Banque';
+    return m;
+  };
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 800, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Paiements</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
+              {(invoice?.invoice_number as string) || '...'}
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, color: 'var(--theme-text-muted)' }}>
+              <Loader2 size={20} className="animate-spin" style={{ marginRight: 8 }} /> Chargement...
+            </div>
+          ) : (
+            <>
+              {/* Bandeau resume facture */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+                <div style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>Total facture</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{n(totalAmount)} DH</div>
+                </div>
+                <div style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
+                  <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase' }}>Deja paye</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{n(paidAmount)} DH</div>
+                </div>
+                <div style={{ padding: '8px 12px', borderRadius: 4, border: remaining > 0 ? '1px solid #ffeaa7' : '1px solid #d4edda', background: remaining > 0 ? '#fff9e6' : '#f0f9f4' }}>
+                  <div style={{ fontSize: '0.6875rem', color: remaining > 0 ? '#856404' : '#0e7c3a', textTransform: 'uppercase' }}>Reste a payer</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: remaining > 0 ? '#856404' : '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{n(Math.max(0, remaining))} DH</div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                Supprime un paiement saisi par erreur (mauvais montant, faux N° cheque, doublon).
+                La facture est recalculee automatiquement : statut + montant restant.
+              </div>
+
+              {payments.length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+                  Aucun paiement enregistre pour cette facture.
+                </div>
+              ) : (
+                <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 100 }}>Date saisie</th>
+                      <th style={{ width: 100 }}>Methode</th>
+                      <th style={{ width: 120 }}>N° Cheque</th>
+                      <th style={{ width: 110 }}>Encaisse le</th>
+                      <th>Reference / Note</th>
+                      <th style={{ width: 100, textAlign: 'right' }}>Montant</th>
+                      <th style={{ width: 60, textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id as string}>
+                        <td>{fmtDate(p.payment_date as string)}</td>
+                        <td>
+                          <span className={`odoo-tag ${p.payment_method === 'check' ? 'odoo-tag-orange' : ''}`}>
+                            {methodLabel(p.payment_method as string)}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>
+                          {(p.check_number as string) || '—'}
+                        </td>
+                        <td>
+                          {p.payment_method === 'check' ? (
+                            p.cashed_at ? (
+                              <span style={{ color: '#0e7c3a', fontSize: '0.75rem' }}>{fmtDate(p.cashed_at as string)}</span>
+                            ) : (
+                              <span style={{ color: '#856404', fontSize: '0.75rem', fontStyle: 'italic' }}>En attente</span>
+                            )
+                          ) : (
+                            <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                          {(p.reference as string) || (p.description as string) || '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
+                          {n(parseFloat(p.amount as string))}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button onClick={() => {
+                            const amount = parseFloat(p.amount as string).toFixed(2);
+                            const checkInfo = p.check_number ? ` (N° ${p.check_number})` : '';
+                            const msg = `Supprimer ce paiement de ${amount} DH${checkInfo} ?\n\n` +
+                                        `Le montant restant sur la facture deviendra :\n` +
+                                        `${n(remaining + parseFloat(p.amount as string))} DH\n\n` +
+                                        `Action irreversible.`;
+                            if (confirm(msg)) deleteMutation.mutate(p.id as string);
+                          }}
+                            disabled={deleteMutation.isPending}
+                            className="odoo-pager-btn" title="Supprimer ce paiement"
+                            style={{ color: '#b71c1c' }}>
+                            <Trash2 size={11} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+
+        <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>
         </div>
       </div>
     </ModalBackdrop>

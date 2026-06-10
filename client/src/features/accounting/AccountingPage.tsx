@@ -1383,6 +1383,27 @@ function ChequesTab() {
     onError: () => notify.error('Erreur lors de l\'annulation'),
   });
 
+  // Suppression definitive d'un paiement (cheque inclus). Distinct de unmark :
+  // ici le paiement disparait completement, la facture revient au statut pending
+  // ou partial selon les paiements restants. Sert a corriger une erreur de saisie.
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => paymentsApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+      notify.success('Paiement supprime — facture mise a jour');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la suppression');
+    },
+  });
+
   // Filtres frontend (recherche)
   const data = checks as CheckRow[];
   const filtered = useMemo(() => {
@@ -1567,22 +1588,45 @@ function ChequesTab() {
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {!isCashed ? (
-                        <button onClick={() => setConfirmingCheck(c)}
-                          className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}>
-                          <Check size={11} /> Marquer encaisse
-                        </button>
-                      ) : (
+                      <div style={{ display: 'inline-flex', gap: 4 }}>
+                        {!isCashed ? (
+                          <button onClick={() => setConfirmingCheck(c)}
+                            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}>
+                            <Check size={11} /> Marquer encaisse
+                          </button>
+                        ) : (
+                          <button onClick={() => {
+                            if (confirm('Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.')) {
+                              unmarkMutation.mutate(c.id);
+                            }
+                          }}
+                            disabled={unmarkMutation.isPending}
+                            className="odoo-pager-btn" title="Annuler l'encaissement (cheque revient en attente)">
+                            <RotateCcw size={11} />
+                          </button>
+                        )}
+                        {/* Suppression definitive du paiement — corrige une erreur de saisie
+                            (mauvais montant, faux N° cheque, doublon). La facture est
+                            recalculee : revient en pending ou partial selon les autres paiements. */}
                         <button onClick={() => {
-                          if (confirm('Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.')) {
-                            unmarkMutation.mutate(c.id);
-                          }
+                          const ctx = c.invoice_number ? `facture ${c.invoice_number}` :
+                                      c.purchase_order_number ? `BC ${c.purchase_order_number}` :
+                                      'paiement';
+                          const amount = parseFloat(c.amount).toFixed(2);
+                          const msg = `Supprimer DEFINITIVEMENT ce paiement ?\n\n` +
+                                      `Beneficiaire : ${c.supplier_name || c.employee_name || '—'}\n` +
+                                      `Montant : ${amount} DH\n` +
+                                      `Contexte : ${ctx}\n\n` +
+                                      `Cette action est irreversible. La facture associee sera ` +
+                                      `recalculee (statut + montant restant).`;
+                          if (confirm(msg)) deleteMutation.mutate(c.id);
                         }}
-                          disabled={unmarkMutation.isPending}
-                          className="odoo-pager-btn" title="Annuler l'encaissement (admin)">
-                          <RotateCcw size={11} />
+                          disabled={deleteMutation.isPending}
+                          className="odoo-pager-btn" title="Supprimer ce paiement (corriger erreur de saisie)"
+                          style={{ color: '#b71c1c' }}>
+                          <Trash2 size={11} />
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );

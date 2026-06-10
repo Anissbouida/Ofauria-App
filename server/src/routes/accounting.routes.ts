@@ -96,4 +96,7 @@ paymentsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)
 paymentsRouter.post('/:id/mark-cashed', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.markCashed);
 // Annulation : admin uniquement (rollback ne dois pas etre routine)
 paymentsRouter.post('/:id/unmark-cashed', authenticate, authorize(ROLES.ADMIN), paymentController.unmarkCashed);
-paymentsRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), paymentController.remove);
+// Annulation paiement : elargi a ADMIN_MANAGER (cas d'usage courant
+// pour corriger erreurs de saisie : mauvais montant, faux N° cheque, doublon).
+// updatePaidAmount() est rejoue dans le delete() -> facture revient au bon statut.
+paymentsRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.remove);
