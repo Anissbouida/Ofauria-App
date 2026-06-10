@@ -19,6 +19,16 @@ export const schedulesApi = {
   create: (data: Record<string, any>) => api.post('/schedules', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/schedules/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/schedules/${id}`),
+  /** Charge la matrice hebdo (employes x 7 jours) avec verrouillage conges. */
+  getWeek: (weekStart: string) =>
+    api.get('/schedules/week', { params: { weekStart } }).then(r => r.data.data),
+  /** Save bulk de toute la semaine. Renvoie 409 si conflit conge. */
+  saveWeek: (weekStart: string, assignments: Array<{ employeeId: string; date: string; shiftCode: string | null }>) =>
+    api.post('/schedules/week', { weekStart, assignments }).then(r => r.data.data),
+};
+
+export const shiftsApi = {
+  list: () => api.get('/shifts').then(r => r.data.data),
 };
 
 export const attendanceApi = {

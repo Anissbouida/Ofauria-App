@@ -21,19 +21,19 @@ export const employeeRepository = {
     cin?: string; address?: string; city?: string; birthDate?: string;
     cnssNumber?: string; contractType?: string; contractStart?: string; contractEnd?: string;
     emergencyContactName?: string; emergencyContactPhone?: string; notes?: string;
-    storeId?: string;
+    storeId?: string; defaultShiftCode?: string;
   }) {
     const result = await db.query(
       `INSERT INTO employees (user_id, first_name, last_name, role, phone, monthly_salary, hire_date,
         cin, address, city, birth_date, cnss_number, contract_type, contract_start, contract_end,
-        emergency_contact_name, emergency_contact_phone, notes, store_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
        data.phone || null, data.monthlySalary || null, data.hireDate,
        data.cin || null, data.address || null, data.city || null, data.birthDate || null,
        data.cnssNumber || null, data.contractType || 'cdi', data.contractStart || null, data.contractEnd || null,
        data.emergencyContactName || null, data.emergencyContactPhone || null, data.notes || null,
-       data.storeId || null]
+       data.storeId || null, data.defaultShiftCode || null]
     );
     return result.rows[0];
   },
@@ -47,6 +47,7 @@ export const employeeRepository = {
       contractStart: 'contract_start', contractEnd: 'contract_end',
       emergencyContactName: 'emergency_contact_name', emergencyContactPhone: 'emergency_contact_phone',
       notes: 'notes', seniorityYears: 'seniority_years', nbDependents: 'nb_dependents', cimrRate: 'cimr_rate',
+      defaultShiftCode: 'default_shift_code',
     };
     // Date fields: convert empty strings to null to avoid DB type errors
     const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate'];
@@ -197,12 +198,12 @@ export const scheduleRepository = {
 
   async create(data: {
     employeeId: string; date: string; startTime: string; endTime: string;
-    breakMinutes?: number; notes?: string;
+    breakMinutes?: number; notes?: string; shiftCode?: string;
   }) {
     const result = await db.query(
-      `INSERT INTO schedules (employee_id, date, start_time, end_time, break_minutes, notes)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [data.employeeId, data.date, data.startTime, data.endTime, data.breakMinutes || 0, data.notes || null]
+      `INSERT INTO schedules (employee_id, date, start_time, end_time, break_minutes, notes, shift_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [data.employeeId, data.date, data.startTime, data.endTime, data.breakMinutes || 0, data.notes || null, data.shiftCode || null]
     );
     return result.rows[0];
   },
@@ -210,7 +211,7 @@ export const scheduleRepository = {
   async update(id: string, data: Record<string, unknown>) {
     const mapping: Record<string, string> = {
       date: 'date', startTime: 'start_time', endTime: 'end_time',
-      breakMinutes: 'break_minutes', notes: 'notes',
+      breakMinutes: 'break_minutes', notes: 'notes', shiftCode: 'shift_code',
     };
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -227,6 +228,235 @@ export const scheduleRepository = {
   async delete(id: string) {
     await db.query('DELETE FROM schedules WHERE id = $1', [id]);
   },
+
+  /**
+   * Charge la matrice hebdomadaire complete : tous les employes actifs du
+   * store + leurs assignations Lun -> Dim + les jours en conge approuve.
+   *
+   * Forme du retour optimisee pour l'UI grille : 1 ligne par employe,
+   * `assignments` indexe par date ISO (YYYY-MM-DD), `onLeaveDays` liste
+   * les jours verrouilles.
+   */
+  async getWeek(weekStart: string, weekEnd: string, storeId?: string) {
+    // Si l'admin connecte est rattache a un store, on ne montre que SES employes
+    // (les employes sans store_id sont consideres globaux et toujours visibles).
+    // Sinon (super admin sans store), on retourne tout.
+    const employeesRes = await db.query(
+      `SELECT e.id, e.first_name, e.last_name, e.role, e.default_shift_code
+         FROM employees e
+        WHERE e.is_active = true
+          ${storeId ? 'AND (e.store_id = $1 OR e.store_id IS NULL)' : ''}
+        ORDER BY e.role, e.last_name, e.first_name`,
+      storeId ? [storeId] : []
+    );
+
+    const employeeIds = employeesRes.rows.map((r: { id: string }) => r.id);
+    if (employeeIds.length === 0) {
+      return { weekStart, weekEnd, rows: [] };
+    }
+
+    // Assignments deja en base sur la fenetre
+    const schedulesRes = await db.query(
+      `SELECT employee_id, to_char(date, 'YYYY-MM-DD') AS date, shift_code
+         FROM schedules
+        WHERE date BETWEEN $1 AND $2
+          AND employee_id = ANY($3::uuid[])`,
+      [weekStart, weekEnd, employeeIds]
+    );
+
+    // Conges qui chevauchent la semaine. On inclut approved ET pending :
+    // - approved -> case verrouillee, fond violet
+    // - pending  -> case verrouillee aussi (par securite : eviter d'affecter
+    //   un employe qui sera probablement absent), fond ambre (avertissement)
+    // 'rejected' est ignore (l'employe doit travailler).
+    const leavesRes = await db.query(
+      `SELECT employee_id,
+              type,
+              status,
+              to_char(start_date, 'YYYY-MM-DD') AS start_date,
+              to_char(end_date,   'YYYY-MM-DD') AS end_date
+         FROM leaves
+        WHERE status IN ('approved', 'pending')
+          AND employee_id = ANY($3::uuid[])
+          AND NOT (end_date < $1 OR start_date > $2)`,
+      [weekStart, weekEnd, employeeIds]
+    );
+
+    // Index par employee_id
+    const assignmentsByEmp = new Map<string, Record<string, string | null>>();
+    for (const s of schedulesRes.rows) {
+      const m = assignmentsByEmp.get(s.employee_id) ?? {};
+      m[s.date] = s.shift_code ?? null;
+      assignmentsByEmp.set(s.employee_id, m);
+    }
+
+    type LeaveInfo = { type: string; status: 'approved' | 'pending'; startDate: string; endDate: string };
+    const leavesByEmp = new Map<string, Record<string, LeaveInfo>>();
+    const weekStartMs = Date.parse(weekStart);
+    const weekEndMs = Date.parse(weekEnd);
+    for (const l of leavesRes.rows) {
+      const lStart = Math.max(Date.parse(l.start_date), weekStartMs);
+      const lEnd = Math.min(Date.parse(l.end_date), weekEndMs);
+      const map = leavesByEmp.get(l.employee_id) ?? {};
+      for (let d = lStart; d <= lEnd; d += 86400_000) {
+        const iso = new Date(d).toISOString().slice(0, 10);
+        // Si 2 conges chevauchent un meme jour, 'approved' prime sur 'pending'
+        const existing = map[iso];
+        if (!existing || (existing.status === 'pending' && l.status === 'approved')) {
+          map[iso] = {
+            type: l.type,
+            status: l.status as 'approved' | 'pending',
+            startDate: l.start_date,
+            endDate: l.end_date,
+          };
+        }
+      }
+      leavesByEmp.set(l.employee_id, map);
+    }
+
+    const rows = employeesRes.rows.map((e: {
+      id: string; first_name: string; last_name: string;
+      role: string; default_shift_code: string | null;
+    }) => {
+      const leaveMap = leavesByEmp.get(e.id) ?? {};
+      return {
+        employeeId: e.id,
+        firstName: e.first_name,
+        lastName: e.last_name,
+        role: e.role,
+        defaultShiftCode: e.default_shift_code,
+        assignments: assignmentsByEmp.get(e.id) ?? {},
+        // Backward compat : liste des jours de conge (toutes statuts confondus)
+        onLeaveDays: Object.keys(leaveMap).sort(),
+        // Detail par date -> permet a l'UI d'afficher le type et le statut
+        leaveDays: leaveMap,
+      };
+    });
+
+    return { weekStart, weekEnd, rows };
+  },
+
+  /**
+   * Upsert atomique de toute la semaine.
+   * - Une assignation avec shiftCode=null supprime l'eventuelle ligne existante (repos).
+   * - Refuse les jours ou un conge approuve chevauche (409).
+   * - Pre-remplit attendance avec is_expected=true / status='present' (ecrasable
+   *   par le pointage reel via la logique COALESCE existante dans
+   *   attendanceRepository.upsert).
+   */
+  async bulkUpsertWeek(
+    assignments: Array<{ employeeId: string; date: string; shiftCode: string | null }>
+  ) {
+    if (assignments.length === 0) return { updated: 0, deleted: 0, conflicts: [] as string[] };
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Charge tous les shifts utilises pour pre-calculer start/end
+      const codes = Array.from(new Set(
+        assignments.map(a => a.shiftCode).filter((c): c is string => !!c)
+      ));
+      const shiftMap = new Map<string, { start_time: string; end_time: string }>();
+      if (codes.length > 0) {
+        const r = await client.query(
+          `SELECT code, start_time, end_time FROM shifts WHERE code = ANY($1::text[])`,
+          [codes]
+        );
+        for (const s of r.rows) {
+          shiftMap.set(s.code, { start_time: s.start_time, end_time: s.end_time });
+        }
+      }
+
+      // 2. Verifie qu'aucun jour assigne ne chevauche un conge approuve
+      const employeeIds = Array.from(new Set(assignments.map(a => a.employeeId)));
+      const datesSet = new Set(assignments.map(a => a.date));
+      const minDate = Array.from(datesSet).sort()[0];
+      const maxDate = Array.from(datesSet).sort().slice(-1)[0];
+
+      const leavesRes = await client.query(
+        `SELECT employee_id,
+                to_char(start_date, 'YYYY-MM-DD') AS start_date,
+                to_char(end_date, 'YYYY-MM-DD') AS end_date
+           FROM leaves
+          WHERE status = 'approved'
+            AND employee_id = ANY($1::uuid[])
+            AND NOT (end_date < $2 OR start_date > $3)`,
+        [employeeIds, minDate, maxDate]
+      );
+
+      const conflicts: string[] = [];
+      for (const a of assignments) {
+        if (!a.shiftCode) continue;
+        for (const l of leavesRes.rows) {
+          if (l.employee_id !== a.employeeId) continue;
+          if (a.date >= l.start_date && a.date <= l.end_date) {
+            conflicts.push(`${a.employeeId}@${a.date}`);
+          }
+        }
+      }
+      if (conflicts.length > 0) {
+        await client.query('ROLLBACK');
+        const err = new Error(`Conflit: ${conflicts.length} assignation(s) chevauchent un conge approuve`) as Error & { code?: string; conflicts?: string[] };
+        err.code = 'LEAVE_CONFLICT';
+        err.conflicts = conflicts;
+        throw err;
+      }
+
+      // 3. Apply assignments
+      let updated = 0;
+      let deleted = 0;
+      for (const a of assignments) {
+        if (a.shiftCode === null) {
+          const r = await client.query(
+            `DELETE FROM schedules WHERE employee_id = $1 AND date = $2`,
+            [a.employeeId, a.date]
+          );
+          deleted += r.rowCount || 0;
+          // Supprime aussi la ligne attendance pre-remplie (sans pointage reel)
+          await client.query(
+            `DELETE FROM attendance
+              WHERE employee_id = $1 AND date = $2
+                AND is_expected = true AND check_in IS NULL`,
+            [a.employeeId, a.date]
+          );
+          continue;
+        }
+        const shift = shiftMap.get(a.shiftCode);
+        if (!shift) {
+          throw new Error(`Shift inconnu: ${a.shiftCode}`);
+        }
+        await client.query(
+          `INSERT INTO schedules (employee_id, date, start_time, end_time, break_minutes, shift_code)
+           VALUES ($1, $2, $3, $4, 0, $5)
+           ON CONFLICT (employee_id, date) DO UPDATE SET
+             start_time = EXCLUDED.start_time,
+             end_time = EXCLUDED.end_time,
+             shift_code = EXCLUDED.shift_code`,
+          [a.employeeId, a.date, shift.start_time, shift.end_time, a.shiftCode]
+        );
+        updated += 1;
+
+        // Pre-remplit attendance attendue. Ne supplante pas un pointage reel
+        // (check_in deja saisi -> COALESCE preserve la valeur existante).
+        await client.query(
+          `INSERT INTO attendance (employee_id, date, status, is_expected)
+           VALUES ($1, $2, 'present', true)
+           ON CONFLICT (employee_id, date) DO UPDATE SET
+             is_expected = CASE WHEN attendance.check_in IS NULL THEN true ELSE attendance.is_expected END`,
+          [a.employeeId, a.date]
+        );
+      }
+
+      await client.query('COMMIT');
+      return { updated, deleted, conflicts: [] };
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
 };
 
 export const attendanceRepository = {
@@ -234,10 +464,17 @@ export const attendanceRepository = {
     const conditions = ['a.date BETWEEN $1 AND $2'];
     const values: unknown[] = [startDate, endDate];
     if (employeeId) { conditions.push('a.employee_id = $3'); values.push(employeeId); }
+    // Jointure schedules pour ramener le shift planifie : permet a l'UI Pointage
+    // d'afficher "Planifie: Vente 7h-14h" et de distinguer presence attendue/reelle.
     const result = await db.query(
-      `SELECT a.*, e.first_name, e.last_name, e.role as employee_role
-       FROM attendance a JOIN employees e ON e.id = a.employee_id
-       WHERE ${conditions.join(' AND ')} ORDER BY a.date DESC, e.last_name`,
+      `SELECT a.*, e.first_name, e.last_name, e.role as employee_role,
+              s.shift_code as planned_shift_code,
+              s.start_time as planned_start,
+              s.end_time as planned_end
+         FROM attendance a
+         JOIN employees e ON e.id = a.employee_id
+         LEFT JOIN schedules s ON s.employee_id = a.employee_id AND s.date = a.date
+        WHERE ${conditions.join(' AND ')} ORDER BY a.date DESC, e.last_name`,
       values
     );
     return result.rows;
@@ -249,10 +486,15 @@ export const attendanceRepository = {
     checkInMethod?: string; checkInTerminal?: string;
     checkOutMethod?: string; checkOutTerminal?: string;
   }) {
+    // is_expected: une ligne devient "reelle" (is_expected=false) des qu'un
+    // pointage check_in/out est saisi, OU des que le statut est explicitement
+    // autre que 'present' (absent/retard/demi-j = decision admin, pas une
+    // simple confirmation du planning).
     const result = await db.query(
       `INSERT INTO attendance (employee_id, date, check_in, check_out, status, overtime_minutes, notes,
-                               check_in_method, check_in_terminal, check_out_method, check_out_terminal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                               check_in_method, check_in_terminal, check_out_method, check_out_terminal,
+                               is_expected)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)
        ON CONFLICT (employee_id, date) DO UPDATE SET
          check_in = COALESCE(EXCLUDED.check_in, attendance.check_in),
          check_out = COALESCE(EXCLUDED.check_out, attendance.check_out),
@@ -262,7 +504,8 @@ export const attendanceRepository = {
          check_in_method = COALESCE(EXCLUDED.check_in_method, attendance.check_in_method),
          check_in_terminal = COALESCE(EXCLUDED.check_in_terminal, attendance.check_in_terminal),
          check_out_method = COALESCE(EXCLUDED.check_out_method, attendance.check_out_method),
-         check_out_terminal = COALESCE(EXCLUDED.check_out_terminal, attendance.check_out_terminal)
+         check_out_terminal = COALESCE(EXCLUDED.check_out_terminal, attendance.check_out_terminal),
+         is_expected = false
        RETURNING *`,
       [data.employeeId, data.date, data.checkIn || null, data.checkOut || null,
        data.status, data.overtimeMinutes || 0, data.notes || null,
@@ -347,13 +590,21 @@ export const attendanceRepository = {
 };
 
 export const leaveRepository = {
-  async findAll(params: { employeeId?: string; status?: string; year?: number }) {
+  async findAll(params: { employeeId?: string; status?: string; year?: number; activeOn?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
     if (params.employeeId) { conditions.push(`l.employee_id = $${i++}`); values.push(params.employeeId); }
     if (params.status) { conditions.push(`l.status = $${i++}`); values.push(params.status); }
     if (params.year) { conditions.push(`EXTRACT(YEAR FROM l.start_date) = $${i++}`); values.push(params.year); }
+    // activeOn = date YYYY-MM-DD : ne retourne que les conges qui chevauchent
+    // ce jour-la (start_date <= date <= end_date). Utilise par l'onglet Pointage
+    // pour afficher un badge "Conge X" a la place de "Non planifie".
+    if (params.activeOn) {
+      conditions.push(`l.start_date <= $${i} AND l.end_date >= $${i}`);
+      values.push(params.activeOn);
+      i++;
+    }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT l.*, e.first_name, e.last_name, e.role as employee_role,

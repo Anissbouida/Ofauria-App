@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi } from '../../api/employees.api';
+import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
-import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
+  Copy, Eraser, Save, Sparkles,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
-import { ROLE_LABELS } from '@ofauria/shared';
+import { ROLE_LABELS, SHIFT_BADGE_COLORS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
+import type { ShiftCode } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 
 type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'schedule';
@@ -41,47 +43,47 @@ export default function EmployeesPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<HrTab>('employees');
 
-  const tabs: { key: HrTab; label: string; icon: typeof Users; color: string }[] = [
-    { key: 'employees', label: 'Employés', icon: Users, color: 'teal' },
-    { key: 'attendance', label: 'Pointage', icon: Clock, color: 'blue' },
-    { key: 'leaves', label: 'Congés', icon: CalendarOff, color: 'purple' },
-    { key: 'payroll', label: 'Paie', icon: Banknote, color: 'green' },
-    { key: 'schedule', label: 'Planning', icon: CalendarDays, color: 'amber' },
+  const tabs: { key: HrTab; label: string; icon: typeof Users }[] = [
+    { key: 'employees', label: 'Employés', icon: Users },
+    { key: 'attendance', label: 'Pointage', icon: Clock },
+    { key: 'leaves', label: 'Congés', icon: CalendarOff },
+    { key: 'payroll', label: 'Paie', icon: Banknote },
+    { key: 'schedule', label: 'Planning', icon: CalendarDays },
   ];
+  const currentTab = tabs.find(t => t.key === tab);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Ressources Humaines</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestion du personnel, pointage et paie</p>
+    <div className="odoo-scope" style={{ minHeight: '100%' }}>
+      {/* Control bar - style Odoo : breadcrumb sticky */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <UserCog size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Ressources Humaines</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">{currentTab?.label}</span>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-gray-100 rounded-xl p-1 flex gap-1">
+      {/* Tabs - style Odoo : border-bottom + underline */}
+      <div className="odoo-tabs">
         {tabs.map(t => {
           const Icon = t.icon;
-          const isActive = tab === t.key;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex-1 justify-center ${
-                isActive
-                  ? 'bg-white text-gray-800 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}>
-              <Icon size={16} /> {t.label}
+              className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
+              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
             </button>
           );
         })}
       </div>
 
-      {tab === 'employees' && <EmployeesTab queryClient={queryClient} />}
-      {tab === 'attendance' && <AttendanceTab queryClient={queryClient} />}
-      {tab === 'leaves' && <LeavesTab queryClient={queryClient} />}
-      {tab === 'payroll' && <PayrollTab queryClient={queryClient} />}
-      {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
+      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {tab === 'employees' && <EmployeesTab queryClient={queryClient} />}
+        {tab === 'attendance' && <AttendanceTab queryClient={queryClient} />}
+        {tab === 'leaves' && <LeavesTab queryClient={queryClient} />}
+        {tab === 'payroll' && <PayrollTab queryClient={queryClient} />}
+        {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
+      </div>
     </div>
   );
 }
@@ -98,6 +100,10 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const { data: employees = [], isLoading } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const { entries: roles, getLabel: getRoleLabel, getColor: getRoleColor } = useReferentiel('employee_roles');
   const { entries: contractTypes, getLabel: getContractLabel } = useReferentiel('contract_types');
+  const { data: shifts = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['shifts'],
+    queryFn: shiftsApi.list as () => Promise<Record<string, any>[]>,
+  });
   // Suppression/reactivation employes : backend reserve admin. On masque les
   // boutons aux non-admins pour eviter d'afficher une action qui retournerait 403.
   const { user } = useAuth();
@@ -282,121 +288,119 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
 
   return (
     <>
-      {/* Stats + Actions */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-4 py-2.5 shadow-sm">
-            <Users size={18} className="text-teal-600" />
-            <span className="text-sm"><strong className="text-gray-900">{activeCount}</strong> <span className="text-gray-500">actifs</span></span>
-            <span className="text-gray-300 mx-1">|</span>
-            <span className="text-sm"><strong className="text-gray-900">{employees.length}</strong> <span className="text-gray-500">total</span></span>
-          </div>
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Rechercher..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
-              className="pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 w-64 shadow-sm" />
-          </div>
+      {/* Stat tiles - style Odoo */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Total employés</div>
+          <div className="odoo-stat-card-value">{employees.length}</div>
+          <div className="odoo-stat-card-sub">référencés</div>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow">
-          <Plus size={18} /> Nouvel employé
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
+          <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
+          <div className="odoo-stat-card-sub">en activité</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><X size={11} style={{ display: 'inline', marginRight: 4 }} />Inactifs</div>
+          <div className="odoo-stat-card-value" style={{ color: '#adb5bd' }}>{employees.length - activeCount}</div>
+          <div className="odoo-stat-card-sub">archivés</div>
+        </div>
+      </div>
+
+      {/* Search panel + action */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
+        <input type="text" placeholder="Rechercher employé, CIN..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
+          className="odoo-search-input" style={{ flex: 1 }} />
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouvel employé
         </button>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-3 border-teal-500 border-t-transparent rounded-full" />
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full" style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement des employés...</p>
+        </div>
+      ) : sortedEmp.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <Users size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun employé trouvé</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 18rem)' }}>
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b sticky top-0 z-10">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => toggleSort('name')}>Employé <SortIcon col="name" /></th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => toggleSort('role')}>Rôle <SortIcon col="role" /></th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => toggleSort('contract')}>Contrat <SortIcon col="contract" /></th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Téléphone</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => toggleSort('salary')}>Salaire <SortIcon col="salary" /></th>
-                <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => toggleSort('status')}>Statut <SortIcon col="status" /></th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                <th style={{ width: 24 }}></th>
+                <th onClick={() => toggleSort('name')} style={{ cursor: 'pointer' }}>Employé <SortIcon col="name" /></th>
+                <th onClick={() => toggleSort('role')} style={{ cursor: 'pointer' }}>Rôle <SortIcon col="role" /></th>
+                <th onClick={() => toggleSort('contract')} style={{ cursor: 'pointer' }}>Contrat <SortIcon col="contract" /></th>
+                <th>Téléphone</th>
+                <th onClick={() => toggleSort('salary')} style={{ cursor: 'pointer', textAlign: 'right' }}>Salaire <SortIcon col="salary" /></th>
+                <th onClick={() => toggleSort('status')} style={{ cursor: 'pointer' }}>Statut <SortIcon col="status" /></th>
+                <th style={{ textAlign: 'right', width: 90 }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {sortedEmp.map((e: Record<string, any>) => (
-                <tr key={e.id as string} className="hover:bg-teal-50/30 transition-colors cursor-pointer" onClick={() => setViewDetail(e)}>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-sm font-bold">
-                        {(e.first_name as string).charAt(0)}{(e.last_name as string).charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm text-gray-900">{e.first_name as string} {e.last_name as string}</p>
-                        {e.cin && <p className="text-xs text-gray-400">CIN: {e.cin as string}</p>}
-                      </div>
-                    </div>
+                <tr key={e.id as string} onClick={() => setViewDetail(e)} style={{ cursor: 'pointer' }}>
+                  <td><span className={`odoo-status-dot ${e.is_active ? 'ok' : 'neutral'}`} /></td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                      {e.first_name as string} {e.last_name as string}
+                      {e.cin ? <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', fontFamily: 'ui-monospace, monospace' }}>· {e.cin as string}</span> : null}
+                    </span>
                   </td>
-                  <td className="px-5 py-3">
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ROLE_COLORS[e.role as string] || 'bg-gray-100 text-gray-600'}`}
-                      style={getRoleColor(e.role as string) && !ROLE_COLORS[e.role as string] ? { backgroundColor: getRoleColor(e.role as string) + '20', color: getRoleColor(e.role as string) } : undefined}>
+                  <td>
+                    <span className="odoo-tag odoo-tag-purple"
+                      style={getRoleColor(e.role as string) ? { backgroundColor: getRoleColor(e.role as string) + '22', color: getRoleColor(e.role as string) } : undefined}>
                       {getRoleLabel(e.role as string)}
                     </span>
                   </td>
-                  <td className="px-5 py-3">
-                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600">{getContractLabel(e.contract_type as string || 'cdi')}</span>
-                  </td>
-                  <td className="px-5 py-3 text-sm text-gray-500">{e.phone as string || <span className="text-gray-300">—</span>}</td>
-                  <td className="px-5 py-3 text-right">
+                  <td><span className="odoo-tag odoo-tag-grey">{getContractLabel(e.contract_type as string || 'cdi')}</span></td>
+                  <td style={{ color: 'var(--odoo-text-muted)' }}>{e.phone as string || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>
                     {e.monthly_salary ? (
-                      <>
-                        <span className="text-sm font-bold text-gray-900">{parseFloat(e.monthly_salary as string).toFixed(0)}</span>
-                        <span className="text-xs text-gray-400 ml-0.5">DH</span>
-                      </>
-                    ) : <span className="text-gray-300">—</span>}
+                      <span style={{ fontWeight: 600 }}>{parseFloat(e.monthly_salary as string).toFixed(0)} <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>DH</span></span>
+                    ) : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>}
                   </td>
-                  <td className="px-5 py-3 text-center">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${e.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${e.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <td>
+                    <span className={`odoo-tag ${e.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
                       {e.is_active ? 'Actif' : 'Inactif'}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setViewDetail(e)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Details">
-                        <UserCog size={15} className="text-gray-400" />
+                  <td style={{ textAlign: 'right' }} onClick={(ev) => ev.stopPropagation()}>
+                    <div style={{ display: 'inline-flex', gap: 2 }}>
+                      <button onClick={() => setViewDetail(e)} className="odoo-pager-btn" title="Détails">
+                        <UserCog size={13} />
                       </button>
-                      <button onClick={() => { setEditing(e); setShowForm(true); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Modifier">
-                        <Pencil size={15} className="text-gray-500" />
+                      <button onClick={() => { setEditing(e); setShowForm(true); }} className="odoo-pager-btn" title="Modifier">
+                        <Pencil size={13} />
                       </button>
-                      {/* Desactiver (actif -> inactif) : conserve historique paie/attendance */}
                       {e.is_active && canDeleteEmployee && (
                         <button
                           onClick={() => {
                             const fullName = `${e.first_name} ${e.last_name}`;
-                            if (confirm(
-                              `Désactiver ${fullName} ?\n\n` +
-                              `L'employé sera masqué des listes actives.\n` +
-                              `Son historique (paie, présence, paiements) reste préservé.\n` +
-                              `Vous pourrez le réactiver à tout moment.`
-                            )) {
+                            if (confirm(`Désactiver ${fullName} ?\n\nL'employé sera masqué des listes actives.\nSon historique (paie, présence, paiements) reste préservé.\nVous pourrez le réactiver à tout moment.`)) {
                               deactivateMutation.mutate(e.id as string);
                             }
                           }}
                           disabled={deactivateMutation.isPending}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Désactiver l'employé">
-                          <Trash2 size={15} className="text-red-500" />
+                          className="odoo-pager-btn" title="Désactiver" style={{ color: '#dc3545' }}>
+                          <Trash2 size={13} />
                         </button>
                       )}
-                      {/* Suppression DEFINITIVE (cascade FK) — admin only */}
                       {canDeleteEmployee && (
                         <button
                           onClick={() => handleHardDelete(e)}
                           disabled={hardDeleteMutation.isPending}
-                          className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Supprimer définitivement (cascade DB)">
-                          <AlertOctagon size={15} className="text-red-700" />
+                          className="odoo-pager-btn" title="Supprimer définitivement" style={{ color: '#7a0c12' }}>
+                          <AlertOctagon size={13} />
                         </button>
                       )}
-                      {/* Reactiver (inactif -> actif) */}
                       {!e.is_active && canDeleteEmployee && (
                         <button
                           onClick={() => {
@@ -406,9 +410,8 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                             }
                           }}
                           disabled={reactivateMutation.isPending}
-                          className="p-2 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Réactiver l'employé">
-                          <RotateCcw size={15} className="text-green-600" />
+                          className="odoo-pager-btn" title="Réactiver" style={{ color: '#28a745' }}>
+                          <RotateCcw size={13} />
                         </button>
                       )}
                     </div>
@@ -417,12 +420,6 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               ))}
             </tbody>
           </table>
-          {sortedEmp.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <Users size={48} className="mb-3 text-gray-300" />
-              <p className="text-lg font-medium">Aucun employé trouvé</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -502,6 +499,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               if (data.seniorityYears) data.seniorityYears = parseInt(data.seniorityYears as string);
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
               if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
+              if (data.defaultShiftCode === '') data.defaultShiftCode = null;
               saveMutation.mutate(data);
             }} className="space-y-4">
               <p className="text-sm font-medium text-gray-500 border-b pb-1">Informations personnelles</p>
@@ -534,6 +532,16 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   </select></div>
                 <div><label className="block text-sm font-medium mb-1">Salaire mensuel (DH)</label>
                   <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input" /></div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shift par défaut</label>
+                <select name="defaultShiftCode" defaultValue={(editing?.default_shift_code as string) || ''} className="input">
+                  <option value="">— Aucun (à choisir manuellement dans le planning) —</option>
+                  {(shifts as Record<string, any>[]).map(s => (
+                    <option key={s.code as string} value={s.code as string}>{s.label as string}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Utilisé par le bouton « Appliquer défaut » dans l'onglet Planning hebdomadaire.</p>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Date d'embauche *</label><input name="hireDate" type="date" defaultValue={isoDate(editing?.hire_date)} className="input" required={!editing} /></div>
@@ -586,6 +594,22 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
     enabled: attView === 'daily',
   });
 
+  // Conges actifs ce jour-la (approved + pending). On les fusionne avec les
+  // employes pour afficher un badge "Conge X" a la place de "Non planifie"
+  // et desactiver les boutons de statut.
+  const { data: dailyLeaves = [] } = useQuery({
+    queryKey: ['leaves', 'activeOn', selectedDate],
+    queryFn: () => leavesApi.list({ activeOn: selectedDate }),
+    enabled: attView === 'daily',
+  });
+  const getLeaveFor = (empId: string): Record<string, any> | null => {
+    const list = dailyLeaves as Record<string, any>[];
+    // Conge approuve prime sur pending si les deux existent (peu probable)
+    const approved = list.find(l => l.employee_id === empId && l.status === 'approved');
+    if (approved) return approved;
+    return list.find(l => l.employee_id === empId && l.status === 'pending') || null;
+  };
+
   // Monthly records - get all records for the month
   const monthStart = `${summaryYear}-${String(summaryMonth).padStart(2, '0')}-01`;
   const monthEndDate = new Date(summaryYear, summaryMonth, 0);
@@ -623,112 +647,96 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
   return (
     <>
       {/* View toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-          <button onClick={() => setAttView('daily')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${attView === 'daily' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div className="odoo-view-switcher">
+          <button onClick={() => setAttView('daily')} className={attView === 'daily' ? 'active' : ''}>
             Pointage journalier
           </button>
-          <button onClick={() => setAttView('monthly')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${attView === 'monthly' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+          <button onClick={() => setAttView('monthly')} className={attView === 'monthly' ? 'active' : ''}>
             Récapitulatif mensuel
           </button>
         </div>
 
         {attView === 'daily' ? (
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <button onClick={() => {
               const d = new Date(selectedDate); d.setDate(d.getDate() - 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft size={18} /></button>
+            }} className="odoo-pager-btn"><ChevronLeft size={14} /></button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-              className="input w-auto" />
+              className="input" style={{ width: 'auto' }} />
             <button onClick={() => {
               const d = new Date(selectedDate); d.setDate(d.getDate() + 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight size={18} /></button>
-            <span className="text-sm text-gray-500 font-medium">
+            }} className="odoo-pager-btn"><ChevronRight size={14} /></button>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', fontWeight: 500, marginLeft: 4 }}>
               {format(new Date(selectedDate + 'T12:00:00'), 'EEEE dd MMMM yyyy', { locale: fr })}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <select value={summaryMonth} onChange={e => setSummaryMonth(parseInt(e.target.value))} className="input w-auto">
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <select value={summaryMonth} onChange={e => setSummaryMonth(parseInt(e.target.value))} className="input" style={{ width: 'auto' }}>
               {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
-            <input type="number" value={summaryYear} onChange={e => setSummaryYear(parseInt(e.target.value))} className="input w-24" />
+            <input type="number" value={summaryYear} onChange={e => setSummaryYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
           </div>
         )}
       </div>
 
       {/* Monthly summary view */}
       {attView === 'monthly' && (
-        monthlyLoading ? <p className="text-gray-500">Chargement...</p> : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+        monthlyLoading ? <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table">
+              <thead>
                 <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Présent</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Retard</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Demi-j.</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Absent</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">H. Sup</th>
-                  <th className="text-center px-4 py-3 text-sm font-medium text-green-600 bg-green-50">J. Travailles</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Salaire base</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Taux/jour</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-green-600 bg-green-50">Salaire calcule</th>
+                  <th>Employé</th>
+                  <th style={{ textAlign: 'center' }}>Présent</th>
+                  <th style={{ textAlign: 'center' }}>Retard</th>
+                  <th style={{ textAlign: 'center' }}>Demi-j.</th>
+                  <th style={{ textAlign: 'center' }}>Absent</th>
+                  <th style={{ textAlign: 'center' }}>H. Sup</th>
+                  <th style={{ textAlign: 'center', background: '#eafaf1', color: '#155724' }}>J. Travaillés</th>
+                  <th style={{ textAlign: 'right' }}>Salaire base</th>
+                  <th style={{ textAlign: 'right' }}>Taux/jour</th>
+                  <th style={{ textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Salaire calculé</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {activeEmployees.map((emp: Record<string, any>) => {
                   const s = getEmployeeMonthlySummary(emp.id as string);
                   const baseSalary = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
                   const dailyRate = baseSalary / 26;
                   const calculatedSalary = dailyRate * s.workedDays;
                   return (
-                    <tr key={emp.id as string} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 text-xs font-bold">
-                            {(emp.first_name as string).charAt(0)}{(emp.last_name as string).charAt(0)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{emp.first_name as string} {emp.last_name as string}</p>
-                            <p className="text-xs text-gray-400">{ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-sm font-medium text-green-600">{s.present}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-sm font-medium ${s.late > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>{s.late}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-sm font-medium ${s.halfDay > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{s.halfDay}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-sm font-medium ${s.absent > 0 ? 'text-red-600' : 'text-gray-400'}`}>{s.absent}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-sm ${s.overtimeMin > 0 ? 'font-medium' : 'text-gray-400'}`}>
-                          {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)}h${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
+                    <tr key={emp.id as string}>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                          <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                          {emp.first_name as string} {emp.last_name as string}
+                          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</span>
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center bg-green-50">
-                        <span className="text-lg font-bold text-green-700">{s.workedDays}</span>
-                        <span className="text-xs text-gray-400"> / 26</span>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: '#28a745', fontWeight: 500 }}>{s.present}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.late > 0 ? '#b08504' : 'var(--odoo-text-light)' }}>{s.late}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.halfDay > 0 ? '#1f6391' : 'var(--odoo-text-light)' }}>{s.halfDay}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absent > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{s.absent}</span></td>
+                      <td style={{ textAlign: 'center', color: s.overtimeMin > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)' }}>
+                        {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)}h${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-500">
+                      <td style={{ textAlign: 'center', background: '#eafaf1' }}>
+                        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#155724' }}>{s.workedDays}</span>
+                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / 26</span>
+                      </td>
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
                         {baseSalary > 0 ? `${baseSalary.toFixed(2)} DH` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-500">
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
                         {baseSalary > 0 ? `${dailyRate.toFixed(2)} DH` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right bg-green-50">
+                      <td style={{ textAlign: 'right', background: '#eafaf1' }}>
                         {baseSalary > 0 ? (
-                          <span className={`text-sm font-bold ${calculatedSalary < baseSalary ? 'text-red-600' : 'text-green-700'}`}>
+                          <span style={{ fontWeight: 700, color: calculatedSalary < baseSalary ? '#dc3545' : '#155724' }}>
                             {calculatedSalary.toFixed(2)} DH
                           </span>
                         ) : '—'}
@@ -737,17 +745,17 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                   );
                 })}
               </tbody>
-              <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+              <tfoot style={{ background: 'var(--odoo-bg-alt)', borderTop: '2px solid var(--odoo-border)' }}>
                 <tr>
-                  <td className="px-4 py-3 text-sm font-bold text-gray-700" colSpan={6}>Total</td>
-                  <td className="px-4 py-3 text-center bg-green-50 font-bold text-green-700">
+                  <td style={{ fontWeight: 700, padding: '0.5rem 0.75rem' }} colSpan={6}>Total</td>
+                  <td style={{ textAlign: 'center', background: '#eafaf1', fontWeight: 700, color: '#155724', padding: '0.5rem 0.75rem' }}>
                     {activeEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0)}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm font-bold">
+                  <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
                     {activeEmployees.reduce((sum, emp) => sum + (emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0), 0).toFixed(2)} DH
                   </td>
-                  <td className="px-4 py-3"></td>
-                  <td className="px-4 py-3 text-right bg-green-50 font-bold text-green-700">
+                  <td></td>
+                  <td style={{ textAlign: 'right', background: '#eafaf1', fontWeight: 700, color: '#155724', padding: '0.5rem 0.75rem' }}>
                     {activeEmployees.reduce((sum, emp) => {
                       const s = getEmployeeMonthlySummary(emp.id as string);
                       const base = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
@@ -763,53 +771,99 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
 
       {/* Daily view */}
       {attView === 'daily' && (
-        isLoading ? <p className="text-gray-500">Chargement...</p> : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+        isLoading ? <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', gap: 12, flexWrap: 'wrap' }}>
+            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#93c5fd', marginRight: 4, verticalAlign: 'middle' }} /> présence prévue (planning)</span>
+            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#28a745', marginRight: 4, verticalAlign: 'middle' }} /> pointage confirmé</span>
+            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#8b5cf6', marginRight: 4, verticalAlign: 'middle' }} /> en congé</span>
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Statut</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Arrivée</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Départ</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">H. Sup (min)</th>
+                <th style={{ width: 24 }}></th>
+                <th>Employé</th>
+                <th>Prévu</th>
+                <th style={{ textAlign: 'center' }}>Statut</th>
+                <th style={{ textAlign: 'center' }}>Arrivée</th>
+                <th style={{ textAlign: 'center' }}>Départ</th>
+                <th style={{ textAlign: 'center' }}>H. Sup (min)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {activeEmployees.map((emp: Record<string, any>) => {
                 const rec = getRecord(emp.id as string);
+                const plannedShift = rec?.planned_shift_code as ShiftCode | undefined;
+                const isExpected = (rec as Record<string, any>)?.is_expected === true;
+                const hasCheckIn = !!(rec as Record<string, any>)?.check_in;
+                const leave = getLeaveFor(emp.id as string);
+                const isOnLeave = leave?.status === 'approved';
+                const isLeavePending = leave?.status === 'pending';
                 return (
-                  <tr key={emp.id as string} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 text-xs font-bold">
-                          {(emp.first_name as string).charAt(0)}{(emp.last_name as string).charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{emp.first_name as string} {emp.last_name as string}</p>
-                          <p className="text-xs text-gray-400">{ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</p>
-                        </div>
-                      </div>
+                  <tr key={emp.id as string} className={isOnLeave ? 'row-warning' : ''}>
+                    <td>
+                      <span className={`odoo-status-dot ${isOnLeave ? 'neutral' : hasCheckIn ? 'ok' : (isExpected ? 'warning' : 'neutral')}`} />
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex justify-center gap-1">
-                        {ATTENDANCE_STATUS.map(s => (
-                          <button key={s.value}
-                            onClick={() => upsertMutation.mutate({
-                              employeeId: emp.id, date: selectedDate, status: s.value,
-                              checkIn: (rec as Record<string, any>)?.check_in || undefined,
-                              checkOut: (rec as Record<string, any>)?.check_out || undefined,
-                            })}
-                            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                              (rec as Record<string, any>)?.status === s.value ? s.color : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                            }`}>
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                        <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                        {emp.first_name as string} {emp.last_name as string}
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</span>
+                      </span>
+                    </td>
+                    <td>
+                      {leave ? (
+                        <span className={`odoo-tag ${isOnLeave ? 'odoo-tag-purple' : 'odoo-tag-orange'}`}
+                          title={`${LEAVE_TYPE_LABELS[leave.type as string] ?? leave.type} ${isLeavePending ? '(en attente)' : ''} — du ${(leave.start_date as string).slice(0, 10)} au ${(leave.end_date as string).slice(0, 10)}`}>
+                          <CalendarOff size={10} style={{ marginRight: 3 }} />
+                          {LEAVE_TYPE_LABELS[leave.type as string] ?? leave.type}{isLeavePending ? ' (en attente)' : ''}
+                        </span>
+                      ) : plannedShift ? (
+                        <span className={`odoo-tag ${SHIFT_BADGE_COLORS[plannedShift]}`}>
+                          {SHIFT_SHORT_LABELS[plannedShift]}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}>— Non planifié —</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {isOnLeave ? (
+                        <span className="odoo-tag odoo-tag-purple">
+                          <CalendarOff size={10} style={{ marginRight: 3 }} /> En congé
+                        </span>
+                      ) : (
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                          {ATTENDANCE_STATUS.map(s => {
+                            const isActive = (rec as Record<string, any>)?.status === s.value;
+                            const isExpectedPresent = isExpected && !hasCheckIn && s.value === 'present';
+                            return (
+                              <button key={s.value}
+                                onClick={() => upsertMutation.mutate({
+                                  employeeId: emp.id, date: selectedDate, status: s.value,
+                                  checkIn: (rec as Record<string, any>)?.check_in || undefined,
+                                  checkOut: (rec as Record<string, any>)?.check_out || undefined,
+                                })}
+                                className={isActive ? `odoo-tag ${
+                                  isExpectedPresent ? 'odoo-tag-blue' :
+                                  s.value === 'present' ? 'odoo-tag-green' :
+                                  s.value === 'absent' ? 'odoo-tag-red' :
+                                  s.value === 'late' ? 'odoo-tag-yellow' :
+                                  'odoo-tag-blue'
+                                }` : 'odoo-tag odoo-tag-grey'}
+                                style={{ cursor: 'pointer', border: 'none' }}>
+                                {s.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="time" className="input text-center text-sm w-28 mx-auto"
+                      <input type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_in as string || ''}
                         onBlur={e => {
                           if (e.target.value) upsertMutation.mutate({
@@ -821,7 +875,8 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="time" className="input text-center text-sm w-28 mx-auto"
+                      <input type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_out as string || ''}
                         onBlur={e => {
                           if (e.target.value) upsertMutation.mutate({
@@ -833,7 +888,8 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="number" className="input text-center text-sm w-20 mx-auto" min="0"
+                      <input type="number" className="input text-center text-sm w-20 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed" min="0"
+                        disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.overtime_minutes as number || 0}
                         onBlur={e => {
                           upsertMutation.mutate({
@@ -851,6 +907,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
             </tbody>
           </table>
           {activeEmployees.length === 0 && <p className="text-center py-8 text-gray-400">Aucun employé actif</p>}
+        </div>
         </div>
         )
       )}
@@ -884,53 +941,98 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé refusé'); },
   });
 
+  const leavesList = leaves as Record<string, any>[];
+  const pendingCount = leavesList.filter(l => l.status === 'pending').length;
+  const approvedCount = leavesList.filter(l => l.status === 'approved').length;
+
   return (
     <>
-      <div className="flex justify-end">
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
-          <Plus size={18} /> Nouvelle demande
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><CalendarOff size={11} style={{ display: 'inline', marginRight: 4 }} />Demandes {currentYear}</div>
+          <div className="odoo-stat-card-value">{leavesList.length}</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />En attente</div>
+          <div className="odoo-stat-card-value" style={{ color: pendingCount > 0 ? '#b08504' : undefined }}>{pendingCount}</div>
+          <div className="odoo-stat-card-sub">à valider</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Approuvés</div>
+          <div className="odoo-stat-card-value" style={{ color: approvedCount > 0 ? '#28a745' : undefined }}>{approvedCount}</div>
+        </div>
+      </div>
+
+      <div className="odoo-search-panel">
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouvelle demande
         </button>
       </div>
 
-      {isLoading ? <p className="text-gray-500">Chargement...</p> : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
+      {isLoading ? (
+        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+      ) : leavesList.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <CalendarOff size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun congé pour cette année</p>
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Employé</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Type</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Période</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Jours</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Motif</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Statut</th>
-                <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Actions</th>
+                <th style={{ width: 24 }}></th>
+                <th>Employé</th>
+                <th>Type</th>
+                <th>Période</th>
+                <th style={{ textAlign: 'center' }}>Jours</th>
+                <th>Motif</th>
+                <th>Statut</th>
+                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {(leaves as Record<string, any>[]).map(l => (
-                <tr key={l.id as string} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium">{l.first_name as string} {l.last_name as string}</td>
-                  <td className="px-4 py-3 text-sm">{getLeaveLabel(l.type as string)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+            <tbody>
+              {leavesList.map(l => (
+                <tr key={l.id as string} className={l.status === 'pending' ? 'row-warning' : ''}>
+                  <td>
+                    <span className={`odoo-status-dot ${l.status === 'approved' ? 'ok' : l.status === 'rejected' ? 'danger' : 'warning'}`} />
+                  </td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                      {l.first_name as string} {l.last_name as string}
+                    </span>
+                  </td>
+                  <td>{getLeaveLabel(l.type as string)}</td>
+                  <td style={{ color: 'var(--odoo-text-muted)' }}>
                     {format(new Date(l.start_date as string), 'dd/MM/yyyy')} — {format(new Date(l.end_date as string), 'dd/MM/yyyy')}
                   </td>
-                  <td className="px-4 py-3 text-center text-sm font-semibold">{l.days as number}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 max-w-[200px] truncate">{l.reason as string || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${LEAVE_STATUS_COLORS[l.status as string]}`}>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{l.days as number}</td>
+                  <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {l.reason as string || '—'}
+                  </td>
+                  <td>
+                    <span className={`odoo-tag ${
+                      l.status === 'approved' ? 'odoo-tag-green' :
+                      l.status === 'rejected' ? 'odoo-tag-red' :
+                      'odoo-tag-yellow'
+                    }`}>
                       {l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuvé' : 'Refusé'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td style={{ textAlign: 'center' }}>
                     {l.status === 'pending' && (
-                      <div className="flex items-center justify-center gap-1">
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
                         <button onClick={() => approveMutation.mutate(l.id as string)}
-                          className="p-1.5 hover:bg-green-50 rounded text-green-600" title="Approuver">
-                          <Check size={16} />
+                          className="odoo-pager-btn" title="Approuver" style={{ color: '#28a745' }}>
+                          <Check size={14} />
                         </button>
                         <button onClick={() => rejectMutation.mutate(l.id as string)}
-                          className="p-1.5 hover:bg-red-50 rounded text-red-600" title="Refuser">
-                          <X size={16} />
+                          className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }}>
+                          <X size={14} />
                         </button>
                       </div>
                     )}
@@ -939,7 +1041,6 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
               ))}
             </tbody>
           </table>
-          {(leaves as Record<string, any>[]).length === 0 && <p className="text-center py-8 text-gray-400">Aucun congé pour cette année</p>}
         </div>
       )}
 
@@ -1202,94 +1303,108 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="input w-auto">
+      {/* Toolbar */}
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="input" style={{ width: 'auto' }}>
             {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="input w-24" />
+          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={generateAllPDF} className="btn-secondary flex items-center gap-2" disabled={sortedPayrolls.length === 0}>
-            <FileText size={16} /> PDF tous
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={generateAllPDF} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <FileText size={13} /> PDF tous
           </button>
-          <button onClick={exportPayroll} className="btn-secondary flex items-center gap-2" disabled={sortedPayrolls.length === 0}>
-            <Download size={16} /> CSV
+          <button onClick={exportPayroll} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Download size={13} /> CSV
           </button>
-          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}
-            className="btn-primary flex items-center gap-2">
-            <Banknote size={18} /> Generer les bulletins
+          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> Générer les bulletins
           </button>
         </div>
       </div>
 
+      {/* Stat tiles */}
       {(payrolls as Record<string, any>[]).length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border p-4 text-center">
-            <p className="text-xs text-gray-500 mb-1">Masse salariale brute</p>
-            <p className="text-xl font-bold text-gray-800">{totalGross.toFixed(2)} <span className="text-xs text-gray-400">DH</span></p>
+        <div className="odoo-stat-grid">
+          <div className="odoo-stat-card">
+            <div className="odoo-stat-card-label">Masse salariale brute</div>
+            <div className="odoo-stat-card-value">{totalGross.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
           </div>
-          <div className="bg-white rounded-xl border p-4 text-center">
-            <p className="text-xs text-gray-500 mb-1">Total net a payer</p>
-            <p className="text-xl font-bold text-green-600">{totalNet.toFixed(2)} <span className="text-xs text-gray-400">DH</span></p>
+          <div className="odoo-stat-card">
+            <div className="odoo-stat-card-label">Total net à payer</div>
+            <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{totalNet.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
           </div>
-          <div className="bg-white rounded-xl border p-4 text-center">
-            <p className="text-xs text-gray-500 mb-1">CNSS + AMO + IR (sal.)</p>
-            <p className="text-xl font-bold text-orange-600">{(totalCNSS + totalAMO + totalIR).toFixed(2)} <span className="text-xs text-gray-400">DH</span></p>
+          <div className="odoo-stat-card">
+            <div className="odoo-stat-card-label">CNSS + AMO + IR (sal.)</div>
+            <div className="odoo-stat-card-value" style={{ color: '#b85d1a' }}>{(totalCNSS + totalAMO + totalIR).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
           </div>
-          <div className="bg-white rounded-xl border p-4 text-center">
-            <p className="text-xs text-gray-500 mb-1">Charges patronales</p>
-            <p className="text-xl font-bold text-purple-600">{totalChargesPatron.toFixed(2)} <span className="text-xs text-gray-400">DH</span></p>
+          <div className="odoo-stat-card">
+            <div className="odoo-stat-card-label">Charges patronales</div>
+            <div className="odoo-stat-card-value" style={{ color: 'var(--theme-accent)' }}>{totalChargesPatron.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
           </div>
         </div>
       )}
 
-      {isLoading ? <p className="text-gray-500">Chargement...</p> : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+      {isLoading ? (
+        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+      ) : sortedPayrolls.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <Banknote size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun bulletin pour cette période. Cliquez sur « Générer les bulletins ».</p>
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('name')}>Employe <PaySortIcon col="name" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('base')}>Base <PaySortIcon col="base" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('gross')}>Brut <PaySortIcon col="gross" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('cnss')}>CNSS <PaySortIcon col="cnss" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('amo')}>AMO <PaySortIcon col="amo" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('ir')}>IR <PaySortIcon col="ir" /></th>
-                <th className="text-right px-3 py-3 font-medium text-gray-500 bg-green-50 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('net')}>Net <PaySortIcon col="net" /></th>
-                <th className="text-center px-3 py-3 font-medium text-gray-500 cursor-pointer select-none hover:text-teal-600 transition-colors" onClick={() => togglePaySort('status')}>Statut <PaySortIcon col="status" /></th>
-                <th className="text-center px-3 py-3 font-medium text-gray-500">Actions</th>
+                <th onClick={() => togglePaySort('name')} style={{ cursor: 'pointer' }}>Employé <PaySortIcon col="name" /></th>
+                <th onClick={() => togglePaySort('base')} style={{ cursor: 'pointer', textAlign: 'right' }}>Base <PaySortIcon col="base" /></th>
+                <th onClick={() => togglePaySort('gross')} style={{ cursor: 'pointer', textAlign: 'right' }}>Brut <PaySortIcon col="gross" /></th>
+                <th onClick={() => togglePaySort('cnss')} style={{ cursor: 'pointer', textAlign: 'right' }}>CNSS <PaySortIcon col="cnss" /></th>
+                <th onClick={() => togglePaySort('amo')} style={{ cursor: 'pointer', textAlign: 'right' }}>AMO <PaySortIcon col="amo" /></th>
+                <th onClick={() => togglePaySort('ir')} style={{ cursor: 'pointer', textAlign: 'right' }}>IR <PaySortIcon col="ir" /></th>
+                <th onClick={() => togglePaySort('net')} style={{ cursor: 'pointer', textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net <PaySortIcon col="net" /></th>
+                <th onClick={() => togglePaySort('status')} style={{ cursor: 'pointer', textAlign: 'center' }}>Statut <PaySortIcon col="status" /></th>
+                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody>
               {sortedPayrolls.map(p => (
-                <tr key={p.id as string} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{p.first_name as string} {p.last_name as string}</p>
-                    <p className="text-xs text-gray-400">{getRoleLabel(p.employee_role as string)}</p>
+                <tr key={p.id as string}>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                      {p.first_name as string} {p.last_name as string}
+                      <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(p.employee_role as string)}</span>
+                    </span>
                   </td>
-                  <td className="px-3 py-3 text-right text-gray-600">{pf(p.base_salary)}</td>
-                  <td className="px-3 py-3 text-right font-medium">{pf(p.gross_salary)}</td>
-                  <td className="px-3 py-3 text-right text-orange-600">{pf(p.cnss_employee)}</td>
-                  <td className="px-3 py-3 text-right text-orange-600">{pf(p.amo_employee)}</td>
-                  <td className="px-3 py-3 text-right text-red-600">{pf(p.ir_net)}</td>
-                  <td className="px-3 py-3 text-right font-bold text-green-700 bg-green-50/50">{pf(p.net_salary)}</td>
-                  <td className="px-3 py-3 text-center">
+                  <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{pf(p.base_salary)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 500 }}>{pf(p.gross_salary)}</td>
+                  <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.cnss_employee)}</td>
+                  <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.amo_employee)}</td>
+                  <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>{pf(p.net_salary)}</td>
+                  <td style={{ textAlign: 'center' }}>
                     {p.paid ? (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Paye</span>
+                      <span className="odoo-tag odoo-tag-green">Payé</span>
                     ) : (
                       <button onClick={() => payMutation.mutate({ id: p.id as string, method: 'cash' })}
-                        className="px-2 py-1 rounded text-xs font-medium bg-primary-50 text-primary-700 hover:bg-primary-100">
+                        className="odoo-tag odoo-tag-purple" style={{ cursor: 'pointer', border: 'none' }}>
                         Payer
                       </button>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => setDetailPayroll(p)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Voir le detail">
-                        <UserCog size={15} className="text-gray-400" />
+                  <td style={{ textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', gap: 2 }}>
+                      <button onClick={() => setDetailPayroll(p)} className="odoo-pager-btn" title="Voir le détail">
+                        <UserCog size={13} />
                       </button>
-                      <button onClick={() => generatePDF(p)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Telecharger PDF">
-                        <FileText size={15} className="text-red-400" />
+                      <button onClick={() => generatePDF(p)} className="odoo-pager-btn" title="Télécharger PDF" style={{ color: '#dc3545' }}>
+                        <FileText size={13} />
                       </button>
                     </div>
                   </td>
@@ -1297,9 +1412,6 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
               ))}
             </tbody>
           </table>
-          {sortedPayrolls.length === 0 && (
-            <p className="text-center py-8 text-gray-400">Aucun bulletin pour cette periode. Cliquez sur "Generer les bulletins".</p>
-          )}
         </div>
       )}
 
@@ -1407,92 +1519,415 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
   );
 }
 
-/* ═══════════════════════ SCHEDULE TAB ═══════════════════════ */
+/* ═══════════════════════ SCHEDULE TAB (planning hebdomadaire) ═══════════════════════ */
+type LeaveInfoUI = { type: string; status: 'approved' | 'pending'; startDate: string; endDate: string };
+type WeekRow = {
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  defaultShiftCode: ShiftCode | null;
+  assignments: Record<string, ShiftCode | null>;
+  onLeaveDays: string[];
+  leaveDays: Record<string, LeaveInfoUI>;
+};
+
+type WeekData = { weekStart: string; weekEnd: string; rows: WeekRow[] };
+
+const REPOS = '__REPOS__';
+
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+  annual: 'congé annuel',
+  sick: 'congé maladie',
+  unpaid: 'congé sans solde',
+  maternity: 'congé maternité',
+  other: 'congé',
+};
+
+function leaveLabel(info: LeaveInfoUI): string {
+  const t = LEAVE_TYPE_LABELS[info.type] ?? info.type;
+  return info.status === 'pending' ? `${t} (en attente)` : t;
+}
+
+function leaveTooltip(info: LeaveInfoUI): string {
+  const period = info.startDate === info.endDate
+    ? info.startDate
+    : `du ${info.startDate} au ${info.endDate}`;
+  return `${leaveLabel(info)} — ${period}`;
+}
+
 function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const [weekOffset, setWeekOffset] = useState(0);
-  const [showForm, setShowForm] = useState(false);
-  const [formDate, setFormDate] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const prevWeekStr = format(startOfWeek(subWeeks(weekStart, 1), { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
-  const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
-  const activeEmployees = (employees as Record<string, any>[]).filter(e => e.is_active);
-
-  const { data: schedules = [] } = useQuery({
-    queryKey: ['schedules', format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
-    queryFn: () => schedulesApi.list(format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')),
+  const { data: week } = useQuery<WeekData>({
+    queryKey: ['schedules', 'week', weekStartStr],
+    queryFn: () => schedulesApi.getWeek(weekStartStr) as Promise<WeekData>,
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, any>) => schedulesApi.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); notify.success('Planning ajoute'); setShowForm(false); },
-    onError: () => notify.error('Erreur'),
+  const { data: shifts = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['shifts'],
+    queryFn: shiftsApi.list as () => Promise<Record<string, any>[]>,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => schedulesApi.remove(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['schedules'] }); notify.success('Supprime'); },
+  // Etat local : matrice editable indexee par employeeId -> dateStr -> ShiftCode|null
+  // null = repos, undefined = inchange depuis la base
+  const [draft, setDraft] = useState<Record<string, Record<string, ShiftCode | null>>>({});
+  useEffect(() => { setDraft({}); }, [weekStartStr]);
+
+  const rows = useMemo<WeekRow[]>(() => {
+    const base = week?.rows ?? [];
+    if (roleFilter === 'all') return base;
+    return base.filter(r => r.role === roleFilter);
+  }, [week, roleFilter]);
+
+  const allRoles = useMemo(() => {
+    const set = new Set<string>();
+    (week?.rows ?? []).forEach(r => set.add(r.role));
+    return Array.from(set);
+  }, [week]);
+
+  const getCell = (empId: string, dateStr: string): ShiftCode | null => {
+    const local = draft[empId]?.[dateStr];
+    if (local !== undefined) return local;
+    return (week?.rows.find(r => r.employeeId === empId)?.assignments[dateStr] ?? null);
+  };
+
+  const setCell = (empId: string, dateStr: string, value: ShiftCode | null) => {
+    setDraft(d => ({ ...d, [empId]: { ...(d[empId] ?? {}), [dateStr]: value } }));
+  };
+
+  const getLeaveInfo = (row: WeekRow, dateStr: string): LeaveInfoUI | null =>
+    row.leaveDays?.[dateStr] ?? null;
+  // Un conge approuve bloque l'edition. Un conge en attente est juste un
+  // avertissement (verrouille soft : l'admin peut encore changer s'il sait
+  // que le conge sera refuse).
+  const isLeaveLocked = (row: WeekRow, dateStr: string) => {
+    const info = getLeaveInfo(row, dateStr);
+    return info?.status === 'approved';
+  };
+
+  // Bannière récap des employés en congé cette semaine — visible en haut
+  const weekLeaveSummary = useMemo(() => {
+    const out: Array<{ employeeId: string; name: string; days: string[]; status: 'approved' | 'pending'; type: string }> = [];
+    for (const row of (week?.rows ?? [])) {
+      const entries = Object.entries(row.leaveDays ?? {});
+      if (entries.length === 0) continue;
+      // Group by leave type+status
+      const byKey = new Map<string, string[]>();
+      const keyMeta = new Map<string, { type: string; status: 'approved' | 'pending' }>();
+      for (const [day, info] of entries) {
+        const k = `${info.type}|${info.status}`;
+        keyMeta.set(k, { type: info.type, status: info.status });
+        const arr = byKey.get(k) ?? [];
+        arr.push(day);
+        byKey.set(k, arr);
+      }
+      for (const [k, days] of byKey) {
+        const m = keyMeta.get(k)!;
+        out.push({
+          employeeId: row.employeeId,
+          name: `${row.firstName} ${row.lastName}`,
+          days: days.sort(),
+          status: m.status,
+          type: m.type,
+        });
+      }
+    }
+    return out;
+  }, [week]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const assignments: Array<{ employeeId: string; date: string; shiftCode: string | null }> = [];
+      const allRows = week?.rows ?? [];
+      for (const row of allRows) {
+        const localChanges = draft[row.employeeId];
+        if (!localChanges) continue;
+        for (const [date, code] of Object.entries(localChanges)) {
+          assignments.push({ employeeId: row.employeeId, date, shiftCode: code });
+        }
+      }
+      if (assignments.length === 0) return { updated: 0, deleted: 0 };
+      return schedulesApi.saveWeek(weekStartStr, assignments);
+    },
+    onSuccess: (res: { updated?: number; deleted?: number }) => {
+      const u = res?.updated ?? 0;
+      const d = res?.deleted ?? 0;
+      if (u + d === 0) {
+        notify.warning('Aucune modification a sauvegarder');
+      } else {
+        notify.success(`Planning sauvegarde (${u} assigne, ${d} repos)`);
+      }
+      setDraft({});
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'week', weekStartStr] });
+    },
+    onError: (err: any) => {
+      if (err?.response?.status === 409) {
+        const n = err.response.data?.error?.conflicts?.length ?? 0;
+        notify.error(`Conflit conge : ${n} assignation(s) impossibles. Retire-les avant de sauvegarder.`);
+      } else {
+        notify.error('Erreur a la sauvegarde');
+      }
+    },
   });
 
-  const getSchedule = (empId: string, date: string) =>
-    (schedules as Record<string, any>[]).find(s => s.employee_id === empId && s.date && (s.date as string).startsWith(date));
+  const applyDefaults = () => {
+    const next: typeof draft = { ...draft };
+    let skippedLeaves = 0;
+    for (const row of rows) {
+      if (!row.defaultShiftCode) continue;
+      const empMap = { ...(next[row.employeeId] ?? {}) };
+      for (const d of days) {
+        const dateStr = format(d, 'yyyy-MM-dd');
+        if (row.onLeaveDays.includes(dateStr)) { skippedLeaves++; continue; }
+        if (getCell(row.employeeId, dateStr) !== null) continue;
+        empMap[dateStr] = row.defaultShiftCode;
+      }
+      next[row.employeeId] = empMap;
+    }
+    setDraft(next);
+    if (skippedLeaves > 0) {
+      notify.warning(`Shifts par défaut appliqués. ${skippedLeaves} jour(s) ignoré(s) car employé en congé.`);
+    } else {
+      notify.success('Shifts par défaut appliqués sur les cellules vides');
+    }
+  };
+
+  const clearWeek = () => {
+    if (!confirm('Vider toute la semaine affichee ? (sera sauvegardable apres validation)')) return;
+    const next: typeof draft = { ...draft };
+    for (const row of rows) {
+      const empMap = { ...(next[row.employeeId] ?? {}) };
+      for (const d of days) {
+        const dateStr = format(d, 'yyyy-MM-dd');
+        empMap[dateStr] = null;
+      }
+      next[row.employeeId] = empMap;
+    }
+    setDraft(next);
+  };
+
+  const duplicatePreviousWeek = async () => {
+    try {
+      const prev = await schedulesApi.getWeek(prevWeekStr) as WeekData;
+      const next: typeof draft = { ...draft };
+      let skippedLeaves = 0;
+      for (const row of rows) {
+        const prevRow = prev.rows.find(r => r.employeeId === row.employeeId);
+        if (!prevRow) continue;
+        const empMap = { ...(next[row.employeeId] ?? {}) };
+        const prevDays = Object.keys(prevRow.assignments).sort();
+        days.forEach((d, idx) => {
+          const dateStr = format(d, 'yyyy-MM-dd');
+          if (row.onLeaveDays.includes(dateStr)) { skippedLeaves++; return; }
+          const srcDate = prevDays[idx]; // mapping ordinal Lun->Lun, etc.
+          const srcCode = srcDate ? prevRow.assignments[srcDate] : null;
+          empMap[dateStr] = srcCode ?? null;
+        });
+        next[row.employeeId] = empMap;
+      }
+      setDraft(next);
+      if (skippedLeaves > 0) {
+        notify.warning(`Semaine précédente copiée. ${skippedLeaves} jour(s) ignoré(s) car employé en congé.`);
+      } else {
+        notify.success('Semaine précédente copiée dans le brouillon');
+      }
+    } catch {
+      notify.error('Impossible de charger la semaine precedente');
+    }
+  };
+
+  const hasChanges = Object.values(draft).some(m => Object.keys(m).length > 0);
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft size={18} /></button>
-          <span className="text-sm font-medium">
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => setWeekOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Semaine précédente"><ChevronLeft size={14} /></button>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
             {format(weekStart, 'dd MMM', { locale: fr })} — {format(weekEnd, 'dd MMM yyyy', { locale: fr })}
           </span>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight size={18} /></button>
+          <button onClick={() => setWeekOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Semaine suivante"><ChevronRight size={14} /></button>
           {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} className="text-xs text-primary-600 hover:underline">Aujourd'hui</button>
+            <button onClick={() => setWeekOffset(0)} style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', marginLeft: 4 }}>
+              Cette semaine
+            </button>
           )}
+        </div>
+
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input" style={{ width: 'auto' }}>
+            <option value="all">Toutes catégories</option>
+            {allRoles.map(r => (
+              <option key={r} value={r}>{ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r}</option>
+            ))}
+          </select>
+          <button onClick={applyDefaults} className="odoo-btn-secondary" title="Pré-remplit les cellules vides avec le shift par défaut de chaque employé"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Sparkles size={13} /> Appliquer défaut
+          </button>
+          <button onClick={duplicatePreviousWeek} className="odoo-btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Copy size={13} /> Dupliquer S-1
+          </button>
+          <button onClick={clearWeek} className="odoo-btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Eraser size={13} /> Vider
+          </button>
+          <button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Save size={13} /> {saveMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+      {/* Bannière récap des congés sur la semaine — style Odoo alert */}
+      {weekLeaveSummary.length > 0 && (
+        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>
+            <CalendarOff size={13} />
+            Congés cette semaine ({weekLeaveSummary.length})
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {weekLeaveSummary.map((l, i) => (
+              <span
+                key={i}
+                className={`odoo-tag ${l.status === 'approved' ? 'odoo-tag-purple' : 'odoo-tag-orange'}`}
+                title={`${l.name} • ${l.days.join(', ')} • ${LEAVE_TYPE_LABELS[l.type] ?? l.type}${l.status === 'pending' ? ' (en attente)' : ''}`}
+              >
+                <span style={{ fontWeight: 600 }}>{l.name}</span>
+                <span style={{ opacity: 0.75, marginLeft: 4 }}>
+                  {l.days.length === 1 ? `1 jour` : `${l.days.length} jours`}
+                </span>
+                {l.status === 'pending' && <AlertTriangle size={11} />}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead>
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500 sticky left-0 bg-gray-50 min-w-[160px]">Employe</th>
+              <th style={{ minWidth: 200, position: 'sticky', left: 0, background: 'var(--odoo-bg-alt)', zIndex: 5 }}>Employé</th>
               {days.map(d => (
-                <th key={d.toISOString()} className="text-center px-3 py-3 font-medium text-gray-500 min-w-[100px]">
+                <th key={d.toISOString()} style={{ textAlign: 'center', minWidth: 130 }}>
                   <div>{format(d, 'EEE', { locale: fr })}</div>
-                  <div className="text-xs text-gray-400">{format(d, 'dd/MM')}</div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)', fontWeight: 400 }}>{format(d, 'dd/MM')}</div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
-            {activeEmployees.map((emp: Record<string, any>) => (
-              <tr key={emp.id as string}>
-                <td className="px-4 py-2 sticky left-0 bg-white font-medium">
-                  {emp.first_name as string} {(emp.last_name as string).charAt(0)}.
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--odoo-text-muted)' }}>Aucun employé pour cette catégorie</td></tr>
+            )}
+            {rows.map(row => (
+              <tr key={row.employeeId}>
+                <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 4 }}>
+                  <div style={{ fontWeight: 500 }}>
+                    <Users size={11} style={{ color: 'var(--theme-accent)', display: 'inline', marginRight: 4 }} />
+                    {row.firstName} {row.lastName}
+                  </div>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                    {ROLE_LABELS[row.role as keyof typeof ROLE_LABELS] ?? row.role}
+                    {row.defaultShiftCode && (
+                      <span style={{ marginLeft: 4, color: 'var(--odoo-text-light)' }}>• défaut: {SHIFT_SHORT_LABELS[row.defaultShiftCode]}</span>
+                    )}
+                  </div>
                 </td>
                 {days.map(d => {
                   const dateStr = format(d, 'yyyy-MM-dd');
-                  const sched = getSchedule(emp.id as string, dateStr);
-                  return (
-                    <td key={dateStr} className="px-1 py-1 text-center">
-                      {sched ? (
-                        <div className="bg-primary-50 rounded-lg px-2 py-1 text-xs group relative">
-                          <p className="font-medium text-primary-700">
-                            {(sched.start_time as string)?.slice(0, 5)} - {(sched.end_time as string)?.slice(0, 5)}
-                          </p>
-                          <button onClick={() => deleteMutation.mutate(sched.id as string)}
-                            className="absolute -top-1 -right-1 hidden group-hover:flex w-4 h-4 bg-red-500 text-white rounded-full items-center justify-center text-[10px]">
-                            <X size={10} />
-                          </button>
+                  const leaveInfo = getLeaveInfo(row, dateStr);
+                  const current = getCell(row.employeeId, dateStr);
+                  const dirty = draft[row.employeeId]?.[dateStr] !== undefined;
+                  // Conge approuve = cellule verrouillee (interaction impossible)
+                  if (leaveInfo?.status === 'approved') {
+                    return (
+                      <td key={dateStr} className="px-1 py-1 text-center">
+                        <div
+                          className="bg-purple-100 text-purple-800 border border-purple-300 rounded-lg px-2 py-2 text-xs font-medium cursor-not-allowed"
+                          title={leaveTooltip(leaveInfo)}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            <CalendarOff size={11} />
+                            <span>Congé</span>
+                          </div>
+                          <div className="text-[9px] font-normal opacity-80 mt-0.5 capitalize">
+                            {LEAVE_TYPE_LABELS[leaveInfo.type] ?? leaveInfo.type}
+                          </div>
                         </div>
-                      ) : (
-                        <button onClick={() => { setFormDate(dateStr); setShowForm(true); }}
-                          className="w-full py-2 text-gray-300 hover:text-primary-400 hover:bg-primary-50 rounded-lg transition-colors">
-                          <Plus size={14} className="mx-auto" />
-                        </button>
+                      </td>
+                    );
+                  }
+                  // Conge en attente = avertissement, mais cellule editable (l'admin peut
+                  // assumer que le conge sera refuse). On confirme avant d'affecter.
+                  if (leaveInfo?.status === 'pending') {
+                    return (
+                      <td key={dateStr} className={`px-1 py-1 text-center ${dirty ? 'bg-yellow-50' : ''}`}>
+                        <select
+                          value={current ?? REPOS}
+                          onChange={e => {
+                            const v = e.target.value;
+                            if (v !== REPOS) {
+                              const ok = confirm(`⚠️ ${row.firstName} ${row.lastName} a une demande de ${LEAVE_TYPE_LABELS[leaveInfo.type] ?? 'congé'} EN ATTENTE pour ce jour (${leaveTooltip(leaveInfo)}).\n\nAffecter quand même un shift ?`);
+                              if (!ok) return;
+                            }
+                            setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
+                          }}
+                          className={`w-full text-xs rounded-lg border-2 px-2 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                            current
+                              ? (SHIFT_BADGE_COLORS[current] + ' font-medium border-amber-400')
+                              : 'bg-amber-50 text-amber-800 border-amber-300'
+                          }`}
+                          title={`⚠ ${leaveTooltip(leaveInfo)}`}
+                        >
+                          <option value={REPOS}>Congé (en attente)</option>
+                          {(shifts as Record<string, any>[]).map(s => (
+                            <option key={s.code as string} value={s.code as string}>
+                              {SHIFT_SHORT_LABELS[s.code as ShiftCode] ?? s.label as string}
+                            </option>
+                          ))}
+                        </select>
+                        {current && (
+                          <div className="text-[10px] text-amber-700 mt-0.5">
+                            ⚠ {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={dateStr} className={`px-1 py-1 text-center ${dirty ? 'bg-yellow-50' : ''}`}>
+                      <select
+                        value={current ?? REPOS}
+                        onChange={e => {
+                          const v = e.target.value;
+                          setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
+                        }}
+                        className={`w-full text-xs rounded-lg border px-2 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                          current ? (SHIFT_BADGE_COLORS[current] + ' font-medium') : 'bg-white text-gray-400 border-gray-200'
+                        }`}
+                      >
+                        <option value={REPOS}>Repos</option>
+                        {(shifts as Record<string, any>[]).map(s => (
+                          <option key={s.code as string} value={s.code as string}>
+                            {SHIFT_SHORT_LABELS[s.code as ShiftCode] ?? s.label as string}
+                          </option>
+                        ))}
+                      </select>
+                      {current && (
+                        <div className="text-[10px] text-gray-500 mt-0.5">
+                          {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
+                        </div>
                       )}
                     </td>
                   );
@@ -1503,34 +1938,12 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
         </table>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold mb-4">Ajouter un horaire — {format(new Date(formDate + 'T12:00:00'), 'EEEE dd MMM', { locale: fr })}</h2>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              createMutation.mutate({ ...Object.fromEntries(fd), date: formDate });
-            }} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Employé *</label>
-                <select name="employeeId" className="input" required>
-                  <option value="">Choisir...</option>
-                  {activeEmployees.map(e => (
-                    <option key={e.id as string} value={e.id as string}>{e.first_name as string} {e.last_name as string}</option>
-                  ))}
-                </select></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Debut *</label><input name="startTime" type="time" className="input" required defaultValue="08:00" /></div>
-                <div><label className="block text-sm font-medium mb-1">Fin *</label><input name="endTime" type="time" className="input" required defaultValue="17:00" /></div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending} className="btn-primary">Ajouter</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#fff8e8', border: '1px solid #ffeeba', marginRight: 4, verticalAlign: 'middle' }} /> cellule modifiée (non sauvegardée)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--theme-accent-light)', border: '1px solid var(--theme-accent)', marginRight: 4, verticalAlign: 'middle' }} /> congé approuvé — affectation impossible</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#ffe5d0', border: '1px solid #ffb381', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
+        <span style={{ color: 'var(--odoo-text-light)' }}>Sauvegarder pré-remplit aussi le pointage attendu.</span>
+      </div>
     </>
   );
 }

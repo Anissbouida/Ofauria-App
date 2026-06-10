@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { employeeController, scheduleController, attendanceController, leaveController, payrollController } from '../controllers/employee.controller.js';
+import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -19,10 +19,16 @@ export default router;
 
 // Schedules
 export const schedulesRouter = Router();
+schedulesRouter.get('/week', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.week);
+schedulesRouter.post('/week', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.bulkWeek);
 schedulesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.list);
 schedulesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.create);
 schedulesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.update);
 schedulesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.remove);
+
+// Shifts (catalogue lecture seule)
+export const shiftsRouter = Router();
+shiftsRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), shiftController.list);
 
 // Attendance
 export const attendanceRouter = Router();

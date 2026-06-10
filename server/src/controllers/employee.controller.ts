@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
+import { shiftRepository } from '../repositories/shift.repository.js';
 
 export const employeeController = {
   async list(req: AuthRequest, res: Response) {
@@ -42,6 +43,12 @@ export const employeeController = {
   },
 };
 
+function addDaysISO(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 export const scheduleController = {
   async list(req: AuthRequest, res: Response) {
     const { startDate, endDate, employeeId } = req.query as Record<string, string>;
@@ -63,6 +70,52 @@ export const scheduleController = {
   async remove(req: AuthRequest, res: Response) {
     await scheduleRepository.delete(req.params.id);
     res.json({ success: true, data: null });
+  },
+
+  async week(req: AuthRequest, res: Response) {
+    const weekStart = String(req.query.weekStart || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+      res.status(400).json({ success: false, error: { message: 'weekStart YYYY-MM-DD requis' } });
+      return;
+    }
+    const weekEnd = addDaysISO(weekStart, 6);
+    const data = await scheduleRepository.getWeek(weekStart, weekEnd, req.user!.storeId);
+    res.json({ success: true, data });
+  },
+
+  async bulkWeek(req: AuthRequest, res: Response) {
+    const { weekStart, assignments } = req.body as {
+      weekStart: string;
+      assignments: Array<{ employeeId: string; date: string; shiftCode: string | null }>;
+    };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart || '') || !Array.isArray(assignments)) {
+      res.status(400).json({ success: false, error: { message: 'Payload invalide' } });
+      return;
+    }
+    try {
+      const result = await scheduleRepository.bulkUpsertWeek(assignments);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'LEAVE_CONFLICT') {
+        res.status(409).json({
+          success: false,
+          error: {
+            message: (err as Error).message,
+            conflicts: (err as Error & { conflicts?: string[] }).conflicts,
+          },
+        });
+        return;
+      }
+      throw err;
+    }
+  },
+};
+
+export const shiftController = {
+  async list(_req: AuthRequest, res: Response) {
+    const shifts = await shiftRepository.list();
+    res.json({ success: true, data: shifts });
   },
 };
 
@@ -97,9 +150,10 @@ export const attendanceController = {
 
 export const leaveController = {
   async list(req: AuthRequest, res: Response) {
-    const { employeeId, status, year } = req.query as Record<string, string>;
+    const { employeeId, status, year, activeOn } = req.query as Record<string, string>;
     const leaves = await leaveRepository.findAll({
       employeeId, status, year: year ? parseInt(year) : undefined,
+      activeOn: activeOn && /^\d{4}-\d{2}-\d{2}$/.test(activeOn) ? activeOn : undefined,
     });
     res.json({ success: true, data: leaves });
   },
