@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController } from '../controllers/employee.controller.js';
+import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -53,3 +53,12 @@ payrollRouter.get('/', authenticate, authorize(ROLES.ADMIN), payrollController.l
 payrollRouter.post('/generate', authenticate, authorize(ROLES.ADMIN), payrollController.generate);
 payrollRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), payrollController.update);
 payrollRouter.post('/:id/pay', authenticate, authorize(ROLES.ADMIN), payrollController.markPaid);
+
+// Weekly payroll (lundi = jour de paie pour les employes hebdo)
+export const weeklyPayrollRouter = Router();
+weeklyPayrollRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.list);
+weeklyPayrollRouter.post('/generate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.generate);
+weeklyPayrollRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.update);
+weeklyPayrollRouter.post('/:id/pay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.markPaid);
+weeklyPayrollRouter.post('/:id/unpay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.unmarkPaid);
+weeklyPayrollRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), weeklyPayrollController.remove);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi } from '../../api/employees.api';
+import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -496,6 +496,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
               const fd = new FormData(e.currentTarget);
               const data: Record<string, any> = Object.fromEntries(fd);
               if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
+              if (data.weeklySalary) data.weeklySalary = parseFloat(data.weeklySalary as string);
               if (data.seniorityYears) data.seniorityYears = parseInt(data.seniorityYears as string);
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
               if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
@@ -532,6 +533,20 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   </select></div>
                 <div><label className="block text-sm font-medium mb-1">Salaire mensuel (DH)</label>
                   <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Fréquence de paie</label>
+                  <select name="payFrequency" defaultValue={(editing?.pay_frequency as string) || 'monthly'} className="input">
+                    <option value="monthly">Mensuelle (fin de mois)</option>
+                    <option value="weekly">Hebdomadaire (lundi pour S-1)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Salaire hebdomadaire (DH)</label>
+                  <input name="weeklySalary" type="number" step="0.01" defaultValue={editing?.weekly_salary as string} className="input" placeholder="Requis si fréquence = hebdo" />
+                  <p className="text-xs text-gray-500 mt-1">Base divisée par 6 jours pour le calcul jour.</p>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Shift par défaut</label>
@@ -1088,6 +1103,26 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
 
 /* ═══════════════════════ PAYROLL TAB ═══════════════════════ */
 function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+  const [payView, setPayView] = useState<'monthly' | 'weekly'>('monthly');
+
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'flex-start' }}>
+        <div className="odoo-view-switcher">
+          <button onClick={() => setPayView('monthly')} className={payView === 'monthly' ? 'active' : ''}>
+            Paie mensuelle
+          </button>
+          <button onClick={() => setPayView('weekly')} className={payView === 'weekly' ? 'active' : ''}>
+            Paie hebdomadaire
+          </button>
+        </div>
+      </div>
+      {payView === 'monthly' ? <MonthlyPayrollView queryClient={queryClient} /> : <WeeklyPayrollView queryClient={queryClient} />}
+    </>
+  );
+}
+
+function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -1515,6 +1550,257 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
           </div>
         );
       })()}
+    </>
+  );
+}
+
+/* ═══════════════════════ WEEKLY PAYROLL VIEW ═══════════════════════ */
+type WeeklyPayrollRow = {
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  weekly_salary: string | null;
+  payroll_id: string | null;
+  base_amount: string | null;
+  worked_days: number | null;
+  absent_days: number | null;
+  overtime_hours: string | null;
+  overtime_amount: string | null;
+  net_amount: string | null;
+  paid: boolean | null;
+  paid_at: string | null;
+  payment_method: string | null;
+  notes: string | null;
+};
+
+type WeeklyPayrollData = { weekStart: string; weekEnd: string; rows: WeeklyPayrollRow[] };
+
+function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+  // Par defaut : semaine PRECEDENTE (Lun S-1 -> Dim S-1), conformement
+  // au cas d'usage "lundi = jour de paie pour la semaine ecoulee".
+  const [weekOffset, setWeekOffset] = useState(-1);
+  const weekStartDate = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
+  const weekEndDate = endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
+  const weekStartStr = format(weekStartDate, 'yyyy-MM-dd');
+
+  const { data: weekData, isLoading } = useQuery<WeeklyPayrollData>({
+    queryKey: ['weekly-payroll', weekStartStr],
+    queryFn: () => weeklyPayrollApi.list(weekStartStr) as Promise<WeeklyPayrollData>,
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => weeklyPayrollApi.generate(weekStartStr),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
+      notify.success('Paies hebdomadaires générées depuis le pointage');
+    },
+    onError: () => notify.error('Erreur lors de la génération'),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: ({ id, method }: { id: string; method: string }) => weeklyPayrollApi.markPaid(id, method),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
+      notify.success('Marqué comme payé + écriture comptable créée');
+    },
+    onError: () => notify.error('Erreur'),
+  });
+
+  const unpayMutation = useMutation({
+    mutationFn: (id: string) => weeklyPayrollApi.unmarkPaid(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
+      notify.success('Paiement annulé (l\'écriture comptable reste, à supprimer manuellement)');
+    },
+    onError: () => notify.error('Erreur'),
+  });
+
+  const rows = weekData?.rows ?? [];
+  const generated = rows.filter(r => r.payroll_id);
+  const ungenerated = rows.filter(r => !r.payroll_id);
+  const paidCount = generated.filter(r => r.paid).length;
+  const totalDue = generated.filter(r => !r.paid).reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0);
+  const totalPaid = generated.filter(r => r.paid).reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0);
+
+  const isCurrentWeek = weekOffset === 0;
+
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => setWeekOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Semaine précédente"><ChevronLeft size={14} /></button>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+            Semaine du {format(weekStartDate, 'dd MMM', { locale: fr })} au {format(weekEndDate, 'dd MMM yyyy', { locale: fr })}
+          </span>
+          <button onClick={() => setWeekOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Semaine suivante"><ChevronRight size={14} /></button>
+          <button onClick={() => setWeekOffset(-1)} style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', marginLeft: 4 }}>
+            Semaine précédente
+          </button>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}
+          </button>
+        </div>
+      </div>
+
+      {isCurrentWeek && (
+        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem' }}>
+          <div style={{ fontSize: '0.75rem' }}>
+            <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
+            Vous regardez la semaine en cours. La paie est habituellement faite le lundi pour la semaine précédente.
+          </div>
+        </div>
+      )}
+
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Employés hebdo</div>
+          <div className="odoo-stat-card-value">{rows.length}</div>
+          <div className="odoo-stat-card-sub">à payer cette semaine</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Payés</div>
+          <div className="odoo-stat-card-value" style={{ color: paidCount > 0 ? '#28a745' : undefined }}>{paidCount}</div>
+          <div className="odoo-stat-card-sub">{totalPaid.toFixed(2)} DH</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Reste dû</div>
+          <div className="odoo-stat-card-value" style={{ color: totalDue > 0 ? '#dc3545' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Non générés</div>
+          <div className="odoo-stat-card-value" style={{ color: ungenerated.length > 0 ? '#b08504' : undefined }}>{ungenerated.length}</div>
+          <div className="odoo-stat-card-sub">en attente du calcul</div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <Banknote size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun employé en fréquence hebdomadaire.</p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Passez un employé en « Fréquence de paie : Hebdomadaire » dans l'onglet Employés pour le voir ici.</p>
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>Employé</th>
+                <th style={{ textAlign: 'right' }}>Salaire hebdo</th>
+                <th style={{ textAlign: 'center' }}>Jours trav.</th>
+                <th style={{ textAlign: 'center' }}>Absents</th>
+                <th style={{ textAlign: 'right' }}>Base</th>
+                <th style={{ textAlign: 'right' }}>H. Sup</th>
+                <th style={{ textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net</th>
+                <th style={{ textAlign: 'center', width: 110 }}>Paiement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const generated = !!r.payroll_id;
+                const paid = !!r.paid;
+                return (
+                  <tr key={r.employee_id} className={paid ? '' : generated ? 'row-warning' : ''}>
+                    <td>
+                      <span className={`odoo-status-dot ${paid ? 'ok' : generated ? 'warning' : 'neutral'}`} />
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                        <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                        {r.first_name} {r.last_name}
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[r.role as keyof typeof ROLE_LABELS] ?? r.role}</span>
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
+                      {r.weekly_salary ? `${parseFloat(r.weekly_salary).toFixed(2)} DH` : <span style={{ color: '#dc3545' }}>Non défini</span>}
+                    </td>
+                    {generated ? (
+                      <>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.worked_days} / 6</td>
+                        <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
+                        <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
+                        <td style={{ textAlign: 'right', color: parseFloat(r.overtime_amount || '0') > 0 ? '#b85d1a' : 'var(--odoo-text-light)' }}>
+                          {parseFloat(r.overtime_amount || '0') > 0 ? `+${parseFloat(r.overtime_amount || '0').toFixed(2)}` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                          {parseFloat(r.net_amount || '0').toFixed(2)} DH
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {paid ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <span className="odoo-tag odoo-tag-green">
+                                <Check size={10} style={{ marginRight: 3 }} /> Payé
+                              </span>
+                              <button onClick={() => {
+                                if (confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nL'écriture comptable créée reste en place (à supprimer manuellement dans l'onglet Paiements si besoin).`)) {
+                                  unpayMutation.mutate(r.payroll_id as string);
+                                }
+                              }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
+                                <RotateCcw size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'inline-flex', gap: 4 }}>
+                              <button onClick={() => payMutation.mutate({ id: r.payroll_id as string, method: 'cash' })} className="odoo-btn-primary"
+                                disabled={payMutation.isPending}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
+                                <Banknote size={11} /> Espèces
+                              </button>
+                              <button onClick={() => payMutation.mutate({ id: r.payroll_id as string, method: 'bank' })} className="odoo-btn-secondary"
+                                disabled={payMutation.isPending}
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
+                                Virement
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
+                          — Cliquez « Générer depuis pointage » pour calculer —
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className="odoo-tag odoo-tag-grey">Non généré</span>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+            {generated.length > 0 && (
+              <tfoot style={{ background: 'var(--odoo-bg-alt)', borderTop: '2px solid var(--odoo-border)' }}>
+                <tr>
+                  <td colSpan={5} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total semaine</td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700 }}>
+                    {generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }}>
+                    {generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                    {generated.reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
+      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+        Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
+        Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
+      </div>
     </>
   );
 }

@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
 import { shiftRepository } from '../repositories/shift.repository.js';
+import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
 
 export const employeeController = {
   async list(req: AuthRequest, res: Response) {
@@ -116,6 +117,69 @@ export const shiftController = {
   async list(_req: AuthRequest, res: Response) {
     const shifts = await shiftRepository.list();
     res.json({ success: true, data: shifts });
+  },
+};
+
+/**
+ * Renvoie la semaine de reference Lundi -> Dimanche pour une date donnee
+ * (YYYY-MM-DD). Si la date tombe un dimanche, on prend la semaine se
+ * terminant ce dimanche.
+ */
+function weekBounds(iso: string): { start: string; end: string } {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  const wd = d.getUTCDay(); // 0=dim, 1=lun ... 6=sam
+  const dayFromMon = wd === 0 ? 6 : wd - 1;
+  const start = new Date(d.getTime() - dayFromMon * 86400_000);
+  const end = new Date(start.getTime() + 6 * 86400_000);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+export const weeklyPayrollController = {
+  async list(req: AuthRequest, res: Response) {
+    const ref = String(req.query.weekStart || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ref)) {
+      res.status(400).json({ success: false, error: { message: 'weekStart YYYY-MM-DD requis' } });
+      return;
+    }
+    const { start, end } = weekBounds(ref);
+    const rows = await weeklyPayrollRepository.list(start, end, req.user!.storeId);
+    res.json({ success: true, data: { weekStart: start, weekEnd: end, rows } });
+  },
+
+  async generate(req: AuthRequest, res: Response) {
+    const ref = String(req.body.weekStart || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ref)) {
+      res.status(400).json({ success: false, error: { message: 'weekStart YYYY-MM-DD requis' } });
+      return;
+    }
+    const { start, end } = weekBounds(ref);
+    const generated = await weeklyPayrollRepository.generate(start, end, req.user!.storeId);
+    res.json({ success: true, data: { weekStart: start, weekEnd: end, generated } });
+  },
+
+  async markPaid(req: AuthRequest, res: Response) {
+    const { paymentMethod } = req.body;
+    const row = await weeklyPayrollRepository.markPaid(
+      req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId
+    );
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    res.json({ success: true, data: row });
+  },
+
+  async unmarkPaid(req: AuthRequest, res: Response) {
+    const row = await weeklyPayrollRepository.unmarkPaid(req.params.id);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    res.json({ success: true, data: row });
+  },
+
+  async update(req: AuthRequest, res: Response) {
+    const row = await weeklyPayrollRepository.update(req.params.id, req.body);
+    res.json({ success: true, data: row });
+  },
+
+  async remove(req: AuthRequest, res: Response) {
+    await weeklyPayrollRepository.delete(req.params.id);
+    res.json({ success: true, data: null });
   },
 };
 

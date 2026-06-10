@@ -57,3 +57,19 @@ export const payrollApi = {
   update: (id: string, data: Record<string, any>) => api.put(`/payroll/${id}`, data).then(r => r.data.data),
   markPaid: (id: string, paymentMethod: string) => api.post(`/payroll/${id}/pay`, { paymentMethod }).then(r => r.data.data),
 };
+
+export const weeklyPayrollApi = {
+  /** Liste tous les employes weekly + leur ligne paie de la semaine (ou null si pas generee). */
+  list: (weekStart: string) =>
+    api.get('/weekly-payroll', { params: { weekStart } }).then(r => r.data.data),
+  /** Calcule et upsert les lignes paie hebdo pour la semaine. */
+  generate: (weekStart: string) =>
+    api.post('/weekly-payroll/generate', { weekStart }).then(r => r.data.data),
+  /** Marque paye + cree ecriture comptable. */
+  markPaid: (id: string, paymentMethod: string) =>
+    api.post(`/weekly-payroll/${id}/pay`, { paymentMethod }).then(r => r.data.data),
+  /** Annule le marquage paye (ne supprime PAS l'ecriture comptable). */
+  unmarkPaid: (id: string) =>
+    api.post(`/weekly-payroll/${id}/unpay`).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/weekly-payroll/${id}`),
+};

@@ -22,18 +22,21 @@ export const employeeRepository = {
     cnssNumber?: string; contractType?: string; contractStart?: string; contractEnd?: string;
     emergencyContactName?: string; emergencyContactPhone?: string; notes?: string;
     storeId?: string; defaultShiftCode?: string;
+    payFrequency?: string; weeklySalary?: number;
   }) {
     const result = await db.query(
       `INSERT INTO employees (user_id, first_name, last_name, role, phone, monthly_salary, hire_date,
         cin, address, city, birth_date, cnss_number, contract_type, contract_start, contract_end,
-        emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+        emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code,
+        pay_frequency, weekly_salary)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
        data.phone || null, data.monthlySalary || null, data.hireDate,
        data.cin || null, data.address || null, data.city || null, data.birthDate || null,
        data.cnssNumber || null, data.contractType || 'cdi', data.contractStart || null, data.contractEnd || null,
        data.emergencyContactName || null, data.emergencyContactPhone || null, data.notes || null,
-       data.storeId || null, data.defaultShiftCode || null]
+       data.storeId || null, data.defaultShiftCode || null,
+       data.payFrequency || 'monthly', data.weeklySalary || null]
     );
     return result.rows[0];
   },
@@ -48,6 +51,7 @@ export const employeeRepository = {
       emergencyContactName: 'emergency_contact_name', emergencyContactPhone: 'emergency_contact_phone',
       notes: 'notes', seniorityYears: 'seniority_years', nbDependents: 'nb_dependents', cimrRate: 'cimr_rate',
       defaultShiftCode: 'default_shift_code',
+      payFrequency: 'pay_frequency', weeklySalary: 'weekly_salary',
     };
     // Date fields: convert empty strings to null to avoid DB type errors
     const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate'];
@@ -56,6 +60,7 @@ export const employeeRepository = {
     }
     // Numeric fields: convert empty strings to null
     if (data.monthlySalary === '' || data.monthlySalary === 0) data.monthlySalary = null;
+    if (data.weeklySalary === '' || data.weeklySalary === 0) data.weeklySalary = null;
 
     const fields: string[] = [];
     const values: unknown[] = [];
