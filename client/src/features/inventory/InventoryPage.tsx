@@ -10,9 +10,10 @@ import {
   AlertTriangle, Package, Search, TrendingUp,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
-  Plus, List, LayoutGrid, Save, ShoppingCart, Upload, Download,
+  Plus, List, LayoutGrid, Save, ShoppingCart, Upload, Download, BarChart3,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
+import ConsommationTab from './ConsommationTab';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,7 +22,7 @@ import { format } from 'date-fns';
 type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock';
 type SortDir = 'asc' | 'desc';
 type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
-type EconomatTab = 'stock' | 'transfers' | 'ruptures';
+type EconomatTab = 'stock' | 'transfers' | 'ruptures' | 'consumption';
 type ViewMode = 'list' | 'kanban';
 
 const INGREDIENT_CATEGORIES = [
@@ -122,7 +123,7 @@ export default function InventoryPage() {
   // Onglets : "Stock economat" (defaut) + "Transferts demandes" (BSI a transferer)
   // + "Ingredients a commander" (BSI en rupture totale, cross-plans).
   // Persiste l'onglet en URL pour permettre les deep-links (badge sidebar, lien BSI panel).
-  const validTabs: EconomatTab[] = ['stock', 'transfers', 'ruptures'];
+  const validTabs: EconomatTab[] = ['stock', 'transfers', 'ruptures', 'consumption'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as EconomatTab | null;
   const [econoTab, setEconoTab] = useState<EconomatTab>(
@@ -360,6 +361,13 @@ export default function InventoryPage() {
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => changeEconoTab('consumption')}
+            className={`odoo-tab ${econoTab === 'consumption' ? 'active' : ''}`}>
+            <BarChart3 size={13} />
+            <span>Consommation</span>
+          </button>
         </div>
       )}
 
@@ -370,6 +378,10 @@ export default function InventoryPage() {
       ) : econoTab === 'ruptures' ? (
         <div style={{ padding: '1rem' }}>
           <RuptureRequestsList />
+        </div>
+      ) : econoTab === 'consumption' ? (
+        <div style={{ padding: '1rem' }}>
+          <ConsommationTab />
         </div>
       ) : (
       <>
