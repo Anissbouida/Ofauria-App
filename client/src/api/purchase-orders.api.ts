@@ -17,6 +17,17 @@ export const purchaseOrdersApi = {
     api.post(`/purchase-orders/${id}/cancel`).then(r => r.data.data),
   updatePrices: (id: string, data: { items: { itemId: string; unitPrice: number }[] }) =>
     api.post(`/purchase-orders/${id}/update-prices`, data).then(r => r.data.data),
+  /** Edition en-tete (admin/gerant) : fournisseur, date prevue, notes. */
+  updateHeader: (id: string, data: { supplierId?: string; expectedDeliveryDate?: string | null; notes?: string | null }) =>
+    api.put(`/purchase-orders/${id}`, data).then(r => r.data.data),
+  /** Remplace toutes les lignes (admin/gerant). Bulk save : voir backend replaceItems. */
+  replaceItems: (id: string, items: Array<{
+    id?: string;
+    ingredientId: string;
+    quantityOrdered: number;
+    quantityDelivered?: number;
+    unitPrice?: number | null;
+  }>) => api.put(`/purchase-orders/${id}/items`, { items }).then(r => r.data.data),
   downloadPdf: (id: string) =>
     api.get(`/purchase-orders/${id}/download-pdf`, { responseType: 'blob' }).then(r => r),
   remove: (id: string) =>

@@ -230,6 +230,41 @@ export const invoiceController = {
     const rows = await invoiceRepository.findPaymentAlerts({ storeId: req.user!.storeId, alertDays });
     res.json({ success: true, data: rows });
   },
+  /**
+   * PUT /invoices/:id/items — Remplace les lignes d'une facture (admin/gerant).
+   * Recalcule amount + total_amount automatiquement (cf. invoiceRepository.replaceItems).
+   */
+  async replaceItems(req: AuthRequest, res: Response) {
+    const invoice = await invoiceRepository.findById(req.params.id);
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const body = req.body as { items?: unknown };
+    if (!Array.isArray(body.items)) {
+      res.status(400).json({ success: false, error: { message: 'Champ "items" requis (tableau)' } });
+      return;
+    }
+    const num = (v: unknown): number => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const items = (body.items as Record<string, unknown>[]).map((raw) => ({
+      productId: (raw.productId as string | null | undefined) || null,
+      ingredientId: (raw.ingredientId as string | null | undefined) || null,
+      description: (raw.description as string | null | undefined) || null,
+      quantity: num(raw.quantity),
+      unitPrice: num(raw.unitPrice),
+      subtotal: raw.subtotal !== undefined ? num(raw.subtotal) : num(raw.quantity) * num(raw.unitPrice),
+    }));
+    try {
+      const updated = await invoiceRepository.replaceItems(req.params.id, items);
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour des lignes';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
   async updatePaymentTerms(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }

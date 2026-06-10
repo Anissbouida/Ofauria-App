@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi, expenseCategoriesApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
+import { ingredientsApi } from '../../api/inventory.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -303,6 +304,8 @@ function ReceivedInvoicesSection() {
   const [showForm, setShowForm] = useState(false);
   // editInvoice = facture en cours de modification (null = creation, sinon edit)
   const [editInvoice, setEditInvoice] = useState<Record<string, any> | null>(null);
+  // editLinesInvoiceId = ouvre le modal d'edition des lignes (qty x prix) d'une facture
+  const [editLinesInvoiceId, setEditLinesInvoiceId] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [statusFilter, setStatusFilter] = useState('');
@@ -782,8 +785,14 @@ function ReceivedInvoicesSection() {
                         {/* Modifier : disponible meme apres paiement (ajustement comptable) */}
                         <button
                           onClick={() => setEditInvoice(inv)}
-                          className="odoo-pager-btn" title="Modifier la facture">
+                          className="odoo-pager-btn" title="Modifier la facture (en-tete)">
                           <Pencil size={13} />
+                        </button>
+                        {/* Editer lignes : qty x prix par ingredient, recalcule le total */}
+                        <button
+                          onClick={() => setEditLinesInvoiceId(inv.id as string)}
+                          className="odoo-pager-btn" title="Editer les lignes (corrige qty/prix)">
+                          <ClipboardList size={13} />
                         </button>
                         {inv.status !== 'cancelled' && inv.status !== 'paid' && (
                           <button
@@ -828,6 +837,21 @@ function ReceivedInvoicesSection() {
             }
           }}
           isPending={createMutation.isPending || updateMutation.isPending}
+        />
+      )}
+
+      {/* Edition lignes facture (qty x prix). Modal dedie : recalcul auto du total */}
+      {editLinesInvoiceId && (
+        <InvoiceLinesEditorModal
+          invoiceId={editLinesInvoiceId}
+          onClose={() => setEditLinesInvoiceId(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+            queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+            notify.success('Lignes de facture mises a jour');
+            setEditLinesInvoiceId(null);
+          }}
         />
       )}
 
@@ -1166,6 +1190,255 @@ function ReceivedInvoiceFormModal({
             </button>
           </div>
         </form>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/**
+ * Modal d'edition des lignes d'une facture (admin/gerant).
+ *
+ * Cas d'usage principal : corriger les qty/prix d'une facture auto-generee
+ * depuis un bon de reception ou rattraper une saisie erronee. Le total HT
+ * de la facture est recalcule automatiquement (cf. backend replaceItems).
+ *
+ * Approche bulk : on charge toutes les lignes, l'admin edite/ajoute/supprime,
+ * on envoie le tout en un seul PUT /:id/items. Pas de save par ligne pour
+ * eviter les half-states et reduire les surprises de recalcul.
+ */
+type InvoiceLine = {
+  // ID DB (present si ligne existante), sinon undefined pour les nouvelles
+  id?: string;
+  ingredientId: string | null;
+  description: string;
+  quantity: string;  // en string pour permettre input vide
+  unitPrice: string;
+};
+
+function InvoiceLinesEditorModal({
+  invoiceId, onClose, onSuccess,
+}: {
+  invoiceId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { data: invoice, isLoading } = useQuery({
+    queryKey: ['invoice', invoiceId],
+    queryFn: () => invoicesApi.getById(invoiceId),
+  });
+  const { data: ingredients = [] } = useQuery({
+    queryKey: ['ingredients'],
+    queryFn: ingredientsApi.list,
+  });
+
+  const [lines, setLines] = useState<InvoiceLine[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  // Initialise les lignes depuis la facture une seule fois (sinon on ecrase l'edition)
+  useEffect(() => {
+    if (initialized || !invoice) return;
+    const items = (invoice.items as Record<string, any>[]) || [];
+    setLines(items.map(it => ({
+      id: it.id as string,
+      ingredientId: (it.ingredient_id as string) || null,
+      description: (it.description as string) || (it.ingredient_name as string) || '',
+      quantity: String(it.quantity ?? ''),
+      unitPrice: String(it.unit_price ?? ''),
+    })));
+    setInitialized(true);
+  }, [invoice, initialized]);
+
+  const mutation = useMutation({
+    mutationFn: (items: Array<{ ingredientId: string | null; description: string | null; quantity: number; unitPrice: number; subtotal: number }>) =>
+      invoicesApi.replaceItems(invoiceId, items),
+    onSuccess,
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la mise a jour des lignes');
+    },
+  });
+
+  // Recalcul du total au fur et a mesure des edits
+  const newTotal = useMemo(() => {
+    return lines.reduce((sum, l) => {
+      const q = parseFloat(l.quantity) || 0;
+      const p = parseFloat(l.unitPrice) || 0;
+      return sum + q * p;
+    }, 0);
+  }, [lines]);
+
+  const taxAmount = parseFloat((invoice?.tax_amount as string) || '0');
+  const paidAmount = parseFloat((invoice?.paid_amount as string) || '0');
+  const newTtc = newTotal + taxAmount;
+  const ttcBelowPaid = paidAmount > 0 && newTtc < paidAmount;
+
+  const updateLine = (idx: number, patch: Partial<InvoiceLine>) => {
+    setLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
+  };
+  const removeLine = (idx: number) => {
+    setLines(prev => prev.filter((_, i) => i !== idx));
+  };
+  const addLine = () => {
+    setLines(prev => [...prev, { ingredientId: null, description: '', quantity: '1', unitPrice: '0' }]);
+  };
+
+  const handleSave = () => {
+    const payload = lines
+      .filter(l => l.description.trim() || l.ingredientId)
+      .map(l => {
+        const q = parseFloat(l.quantity) || 0;
+        const p = parseFloat(l.unitPrice) || 0;
+        return {
+          ingredientId: l.ingredientId,
+          description: l.description.trim() || null,
+          quantity: q,
+          unitPrice: p,
+          subtotal: q * p,
+        };
+      });
+    if (payload.length === 0) {
+      notify.error('Au moins une ligne avec description ou ingredient est requise');
+      return;
+    }
+    mutation.mutate(payload);
+  };
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 900, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Lignes facture</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
+              {(invoice?.invoice_number as string) || '...'}
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, color: 'var(--theme-text-muted)' }}>
+              <Loader2 size={20} className="animate-spin" style={{ marginRight: 8 }} /> Chargement...
+            </div>
+          ) : (
+            <>
+              <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                Edite, ajoute ou supprime des lignes. Le <strong>total HT</strong> de la facture sera recalcule comme somme des sous-totaux. La TVA ({n(taxAmount)} DH) reste inchangee.
+              </div>
+
+              <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--theme-bg-separator)', textAlign: 'left' }}>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', width: '30%' }}>Ingredient</th>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>Description</th>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 90 }}>Qte</th>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 110 }}>Prix U.</th>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 110 }}>Sous-total</th>
+                    <th style={{ padding: '8px 6px', width: 36 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line, idx) => {
+                    const q = parseFloat(line.quantity) || 0;
+                    const p = parseFloat(line.unitPrice) || 0;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
+                        <td style={{ padding: '4px 6px' }}>
+                          <select value={line.ingredientId || ''}
+                            onChange={e => {
+                              const id = e.target.value || null;
+                              const ing = (ingredients as Record<string, any>[]).find(i => i.id === id);
+                              updateLine(idx, {
+                                ingredientId: id,
+                                description: ing ? (ing.name as string) : line.description,
+                              });
+                            }}
+                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', background: 'white' }}>
+                            <option value="">— Libre —</option>
+                            {(ingredients as Record<string, any>[]).map(i => (
+                              <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '4px 6px' }}>
+                          <input type="text" value={line.description}
+                            onChange={e => updateLine(idx, { description: e.target.value })}
+                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem' }} />
+                        </td>
+                        <td style={{ padding: '4px 6px' }}>
+                          <input type="number" step="0.01" min={0} value={line.quantity}
+                            onChange={e => updateLine(idx, { quantity: e.target.value })}
+                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', textAlign: 'right' }} />
+                        </td>
+                        <td style={{ padding: '4px 6px' }}>
+                          <input type="number" step="0.01" min={0} value={line.unitPrice}
+                            onChange={e => updateLine(idx, { unitPrice: e.target.value })}
+                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', textAlign: 'right' }} />
+                        </td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>
+                          {n(q * p)}
+                        </td>
+                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                          <button type="button" onClick={() => removeLine(idx)}
+                            className="odoo-pager-btn" title="Supprimer cette ligne" style={{ color: '#b71c1c' }}>
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <button type="button" onClick={addLine}
+                style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, background: 'transparent', fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
+                <Plus size={13} /> Ajouter une ligne
+              </button>
+
+              <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--theme-bg-page)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>Nouveau total HT</span>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(newTotal)} DH</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>TVA (inchangee)</span>
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 6, marginTop: 2 }}>
+                  <strong>Nouveau total TTC</strong>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>{n(newTtc)} DH</strong>
+                </div>
+                {paidAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    <span>Deja paye</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(paidAmount)} DH</span>
+                  </div>
+                )}
+                {ttcBelowPaid && (
+                  <div style={{ padding: '6px 10px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4, marginTop: 4 }}>
+                    ⚠ Le nouveau total TTC est inferieur au deja paye. Rembourse ou supprime des paiements avant d'enregistrer.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+          <button type="button" onClick={handleSave} disabled={isLoading || mutation.isPending || ttcBelowPaid || lines.length === 0}
+            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {mutation.isPending && <Loader2 size={12} className="animate-spin" />}
+            <Check size={13} /> Enregistrer les lignes
+          </button>
+        </div>
       </div>
     </ModalBackdrop>
   );

@@ -16,6 +16,9 @@ router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.ADMI
 router.post('/:id/not-delivered', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.markNotDelivered);
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.cancel);
 router.post('/:id/update-prices', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.updatePrices);
+// Edition complete admin/gerant : en-tete + lignes (qty, prix, add/remove).
+router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.updateHeader);
+router.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.replaceItems);
 router.get('/:id/download-pdf', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.downloadPdf);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), purchaseOrderController.remove);
 

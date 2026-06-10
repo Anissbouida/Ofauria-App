@@ -39,6 +39,15 @@ export const invoicesApi = {
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
   /** Modification complete (admin + gerant) — sert aussi pour ajuster une facture. */
   update: (id: string, data: Record<string, any>) => api.put(`/invoices/${id}`, data).then(r => r.data.data),
+  /** Remplace les lignes (admin + gerant). Recalcule amount + total_amount automatiquement. */
+  replaceItems: (id: string, items: Array<{
+    productId?: string | null;
+    ingredientId?: string | null;
+    description?: string | null;
+    quantity: number;
+    unitPrice: number;
+    subtotal?: number;
+  }>) => api.put(`/invoices/${id}/items`, { items }).then(r => r.data.data),
   /** Suppression physique (admin + gerant). force=true cascade les paiements lies. */
   remove: (id: string, opts: { force?: boolean } = {}) =>
     api.delete(`/invoices/${id}`, { params: opts.force ? { force: 'true' } : undefined }).then(r => r.data.data),

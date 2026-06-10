@@ -123,6 +123,74 @@ export const purchaseOrderController = {
     res.json({ success: true, data: result });
   },
 
+  /**
+   * PUT /purchase-orders/:id — Modifie l'en-tete (notes, date prevue, fournisseur).
+   * Admin/gerant. Pas de status ici.
+   */
+  async updateHeader(req: AuthRequest, res: Response) {
+    const po = await purchaseOrderRepository.findById(req.params.id);
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const body = req.body as Record<string, unknown>;
+    try {
+      const updated = await purchaseOrderRepository.updateHeader(req.params.id, {
+        supplierId: body.supplierId as string | undefined,
+        expectedDeliveryDate: body.expectedDeliveryDate as string | null | undefined,
+        notes: body.notes as string | null | undefined,
+      });
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
+
+  /**
+   * PUT /purchase-orders/:id/items — Remplace toutes les lignes (admin/gerant).
+   * Bulk save : voir purchaseOrderRepository.replaceItems pour la logique de
+   * diff (delete/update/insert) et l'impact stock pour quantity_delivered.
+   */
+  async replaceItems(req: AuthRequest, res: Response) {
+    const po = await purchaseOrderRepository.findById(req.params.id);
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const body = req.body as { items?: unknown };
+    if (!Array.isArray(body.items)) {
+      res.status(400).json({ success: false, error: { message: 'Champ "items" requis (tableau)' } });
+      return;
+    }
+    const num = (v: unknown): number => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const items = (body.items as Record<string, unknown>[]).map((raw) => ({
+      id: raw.id as string | undefined,
+      ingredientId: raw.ingredientId as string,
+      quantityOrdered: num(raw.quantityOrdered),
+      quantityDelivered: raw.quantityDelivered !== undefined ? num(raw.quantityDelivered) : undefined,
+      unitPrice: raw.unitPrice === null || raw.unitPrice === '' || raw.unitPrice === undefined
+        ? null
+        : num(raw.unitPrice),
+    }));
+    if (items.some(it => !it.ingredientId || it.quantityOrdered <= 0)) {
+      res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un ingredient et une quantite > 0' } });
+      return;
+    }
+    try {
+      const updated = await purchaseOrderRepository.replaceItems(
+        req.params.id, items, req.user!.userId, req.user!.storeId
+      );
+      res.json({ success: true, data: updated });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour des lignes';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
+
   async overdue(req: AuthRequest, res: Response) {
     const days = parseInt((req.query as Record<string, string>).days || '3');
     const data = await purchaseOrderRepository.findOverdue(days);

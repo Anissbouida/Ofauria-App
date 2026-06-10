@@ -233,6 +233,203 @@ export const purchaseOrderRepository = {
     }
   },
 
+  /**
+   * Mise a jour de l'en-tete d'un BC (admin/gerant) : notes, date prevue,
+   * fournisseur. Pas de status ici — utiliser updateStatus pour ca.
+   */
+  async updateHeader(id: string, data: {
+    supplierId?: string;
+    expectedDeliveryDate?: string | null;
+    notes?: string | null;
+  }) {
+    const sets: string[] = []; const values: unknown[] = []; let i = 1;
+    if (data.supplierId !== undefined) { sets.push(`supplier_id = $${i++}`); values.push(data.supplierId); }
+    if (data.expectedDeliveryDate !== undefined) {
+      sets.push(`expected_delivery_date = $${i++}`); values.push(data.expectedDeliveryDate || null);
+    }
+    if (data.notes !== undefined) { sets.push(`notes = $${i++}`); values.push(data.notes || null); }
+    if (sets.length === 0) return this.findById(id);
+    sets.push(`updated_at = NOW()`);
+    values.push(id);
+    const result = await db.query(
+      `UPDATE purchase_orders SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * Remplace les lignes d'un BC (admin/gerant). Bulk save piloté par l'UI.
+   *
+   * Diff logique :
+   *   - Lignes presentes dans le nouveau payload avec un `id` -> UPDATE en place.
+   *     Si quantity_delivered bouge, on repercute le delta sur inventory +
+   *     trace inventory_transactions type='adjustment'.
+   *   - Lignes absentes du nouveau payload -> DELETE. Refuse si reference par
+   *     un reception_voucher_items (FK : suppression impossible sans casser
+   *     l'historique de reception).
+   *   - Lignes sans `id` dans le nouveau payload -> INSERT. quantity_delivered
+   *     defaut a 0 (admin n'est pas cense ajouter du stock sans reception).
+   *   - ingredients.unit_cost suit le dernier prix saisi.
+   *   - Status BC resynchronise a la fin (livre_complet/partiel/non_livre/en_attente_facturation).
+   */
+  async replaceItems(
+    id: string,
+    items: { id?: string; ingredientId: string; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }[],
+    performedBy: string,
+    storeId?: string,
+  ) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const po = await client.query<{ id: string; order_number: string }>(
+        `SELECT id, order_number FROM purchase_orders WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (!po.rows[0]) { await client.query('ROLLBACK'); return null; }
+      const orderNumber = po.rows[0].order_number;
+
+      const current = await client.query<{
+        id: string; ingredient_id: string; quantity_ordered: string;
+        quantity_delivered: string; unit_price: string | null;
+      }>(
+        `SELECT id, ingredient_id, quantity_ordered::text, quantity_delivered::text, unit_price::text
+         FROM purchase_order_items WHERE purchase_order_id = $1 FOR UPDATE`,
+        [id]
+      );
+      const currentById = new Map(current.rows.map(r => [r.id, r]));
+      const incomingIds = new Set(items.filter(it => it.id).map(it => it.id as string));
+
+      // 1. DELETE lignes retirees
+      for (const old of current.rows) {
+        if (incomingIds.has(old.id)) continue;
+        const refs = await client.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM reception_voucher_items WHERE purchase_order_item_id = $1`,
+          [old.id]
+        );
+        if (parseInt(refs.rows[0].count) > 0) {
+          throw new Error(
+            `Impossible de supprimer la ligne : ${refs.rows[0].count} bon(s) de reception y font reference. ` +
+            `Annule les receptions liees d'abord.`
+          );
+        }
+        const oldDel = parseFloat(old.quantity_delivered);
+        if (oldDel > 0) {
+          // Stock a deja ete impacte par cette ligne — on retire ce qui avait
+          // ete ajoute pour garder l'invariant SUM(transactions) = inventory.
+          await this._adjustInventory(client, old.ingredient_id, -oldDel, performedBy, storeId,
+            `Admin edit BC ${orderNumber} : suppression ligne (annule +${oldDel})`);
+        }
+        await client.query(`DELETE FROM purchase_order_items WHERE id = $1`, [old.id]);
+      }
+
+      // 2. UPDATE lignes existantes / INSERT nouvelles
+      for (const it of items) {
+        const qord = Number.isFinite(it.quantityOrdered) ? it.quantityOrdered : 0;
+        const qdelRaw = it.quantityDelivered;
+        const price = it.unitPrice != null && Number.isFinite(it.unitPrice) ? it.unitPrice : null;
+
+        if (it.id && currentById.has(it.id)) {
+          const old = currentById.get(it.id)!;
+          const oldDel = parseFloat(old.quantity_delivered);
+          const newDel = qdelRaw !== undefined ? qdelRaw : oldDel;
+          const delta = newDel - oldDel;
+
+          await client.query(
+            `UPDATE purchase_order_items
+             SET quantity_ordered = $1, quantity_delivered = $2, unit_price = $3
+             WHERE id = $4`,
+            [qord, newDel, price, it.id]
+          );
+
+          if (Math.abs(delta) > 0.0001) {
+            await this._adjustInventory(client, old.ingredient_id, delta, performedBy, storeId,
+              `Admin edit BC ${orderNumber} : ajustement qty livree (${oldDel} -> ${newDel})`);
+          }
+        } else {
+          // Nouvelle ligne — qty_delivered = 0 par defaut (admin ne touche pas le stock via add).
+          const newDel = qdelRaw ?? 0;
+          const inserted = await client.query<{ id: string }>(
+            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, quantity_ordered, quantity_delivered, unit_price)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [id, it.ingredientId, qord, newDel, price]
+          );
+          if (newDel > 0.0001) {
+            // Cas atypique : admin ajoute une ligne avec qty deja livree
+            // (typiquement pour rattraper un stock arrive sans BC). On ajuste.
+            await this._adjustInventory(client, it.ingredientId, newDel, performedBy, storeId,
+              `Admin edit BC ${orderNumber} : ajout ligne avec qty livree ${newDel} (id ${inserted.rows[0].id})`);
+          }
+        }
+
+        if (price !== null && price > 0) {
+          await client.query(`UPDATE ingredients SET unit_cost = $1 WHERE id = $2`, [price, it.ingredientId]);
+        }
+      }
+
+      // 3. Resync statut du BC
+      const allItems = await client.query<{ quantity_ordered: string; quantity_delivered: string; unit_price: string | null }>(
+        `SELECT quantity_ordered::text, quantity_delivered::text, unit_price::text
+         FROM purchase_order_items WHERE purchase_order_id = $1`,
+        [id]
+      );
+      const rows = allItems.rows;
+      const someDelivered = rows.some(r => parseFloat(r.quantity_delivered) > 0);
+      const allDelivered = rows.length > 0 && rows.every(
+        r => parseFloat(r.quantity_delivered) >= parseFloat(r.quantity_ordered)
+      );
+      const missingPrices = rows.some(r => r.unit_price == null);
+
+      let newStatus: string;
+      if (allDelivered && missingPrices) newStatus = 'en_attente_facturation';
+      else if (allDelivered) newStatus = 'livre_complet';
+      else if (someDelivered) newStatus = 'livre_partiel';
+      else newStatus = 'non_livre';
+
+      await client.query(
+        `UPDATE purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [newStatus, id]
+      );
+
+      await client.query('COMMIT');
+      return await this.findById(id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Helper interne : ajuste inventory + trace inventory_transactions.
+   * Utilise par replaceItems quand admin modifie qty_delivered ou supprime
+   * une ligne deja livree.
+   */
+  async _adjustInventory(
+    client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> },
+    ingredientId: string,
+    quantityChange: number,
+    performedBy: string,
+    storeId: string | undefined,
+    note: string,
+  ) {
+    const storeFilter = storeId ? ' AND store_id = $3' : '';
+    const params: unknown[] = [quantityChange, ingredientId];
+    if (storeId) params.push(storeId);
+    await client.query(
+      `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
+       WHERE ingredient_id = $2${storeFilter}`,
+      params
+    );
+    await client.query(
+      `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
+       VALUES ($1, 'adjustment', $2, $3, $4, $5)`,
+      [ingredientId, quantityChange, note, performedBy, storeId || null]
+    );
+  },
+
   async findOverdue(days: number = 3) {
     const result = await db.query(
       `SELECT po.*, s.name as supplier_name,

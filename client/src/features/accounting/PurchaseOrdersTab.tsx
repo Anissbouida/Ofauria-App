@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { suppliersApi } from '../../api/accounting.api';
@@ -6,7 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
-  Package, ArrowRight, FileText, Filter, Loader2, Download,
+  Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -62,6 +62,8 @@ export default function PurchaseOrdersTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<string | null>(null);
   const [showDelivery, setShowDelivery] = useState<string | null>(null);
+  // Modal d'edition complete (admin) : qty/prix/ajout/suppression de lignes
+  const [editPoId, setEditPoId] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const { data: orders = [], isLoading } = useQuery({
@@ -342,6 +344,10 @@ export default function PurchaseOrdersTab() {
                           <button onClick={() => setShowDetail(po.id as string)} title="Voir détails" className="odoo-pager-btn">
                             <Eye size={13} />
                           </button>
+                          {/* Edition complete (admin/gerant) : qty/prix/lignes. Dispo sur tous statuts. */}
+                          <button onClick={() => setEditPoId(po.id as string)} title="Modifier le BC (qty, prix, lignes)" className="odoo-pager-btn">
+                            <Pencil size={13} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -369,6 +375,7 @@ export default function PurchaseOrdersTab() {
       {showCreate && <CreatePOModal onClose={() => setShowCreate(false)} />}
       {showDetail && <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)} />}
       {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
+      {editPoId && <EditPOModal poId={editPoId} onClose={() => setEditPoId(null)} />}
     </>
   );
 }
@@ -1224,5 +1231,284 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         </div>
       </div>
     </div>
+  );
+}
+
+/* ═══ Edit PO Modal (admin) ═══
+ *
+ * Edition complete d'un BC : en-tete (notes, date prevue) + lignes (qty
+ * ordonnees, qty livrees, prix unitaires, ajout/suppression de lignes).
+ *
+ * - Save en-tete : appelle purchaseOrdersApi.updateHeader
+ * - Save lignes : appelle purchaseOrdersApi.replaceItems (bulk save)
+ * - Modifier qty_delivered ajuste automatiquement le stock (cf. backend
+ *   replaceItems._adjustInventory) avec trace inventory_transactions type='adjustment'
+ * - Suppression d'une ligne deja referencee par un bon de reception est refusee
+ *   par le backend (erreur affichee). Il faut annuler la reception d'abord.
+ */
+type POLine = {
+  id?: string;
+  ingredientId: string;
+  ingredientName: string;
+  ingredientUnit: string;
+  quantityOrdered: string;
+  quantityDelivered: string;
+  unitPrice: string;
+};
+
+function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: po, isLoading } = useQuery({
+    queryKey: ['purchase-orders', poId],
+    queryFn: () => purchaseOrdersApi.getById(poId),
+  });
+  const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
+  const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
+
+  const [supplierId, setSupplierId] = useState('');
+  const [expectedDate, setExpectedDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [lines, setLines] = useState<POLine[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (initialized || !po) return;
+    setSupplierId((po.supplier_id as string) || '');
+    setExpectedDate(po.expected_delivery_date ? String(po.expected_delivery_date).slice(0, 10) : '');
+    setNotes((po.notes as string) || '');
+    const items = (po.items as Record<string, any>[]) || [];
+    setLines(items.map(it => ({
+      id: it.id as string,
+      ingredientId: it.ingredient_id as string,
+      ingredientName: (it.ingredient_name as string) || '',
+      ingredientUnit: (it.ingredient_unit as string) || '',
+      quantityOrdered: String(it.quantity_ordered ?? ''),
+      quantityDelivered: String(it.quantity_delivered ?? ''),
+      unitPrice: it.unit_price != null ? String(it.unit_price) : '',
+    })));
+    setInitialized(true);
+  }, [po, initialized]);
+
+  const headerMutation = useMutation({
+    mutationFn: (data: { supplierId?: string; expectedDeliveryDate?: string | null; notes?: string | null }) =>
+      purchaseOrdersApi.updateHeader(poId, data),
+  });
+  const itemsMutation = useMutation({
+    mutationFn: (items: Array<{ id?: string; ingredientId: string; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }>) =>
+      purchaseOrdersApi.replaceItems(poId, items),
+  });
+
+  const newTotalOrdered = useMemo(() => {
+    return lines.reduce((sum, l) => {
+      const q = parseFloat(l.quantityOrdered) || 0;
+      const p = parseFloat(l.unitPrice) || 0;
+      return sum + q * p;
+    }, 0);
+  }, [lines]);
+
+  const updateLine = (idx: number, patch: Partial<POLine>) => {
+    setLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
+  };
+  const removeLine = (idx: number) => setLines(prev => prev.filter((_, i) => i !== idx));
+  const addLine = () => {
+    setLines(prev => [...prev, {
+      ingredientId: '', ingredientName: '', ingredientUnit: '',
+      quantityOrdered: '1', quantityDelivered: '0', unitPrice: '',
+    }]);
+  };
+
+  const handleSave = async () => {
+    // Validation : toutes les lignes doivent avoir un ingredient et qty > 0
+    if (lines.some(l => !l.ingredientId || (parseFloat(l.quantityOrdered) || 0) <= 0)) {
+      notify.error('Chaque ligne doit avoir un ingredient et une quantite commandee > 0');
+      return;
+    }
+    try {
+      // 1. En-tete
+      await headerMutation.mutateAsync({
+        supplierId: supplierId || undefined,
+        expectedDeliveryDate: expectedDate || null,
+        notes: notes.trim() || null,
+      });
+      // 2. Lignes (bulk replace). Status BC + stock recalcules cote backend.
+      await itemsMutation.mutateAsync(lines.map(l => ({
+        id: l.id,
+        ingredientId: l.ingredientId,
+        quantityOrdered: parseFloat(l.quantityOrdered) || 0,
+        quantityDelivered: parseFloat(l.quantityDelivered) || 0,
+        unitPrice: l.unitPrice === '' ? null : (parseFloat(l.unitPrice) || 0),
+      })));
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      notify.success('BC mis a jour');
+      onClose();
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'enregistrement');
+    }
+  };
+
+  const isPending = headerMutation.isPending || itemsMutation.isPending;
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 1100, maxHeight: '92vh' }}>
+        <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-4 rounded-t-2xl flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <Pencil size={18} className="text-white" />
+            <div>
+              <h2 className="text-white font-bold text-lg">Modifier le BC</h2>
+              <p className="text-white/80 text-xs">{po?.order_number as string || '...'}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white hover:bg-white/20 p-2 rounded-xl"><X size={16} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10 text-gray-500">
+              <Loader2 size={20} className="animate-spin mr-2" /> Chargement...
+            </div>
+          ) : (
+            <>
+              {/* En-tete */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Fournisseur</label>
+                  <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                    <option value="">—</option>
+                    {(suppliers as Record<string, any>[]).filter(s => s.is_active || s.id === supplierId).map(s => (
+                      <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date livraison prevue</label>
+                  <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Statut actuel</label>
+                  <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600">
+                    {(po?.status as string) || '—'}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  Modifier la <strong>qty livree</strong> ajuste automatiquement le stock (mouvement
+                  d'inventaire trace). Supprimer une ligne deja referencee par un bon de reception
+                  sera refuse — annule la reception d'abord.
+                </span>
+              </div>
+
+              {/* Lignes */}
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 900 }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-600 uppercase tracking-wide">
+                      <th className="text-left px-3 py-2 font-semibold" style={{ width: '28%' }}>Ingredient</th>
+                      <th className="text-right px-3 py-2 font-semibold">Qty commandee</th>
+                      <th className="text-right px-3 py-2 font-semibold">Qty livree</th>
+                      <th className="text-right px-3 py-2 font-semibold">Prix U.</th>
+                      <th className="text-right px-3 py-2 font-semibold">Sous-total</th>
+                      <th style={{ width: 36 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {lines.map((line, idx) => {
+                      const q = parseFloat(line.quantityOrdered) || 0;
+                      const p = parseFloat(line.unitPrice) || 0;
+                      const isExisting = !!line.id;
+                      return (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            {isExisting ? (
+                              <span className="text-sm text-gray-800">{line.ingredientName} <span className="text-xs text-gray-400">({line.ingredientUnit})</span></span>
+                            ) : (
+                              <select value={line.ingredientId}
+                                onChange={e => {
+                                  const ing = (ingredients as Record<string, any>[]).find(i => i.id === e.target.value);
+                                  updateLine(idx, {
+                                    ingredientId: e.target.value,
+                                    ingredientName: ing ? (ing.name as string) : '',
+                                    ingredientUnit: ing ? (ing.unit as string) : '',
+                                  });
+                                }}
+                                className="w-full px-2 py-1 border border-gray-200 rounded text-sm">
+                                <option value="">— Choisir —</option>
+                                {(ingredients as Record<string, any>[]).map(i => (
+                                  <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input type="number" step="0.01" min={0} value={line.quantityOrdered}
+                              onChange={e => updateLine(idx, { quantityOrdered: e.target.value })}
+                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input type="number" step="0.01" min={0} value={line.quantityDelivered}
+                              onChange={e => updateLine(idx, { quantityDelivered: e.target.value })}
+                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right bg-amber-50" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input type="number" step="0.01" min={0} value={line.unitPrice}
+                              onChange={e => updateLine(idx, { unitPrice: e.target.value })}
+                              placeholder="—"
+                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right" />
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-medium text-gray-700">
+                            {n(q * p)}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button type="button" onClick={() => removeLine(idx)}
+                              className="text-red-600 hover:bg-red-50 p-1 rounded" title="Supprimer">
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <button type="button" onClick={addLine}
+                className="text-sm text-blue-600 inline-flex items-center gap-1 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:bg-blue-50">
+                <Plus size={14} /> Ajouter une ligne
+              </button>
+
+              {/* Total */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+                <span className="text-sm font-semibold text-blue-800">Nouveau total BC (qty commandee x prix)</span>
+                <span className="font-bold text-blue-900 font-mono text-lg">{n(newTotalOrdered)} DH</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t px-6 py-3 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-50">Annuler</button>
+          <button onClick={handleSave} disabled={isPending || isLoading}
+            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl text-sm font-medium shadow flex items-center gap-2">
+            {isPending && <Loader2 size={14} className="animate-spin" />}
+            <CheckCircle2 size={14} /> Enregistrer
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
   );
 }

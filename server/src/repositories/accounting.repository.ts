@@ -645,6 +645,71 @@ export const invoiceRepository = {
   },
 
   /**
+   * Remplace les lignes (invoice_items) d'une facture en une seule transaction.
+   *
+   * Politique :
+   *   - Approche "bulk save" : on supprime toutes les lignes existantes et on
+   *     reinsere celles fournies. Plus simple a piloter cote UI (un seul Save)
+   *     et evite de tracker les diffs ligne par ligne.
+   *   - Recalcule automatiquement invoices.amount = SUM(subtotal). Ne touche
+   *     PAS au taxAmount existant (le gerant peut le saisir separement via PUT
+   *     /:id si besoin) mais recalcule total_amount = amount + tax_amount.
+   *   - Rejette si nouveau total_amount < paid_amount (incoherence comptable).
+   *   - Resync statut a la fin (pending/partial/paid).
+   *
+   * Note : on prefere subtotal envoye par le client (deja arrondi a l'affichage)
+   * plutot que recalculer qty * unit_price, pour eviter les drift de centimes.
+   */
+  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number }[]) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const cur = await client.query(
+        `SELECT tax_amount, paid_amount FROM invoices WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (!cur.rows[0]) { await client.query('ROLLBACK'); return null; }
+      const taxAmount = parseFloat(cur.rows[0].tax_amount || '0');
+      const paidAmount = parseFloat(cur.rows[0].paid_amount || '0');
+
+      const newAmount = items.reduce((sum, it) => sum + (Number.isFinite(it.subtotal) ? it.subtotal : 0), 0);
+      const newTotal = newAmount + taxAmount;
+      if (newTotal < paidAmount - 0.001) {
+        await client.query('ROLLBACK');
+        throw new Error(
+          `Le nouveau total (${newTotal.toFixed(2)} DH) est inferieur au deja paye (${paidAmount.toFixed(2)} DH). ` +
+          `Rembourse ou supprime des paiements avant de baisser le montant.`
+        );
+      }
+
+      await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [id]);
+      for (const it of items) {
+        if (!Number.isFinite(it.quantity) || !Number.isFinite(it.unitPrice)) continue;
+        await client.query(
+          `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, it.productId || null, it.ingredientId || null, it.description || null,
+           it.quantity, it.unitPrice, it.subtotal]
+        );
+      }
+
+      await client.query(
+        `UPDATE invoices SET amount = $1, total_amount = $2 WHERE id = $3`,
+        [newAmount, newTotal, id]
+      );
+
+      await client.query('COMMIT');
+      return await this.updatePaidAmount(id);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
    * Mise a jour complete d'une facture (admin/gerant). Champs additifs et
    * optionnels — seuls ceux fournis dans `data` sont modifies.
    *

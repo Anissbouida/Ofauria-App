@@ -165,8 +165,11 @@ export const receptionVoucherRepository = {
         );
         if (!poItem) continue;
 
-        // Update price on PO item if provided and PO had no real price (NULL or 0)
-        if (item.unitPrice != null && (poItem.unit_price == null || parseFloat(poItem.unit_price) === 0)) {
+        // Le prix saisi lors de la reception fait foi : il reflete ce que le
+        // fournisseur a effectivement facture. On le repercute sur le BC pour
+        // que total BC et facture restent coherents (sinon le BC affiche
+        // l'ancien prix estime et la facture le vrai prix paye).
+        if (item.unitPrice != null && item.unitPrice > 0) {
           await client.query(
             `UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2`,
             [item.unitPrice, item.poItemId]
