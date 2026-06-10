@@ -908,22 +908,46 @@ export const invoiceRepository = {
    * qui ont les deux (priorite a invoice_items).
    */
   async findLineExpenses(params: { dateFrom?: string; dateTo?: string; supplierId?: string; storeId?: string }) {
-    const conditions: string[] = [`inv.invoice_type = 'received'`];
+    // Logique tresorerie (cash effectif) : une facture n'entre dans les charges
+    // que lorsqu'elle est INTEGRALEMENT payee. La date utilisee est celle du
+    // dernier paiement qui a cloture la facture (ex : un cheque encaisse le
+    // 10/07 fait apparaitre la charge ce jour-la, pas a la date de facture).
+    // Les factures impayees / partielles sont visibles ailleurs (onglet
+    // "Factures recues" du module Achats) mais exclues des charges pour ne
+    // pas fausser la tresorerie quotidienne.
+    const conditions: string[] = [
+      `inv.invoice_type = 'received'`,
+      `inv.status = 'paid'`,
+    ];
     const values: unknown[] = [];
     let i = 1;
     if (params.storeId) { conditions.push(`inv.store_id = $${i++}`); values.push(params.storeId); }
-    if (params.dateFrom) { conditions.push(`inv.invoice_date >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`inv.invoice_date <= $${i++}`); values.push(params.dateTo); }
+    // Note : dateFrom/dateTo filtrent sur la DATE EFFECTIVE de paiement
+    // (pi.effective_date), pas sur invoice_date. C'est ce qui donne une vue
+    // tresorerie coherente.
+    if (params.dateFrom) { conditions.push(`pi.effective_date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`pi.effective_date <= $${i++}`); values.push(params.dateTo); }
     if (params.supplierId) { conditions.push(`inv.supplier_id = $${i++}`); values.push(params.supplierId); }
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const result = await db.query(
-      `WITH ii_lines AS (
+      `WITH paid_invoices AS (
+         -- Date effective d'apparition de la charge = dernier paiement.
+         -- Si plusieurs paiements partiels, on prend le plus tardif (celui
+         -- qui a cloture la facture).
+         SELECT
+           p.invoice_id,
+           MAX(p.payment_date) AS effective_date
+         FROM payments p
+         WHERE p.invoice_id IS NOT NULL
+         GROUP BY p.invoice_id
+       ),
+       ii_lines AS (
          SELECT
            ii.id                                       AS id,
            inv.id                                      AS invoice_id,
            inv.invoice_number                          AS invoice_number,
-           inv.invoice_date                            AS payment_date,
+           pi.effective_date                           AS payment_date,
            inv.status                                  AS invoice_status,
            inv.supplier_id                             AS supplier_id,
            inv.category_id                             AS invoice_category_id,
@@ -937,6 +961,7 @@ export const invoiceRepository = {
            ii.created_at                               AS sort_at
          FROM invoice_items ii
          JOIN invoices inv ON inv.id = ii.invoice_id
+         JOIN paid_invoices pi ON pi.invoice_id = inv.id
          LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id
          LEFT JOIN products p ON p.id = ii.product_id
          ${where}
@@ -946,7 +971,7 @@ export const invoiceRepository = {
            rvi.id                                                  AS id,
            inv.id                                                  AS invoice_id,
            inv.invoice_number                                      AS invoice_number,
-           inv.invoice_date                                        AS payment_date,
+           pi.effective_date                                       AS payment_date,
            inv.status                                              AS invoice_status,
            inv.supplier_id                                         AS supplier_id,
            inv.category_id                                         AS invoice_category_id,
@@ -961,6 +986,7 @@ export const invoiceRepository = {
          FROM reception_voucher_items rvi
          JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
          JOIN invoices inv ON inv.reception_voucher_id = rv.id
+         JOIN paid_invoices pi ON pi.invoice_id = inv.id
          LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
          ${where}
            AND NOT EXISTS (SELECT 1 FROM invoice_items WHERE invoice_id = inv.id)

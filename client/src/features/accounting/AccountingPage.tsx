@@ -578,8 +578,11 @@ function ChargesTab() {
     queryKey: ['payments-charges', year, month],
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
-  // Achats fournisseurs : on les lit a partir des factures (1 ligne = 1 ingredient),
-  // pas a partir des reglements (cheques) qui sont decoupes du fait economique.
+  // Achats fournisseurs : on lit les lignes des factures INTEGRALEMENT PAYEES
+  // (status = 'paid'), datees a la date du dernier paiement (MAX(payments)).
+  // Logique tresorerie : la charge apparait quand le cash est sorti, pas a la
+  // date facture. Les impayees/partielles ne sont pas la — visibles dans
+  // l'onglet "Factures recues" du module Achats.
   const { data: invoiceLines = [], isLoading: isLoadingLines } = useQuery({
     queryKey: ['invoice-line-expenses', year, month],
     queryFn: () => invoicesApi.lineExpenses({ dateFrom, dateTo }),
