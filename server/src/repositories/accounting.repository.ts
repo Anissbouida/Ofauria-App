@@ -932,13 +932,28 @@ export const invoiceRepository = {
 
     const result = await db.query(
       `WITH paid_invoices AS (
-         -- Date effective d'apparition de la charge = dernier paiement.
-         -- Si plusieurs paiements partiels, on prend le plus tardif (celui
-         -- qui a cloture la facture).
+         -- Date effective d'apparition de la charge = jour ou le cash sort
+         -- vraiment du compte. Differente du payment_date qui est la DATE
+         -- D'ACTION (jour ou l'utilisateur a clique 'Payer').
+         --
+         -- Pour un paiement par cheque, le cash quitte la banque le jour de
+         -- l'ENCAISSEMENT (= echeance saisie dans la facture, due_date), pas
+         -- le jour de signature du cheque. Sinon on aurait la charge le jour
+         -- de remise du cheque alors que le compte n'est pas encore debite.
+         --
+         -- Pour cash/virement : payment_date = date d'effet, on garde tel quel.
+         -- Si plusieurs paiements partiels, on prend le plus tardif (celui qui
+         -- a cloture la facture).
          SELECT
            p.invoice_id,
-           MAX(p.payment_date) AS effective_date
+           MAX(
+             CASE
+               WHEN p.payment_method = 'check' AND inv.due_date IS NOT NULL THEN inv.due_date
+               ELSE p.payment_date
+             END
+           ) AS effective_date
          FROM payments p
+         JOIN invoices inv ON inv.id = p.invoice_id
          WHERE p.invoice_id IS NOT NULL
          GROUP BY p.invoice_id
        ),
