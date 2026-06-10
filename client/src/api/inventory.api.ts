@@ -7,6 +7,9 @@ export const inventoryApi = {
   adjust: (data: { ingredientId: string; quantity: number; type: string; note?: string }) => api.post('/inventory/adjust', data),
   updateThreshold: (data: { ingredientId: string; threshold: number }) => api.put('/inventory/threshold', data),
   transactions: (ingredientId?: string) => api.get('/inventory/transactions', { params: { ingredientId } }).then(r => r.data.data),
+  /** Consommation matieres par periode (sorties de stock x cout unitaire). */
+  consumption: (params: { dateFrom: string; dateTo: string }) =>
+    api.get('/inventory/consumption', { params }).then(r => r.data.data),
 };
 
 export const ingredientLotsApi = {

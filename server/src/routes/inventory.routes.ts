@@ -15,6 +15,8 @@ router.post('/restock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), i
 router.post('/adjust', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.adjust);
 router.put('/threshold', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.updateThreshold);
 router.get('/transactions', authenticate, inventoryController.transactions);
+// Consommation matieres par periode (admin/gerant, utilise par Comptabilite)
+router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.consumption);
 
 export default router;
 

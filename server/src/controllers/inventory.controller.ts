@@ -208,6 +208,19 @@ export const inventoryController = {
     const transactions = await inventoryRepository.getTransactions(ingredientId, 50, req.user!.storeId);
     res.json({ success: true, data: transactions });
   },
+  /**
+   * GET /inventory/consumption?dateFrom=...&dateTo=...
+   * Renvoie les sorties de stock agregees par (ingredient, type de mouvement)
+   * pour la periode. Utilise par l'onglet "Consommation matieres" du module
+   * Comptabilite — vue distincte du cash-out, base sur les mouvements physiques.
+   */
+  async consumption(req: AuthRequest, res: Response) {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const rows = await inventoryRepository.findMaterialConsumption({
+      dateFrom, dateTo, storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: rows });
+  },
 };
 
 export const ingredientController = {

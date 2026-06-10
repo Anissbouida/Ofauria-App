@@ -99,6 +99,64 @@ export const inventoryRepository = {
     }
   },
 
+  /**
+   * Consommation matieres par periode (admin/gerant).
+   *
+   * Source : inventory_transactions outflows (quantity_change < 0). Couvre
+   * tous les motifs de sortie de stock :
+   *   - 'usage' / 'production' : matieres consommees en production
+   *   - 'waste' : pertes / dlc / casse
+   *   - 'adjustment' : ajustements manuels (inventaire physique, correction)
+   *
+   * On exclut les types 'restock' (entree) et les adjustments POSITIFS
+   * (entrees ponctuelles, ex : retour fournisseur).
+   *
+   * Cout : qty_sortie x ingredients.unit_cost (cout courant). Si tu changes
+   * le prix d'un ingredient, l'historique sera reevalue au cout actuel —
+   * acceptable pour un suivi tresorerie sur un mois donne, mais pas pour
+   * une compta TVA stricte. Pour ca il faudrait stocker le cout au moment
+   * de la transaction (cf. production_lot_usage qui le fait par lot).
+   *
+   * Retourne des lignes (ingredient_id, type) — le frontend agrege/groupe.
+   */
+  async findMaterialConsumption(params: { dateFrom?: string; dateTo?: string; storeId?: string }) {
+    const conditions: string[] = [
+      `it.type IN ('usage', 'production', 'waste', 'adjustment')`,
+      `it.quantity_change < 0`,
+    ];
+    const values: unknown[] = [];
+    let i = 1;
+    if (params.storeId) { conditions.push(`it.store_id = $${i++}`); values.push(params.storeId); }
+    if (params.dateFrom) { conditions.push(`it.created_at::date >= $${i++}::date`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`it.created_at::date <= $${i++}::date`); values.push(params.dateTo); }
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
+    const result = await db.query(
+      `SELECT
+         ing.id                                        AS ingredient_id,
+         ing.name                                      AS ingredient_name,
+         ing.unit                                      AS ingredient_unit,
+         ing.category                                  AS ingredient_category,
+         ing.unit_cost                                 AS unit_cost,
+         it.type                                       AS movement_type,
+         COUNT(*)::int                                 AS transaction_count,
+         COALESCE(SUM(ABS(it.quantity_change)), 0)     AS qty_consumed,
+         ROUND(
+           (COALESCE(SUM(ABS(it.quantity_change)), 0) * COALESCE(ing.unit_cost, 0))::numeric,
+           2
+         )                                             AS cost_consumed,
+         MIN(it.created_at)                            AS first_movement_at,
+         MAX(it.created_at)                            AS last_movement_at
+       FROM inventory_transactions it
+       JOIN ingredients ing ON ing.id = it.ingredient_id
+       ${where}
+       GROUP BY ing.id, ing.name, ing.unit, ing.category, ing.unit_cost, it.type
+       ORDER BY cost_consumed DESC, ing.name`,
+      values
+    );
+    return result.rows;
+  },
+
   async getTransactions(ingredientId?: string, limit = 50, storeId?: string) {
     const conditions: string[] = [];
     const values: unknown[] = [];
