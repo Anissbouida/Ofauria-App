@@ -936,26 +936,43 @@ export const invoiceRepository = {
          -- vraiment du compte. Differente du payment_date qui est la DATE
          -- D'ACTION (jour ou l'utilisateur a clique 'Payer').
          --
-         -- Pour un paiement par cheque, le cash quitte la banque le jour de
-         -- l'ENCAISSEMENT (= echeance saisie dans la facture, due_date), pas
-         -- le jour de signature du cheque. Sinon on aurait la charge le jour
-         -- de remise du cheque alors que le compte n'est pas encore debite.
+         -- Cheques :
+         --   - p.cashed_at IS NOT NULL : l'utilisateur a confirme l'encaissement
+         --     via l'onglet Cheques -> date exacte du debit bancaire.
+         --   - p.cashed_at IS NULL : cheque pas encore encaisse. On exclut
+         --     cette facture des charges (logique tresorerie stricte : pas de
+         --     cash sorti = pas de charge). Visible dans l'onglet Cheques en
+         --     attente.
          --
-         -- Pour cash/virement : payment_date = date d'effet, on garde tel quel.
-         -- Si plusieurs paiements partiels, on prend le plus tardif (celui qui
-         -- a cloture la facture).
+         -- Cash / virement : pas de delai d'encaissement, payment_date = date
+         -- d'effet, on garde tel quel.
+         --
+         -- Si plusieurs paiements partiels, on prend le plus tardif (celui
+         -- qui a cloture la facture).
          SELECT
            p.invoice_id,
            MAX(
              CASE
-               WHEN p.payment_method = 'check' AND inv.due_date IS NOT NULL THEN inv.due_date
+               WHEN p.payment_method = 'check' THEN p.cashed_at
                ELSE p.payment_date
              END
            ) AS effective_date
          FROM payments p
          JOIN invoices inv ON inv.id = p.invoice_id
          WHERE p.invoice_id IS NOT NULL
+           -- Exclut les paiements non concretises (cheques pas encore encaisses).
+           -- Sans cette ligne, une facture status=paid avec uniquement un
+           -- cheque en attente apparaitrait dans les charges avec un MAX(NULL).
+           AND (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
          GROUP BY p.invoice_id
+         -- Une facture "paid" qui n'a que des cheques en attente sera
+         -- exclue ici (HAVING MAX retourne NULL -> filtre downstream).
+         HAVING MAX(
+           CASE
+             WHEN p.payment_method = 'check' THEN p.cashed_at
+             ELSE p.payment_date
+           END
+         ) IS NOT NULL
        ),
        ii_lines AS (
          SELECT
@@ -1046,19 +1063,43 @@ export const invoiceRepository = {
 
 /* ═══ Payments ═══ */
 export const paymentRepository = {
+  /**
+   * Liste des paiements vue TRESORERIE (utilise par ChargesTab).
+   *
+   * Une date "effective" est calculee par paiement :
+   *   - Cheque : cashed_at (date d'encaissement confirmee), NULL si pas encore
+   *     encaisse -> exclu de la liste (logique tresorerie stricte).
+   *   - Cash / virement / autre : payment_date (cash sort le jour de l'action).
+   *
+   * Le filtre dateFrom/dateTo s'applique sur cette date effective. C'est ce
+   * qui fait qu'un cheque signe aujourd'hui mais encaisse dans 1 mois apparait
+   * dans le mois prochain et pas aujourd'hui.
+   *
+   * Pour voir TOUS les paiements (y compris cheques en attente), utiliser
+   * findChecks() pour l'onglet Cheques dedie.
+   */
   async findAll(params: { type?: string; dateFrom?: string; dateTo?: string; supplierId?: string; storeId?: string }) {
-    const conditions: string[] = []; const values: unknown[] = []; let i = 1;
+    const conditions: string[] = [
+      // Exclut les cheques pas encore encaisses (cash pas encore sorti)
+      `(p.payment_method != 'check' OR p.cashed_at IS NOT NULL)`,
+    ];
+    const values: unknown[] = []; let i = 1;
     if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
     if (params.type) { conditions.push(`p.type = $${i++}`); values.push(params.type); }
-    if (params.dateFrom) { conditions.push(`p.payment_date >= $${i++}`); values.push(params.dateFrom); }
-    if (params.dateTo) { conditions.push(`p.payment_date <= $${i++}`); values.push(params.dateTo); }
+    // Date filter applique sur la date effective (cashed_at pour cheque, sinon payment_date)
+    const effectiveDateExpr = `(CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END)`;
+    if (params.dateFrom) { conditions.push(`${effectiveDateExpr} >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`${effectiveDateExpr} <= $${i++}`); values.push(params.dateTo); }
     if (params.supplierId) { conditions.push(`p.supplier_id = $${i++}`); values.push(params.supplierId); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT p.*, s.name as supplier_name, e.first_name as employee_first_name, e.last_name as employee_last_name,
               ec.name as category_name, ec.type as category_type, ec.requires_po,
               inv.invoice_number,
-              po.order_number as purchase_order_number
+              po.order_number as purchase_order_number,
+              -- Date effective (cash sorti) : utilisee par l'UI Charges pour
+              -- afficher la date juste, et pour le tri.
+              ${effectiveDateExpr} AS effective_date
        FROM payments p
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN employees e ON e.id = p.employee_id
@@ -1066,10 +1107,116 @@ export const paymentRepository = {
        LEFT JOIN invoices inv ON inv.id = p.invoice_id
        LEFT JOIN purchase_orders po ON po.id = p.purchase_order_id
        ${where}
-       ORDER BY p.payment_date DESC, p.created_at DESC`,
+       ORDER BY ${effectiveDateExpr} DESC, p.created_at DESC`,
       values
     );
     return result.rows;
+  },
+
+  /**
+   * Liste des cheques pour l'onglet "Cheques" (gestion encaissement).
+   *
+   * Renvoie TOUS les paiements payment_method='check', y compris ceux en
+   * attente d'encaissement. Filtres :
+   *   - status : 'pending' (cashed_at NULL), 'cashed' (cashed_at NOT NULL), 'all'
+   *   - dateFrom/dateTo : filtre sur payment_date (date de signature)
+   *   - supplierId / employeeId : restreint au beneficiaire
+   *
+   * Expose les colonnes utiles pour l'UI : beneficiaire, montant, dates,
+   * facture associee (si reglement de facture), echeance prevue, etc.
+   */
+  async findChecks(params: {
+    status?: 'pending' | 'cashed' | 'all';
+    dateFrom?: string; dateTo?: string;
+    supplierId?: string; employeeId?: string;
+    storeId?: string;
+  }) {
+    const conditions: string[] = [`p.payment_method = 'check'`];
+    const values: unknown[] = []; let i = 1;
+    if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
+    if (params.status === 'pending') conditions.push(`p.cashed_at IS NULL`);
+    else if (params.status === 'cashed') conditions.push(`p.cashed_at IS NOT NULL`);
+    if (params.dateFrom) { conditions.push(`p.payment_date >= $${i++}`); values.push(params.dateFrom); }
+    if (params.dateTo) { conditions.push(`p.payment_date <= $${i++}`); values.push(params.dateTo); }
+    if (params.supplierId) { conditions.push(`p.supplier_id = $${i++}`); values.push(params.supplierId); }
+    if (params.employeeId) { conditions.push(`p.employee_id = $${i++}`); values.push(params.employeeId); }
+    const where = `WHERE ${conditions.join(' AND ')}`;
+
+    const result = await db.query(
+      `SELECT p.id, p.amount, p.payment_date, p.check_number, p.check_date,
+              p.cashed_at, p.cashed_note, p.created_at, p.description, p.reference,
+              p.type AS payment_type,
+              s.name AS supplier_name, s.id AS supplier_id,
+              COALESCE(e.first_name || ' ' || e.last_name, NULL) AS employee_name,
+              e.id AS employee_id,
+              ec.name AS category_name,
+              inv.id AS invoice_id, inv.invoice_number, inv.invoice_date, inv.due_date AS invoice_due_date,
+              inv.total_amount AS invoice_total,
+              po.order_number AS purchase_order_number,
+              cby.first_name || ' ' || cby.last_name AS cashed_by_name,
+              -- Etat derive pour l'UI
+              CASE WHEN p.cashed_at IS NOT NULL THEN 'cashed'
+                   WHEN inv.due_date IS NOT NULL AND inv.due_date < CURRENT_DATE THEN 'overdue'
+                   ELSE 'pending'
+              END AS status
+       FROM payments p
+       LEFT JOIN suppliers s ON s.id = p.supplier_id
+       LEFT JOIN employees e ON e.id = p.employee_id
+       LEFT JOIN expense_categories ec ON ec.id = p.category_id
+       LEFT JOIN invoices inv ON inv.id = p.invoice_id
+       LEFT JOIN purchase_orders po ON po.id = p.purchase_order_id
+       LEFT JOIN users cby ON cby.id = p.cashed_by
+       ${where}
+       ORDER BY
+         -- En attente d'abord (action requise), puis par echeance/date
+         CASE WHEN p.cashed_at IS NULL THEN 0 ELSE 1 END,
+         COALESCE(inv.due_date, p.payment_date) ASC,
+         p.created_at DESC`,
+      values
+    );
+    return result.rows;
+  },
+
+  /**
+   * Confirme l'encaissement d'un cheque (marquage manuel par l'utilisateur).
+   * Verifie qu'il s'agit bien d'un cheque, qu'il n'est pas deja encaisse.
+   * cashedAt par defaut = aujourd'hui.
+   */
+  async markCashed(id: string, data: { cashedAt?: string; cashedBy: string; note?: string }) {
+    const cur = await db.query(`SELECT payment_method, cashed_at FROM payments WHERE id = $1`, [id]);
+    if (!cur.rows[0]) throw new Error('Paiement introuvable');
+    if (cur.rows[0].payment_method !== 'check') {
+      throw new Error('Seuls les cheques peuvent etre marques encaisses');
+    }
+    if (cur.rows[0].cashed_at) {
+      throw new Error('Ce cheque est deja marque encaisse');
+    }
+    const result = await db.query(
+      `UPDATE payments
+       SET cashed_at = COALESCE($1::date, CURRENT_DATE),
+           cashed_by = $2,
+           cashed_note = $3
+       WHERE id = $4
+       RETURNING *`,
+      [data.cashedAt || null, data.cashedBy, data.note || null, id]
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * Annule la confirmation d'encaissement (admin uniquement, cf. routes).
+   * Sert pour corriger une erreur de saisie. Re-bascule le cheque en attente.
+   */
+  async unmarkCashed(id: string) {
+    const result = await db.query(
+      `UPDATE payments
+       SET cashed_at = NULL, cashed_by = NULL, cashed_note = NULL
+       WHERE id = $1 AND payment_method = 'check'
+       RETURNING *`,
+      [id]
+    );
+    if (!result.rows[0]) throw new Error('Cheque introuvable ou non eligible');
+    return result.rows[0];
   },
   async create(data: {
     reference?: string; type: string; categoryId?: string; invoiceId?: string;

@@ -89,6 +89,11 @@ caisseImportRouter.post('/commit', authenticate, authorize(ROLES.ADMIN), caisseI
 export const paymentsRouter = Router();
 paymentsRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.list);
 paymentsRouter.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.summary);
+// Gestion cheques : liste + confirmation/annulation encaissement
+paymentsRouter.get('/checks', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.listChecks);
 paymentsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.create);
 paymentsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.update);
+paymentsRouter.post('/:id/mark-cashed', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.markCashed);
+// Annulation : admin uniquement (rollback ne dois pas etre routine)
+paymentsRouter.post('/:id/unmark-cashed', authenticate, authorize(ROLES.ADMIN), paymentController.unmarkCashed);
 paymentsRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), paymentController.remove);

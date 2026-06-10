@@ -12,6 +12,7 @@ import {
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Sliders,
   ArrowUpRight, ArrowDownRight, Upload, Search, Factory,
+  Check, RotateCcw,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -20,7 +21,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
-type AccTab = 'caisse' | 'charges' | 'consommation' | 'resume' | 'losses';
+type AccTab = 'caisse' | 'charges' | 'cheques' | 'consommation' | 'resume' | 'losses';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -189,6 +190,7 @@ export default function AccountingPage() {
   const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
     { key: 'caisse', label: 'Caisse', icon: Wallet },
     { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
+    { key: 'cheques', label: 'Chèques', icon: Receipt },
     { key: 'consommation', label: 'Consommation matières', icon: Package },
     { key: 'resume', label: 'Résumé', icon: BarChart3 },
     { key: 'losses', label: 'Pertes', icon: AlertTriangle },
@@ -223,6 +225,7 @@ export default function AccountingPage() {
         <PaymentAlertsWidget />
         {tab === 'caisse' && <CaisseTab />}
         {tab === 'charges' && <ChargesTab />}
+        {tab === 'cheques' && <ChequesTab />}
         {tab === 'consommation' && <ConsommationTab />}
         {tab === 'resume' && <ResumeTab />}
         {tab === 'losses' && <LossesTab />}
@@ -1299,6 +1302,385 @@ function ChargesTab() {
         </div>
       )}
     </>
+  );
+}
+
+/* ═══════════════════════ CHEQUES TAB ═══════════════════════ */
+/**
+ * Gestion des cheques emis : liste avec status (en attente / encaisse),
+ * action manuelle pour confirmer l'encaissement bancaire.
+ *
+ * Workflow :
+ *   1. Quand tu paies une facture par cheque, un payment est cree avec
+ *      payment_method='check' et cashed_at=NULL.
+ *   2. Le cheque apparait ici dans "En attente" avec son echeance, beneficiaire,
+ *      montant, facture associee.
+ *   3. Quand la banque debite ton compte, tu cliques "Marquer encaisse" et
+ *      saisis la date du debit (par defaut = aujourd'hui).
+ *   4. La charge apparait alors dans l'onglet Charges a cette date.
+ *
+ * Tant qu'un cheque n'est pas encaisse, il N'EST PAS compte dans Charges
+ * (logique tresorerie stricte : pas de cash sorti = pas de charge).
+ */
+type CheckRow = {
+  id: string;
+  amount: string;
+  payment_date: string;
+  check_number: string | null;
+  check_date: string | null;
+  cashed_at: string | null;
+  cashed_note: string | null;
+  cashed_by_name: string | null;
+  payment_type: string;
+  supplier_name: string | null;
+  employee_name: string | null;
+  category_name: string | null;
+  invoice_id: string | null;
+  invoice_number: string | null;
+  invoice_due_date: string | null;
+  invoice_total: string | null;
+  purchase_order_number: string | null;
+  description: string | null;
+  reference: string | null;
+  status: 'pending' | 'cashed' | 'overdue';
+};
+
+function ChequesTab() {
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'cashed' | 'all'>('pending');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [confirmingCheck, setConfirmingCheck] = useState<CheckRow | null>(null);
+
+  const { data: checks = [], isLoading } = useQuery({
+    queryKey: ['payments-checks', statusFilter],
+    queryFn: () => paymentsApi.listChecks({ status: statusFilter }),
+  });
+
+  const markMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { cashedAt?: string; note?: string } }) =>
+      paymentsApi.markCashed(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+      notify.success('Cheque marque comme encaisse');
+      setConfirmingCheck(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur');
+    },
+  });
+
+  const unmarkMutation = useMutation({
+    mutationFn: (id: string) => paymentsApi.unmarkCashed(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+      notify.success('Encaissement annule (cheque a nouveau en attente)');
+    },
+    onError: () => notify.error('Erreur lors de l\'annulation'),
+  });
+
+  // Filtres frontend (recherche)
+  const data = checks as CheckRow[];
+  const filtered = useMemo(() => {
+    if (!searchTerm) return data;
+    const q = searchTerm.toLowerCase();
+    return data.filter(c =>
+      (c.supplier_name || '').toLowerCase().includes(q) ||
+      (c.employee_name || '').toLowerCase().includes(q) ||
+      (c.check_number || '').toLowerCase().includes(q) ||
+      (c.invoice_number || '').toLowerCase().includes(q) ||
+      (c.description || '').toLowerCase().includes(q)
+    );
+  }, [data, searchTerm]);
+
+  // Compteurs par status (sur les donnees brutes, pas les filtrees)
+  const counts = useMemo(() => {
+    const acc = { pending: 0, cashed: 0, overdue: 0, totalPending: 0, totalCashed: 0 };
+    data.forEach(c => {
+      if (c.status === 'cashed') { acc.cashed++; acc.totalCashed += parseFloat(c.amount) || 0; }
+      else { acc.pending++; acc.totalPending += parseFloat(c.amount) || 0; }
+      if (c.status === 'overdue') acc.overdue++;
+    });
+    return acc;
+  }, [data]);
+
+  const fmtDate = (iso: string | null) => {
+    if (!iso) return '—';
+    try { return format(parseLocalDate(iso.slice(0, 10)), 'dd/MM/yyyy'); }
+    catch { return iso; }
+  };
+
+  const beneficiaire = (c: CheckRow) =>
+    c.supplier_name || c.employee_name || (c.payment_type === 'expense' ? c.category_name : null) || '—';
+
+  return (
+    <>
+      {/* Bandeau totaux : pending vs encaisses */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+          <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>En attente d'encaissement</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 4 }}>{n(counts.totalPending)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            {counts.pending} cheque{counts.pending > 1 ? 's' : ''}
+            {counts.overdue > 0 && (
+              <span style={{ color: '#b71c1c', marginLeft: 8, fontWeight: 600 }}>
+                ⚠ {counts.overdue} en retard
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
+          <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Encaisses</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 4 }}>{n(counts.totalCashed)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{counts.cashed} cheque{counts.cashed > 1 ? 's' : ''}</div>
+        </div>
+        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+          <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total emis</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{n(counts.totalPending + counts.totalCashed)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{counts.pending + counts.cashed} cheque{(counts.pending + counts.cashed) > 1 ? 's' : ''}</div>
+        </div>
+      </div>
+
+      {/* Filtres */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
+          {[
+            { key: 'pending' as const, label: `En attente (${counts.pending})` },
+            { key: 'cashed' as const, label: `Encaisses (${counts.cashed})` },
+            { key: 'all' as const, label: 'Tous' },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setStatusFilter(opt.key)}
+              style={{
+                padding: '6px 12px', border: 'none', borderRadius: 3,
+                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
+                background: statusFilter === opt.key ? 'var(--theme-bg-card)' : 'transparent',
+                color: statusFilter === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
+                boxShadow: statusFilter === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1, position: 'relative', maxWidth: 320 }}>
+          <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--theme-text-muted)' }} />
+          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Beneficiaire, N° cheque, N° facture..."
+            className="odoo-input" style={{ width: '100%', paddingLeft: 30 }} />
+        </div>
+      </div>
+
+      {/* Tableau */}
+      {isLoading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 size={20} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} /> Chargement...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+          {statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
+           statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :
+           'Aucun cheque emis.'}
+        </div>
+      ) : (
+        <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'auto' }}>
+          <table className="odoo-table" style={{ margin: 0, minWidth: 1100 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 110 }}>N° Cheque</th>
+                <th>Beneficiaire</th>
+                <th>Contexte</th>
+                <th style={{ width: 110 }}>Date emission</th>
+                <th style={{ width: 110 }}>Echeance</th>
+                <th style={{ width: 110 }}>Encaisse le</th>
+                <th style={{ width: 110, textAlign: 'right' }}>Montant</th>
+                <th style={{ width: 100 }}>Statut</th>
+                <th style={{ width: 160, textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(c => {
+                const isOverdue = c.status === 'overdue';
+                const isCashed = c.status === 'cashed';
+                return (
+                  <tr key={c.id}>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
+                      {c.check_number || <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{beneficiaire(c)}</div>
+                      {c.payment_type && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'capitalize' }}>
+                          {c.payment_type === 'invoice' ? 'Facture' : c.payment_type === 'salary' ? 'Salaire' : c.payment_type === 'expense' ? 'Depense' : c.payment_type}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.75rem' }}>
+                      {c.invoice_number && (
+                        <div>
+                          Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</strong>
+                          {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(c.invoice_total))} DH)</span>}
+                        </div>
+                      )}
+                      {c.purchase_order_number && (
+                        <div style={{ color: 'var(--theme-text-muted)' }}>
+                          BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.purchase_order_number}</strong>
+                        </div>
+                      )}
+                      {!c.invoice_number && !c.purchase_order_number && (c.description || c.category_name) && (
+                        <div style={{ color: 'var(--theme-text-muted)' }}>{c.description || c.category_name}</div>
+                      )}
+                    </td>
+                    <td>{fmtDate(c.payment_date)}</td>
+                    <td>
+                      {fmtDate(c.invoice_due_date)}
+                      {isOverdue && (
+                        <div style={{ fontSize: '0.6875rem', color: '#b71c1c', fontWeight: 600 }}>en retard</div>
+                      )}
+                    </td>
+                    <td>
+                      {c.cashed_at ? (
+                        <div>
+                          {fmtDate(c.cashed_at)}
+                          {c.cashed_by_name && (
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                              par {c.cashed_by_name}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
+                      {n(parseFloat(c.amount))} DH
+                    </td>
+                    <td>
+                      {isCashed ? (
+                        <span className="odoo-tag" style={{ background: '#d4edda', color: '#0e7c3a' }}>Encaisse</span>
+                      ) : isOverdue ? (
+                        <span className="odoo-tag" style={{ background: '#f8d7da', color: '#b71c1c' }}>Retard</span>
+                      ) : (
+                        <span className="odoo-tag odoo-tag-orange">En attente</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {!isCashed ? (
+                        <button onClick={() => setConfirmingCheck(c)}
+                          className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}>
+                          <Check size={11} /> Marquer encaisse
+                        </button>
+                      ) : (
+                        <button onClick={() => {
+                          if (confirm('Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.')) {
+                            unmarkMutation.mutate(c.id);
+                          }
+                        }}
+                          disabled={unmarkMutation.isPending}
+                          className="odoo-pager-btn" title="Annuler l'encaissement (admin)">
+                          <RotateCcw size={11} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal confirmation encaissement */}
+      {confirmingCheck && (
+        <ConfirmCashedModal
+          check={confirmingCheck}
+          onClose={() => setConfirmingCheck(null)}
+          onConfirm={(cashedAt, note) => markMutation.mutate({
+            id: confirmingCheck.id,
+            data: { cashedAt, note },
+          })}
+          isPending={markMutation.isPending}
+        />
+      )}
+    </>
+  );
+}
+
+/* Mini-modal : confirme l'encaissement d'un cheque avec date + note */
+function ConfirmCashedModal({
+  check, onClose, onConfirm, isPending,
+}: {
+  check: CheckRow;
+  onClose: () => void;
+  onConfirm: (cashedAt: string, note: string | undefined) => void;
+  isPending: boolean;
+}) {
+  const [cashedAt, setCashedAt] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [note, setNote] = useState<string>('');
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 480, background: 'var(--theme-bg-card)', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Check size={14} style={{ color: '#0e7c3a' }} />
+            <span>Confirmer encaissement</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
+              {check.check_number || `${parseFloat(check.amount).toFixed(2)} DH`}
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ padding: '10px 12px', background: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem' }}>
+            <div><strong>Beneficiaire :</strong> {check.supplier_name || check.employee_name || '—'}</div>
+            <div><strong>Montant :</strong> {n(parseFloat(check.amount))} DH</div>
+            {check.invoice_number && <div><strong>Facture :</strong> {check.invoice_number}</div>}
+            {check.invoice_due_date && (
+              <div style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>
+                Echeance prevue : {format(parseLocalDate(check.invoice_due_date.slice(0, 10)), 'dd/MM/yyyy')}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+              Date d'encaissement effective *
+            </label>
+            <input type="date" value={cashedAt} onChange={e => setCashedAt(e.target.value)}
+              className="odoo-input" style={{ width: '100%' }} />
+            <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 4 }}>
+              Date du debit bancaire (releve de compte). Sert de date de charge en tresorerie.
+            </p>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+              Note (optionnel)
+            </label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="Ex : vu sur releve bancaire du 12/07"
+              className="odoo-input" style={{ width: '100%' }} />
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+          <button onClick={() => onConfirm(cashedAt, note.trim() || undefined)} disabled={isPending || !cashedAt}
+            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {isPending && <Loader2 size={12} className="animate-spin" />}
+            <Check size={13} /> Confirmer
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

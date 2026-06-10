@@ -448,6 +448,50 @@ export const paymentController = {
     const payments = await paymentRepository.findAll({ type, dateFrom, dateTo, supplierId, storeId: req.user!.storeId });
     res.json({ success: true, data: payments });
   },
+  /**
+   * GET /payments/checks?status=&dateFrom=&dateTo=
+   * Liste les paiements par cheque pour la gestion d'encaissement.
+   */
+  async listChecks(req: AuthRequest, res: Response) {
+    const { status, dateFrom, dateTo, supplierId, employeeId } = req.query as Record<string, string>;
+    const allowed = ['pending', 'cashed', 'all'];
+    const safeStatus = status && allowed.includes(status) ? (status as 'pending' | 'cashed' | 'all') : 'all';
+    const checks = await paymentRepository.findChecks({
+      status: safeStatus, dateFrom, dateTo, supplierId, employeeId,
+      storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: checks });
+  },
+  /**
+   * POST /payments/:id/mark-cashed
+   * Body: { cashedAt?: 'YYYY-MM-DD', note?: string }
+   * Confirme l'encaissement d'un cheque. cashedBy est l'utilisateur courant.
+   */
+  async markCashed(req: AuthRequest, res: Response) {
+    const { cashedAt, note } = req.body as { cashedAt?: string; note?: string };
+    try {
+      const payment = await paymentRepository.markCashed(req.params.id, {
+        cashedAt, cashedBy: req.user!.userId, note,
+      });
+      res.json({ success: true, data: payment });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la confirmation';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
+  /**
+   * POST /payments/:id/unmark-cashed — Admin uniquement (correction d'erreur).
+   * Re-bascule un cheque deja confirme en attente.
+   */
+  async unmarkCashed(req: AuthRequest, res: Response) {
+    try {
+      const payment = await paymentRepository.unmarkCashed(req.params.id);
+      res.json({ success: true, data: payment });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur';
+      res.status(400).json({ success: false, error: { message: msg } });
+    }
+  },
   async create(req: AuthRequest, res: Response) {
     const data = { ...req.body, createdBy: req.user!.userId, storeId: req.user!.storeId };
 

@@ -91,4 +91,13 @@ export const paymentsApi = {
   remove: (id: string) => api.delete(`/payments/${id}`),
   summary: (dateFrom: string, dateTo: string) =>
     api.get('/payments/summary', { params: { dateFrom, dateTo } }).then(r => r.data.data),
+  /** Liste des cheques pour gestion encaissement. status: 'pending' | 'cashed' | 'all'. */
+  listChecks: (params?: { status?: string; dateFrom?: string; dateTo?: string; supplierId?: string; employeeId?: string }) =>
+    api.get('/payments/checks', { params }).then(r => r.data.data),
+  /** Confirme l'encaissement d'un cheque (date debit bancaire). */
+  markCashed: (id: string, data: { cashedAt?: string; note?: string }) =>
+    api.post(`/payments/${id}/mark-cashed`, data).then(r => r.data.data),
+  /** Admin : annule la confirmation d'encaissement (correction d'erreur). */
+  unmarkCashed: (id: string) =>
+    api.post(`/payments/${id}/unmark-cashed`).then(r => r.data.data),
 };
