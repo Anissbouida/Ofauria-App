@@ -1,15 +1,19 @@
 import { db } from '../config/database.js';
 
 export const customerRepository = {
-  async findAll(params: { search?: string; limit: number; offset: number }) {
+  async findAll(params: { search?: string; customerType?: string; limit: number; offset: number }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     if (params.search) {
-      conditions.push(`(c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR c.email ILIKE $${i} OR c.phone ILIKE $${i})`);
+      conditions.push(`(c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR c.email ILIKE $${i} OR c.phone ILIKE $${i} OR c.company_name ILIKE $${i})`);
       values.push(`%${params.search}%`);
       i++;
+    }
+    if (params.customerType) {
+      conditions.push(`c.customer_type = $${i++}`);
+      values.push(params.customerType);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

@@ -13,12 +13,13 @@ import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock, ClipboardList,
-  Upload, ArrowUpDown, ArrowUp, ArrowDown,
+  Upload, ArrowUpDown, ArrowUp, ArrowDown, Briefcase,
 } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import ManualShiftEntries from './ManualShiftEntries';
+import SpecialSalesTab from './SpecialSalesTab';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', manager: 'Gérant', cashier: 'Caissier', baker: 'Boulanger',
@@ -105,7 +106,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
-  const [mainTab, setMainTab] = useState<'sales' | 'unpaid' | 'sessions' | 'returns' | 'invoices'>('sales');
+  const [mainTab, setMainTab] = useState<'sales' | 'special' | 'unpaid' | 'sessions' | 'returns' | 'invoices'>('sales');
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -413,6 +414,7 @@ export default function SalesPage() {
 
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
+    { key: 'special' as const, label: 'Ventes spéciales', icon: Briefcase },
     { key: 'unpaid' as const, label: 'Impayés', icon: Clock },
     { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
     { key: 'sessions' as const, label: 'Périodes de travail', icon: Lock },
@@ -1189,6 +1191,9 @@ export default function SalesPage() {
           </div>
         )
       )}
+
+      {/* ═══════════ SPECIAL SALES TAB ═══════════ */}
+      {mainTab === 'special' && <SpecialSalesTab dateFrom={dateFrom} dateTo={dateTo} />}
 
       {/* ═══════════ INVOICES TAB ═══════════ */}
       {mainTab === 'invoices' && <EmittedInvoicesTab />}

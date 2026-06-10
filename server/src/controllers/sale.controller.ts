@@ -13,14 +13,16 @@ export const saleController = {
       res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
       return;
     }
-    const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, paymentStatus, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId, paymentStatus, saleType, page = '1', limit = '20' } = req.query as Record<string, string>;
     // OWASP API4 : borner pagination pour eviter DoS DB.
     const p = Math.max(1, Math.min(100000, parseInt(page) || 1));
     const l = Math.max(1, Math.min(200, parseInt(limit) || 20));
     const validPaymentStatus = paymentStatus === 'paid' || paymentStatus === 'unpaid' ? paymentStatus : undefined;
+    const validSaleType = ['standard', 'advance', 'delivery', 'special'].includes(saleType) ? saleType : undefined;
     const result = await saleRepository.findAll({
       dateFrom, dateTo, customerId, paymentMethod, userId, search, categoryId, productId,
       paymentStatus: validPaymentStatus,
+      saleType: validSaleType,
       storeId: req.user!.storeId,
       limit: l, offset: (p - 1) * l,
     });
@@ -239,6 +241,66 @@ export const saleController = {
       res.json({ success: true, data: result.sale });
       return;
     }
+  },
+
+  // Vente speciale B2B : back-office, prix unitaires negocies, pas de stock
+  // vitrine deduit. Reserve a admin/manager (cf. route).
+  async createSpecial(req: AuthRequest, res: Response) {
+    const {
+      customerId, items, paymentMethod,
+      paymentStatus = 'paid', discountAmount = 0, notes, saleDate,
+    } = req.body as {
+      customerId: string;
+      items: { productId: string; quantity: number; unitPrice: number }[];
+      paymentMethod: string;
+      paymentStatus?: 'paid' | 'unpaid';
+      discountAmount?: number;
+      notes?: string;
+      saleDate?: string;
+    };
+
+    if (!req.user!.storeId && req.user!.role !== 'admin') {
+      res.status(400).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
+      return;
+    }
+
+    // Calcul des subtotals avec les prix saisis (pas de fetch product.price).
+    const enrichedItems = items.map(it => ({
+      productId: it.productId,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      subtotal: Number((it.quantity * it.unitPrice).toFixed(2)),
+      unit: 'unit' as const,
+    }));
+    const subtotal = Number(enrichedItems.reduce((sum, it) => sum + it.subtotal, 0).toFixed(2));
+
+    if (discountAmount > subtotal) {
+      res.status(400).json({ success: false, error: { message: 'Remise superieure au sous-total' } });
+      return;
+    }
+    const total = Number((subtotal - discountAmount).toFixed(2));
+
+    // Quand le statut est 'unpaid', la table sales force payment_method='credit'
+    // (marqueur d'impaye). Le mode reel sera saisi au reglement (cf. /:id/pay).
+    const effectivePaymentMethod = paymentStatus === 'unpaid' ? 'credit' : paymentMethod;
+
+    // Si saleDate fournie : on stocke la vente datee a midi de ce jour
+    // (evite les surprises de fuseau aux bornes minuit).
+    const createdAt = saleDate ? new Date(`${saleDate}T12:00:00`).toISOString() : undefined;
+
+    const sale = await saleRepository.create({
+      customerId, userId: req.user!.userId,
+      subtotal, taxAmount: 0, discountAmount, total,
+      paymentMethod: effectivePaymentMethod,
+      notes,
+      storeId: req.user!.storeId,
+      saleType: 'special',
+      paymentStatus,
+      skipStockDeduction: true,
+      createdAt,
+      items: enrichedItems,
+    });
+    res.status(201).json({ success: true, data: sale });
   },
 
   async todayStats(req: AuthRequest, res: Response) {

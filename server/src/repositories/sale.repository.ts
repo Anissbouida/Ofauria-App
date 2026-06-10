@@ -9,6 +9,7 @@ export const saleRepository = {
     paymentMethod?: string; userId?: string; search?: string;
     categoryId?: string; productId?: string; storeId?: string;
     paymentStatus?: 'paid' | 'unpaid';
+    saleType?: string;
     limit: number; offset: number;
   }) {
     const conditions: string[] = [];
@@ -37,6 +38,7 @@ export const saleRepository = {
       conditions.push(`s.payment_status IS DISTINCT FROM 'unpaid'`);
     }
     if (params.userId) { conditions.push(`s.user_id = $${i++}`); values.push(params.userId); }
+    if (params.saleType) { conditions.push(`s.sale_type = $${i++}`); values.push(params.saleType); }
     if (params.search) { conditions.push(`s.sale_number ILIKE $${i++}`); values.push(`%${params.search}%`); }
     if (params.productId) {
       conditions.push(`s.id IN (SELECT si2.sale_id FROM sale_items si2 WHERE si2.product_id = $${i++})`);
@@ -148,7 +150,8 @@ export const saleRepository = {
     paymentMethod: string; notes?: string; sessionId?: string; storeId?: string;
     advanceAmount?: number; advanceDate?: string | null; orderId?: string;
     skipStockDeduction?: boolean;
-    saleType?: 'standard' | 'advance' | 'delivery';
+    saleType?: 'standard' | 'advance' | 'delivery' | 'special';
+    createdAt?: string; // override (vente saisie a posteriori, ex: special B2B)
     paymentStatus?: 'paid' | 'unpaid';
     unpaidCustomerName?: string;
     employeeId?: string;
@@ -165,16 +168,22 @@ export const saleRepository = {
 
       const paymentStatus = data.paymentStatus || 'paid';
       // paid_at est NULL pour une vente impayee : sera renseigne lors de l'encaissement differe.
-      const paidAtExpr = paymentStatus === 'paid' ? 'NOW()' : 'NULL';
+      // Pour une vente saisie a posteriori (special B2B), on prend la date fournie.
+      const createdAtExpr = data.createdAt ? `$22` : 'NOW()';
+      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$22' : 'NOW()') : 'NULL';
+      const insertValues: unknown[] = [
+        saleNumber, data.customerId || null, data.userId, data.subtotal,
+        data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
+        data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard',
+        paymentStatus, data.unpaidCustomerName || null, data.employeeId || null,
+        data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null,
+      ];
+      if (data.createdAt) insertValues.push(data.createdAt);
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21) RETURNING *`,
-        [saleNumber, data.customerId || null, data.userId, data.subtotal,
-         data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
-         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard',
-         paymentStatus, data.unpaidCustomerName || null, data.employeeId || null,
-         data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null]
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, ${createdAtExpr}) RETURNING *`,
+        insertValues
       );
 
       for (const item of data.items) {

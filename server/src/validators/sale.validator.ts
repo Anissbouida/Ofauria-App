@@ -57,4 +57,36 @@ export const paySaleSchema = z.object({
   paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional(),
 });
 
+// Vente speciale B2B : prix unitaires negocies par ligne. Pas de stock vitrine
+// deduit. Client B2B obligatoire (selection d'un customer existant).
+const specialSaleItemSchema = z.object({
+  productId: uuid,
+  quantity: positiveQuantity,
+  // Prix unitaire negocie pour cette ligne — saisi par l'admin/manager.
+  unitPrice: z.coerce.number()
+    .finite('Prix unitaire invalide')
+    .min(0, 'Prix unitaire ne peut etre negatif')
+    .max(999999.99, 'Prix unitaire trop eleve'),
+});
+
+const SPECIAL_PAYMENT_METHODS = ['cash', 'card', 'mobile', 'check', 'credit', 'transfer'] as const;
+
+export const specialSaleSchema = z.object({
+  customerId: uuid, // obligatoire pour la tracabilite B2B
+  items: z.array(specialSaleItemSchema).min(1, 'Au moins un article requis').max(500),
+  paymentMethod: z.enum(SPECIAL_PAYMENT_METHODS),
+  paymentStatus: z.enum(['paid', 'unpaid']).optional().default('paid'),
+  // Remise globale en plus des prix negocies (optionnelle).
+  discountAmount: z.coerce.number()
+    .finite('Remise invalide')
+    .min(0, 'Remise ne peut etre negative')
+    .max(999999.99, 'Remise trop elevee')
+    .optional()
+    .default(0),
+  notes: z.string().trim().max(1000).optional(),
+  // Date de la vente : permet de saisir une vente anterieure (ex: facturation
+  // d'une livraison de la semaine passee). Defaut = maintenant.
+  saleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional(),
+});
+
 export { moneyAmount, positiveQuantity };

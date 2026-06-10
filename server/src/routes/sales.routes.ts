@@ -4,7 +4,7 @@ import { printerController } from '../controllers/printer.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { checkoutSchema, paySaleSchema } from '../validators/sale.validator.js';
+import { checkoutSchema, paySaleSchema, specialSaleSchema } from '../validators/sale.validator.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
@@ -22,6 +22,14 @@ router.post(
   authorize(...ROLE_GROUPS.SALES),
   validate(checkoutSchema),
   saleController.checkout,
+);
+// Vente speciale B2B : back-office, admin/manager uniquement.
+router.post(
+  '/special',
+  authenticate,
+  authorize(...ROLE_GROUPS.ADMIN_MANAGER),
+  validate(specialSaleSchema),
+  saleController.createSpecial,
 );
 router.post(
   '/:id/pay',

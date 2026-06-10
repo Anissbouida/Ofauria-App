@@ -10,4 +10,14 @@ export const salesApi = {
   summary: (params: Record<string, string>) => api.get('/sales/summary', { params }).then(r => r.data.data),
   importCSV: (data: { days: { date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }[] }) =>
     api.post('/sales/import', data).then(r => r.data.data),
+  // Vente speciale B2B : prix unitaires negocies, pas de stock vitrine deduit.
+  createSpecial: (data: {
+    customerId: string;
+    items: { productId: string; quantity: number; unitPrice: number }[];
+    paymentMethod: string;
+    paymentStatus?: 'paid' | 'unpaid';
+    discountAmount?: number;
+    notes?: string;
+    saleDate?: string;
+  }) => api.post('/sales/special', data).then(r => r.data.data),
 };
