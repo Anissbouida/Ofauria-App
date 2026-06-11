@@ -15,17 +15,28 @@ export const caisseRepository = {
     const baseParams = [startDate, endDate];
     const params = storeId ? [...baseParams, storeId] : baseParams;
 
-    // All payments for the month
+    // All payments for the month — vue TRESORERIE (cash effectif).
+    //
+    // Cheques : on filtre sur cashed_at et on exclut ceux pas encore encaisses
+    // (sinon ils apparaitraient dans Caisse/Resume du jour de signature alors
+    // que le cash n'a pas encore quitte la banque). Le payment_date renvoye
+    // est aussi remplace par cashed_at pour que le frontend buckete sur le
+    // bon jour. Pour les autres methodes (cash/transfer), payment_date = date
+    // d'effet, on garde tel quel.
     const payments = await db.query(
-      `SELECT p.id, p.payment_date, p.type, p.amount, p.payment_method, p.description, p.reference,
+      `SELECT p.id,
+              (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) AS payment_date,
+              p.type, p.amount, p.payment_method, p.description, p.reference,
               s.name as supplier_name, ec.name as category_name, ec.type as category_type,
               e.first_name as employee_first_name, e.last_name as employee_last_name
        FROM payments p
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN employees e ON e.id = p.employee_id
-       WHERE p.payment_date BETWEEN $1 AND $2${storeFilterP}
-       ORDER BY p.payment_date, p.created_at`,
+       WHERE (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
+         AND (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) BETWEEN $1 AND $2
+         ${storeFilterP}
+       ORDER BY (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END), p.created_at`,
       params
     );
 
@@ -88,6 +99,8 @@ export const caisseRepository = {
     const prevStoreFilter = storeId ? ' AND p.store_id = $2' : '';
     const prevParams = storeId ? [startDate, storeId] : [startDate];
 
+    // Solde reporte : meme logique tresorerie que la requete principale.
+    // Cheques non encaisses exclus ; effective_date utilisee pour le filtre.
     const prevPayments = await db.query(
       `SELECT
         COALESCE(SUM(CASE WHEN p.type = 'income' AND p.payment_method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_entries,
@@ -95,7 +108,9 @@ export const caisseRepository = {
         COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_exits,
         COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method != 'cash' THEN p.amount ELSE 0 END), 0) as bank_exits
        FROM payments p
-       WHERE p.payment_date < $1${prevStoreFilter}`,
+       WHERE (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
+         AND (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) < $1
+         ${prevStoreFilter}`,
       prevParams
     );
 
