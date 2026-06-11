@@ -2,8 +2,27 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
+import { dashboardRepository } from '../repositories/dashboard.repository.js';
 
 export const reportsController = {
+  /**
+   * GET /reports/finance-overview?dateFrom=&dateTo=
+   * Vue de synthese pour l'onglet Pilotage de Comptabilite.
+   * Croise engagement, tresorerie, pipeline, fournisseurs crediteurs.
+   * Voir dashboardRepository.getFinanceOverview pour le detail des calculs.
+   */
+  async financeOverview(req: AuthRequest, res: Response) {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    if (!dateFrom || !dateTo) {
+      res.status(400).json({ success: false, error: { message: 'dateFrom et dateTo requis' } });
+      return;
+    }
+    const data = await dashboardRepository.getFinanceOverview({
+      dateFrom, dateTo, storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data });
+  },
+
   async dashboard(req: AuthRequest, res: Response) {
     const storeId = req.user!.storeId;
     const storeFilter = storeId ? ' AND store_id = $1' : '';

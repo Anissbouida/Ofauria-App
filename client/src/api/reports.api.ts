@@ -68,8 +68,49 @@ export type MenuEngineering = {
   missingCostCount: number;
 };
 
+export type FinanceOverview = {
+  period: { dateFrom: string; dateTo: string };
+  kpis: {
+    engagement: { total: number; count: number };
+    treasury: {
+      total: number;
+      byMethod: {
+        cash: { count: number; total: number };
+        check: { count: number; total: number };
+        transfer: { count: number; total: number };
+        bank: { count: number; total: number };
+      };
+    };
+    remainingToPay: { total: number; count: number };
+    receivedNotInvoiced: { total: number; count: number };
+  };
+  pipeline: {
+    unpaidInvoices: { total: number; count: number };
+    uncashedChecks: {
+      total: number; count: number;
+      overdue: number; next7d: number; next30d: number; later: number;
+    };
+    receivedNotInvoiced: {
+      total: number; count: number;
+      list: Array<{
+        id: string; orderNumber: string; supplierName: string;
+        deliveryDate: string; total: number;
+      }>;
+    };
+  };
+  topSuppliers: Array<{
+    id: string; name: string;
+    unpaidTotal: number; unpaidCount: number;
+    uncashedChecksTotal: number; uncashedChecksCount: number;
+    totalDue: number;
+  }>;
+};
+
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard').then(r => r.data.data),
+  /** Vue Pilotage : engagement, tresorerie, pipeline, fournisseurs crediteurs */
+  financeOverview: (dateFrom: string, dateTo: string): Promise<FinanceOverview> =>
+    api.get('/reports/finance-overview', { params: { dateFrom, dateTo } }).then(r => r.data.data),
   sales: (startDate: string, endDate: string) => api.get('/reports/sales', { params: { startDate, endDate } }).then(r => r.data.data),
   products: (startDate: string, endDate: string) => api.get('/reports/products', { params: { startDate, endDate } }).then(r => r.data.data),
   costSummary: (startDate: string, endDate: string): Promise<CostSummary> =>

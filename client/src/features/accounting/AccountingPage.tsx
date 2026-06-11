@@ -3,15 +3,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
 import { employeesApi } from '../../api/employees.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
+import { reportsApi } from '../../api/reports.api';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, BarChart3,
+  Plus, Pencil, BarChart3, LayoutDashboard,
   X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
-  Loader2, Coins, Scale, Trash2,
+  Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search,
-  Check, RotateCcw,
+  Check, RotateCcw, Calendar,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -20,7 +21,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
-type AccTab = 'caisse' | 'charges' | 'cheques' | 'resume' | 'losses';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'resume' | 'losses';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -184,9 +185,10 @@ function buildDailyData(
 }
 
 export default function AccountingPage() {
-  const [tab, setTab] = useState<AccTab>('caisse');
+  const [tab, setTab] = useState<AccTab>('pilotage');
 
   const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
+    { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard },
     { key: 'caisse', label: 'Caisse', icon: Wallet },
     { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
     { key: 'cheques', label: 'Chèques', icon: Receipt },
@@ -221,6 +223,7 @@ export default function AccountingPage() {
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
         <PaymentAlertsWidget />
+        {tab === 'pilotage' && <PilotageTab />}
         {tab === 'caisse' && <CaisseTab />}
         {tab === 'charges' && <ChargesTab />}
         {tab === 'cheques' && <ChequesTab />}
@@ -228,6 +231,391 @@ export default function AccountingPage() {
         {tab === 'losses' && <LossesTab />}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════ PILOTAGE TAB ═══════════════════════ */
+/**
+ * Vue de synthese pour l'admin : croise 3 dimensions financieres :
+ *   - ENGAGEMENT (factures recues sur la periode, peu importe statut)
+ *   - TRESORERIE (cash sorti = paye en cash + cheques encaisses)
+ *   - PIPELINE (impayes, cheques non encaisses, recus non factures)
+ *
+ * Le DELTA entre engagement et tresorerie + le pipeline donne la vraie
+ * vision : "j'ai engage X, paye Y, il reste Z a debourser, et W de cheques
+ * vont sortir dans les 30 jours".
+ *
+ * Source : reportsApi.financeOverview qui aggrege tout cote backend.
+ */
+function PilotageTab() {
+  const now = new Date();
+  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [customFrom, setCustomFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
+  const [customTo, setCustomTo] = useState(format(now, 'yyyy-MM-dd'));
+
+  // Calcul des dates effectives selon le mode
+  const { dateFrom, dateTo, periodLabel } = useMemo(() => {
+    if (periodMode === 'custom') {
+      return {
+        dateFrom: customFrom, dateTo: customTo,
+        periodLabel: `${format(parseLocalDate(customFrom), 'dd MMM', { locale: fr })} → ${format(parseLocalDate(customTo), 'dd MMM yyyy', { locale: fr })}`,
+      };
+    }
+    const lastDay = new Date(year, month, 0).getDate();
+    return {
+      dateFrom: `${year}-${String(month).padStart(2, '0')}-01`,
+      dateTo: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+      periodLabel: format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr }),
+    };
+  }, [periodMode, month, year, customFrom, customTo]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['finance-overview', dateFrom, dateTo],
+    queryFn: () => reportsApi.financeOverview(dateFrom, dateTo),
+  });
+
+  if (isLoading || !data) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+        <Loader2 size={20} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} />
+        Chargement du pilotage...
+      </div>
+    );
+  }
+
+  const { kpis, pipeline, topSuppliers } = data;
+  const cashPct = kpis.treasury.total > 0 ? (kpis.treasury.byMethod.cash.total / kpis.treasury.total) * 100 : 0;
+  const checkPct = kpis.treasury.total > 0 ? (kpis.treasury.byMethod.check.total / kpis.treasury.total) * 100 : 0;
+  const transferPct = kpis.treasury.total > 0 ? ((kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total) / kpis.treasury.total) * 100 : 0;
+
+  // Delta engagement - tresorerie : ce qui a ete engage mais pas encore sorti
+  const deltaToPay = kpis.engagement.total - kpis.treasury.total;
+
+  return (
+    <>
+      {/* Selecteur periode */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
+          {[
+            { key: 'month' as const, label: 'Par mois' },
+            { key: 'custom' as const, label: 'Periode personnalisee' },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setPeriodMode(opt.key)}
+              style={{
+                padding: '6px 12px', border: 'none', borderRadius: 3,
+                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
+                background: periodMode === opt.key ? 'var(--theme-bg-card)' : 'transparent',
+                color: periodMode === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
+                boxShadow: periodMode === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {periodMode === 'month' ? (
+          <>
+            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="odoo-input" style={{ width: 130 }}>
+              {Array.from({ length: 12 }, (_, k) => k + 1).map(m => (
+                <option key={m} value={m}>{format(new Date(2026, m - 1, 1), 'MMMM', { locale: fr })}</option>
+              ))}
+            </select>
+            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="odoo-input" style={{ width: 90 }}>
+              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </>
+        ) : (
+          <>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="odoo-input" style={{ width: 140 }} />
+            <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="odoo-input" style={{ width: 140 }} />
+          </>
+        )}
+        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+          <Calendar size={12} style={{ display: 'inline', marginRight: 4 }} />
+          <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
+        </span>
+      </div>
+
+      {/* SECTION 1 : KPIs principaux */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        {/* Engagement */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0d4d8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <ClipboardList size={11} /> Engagement
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0d4d8c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.engagement.total)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {kpis.engagement.count} facture{kpis.engagement.count > 1 ? 's' : ''} sur la periode
+          </div>
+        </div>
+
+        {/* Tresorerie sortie */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <ArrowDownRight size={11} /> Tresorerie sortie
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.treasury.total)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            Cash effectivement debourse
+          </div>
+        </div>
+
+        {/* Reste a payer (delta) */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Coins size={11} /> Reste a payer
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.remainingToPay.total)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {kpis.remainingToPay.count} facture{kpis.remainingToPay.count > 1 ? 's' : ''} de la periode
+          </div>
+        </div>
+
+        {/* Recu non facture */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #f5c6cb', background: '#fff5f5' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#b71c1c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <FileWarning size={11} /> Recu non facture
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#b71c1c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.receivedNotInvoiced.total)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {kpis.receivedNotInvoiced.count} BC livre{kpis.receivedNotInvoiced.count > 1 ? 's' : ''}, facture manquante
+          </div>
+        </div>
+      </div>
+
+      {/* Equation explicite : Engagement = Tresorerie + Reste */}
+      <div className="odoo-alert" style={{ fontSize: '0.8125rem', background: 'var(--theme-bg-page)', border: '1px solid var(--theme-bg-separator)' }}>
+        <strong>Equation tresorerie :</strong> sur cette periode, tu as engage{' '}
+        <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(kpis.engagement.total)} DH</strong>{' '}
+        de factures fournisseur. Tu as deja debourse{' '}
+        <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0e7c3a' }}>{n(kpis.treasury.total)} DH</strong>{' '}
+        en cash. Il reste donc{' '}
+        <strong style={{ fontFamily: 'ui-monospace, monospace', color: deltaToPay > 0 ? '#856404' : '#0e7c3a' }}>{n(Math.max(0, deltaToPay))} DH</strong>{' '}
+        engages mais pas encore sortis du compte.
+        {kpis.receivedNotInvoiced.total > 0 && (
+          <> Attention : <strong style={{ color: '#b71c1c' }}>{n(kpis.receivedNotInvoiced.total)} DH</strong> de marchandises recues n'ont PAS encore de facture saisie — engagement potentiellement sous-estime.</>
+        )}
+      </div>
+
+      {/* SECTION 2 : Pipeline (vue a date) */}
+      <div>
+        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
+          Pipeline (vue a date — ce qui va impacter la tresorerie)
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {/* Factures impayees */}
+          <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Factures impayees (total)
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+              {n(pipeline.unpaidInvoices.total)} DH
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              {pipeline.unpaidInvoices.count} facture{pipeline.unpaidInvoices.count > 1 ? 's' : ''} en attente
+            </div>
+          </div>
+
+          {/* Cheques non encaisses */}
+          <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Cheques non encaisses
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#856404', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+              {n(pipeline.uncashedChecks.total)} DH
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              {pipeline.uncashedChecks.count} cheque{pipeline.uncashedChecks.count > 1 ? 's' : ''} en attente
+            </div>
+            {/* Breakdown par echeance */}
+            {pipeline.uncashedChecks.count > 0 && (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #f3df9b', fontSize: '0.6875rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {pipeline.uncashedChecks.overdue > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b71c1c' }}>
+                    <span>⚠ En retard</span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.overdue)}</strong>
+                  </div>
+                )}
+                {pipeline.uncashedChecks.next7d > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>≤ 7 jours</span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.next7d)}</strong>
+                  </div>
+                )}
+                {pipeline.uncashedChecks.next30d > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>8-30 jours</span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.next30d)}</strong>
+                  </div>
+                )}
+                {pipeline.uncashedChecks.later > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>plus tard</span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.later)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Receptions sans facture */}
+          <div style={{ padding: '12px 14px', borderRadius: 4, border: pipeline.receivedNotInvoiced.count > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: pipeline.receivedNotInvoiced.count > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
+            <div style={{ fontSize: '0.6875rem', color: pipeline.receivedNotInvoiced.count > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Recu sans facture
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: pipeline.receivedNotInvoiced.count > 0 ? '#b71c1c' : 'inherit', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+              {n(pipeline.receivedNotInvoiced.total)} DH
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              {pipeline.receivedNotInvoiced.count} BC livre{pipeline.receivedNotInvoiced.count > 1 ? 's' : ''}, a comptabiliser
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3 : Repartition methodes de paiement */}
+      {kpis.treasury.total > 0 && (
+        <div>
+          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
+            Repartition des paiements effectifs sur la periode
+          </h3>
+          <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+            {/* Barre proportionnelle */}
+            <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--theme-bg-page)' }}>
+              {cashPct > 0 && (
+                <div style={{ width: `${cashPct}%`, background: '#28a745', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {cashPct >= 8 && `${Math.round(cashPct)}%`}
+                </div>
+              )}
+              {checkPct > 0 && (
+                <div style={{ width: `${checkPct}%`, background: '#fd7e14', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {checkPct >= 8 && `${Math.round(checkPct)}%`}
+                </div>
+              )}
+              {transferPct > 0 && (
+                <div style={{ width: `${transferPct}%`, background: '#007bff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {transferPct >= 8 && `${Math.round(transferPct)}%`}
+                </div>
+              )}
+            </div>
+            {/* Legende */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, fontSize: '0.8125rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 12, height: 12, background: '#28a745', borderRadius: 2 }} />
+                  <strong>Especes</strong>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.cash.count})</span>
+                </div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.cash.total)} DH</div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 12, height: 12, background: '#fd7e14', borderRadius: 2 }} />
+                  <strong>Cheque (encaisse)</strong>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.check.count})</span>
+                </div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.check.total)} DH</div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 12, height: 12, background: '#007bff', borderRadius: 2 }} />
+                  <strong>Virement / Banque</strong>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count})</span>
+                </div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)} DH</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 4 : Top fournisseurs crediteurs */}
+      <div>
+        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
+          Top fournisseurs crediteurs (montants dus a date)
+        </h3>
+        {topSuppliers.length === 0 ? (
+          <div style={{ padding: 30, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.875rem' }}>
+            Aucun fournisseur avec montant du. Tous les soldes sont a zero.
+          </div>
+        ) : (
+          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden' }}>
+            <table className="odoo-table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '4%' }}>#</th>
+                  <th>Fournisseur</th>
+                  <th style={{ textAlign: 'right' }}>Factures impayees</th>
+                  <th style={{ textAlign: 'right' }}>Cheques non encaisses</th>
+                  <th style={{ textAlign: 'right' }}>Total du</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topSuppliers.map((s, i) => (
+                  <tr key={s.id}>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{i + 1}</td>
+                    <td><strong>{s.name}</strong></td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                      {s.unpaidTotal > 0 ? (
+                        <>
+                          {n(s.unpaidTotal)}
+                          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({s.unpaidCount})</span>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                      {s.uncashedChecksTotal > 0 ? (
+                        <>
+                          {n(s.uncashedChecksTotal)}
+                          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({s.uncashedChecksCount})</span>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: 'var(--theme-accent)' }}>
+                      {n(s.totalDue)} DH
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Liste detaillee : receptions sans facture (si il y en a) */}
+      {pipeline.receivedNotInvoiced.list.length > 0 && (
+        <div>
+          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: '#b71c1c' }}>
+            <FileWarning size={13} style={{ display: 'inline', marginRight: 4 }} />
+            Marchandises recues sans facture (a saisir)
+          </h3>
+          <div style={{ border: '1px solid #f5c6cb', borderRadius: 4, overflow: 'hidden' }}>
+            <table className="odoo-table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th>N° BC</th>
+                  <th>Fournisseur</th>
+                  <th>Date livraison</th>
+                  <th style={{ textAlign: 'right' }}>Montant estime</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipeline.receivedNotInvoiced.list.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.orderNumber}</td>
+                    <td>{r.supplierName}</td>
+                    <td>{r.deliveryDate ? format(parseLocalDate(r.deliveryDate), 'dd/MM/yyyy') : '—'}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.total)} DH</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
