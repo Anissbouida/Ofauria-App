@@ -581,6 +581,7 @@ export const attendanceRepository = {
         COUNT(*) FILTER (WHERE status = 'absent') as absent_days,
         COUNT(*) FILTER (WHERE status = 'late') as late_days,
         COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
+        COUNT(*) FILTER (WHERE status = 'repos') as repos_days,
         COALESCE(SUM(overtime_minutes), 0) as total_overtime_minutes
        FROM attendance
        WHERE employee_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`,
@@ -750,8 +751,11 @@ export const payrollRepository = {
     for (const emp of employees.rows) {
       // ─── Pointage du mois ───
       const att = await db.query(
+        // 'repos' compte comme jour paye (jour de repos hebdomadaire inclus
+        // dans le salaire mensuel) — regroupe avec 'present'/'late' pour le
+        // decompte des jours travailles facturables.
         `SELECT
-          COUNT(*) FILTER (WHERE status IN ('present', 'late')) as present_days,
+          COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos')) as present_days,
           COUNT(*) FILTER (WHERE status = 'absent') as absent_days,
           COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
           COALESCE(SUM(overtime_minutes), 0) as total_overtime

@@ -89,11 +89,13 @@ export const weeklyPayrollRepository = {
       const dailyRate = weeklySalary / 6;
 
       const att = await db.query(
+        // 'repos' = jour paye au meme titre que 'present'/'late' (jour de
+        // repos hebdomadaire inclus dans le salaire).
         `SELECT
-           COUNT(*) FILTER (WHERE status IN ('present', 'late'))::int AS present_days,
-           COUNT(*) FILTER (WHERE status = 'absent')::int             AS absent_days,
-           COUNT(*) FILTER (WHERE status = 'half_day')::int           AS half_days,
-           COALESCE(SUM(overtime_minutes), 0)::int                     AS total_overtime_min
+           COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos'))::int AS present_days,
+           COUNT(*) FILTER (WHERE status = 'absent')::int                     AS absent_days,
+           COUNT(*) FILTER (WHERE status = 'half_day')::int                   AS half_days,
+           COALESCE(SUM(overtime_minutes), 0)::int                            AS total_overtime_min
          FROM attendance
          WHERE employee_id = $1
            AND date BETWEEN $2 AND $3

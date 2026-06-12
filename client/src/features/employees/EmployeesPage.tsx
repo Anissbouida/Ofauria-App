@@ -24,6 +24,8 @@ const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
   { value: 'absent', label: 'Absent', color: 'bg-red-100 text-red-700' },
   { value: 'late', label: 'Retard', color: 'bg-yellow-100 text-yellow-700' },
   { value: 'half_day', label: 'Demi-journée', color: 'bg-blue-100 text-blue-700' },
+  // Repos hebdomadaire paye (comptabilise comme jour travaille pour la paie).
+  { value: 'repos', label: 'Repos', color: 'bg-purple-100 text-purple-700' },
 ];
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
