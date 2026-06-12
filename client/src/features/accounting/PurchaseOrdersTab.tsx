@@ -348,6 +348,17 @@ export default function PurchaseOrdersTab() {
                           <button onClick={() => setEditPoId(po.id as string)} title="Modifier le BC (qty, prix, lignes)" className="odoo-pager-btn">
                             <Pencil size={13} />
                           </button>
+                          {/* Suppression definitive : seulement en_attente ou annule. */}
+                          {(status === 'en_attente' || status === 'annule') && (
+                            <button
+                              onClick={() => { if (confirm(`Supprimer definitivement le BC ${po.order_number} ?`)) deleteMutation.mutate(po.id as string); }}
+                              title="Supprimer le BC"
+                              className="odoo-pager-btn"
+                              style={{ color: '#dc3545' }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
