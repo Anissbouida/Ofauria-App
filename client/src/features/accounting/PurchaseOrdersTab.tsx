@@ -454,16 +454,10 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         {status === 'en_attente' && (
-          <>
-            <button onClick={onSend}
-              className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 flex items-center gap-1.5 transition-colors">
-              <Send size={14} /> Envoyer au fournisseur
-            </button>
-            <button onClick={onDelete}
-              className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-              <Trash2 size={14} /> Supprimer
-            </button>
-          </>
+          <button onClick={onSend}
+            className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 flex items-center gap-1.5 transition-colors">
+            <Send size={14} /> Envoyer au fournisseur
+          </button>
         )}
         {(status === 'envoye' || status === 'livre_partiel') && (
           <>
@@ -481,6 +475,13 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
           <button onClick={onCancel}
             className="px-3 py-1.5 bg-gray-50 text-gray-500 rounded-lg text-sm font-medium hover:bg-gray-100 flex items-center gap-1.5 transition-colors">
             <Ban size={14} /> Annuler le BC
+          </button>
+        )}
+        {/* Suppression definitive : autorise sur en_attente ou annule (BC abandonne). */}
+        {(status === 'en_attente' || status === 'annule') && (
+          <button onClick={onDelete}
+            className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
+            <Trash2 size={14} /> Supprimer
           </button>
         )}
       </div>

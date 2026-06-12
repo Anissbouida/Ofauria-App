@@ -8,24 +8,30 @@ import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+// Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
+function effectiveStoreFilter(req: AuthRequest): string | undefined {
+  return req.user!.role === 'admin' ? undefined : req.user!.storeId;
+}
+
 export const purchaseOrderController = {
   async list(req: AuthRequest, res: Response) {
     const { supplierId, status, dateFrom, dateTo } = req.query as Record<string, string>;
     const data = await purchaseOrderRepository.findAll({
-      supplierId, status, dateFrom, dateTo, storeId: req.user!.storeId,
+      supplierId, status, dateFrom, dateTo, storeId: effectiveStoreFilter(req),
     });
     res.json({ success: true, data });
   },
 
   async eligible(req: AuthRequest, res: Response) {
-    const data = await purchaseOrderRepository.findEligibleForExpense(req.user!.storeId);
+    const data = await purchaseOrderRepository.findEligibleForExpense(effectiveStoreFilter(req));
     res.json({ success: true, data });
   },
 
   async getById(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+    const userStore = effectiveStoreFilter(req);
+    if (userStore && po.store_id && po.store_id !== userStore) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     res.json({ success: true, data: po });
@@ -69,8 +75,10 @@ export const purchaseOrderController = {
         res.status(400).json({ success: false, error: { message: 'Articles livrés requis' } });
         return;
       }
+      // Stock toujours credite au store du BC ; fallback sur le storeId user si BC sans store.
+      const stockStoreId = (po.store_id as string | undefined) ?? req.user!.storeId;
       const result = await purchaseOrderRepository.confirmDelivery(
-        req.params.id, items, req.user!.userId, req.user!.storeId,
+        req.params.id, items, req.user!.userId, stockStoreId,
         supplierInvoiceNumber, supplierInvoiceDate
       );
       res.json({ success: true, data: result });
@@ -103,12 +111,24 @@ export const purchaseOrderController = {
   async remove(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (po.status !== 'en_attente') {
-      res.status(409).json({ success: false, error: { message: 'Seuls les bons en attente peuvent etre supprimes' } });
+    if (!['en_attente', 'annule'].includes(po.status)) {
+      res.status(409).json({ success: false, error: { message: 'Seuls les bons en attente ou annules peuvent etre supprimes' } });
       return;
     }
-    await purchaseOrderRepository.delete(req.params.id);
-    res.json({ success: true, data: null });
+    try {
+      await purchaseOrderRepository.delete(req.params.id);
+      res.json({ success: true, data: null });
+    } catch (err) {
+      // Garde-fou FK : payments ou reception_vouchers reference encore le BC.
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
+      const isFk = /violates foreign key|reception_vouchers|payments/i.test(msg);
+      res.status(isFk ? 409 : 500).json({
+        success: false,
+        error: { message: isFk
+          ? 'Suppression refusee : des bons de reception ou paiements sont lies a ce BC.'
+          : msg },
+      });
+    }
   },
 
   async updatePrices(req: AuthRequest, res: Response) {
@@ -130,7 +150,8 @@ export const purchaseOrderController = {
   async updateHeader(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+    const userStore = effectiveStoreFilter(req);
+    if (userStore && po.store_id && po.store_id !== userStore) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const body = req.body as Record<string, unknown>;
@@ -155,7 +176,8 @@ export const purchaseOrderController = {
   async replaceItems(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (req.user!.storeId && po.store_id && po.store_id !== req.user!.storeId) {
+    const userStore = effectiveStoreFilter(req);
+    if (userStore && po.store_id && po.store_id !== userStore) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const body = req.body as { items?: unknown };
@@ -181,8 +203,10 @@ export const purchaseOrderController = {
       return;
     }
     try {
+      // Impact stock toujours sur le store du BC ; fallback sur user.storeId si BC sans store.
+      const stockStoreId = (po.store_id as string | undefined) ?? req.user!.storeId;
       const updated = await purchaseOrderRepository.replaceItems(
-        req.params.id, items, req.user!.userId, req.user!.storeId
+        req.params.id, items, req.user!.userId, stockStoreId
       );
       res.json({ success: true, data: updated });
     } catch (err) {

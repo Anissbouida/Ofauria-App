@@ -447,6 +447,9 @@ export const purchaseOrderRepository = {
   },
 
   async delete(id: string) {
-    await db.query('DELETE FROM purchase_orders WHERE id = $1 AND status = \'en_attente\'', [id]);
+    await db.query(
+      `DELETE FROM purchase_orders WHERE id = $1 AND status IN ('en_attente', 'annule')`,
+      [id]
+    );
   },
 };
