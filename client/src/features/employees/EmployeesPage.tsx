@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -6,7 +6,7 @@ import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks }
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
-  Check, X, ChevronLeft, ChevronRight, AlertTriangle, Download, Search,
+  Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Download, Search,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
   Copy, Eraser, Save, Sparkles,
 } from 'lucide-react';
@@ -1881,6 +1881,28 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
     return Array.from(set);
   }, [week]);
 
+  // Regroupement par profil (role) pour faciliter la planification.
+  // Les groupes sont tries alphabetiquement par libelle de role.
+  const groupedRows = useMemo(() => {
+    const map = new Map<string, WeekRow[]>();
+    for (const r of rows) {
+      const arr = map.get(r.role) ?? [];
+      arr.push(r);
+      map.set(r.role, arr);
+    }
+    return Array.from(map.entries())
+      .map(([role, list]) => ({
+        role,
+        label: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role,
+        rows: list,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }, [rows]);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (role: string) =>
+    setCollapsedGroups(g => ({ ...g, [role]: !g[role] }));
+
   const getCell = (empId: string, dateStr: string): ShiftCode | null => {
     const local = draft[empId]?.[dateStr];
     if (local !== undefined) return local;
@@ -2118,7 +2140,39 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
             {rows.length === 0 && (
               <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--odoo-text-muted)' }}>Aucun employé pour cette catégorie</td></tr>
             )}
-            {rows.map(row => (
+            {groupedRows.map(group => {
+              const collapsed = !!collapsedGroups[group.role];
+              return (
+              <Fragment key={group.role}>
+                <tr
+                  onClick={() => toggleGroup(group.role)}
+                  style={{ cursor: 'pointer', background: 'var(--odoo-bg-alt)' }}
+                >
+                  <td
+                    colSpan={8}
+                    style={{
+                      position: 'sticky',
+                      left: 0,
+                      background: 'var(--odoo-bg-alt)',
+                      fontWeight: 600,
+                      fontSize: '0.8125rem',
+                      color: 'var(--odoo-text)',
+                      padding: '0.5rem 0.75rem',
+                      borderTop: '1px solid var(--odoo-border)',
+                      borderBottom: '1px solid var(--odoo-border)',
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                      <UserCog size={13} style={{ color: 'var(--theme-accent)' }} />
+                      {group.label}
+                      <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>
+                        ({group.rows.length})
+                      </span>
+                    </span>
+                  </td>
+                </tr>
+                {!collapsed && group.rows.map(row => (
               <tr key={row.employeeId}>
                 <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 4 }}>
                   <div style={{ fontWeight: 500 }}>
@@ -2222,6 +2276,9 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                 })}
               </tr>
             ))}
+              </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
