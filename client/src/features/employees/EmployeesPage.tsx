@@ -1882,20 +1882,27 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   }, [week]);
 
   // Regroupement par profil (role) pour faciliter la planification.
-  // Les groupes sont tries alphabetiquement par libelle de role.
+  // Les groupes sont tries alphabetiquement par libelle.
+  // Cas particulier : Caissier(e) + Vendeuse sont fusionnes en un seul groupe
+  // "Caissière & Vendeuse" pour la vue planning (les roles restent distincts
+  // dans la base et dans le reste de l'app — c'est juste un regroupement
+  // visuel pour la planification de la salle).
   const groupedRows = useMemo(() => {
-    const map = new Map<string, WeekRow[]>();
+    const planningGroup = (role: string): { key: string; label: string } => {
+      if (role === 'cashier' || role === 'saleswoman') {
+        return { key: 'sales_floor', label: 'Caissière & Vendeuse' };
+      }
+      return { key: role, label: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role };
+    };
+    const map = new Map<string, { label: string; rows: WeekRow[] }>();
     for (const r of rows) {
-      const arr = map.get(r.role) ?? [];
-      arr.push(r);
-      map.set(r.role, arr);
+      const { key, label } = planningGroup(r.role);
+      const bucket = map.get(key) ?? { label, rows: [] };
+      bucket.rows.push(r);
+      map.set(key, bucket);
     }
     return Array.from(map.entries())
-      .map(([role, list]) => ({
-        role,
-        label: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role,
-        rows: list,
-      }))
+      .map(([key, { label, rows: list }]) => ({ role: key, label, rows: list }))
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [rows]);
 
