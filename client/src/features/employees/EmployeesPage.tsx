@@ -8,7 +8,7 @@ import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Download, Search,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
-  Copy, Eraser, Save, Sparkles,
+  Copy, Eraser, Save, Sparkles, Printer,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
@@ -2063,6 +2063,120 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
 
   const hasChanges = Object.values(draft).some(m => Object.keys(m).length > 0);
 
+  // Impression : ouvre une fenetre A4 paysage avec le planning courant
+  // (affecte une fois la sauvegarde validee — on imprime y compris le brouillon).
+  // Les `<select>` ne s'imprimant pas correctement, on regenere une table HTML
+  // plate (libelle de shift + horaires, ou Conge/Repos).
+  const printSchedule = () => {
+    if (hasChanges) {
+      const ok = confirm('Vous avez des modifications non sauvegardees. Imprimer quand meme (le brouillon sera inclus) ?');
+      if (!ok) return;
+    }
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const headerCells = days
+      .map(d => `<th>${escapeHtml(format(d, 'EEE dd/MM', { locale: fr }))}</th>`)
+      .join('');
+
+    const bodyHtml = groupedRows.map(group => {
+      const groupHeader = `<tr class="group"><td colspan="${days.length + 1}">${escapeHtml(group.label)} (${group.rows.length})</td></tr>`;
+      const rowsHtml = group.rows.map(row => {
+        const empCell = `<td class="emp"><div class="name">${escapeHtml(row.firstName)} ${escapeHtml(row.lastName)}</div><div class="role">${escapeHtml(ROLE_LABELS[row.role as keyof typeof ROLE_LABELS] ?? row.role)}</div></td>`;
+        const cells = days.map(d => {
+          const dateStr = format(d, 'yyyy-MM-dd');
+          const leave = row.leaveDays?.[dateStr];
+          const code = getCell(row.employeeId, dateStr);
+          if (leave?.status === 'approved') {
+            return `<td class="leave"><div class="big">Congé</div><div class="small">${escapeHtml(LEAVE_TYPE_LABELS[leave.type] ?? leave.type)}</div></td>`;
+          }
+          if (leave?.status === 'pending' && !code) {
+            return `<td class="leave-pending"><div class="big">Congé</div><div class="small">en attente</div></td>`;
+          }
+          if (!code) {
+            return `<td class="repos"><div class="big">—</div><div class="small">Repos</div></td>`;
+          }
+          const label = SHIFT_SHORT_LABELS[code] ?? code;
+          const h = SHIFT_HOURS[code];
+          return `<td class="shift"><div class="big">${escapeHtml(label)}</div><div class="small">${escapeHtml(h.start)}-${escapeHtml(h.end)}</div></td>`;
+        }).join('');
+        return `<tr>${empCell}${cells}</tr>`;
+      }).join('');
+      return groupHeader + rowsHtml;
+    }).join('');
+
+    const subtitle = `${format(weekStart, 'dd MMM yyyy', { locale: fr })} — ${format(weekEnd, 'dd MMM yyyy', { locale: fr })}` +
+      (roleFilter !== 'all' ? ` · Filtre : ${ROLE_LABELS[roleFilter as keyof typeof ROLE_LABELS] ?? roleFilter}` : '');
+
+    const html = `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Planning ${escapeHtml(format(weekStart, 'yyyy-MM-dd'))}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 0; padding: 8px; }
+  h1 { font-size: 16px; margin: 0 0 2px 0; }
+  .subtitle { font-size: 11px; color: #555; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: 1px solid #999; padding: 3px 4px; text-align: center; vertical-align: middle; }
+  th { background: #ececec; font-size: 10px; }
+  th.emp-h { width: 18%; text-align: left; }
+  td.emp { text-align: left; }
+  td.emp .name { font-weight: bold; font-size: 11px; }
+  td.emp .role { font-size: 9px; color: #666; }
+  tr.group td { background: #e0e7ff; font-weight: bold; text-align: left; font-size: 11px; color: #1e3a8a; padding: 4px 6px; }
+  td .big { font-weight: bold; font-size: 11px; }
+  td .small { font-size: 9px; color: #555; }
+  td.repos .big { color: #aaa; font-weight: normal; }
+  td.repos .small { color: #999; }
+  td.leave { background: #f3e8ff; color: #6b21a8; }
+  td.leave-pending { background: #fff7ed; color: #c2410c; }
+  td.shift { background: #fff; }
+  .footer { margin-top: 12px; font-size: 9px; color: #666; }
+  @media print { .no-print { display: none; } body { padding: 0; } }
+  .toolbar { position: fixed; top: 8px; right: 8px; display: flex; gap: 6px; }
+  .toolbar button { font: inherit; padding: 6px 12px; cursor: pointer; border: 1px solid #999; background: #fff; border-radius: 4px; }
+  .toolbar button.primary { background: #1e40af; color: #fff; border-color: #1e40af; }
+</style>
+</head>
+<body>
+  <div class="toolbar no-print">
+    <button onclick="window.print()" class="primary">Imprimer</button>
+    <button onclick="window.close()">Fermer</button>
+  </div>
+  <h1>Planning hebdomadaire</h1>
+  <div class="subtitle">${escapeHtml(subtitle)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th class="emp-h">Employé</th>
+        ${headerCells}
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyHtml || `<tr><td colspan="${days.length + 1}" style="text-align:center; padding: 20px; color: #999;">Aucun employé pour cette catégorie</td></tr>`}
+    </tbody>
+  </table>
+  <div class="footer">Imprimé le ${escapeHtml(format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr }))}${hasChanges ? ' · ⚠ contient des modifications non sauvegardées' : ''}</div>
+  <script>
+    // Auto-print apres rendu pour faciliter
+    window.addEventListener('load', () => { setTimeout(() => window.print(), 200); });
+  </script>
+</body>
+</html>`;
+
+    const w = window.open('', '_blank', 'width=1200,height=800');
+    if (!w) {
+      notify.error("Impossible d'ouvrir la fenêtre d'impression (popup bloqué ?)");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <>
       <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
@@ -2097,6 +2211,11 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
           <button onClick={clearWeek} className="odoo-btn-secondary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Eraser size={13} /> Vider
+          </button>
+          <button onClick={printSchedule} className="odoo-btn-secondary"
+            title="Ouvre une fenêtre A4 paysage prête à imprimer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Printer size={13} /> Imprimer
           </button>
           <button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending} className="odoo-btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
