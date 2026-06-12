@@ -990,6 +990,10 @@ export const invoiceRepository = {
          ) IS NOT NULL
        ),
        ii_lines AS (
+         -- Ratio TTC/HT par facture : reparti au prorata sur chaque ligne pour
+         -- que les montants affiches dans Charges & Depenses incluent la TVA.
+         -- tax_amount=0 (auto-facture non editee) -> ratio=1, lignes restent HT.
+         -- tax_amount>0 -> ratio=(amount+tax_amount)/amount, lignes en TTC.
          SELECT
            ii.id                                       AS id,
            inv.id                                      AS invoice_id,
@@ -1003,8 +1007,8 @@ export const invoiceRepository = {
            COALESCE(ing.name, p.name, ii.description)  AS designation,
            ing.category                                AS ingredient_category,
            ii.quantity                                 AS quantity,
-           ii.unit_price                               AS unit_price,
-           ii.subtotal                                 AS amount,
+           ROUND((ii.unit_price * COALESCE(inv.total_amount / NULLIF(inv.amount, 0), 1))::numeric, 4) AS unit_price,
+           ROUND((ii.subtotal    * COALESCE(inv.total_amount / NULLIF(inv.amount, 0), 1))::numeric, 2) AS amount,
            ii.created_at                               AS sort_at
          FROM invoice_items ii
          JOIN invoices inv ON inv.id = ii.invoice_id
@@ -1027,8 +1031,8 @@ export const invoiceRepository = {
            ing.name                                                AS designation,
            ing.category                                            AS ingredient_category,
            rvi.quantity_received                                   AS quantity,
-           rvi.unit_price                                          AS unit_price,
-           ROUND((rvi.quantity_received * COALESCE(rvi.unit_price, 0))::numeric, 2) AS amount,
+           ROUND((COALESCE(rvi.unit_price, 0) * COALESCE(inv.total_amount / NULLIF(inv.amount, 0), 1))::numeric, 4) AS unit_price,
+           ROUND((rvi.quantity_received * COALESCE(rvi.unit_price, 0) * COALESCE(inv.total_amount / NULLIF(inv.amount, 0), 1))::numeric, 2) AS amount,
            rvi.created_at                                          AS sort_at
          FROM reception_voucher_items rvi
          JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
