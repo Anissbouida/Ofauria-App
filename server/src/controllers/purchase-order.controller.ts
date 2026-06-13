@@ -43,12 +43,22 @@ export const purchaseOrderController = {
       res.status(400).json({ success: false, error: { message: 'Fournisseur et articles requis' } });
       return;
     }
-    const po = await purchaseOrderRepository.create({
-      supplierId, expectedDeliveryDate, notes,
-      createdBy: req.user!.userId, storeId: req.user!.storeId,
-      items,
-    });
-    res.status(201).json({ success: true, data: po });
+    // try/catch obligatoire : en Express 4, une promesse rejetee dans un
+    // handler async ne declenche PAS errorHandler -> la reponse n'est jamais
+    // envoyee et le front reste fige sur "Creation...". On capture, on logue,
+    // on renvoie une 500 propre.
+    try {
+      const po = await purchaseOrderRepository.create({
+        supplierId, expectedDeliveryDate, notes,
+        createdBy: req.user!.userId, storeId: req.user!.storeId,
+        items,
+      });
+      res.status(201).json({ success: true, data: po });
+    } catch (err) {
+      console.error('[purchaseOrder.create] Error:', err);
+      const message = err instanceof Error ? err.message : 'Erreur lors de la creation du bon de commande';
+      res.status(500).json({ success: false, error: { message } });
+    }
   },
 
   async send(req: AuthRequest, res: Response) {

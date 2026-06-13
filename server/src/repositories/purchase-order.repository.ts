@@ -95,7 +95,11 @@ export const purchaseOrderRepository = {
     try {
       await client.query('BEGIN');
 
-      const orderNumber = await this.generateOrderNumber();
+      // generateOrderNumber DOIT recevoir le client transactionnel : sans ca,
+      // il emprunte une 2e connexion au pool pendant qu'on en detient deja une
+      // en BEGIN. Sur retry/concurrence, le pool sature et toutes les requetes
+      // hangent indefiniment (deadlock de pool).
+      const orderNumber = await this.generateOrderNumber(client);
       const poResult = await client.query(
         `INSERT INTO purchase_orders (order_number, supplier_id, expected_delivery_date, notes, created_by, store_id)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
