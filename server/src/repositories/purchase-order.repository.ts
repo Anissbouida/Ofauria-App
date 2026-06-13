@@ -78,11 +78,23 @@ export const purchaseOrderRepository = {
     // Advisory lock prevents concurrent POs from generating the same number
     await runner.query(`SELECT pg_advisory_xact_lock(hashtext('po_number'))`);
     const year = getLocalYear();
+    // MAX(seq) + 1 plutot que COUNT(*) + 1 : COUNT decroit quand un BC est
+    // supprime au milieu de la sequence (ex: BC-2026-0005), ce qui faisait
+    // entrer en collision le prochain numero genere avec un BC existant
+    // (-> duplicate key violation sur order_number_key).
+    // On extrait les 4 derniers chiffres du format `BC-YYYY-NNNN` et on prend
+    // le max ; les numeros hors format sont ignores (COALESCE -> 0).
     const result = await runner.query(
-      `SELECT COUNT(*) FROM purchase_orders WHERE EXTRACT(YEAR FROM order_date) = $1`,
+      `SELECT COALESCE(MAX(
+         CASE WHEN order_number ~ '^BC-[0-9]{4}-[0-9]+$'
+              THEN CAST(SUBSTRING(order_number FROM 9) AS INTEGER)
+              ELSE 0 END
+       ), 0) AS max_seq
+       FROM purchase_orders
+       WHERE EXTRACT(YEAR FROM order_date) = $1`,
       [year]
     );
-    const seq = parseInt((result.rows[0] as Record<string, string>).count) + 1;
+    const seq = parseInt((result.rows[0] as Record<string, string>).max_seq) + 1;
     return `BC-${year}-${String(seq).padStart(4, '0')}`;
   },
 
