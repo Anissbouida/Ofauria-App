@@ -3,7 +3,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
-import { Delete, Lock, Mail } from 'lucide-react';
+import { Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 
 export default function LoginPage() {
   const { user, loginWithPin, login } = useAuth();
@@ -17,6 +17,7 @@ export default function LoginPage() {
   // Email form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const loginWithPinRef = useRef(loginWithPin);
   loginWithPinRef.current = loginWithPin;
@@ -101,8 +102,15 @@ export default function LoginPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                className="input" placeholder="••••••••" required />
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  className="input pr-10" placeholder="••••••••" required />
+                <button type="button" onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600">
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full py-3">
               {loading ? 'Connexion...' : 'Se connecter'}
