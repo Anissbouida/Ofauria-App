@@ -148,7 +148,7 @@ export default function ContenantsPage() {
     mutationFn: (id: string) => contenantsApi.deactivate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contenants'] });
-      notify.success('Contenant desactive');
+      notify.success('Format desactive');
     },
     onError: (err: Error) => notify.error(err.message || 'Impossible de desactiver (produits lies)'),
   });
@@ -159,13 +159,13 @@ export default function ContenantsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Layers size={28} className="text-indigo-600" /> Contenants de production
+            <Layers size={28} className="text-indigo-600" /> Formats de production
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">{contenants.length} contenants configures</p>
+          <p className="text-sm text-gray-500 mt-0.5">{contenants.length} formats configures</p>
         </div>
         <button onClick={() => { setCreating(true); setEditing(null); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm">
-          <Plus size={16} /> Nouveau contenant
+          <Plus size={16} /> Nouveau format
         </button>
       </div>
 
@@ -227,14 +227,14 @@ export default function ContenantsPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Package size={48} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-400 font-medium">Aucun contenant trouve</p>
+          <p className="text-gray-400 font-medium">Aucun format trouve</p>
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <SortHeader label="Contenant" sortKey="nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Format" sortKey="nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="type_production" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Unite" sortKey="unite_lancement" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
                 <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Mode</th>
@@ -359,7 +359,7 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, onToggle, onEdit,
                     </div>
                   ))}
                   {linkedRecipes.length === 0 && (
-                    <p className="text-xs text-gray-400 italic">Aucune recette liee a ce contenant</p>
+                    <p className="text-xs text-gray-400 italic">Aucune recette liee a ce format</p>
                   )}
                 </div>
               </div>
@@ -411,7 +411,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
     mutationFn: (data: Record<string, any>) =>
       isEdit ? contenantsApi.update(contenant!.id, data) : contenantsApi.create(data),
     onSuccess: () => {
-      notify.success(isEdit ? 'Contenant mis a jour' : 'Contenant cree');
+      notify.success(isEdit ? 'Format mis a jour' : 'Format cree');
       onSaved();
     },
     onError: () => notify.error('Erreur lors de l\'enregistrement'),
@@ -443,7 +443,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
         {/* Form header */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between">
           <h2 className="text-white font-bold text-lg">
-            {isEdit ? `Modifier : ${contenant!.nom}` : 'Nouveau contenant'}
+            {isEdit ? `Modifier : ${contenant!.nom}` : 'Nouveau format'}
           </h2>
           <button type="button" onClick={onClose} className="text-white/70 hover:text-white transition-colors">
             <X size={20} />

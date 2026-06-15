@@ -1402,7 +1402,7 @@ export default function ProductionLaunchModal({
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3">
                           <div className="text-xl font-bold text-gray-700">{productionProfile.quantite_nette_cible}</div>
-                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Net / contenant</div>
+                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Net / format</div>
                         </div>
                         <div className="bg-purple-50 rounded-xl p-3">
                           <div className="text-xl font-bold text-purple-700">{item.quantite_brute_totale || planned}</div>

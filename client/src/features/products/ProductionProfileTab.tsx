@@ -192,8 +192,8 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
             <h3 className="text-sm font-semibold text-indigo-800">Profil de production</h3>
             <p className="text-xs text-indigo-600 mt-0.5">
               {isEditMode
-                ? 'Assignez un contenant pour activer le calcul inverse, les etapes et le suivi de rendement.'
-                : 'Pre-configurez le contenant. Le profil sera enregistre avec le produit.'}
+                ? 'Assignez un format pour activer le calcul inverse, les etapes et le suivi de rendement.'
+                : 'Pre-configurez le format. Le profil sera enregistre avec le produit.'}
             </p>
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
 
       {/* Contenant selector */}
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Contenant de production</label>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Format de production</label>
         <div className="relative">
           <button
             type="button"
@@ -217,7 +217,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
                 </span>
               </span>
             ) : (
-              <span className="text-gray-400">Selectionner un contenant...</span>
+              <span className="text-gray-400">Selectionner un format...</span>
             )}
             <ChevronDown size={16} className={`text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -286,7 +286,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
           {/* Surcharges */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Surcharges <span className="text-xs font-normal text-gray-400">(laisser vide = valeur du contenant)</span>
+              Surcharges <span className="text-xs font-normal text-gray-400">(laisser vide = valeur du format)</span>
             </label>
             <div className="grid grid-cols-3 gap-3">
               <div>
@@ -356,7 +356,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
               ))}
               {displaySteps.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm text-gray-400">
-                  Aucune etape definie pour ce contenant
+                  Aucune etape definie pour ce format
                 </div>
               )}
             </div>
@@ -388,7 +388,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
           {/* Detach button — edit mode only */}
           {isEditMode && profile && (
             <div className="flex items-center justify-between pt-2">
-              <button type="button" onClick={() => { if (confirm('Detacher le contenant de ce produit ?')) deleteMutation.mutate(); }}
+              <button type="button" onClick={() => { if (confirm('Detacher le format de ce produit ?')) deleteMutation.mutate(); }}
                 className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors flex items-center gap-1.5">
                 <X size={14} /> Detacher
               </button>
@@ -408,7 +408,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
       {!selectedContenant && !profile && (
         <div className="text-center py-8">
           <Package size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-400">Selectionnez un contenant pour configurer le profil de production</p>
+          <p className="text-sm text-gray-400">Selectionnez un format pour configurer le profil de production</p>
           <p className="text-xs text-gray-300 mt-1">Le produit continuera a fonctionner normalement sans profil</p>
         </div>
       )}

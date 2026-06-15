@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
 import { productsApi } from '../../api/products.api';
 import { ordersApi } from '../../api/orders.api';
+import { recipesApi } from '../../api/recipes.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
@@ -514,6 +515,9 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   const [activeCategory, setActiveCategory] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Record<string, number>>(prefillItems || {});
+  // formatQtys : pour les produits avec formats (multi-format), saisie qty par format.
+  // selected[productId] reste la qty totale (= Σ formatQtys[productId][*]).
+  const [formatQtys, setFormatQtys] = useState<Record<string, Record<string, number>>>({});
   const [orderQtys, setOrderQtys] = useState<Record<string, number>>({});
   const [selectedRole, setSelectedRole] = useState<string>(
     prefillRole || (CHEF_ROLES.includes(user?.role || '') ? user!.role : '')
@@ -530,6 +534,31 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500' }),
   });
   const allProducts = (productsData?.data || []) as Record<string, any>[];
+
+  // Recettes : on a besoin de connaitre les formats pour chaque produit.
+  // Phase B multi-format : si une recette a des formats, on permet la saisie
+  // par format au lieu d'une seule quantite totale.
+  const { data: recipesData } = useQuery<Record<string, any>[]>({
+    queryKey: ['recipes-for-plan'],
+    queryFn: recipesApi.list,
+  });
+  // Map productId → formats[] (vide si pas de formats sur la recette du produit)
+  const productFormats = useMemo(() => {
+    const map: Record<string, { id: string; contenant_nom: string; nb_par_defaut: number }[]> = {};
+    (recipesData || []).forEach((r: Record<string, any>) => {
+      const pid = r.product_id as string | undefined;
+      if (!pid) return;
+      const fmts = (r.formats as Record<string, any>[] | undefined) || [];
+      if (fmts.length > 0) {
+        map[pid] = fmts.map(f => ({
+          id: f.id as string,
+          contenant_nom: f.contenant_nom as string,
+          nb_par_defaut: f.nb_par_defaut as number,
+        }));
+      }
+    });
+    return map;
+  }, [recipesData]);
   const products = allowedSlugs
     ? allProducts.filter(p => allowedSlugs.includes(p.category_slug as string))
     : allProducts;
@@ -595,6 +624,47 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
       else { next[productId] = Math.max(qty, minQty); }
       return next;
     });
+    // Pour les produits sans formats, on nettoie aussi formatQtys.
+    if (!productFormats[productId]) {
+      setFormatQtys(prev => {
+        if (!prev[productId]) return prev;
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+    }
+  };
+
+  // Setter de quantite par format. Sync automatique de selected[productId] = Σ formats.
+  const setFormatQty = (productId: string, formatId: string, qty: number) => {
+    setFormatQtys(prev => {
+      const cur = { ...(prev[productId] || {}) };
+      if (qty <= 0) delete cur[formatId];
+      else cur[formatId] = qty;
+      const next = { ...prev };
+      if (Object.keys(cur).length === 0) delete next[productId];
+      else next[productId] = cur;
+      // Sync selected total
+      const total = Object.values(cur).reduce((s, n) => s + n, 0);
+      setSelected(prevSel => {
+        const ns = { ...prevSel };
+        if (total <= 0) delete ns[productId];
+        else ns[productId] = total;
+        return ns;
+      });
+      return next;
+    });
+  };
+
+  // Initialise formatQtys avec les nb_par_defaut quand le produit est ajoute pour la 1ere fois.
+  const initFormatQtys = (productId: string) => {
+    const fmts = productFormats[productId];
+    if (!fmts || formatQtys[productId]) return;
+    const init: Record<string, number> = {};
+    fmts.forEach(f => { init[f.id] = f.nb_par_defaut; });
+    setFormatQtys(prev => ({ ...prev, [productId]: init }));
+    const total = Object.values(init).reduce((s, n) => s + n, 0);
+    setSelected(prev => ({ ...prev, [productId]: total }));
   };
 
   const totalSelected = Object.keys(selected).length;
@@ -610,7 +680,19 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
 
   const handleSubmit = () => {
     if (isAdminUser && !selectedRole) { notify.error('Sélectionnez un chef'); return; }
-    const items = Object.entries(selected).map(([productId, plannedQuantity]) => ({ productId, plannedQuantity }));
+    // Pour chaque produit selectionne :
+    //  - s'il a des formats saisis (formatQtys), on envoie formats[] (Phase A backend dispatch)
+    //  - sinon, comportement legacy : { productId, plannedQuantity }
+    const items = Object.entries(selected).map(([productId, plannedQuantity]) => {
+      const fmtMap = formatQtys[productId];
+      if (fmtMap && Object.keys(fmtMap).length > 0) {
+        const formats = Object.entries(fmtMap)
+          .filter(([, q]) => q > 0)
+          .map(([formatId, q]) => ({ formatId, plannedQuantity: q }));
+        return { productId, plannedQuantity, formats };
+      }
+      return { productId, plannedQuantity };
+    });
     if (items.length === 0) { notify.error('Sélectionnez au moins un produit'); return; }
     createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items });
   };
@@ -728,6 +810,8 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                   const qty = selected[pid] || 0;
                   const fromOrders = orderQtys[pid] || 0;
                   const isSelected = qty > 0;
+                  const fmts = productFormats[pid];
+                  const hasFormats = !!fmts && fmts.length > 0;
                   return (
                     <div key={pid}
                       className={`rounded-xl border-2 p-3 transition-all select-none ${
@@ -738,21 +822,66 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                       <div className="text-sm font-semibold text-gray-800 mb-1 leading-tight h-[2.5rem]" title={p.name as string}>
                         <span className="line-clamp-2">{p.name as string}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 mb-3">
+                      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
                         <span className="text-xs text-gray-400">{p.category_name as string}</span>
                         {fromOrders > 0 && (
                           <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
                             CMD: {fromOrders}
                           </span>
                         )}
+                        {hasFormats && (
+                          <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-medium" title={fmts.map(f => f.contenant_nom).join(', ')}>
+                            {fmts.length} formats
+                          </span>
+                        )}
                       </div>
 
                       {!isSelected ? (
-                        <button type="button" onClick={() => setQty(pid, Math.max(1, fromOrders))}
+                        <button type="button" onClick={() => {
+                          if (hasFormats) initFormatQtys(pid);
+                          else setQty(pid, Math.max(1, fromOrders));
+                        }}
                           className="w-full py-2.5 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 active:bg-amber-700 transition-colors">
                           <Plus size={16} className="inline -mt-0.5 mr-1" /> Ajouter
                         </button>
+                      ) : hasFormats ? (
+                        // Mode multi-format : 1 ligne mini-stepper par format
+                        <div className="space-y-1.5">
+                          {fmts.map((f) => {
+                            const fq = (formatQtys[pid] || {})[f.id] || 0;
+                            return (
+                              <div key={f.id} className="flex items-center justify-between gap-1 bg-white rounded-lg border border-amber-300 px-1.5 py-1">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-[11px] font-medium text-gray-700 truncate" title={f.contenant_nom}>
+                                    {f.contenant_nom}
+                                  </div>
+                                </div>
+                                <button type="button" onClick={() => setFormatQty(pid, f.id, Math.max(0, fq - 1))}
+                                  className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
+                                  −
+                                </button>
+                                <input type="number" min={0} value={fq}
+                                  onChange={(e) => setFormatQty(pid, f.id, parseInt(e.target.value) || 0)}
+                                  className="w-10 text-center text-sm font-bold border border-amber-200 rounded h-7 focus:outline-none" />
+                                <button type="button" onClick={() => setFormatQty(pid, f.id, fq + 1)}
+                                  className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
+                                  +
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div className="flex items-center justify-between text-[11px] text-gray-500 px-1 pt-0.5">
+                            <span>Total : <strong className="text-amber-700">{qty}</strong></span>
+                            <button type="button" onClick={() => {
+                              setFormatQtys(prev => { const n = { ...prev }; delete n[pid]; return n; });
+                              setSelected(prev => { const n = { ...prev }; delete n[pid]; return n; });
+                            }} className="text-red-400 hover:text-red-600">
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
                       ) : (
+                        // Mode legacy : stepper simple
                         <div className="flex items-center justify-between bg-white rounded-lg border border-amber-300 overflow-hidden">
                           <button type="button" onClick={() => setQty(pid, qty - 1)}
                             className={`w-12 h-11 flex items-center justify-center text-xl font-bold transition-colors ${

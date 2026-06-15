@@ -76,12 +76,19 @@ export const productionRepository = {
               su.first_name as started_by_first_name, su.last_name as started_by_last_name,
               pln.lot_number,
               br.name as base_recipe_name, br.yield_unit as base_recipe_unit,
-              pc.nom as contenant_nom, pc.type_production as contenant_type
+              pc.nom as contenant_nom, pc.type_production as contenant_type,
+              -- Format de production (recipe_formats) si l'item est multi-format
+              rf.quantite_par_format_g as format_qte_par_unite,
+              rf.quantite_par_format_unite as format_unite,
+              rf.nb_par_defaut as format_nb_par_defaut,
+              fpc.nom as format_nom
        FROM production_plan_items ppi
        LEFT JOIN products p ON p.id = ppi.product_id
        LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN production_contenants pc ON pc.id = ppi.contenant_id
+       LEFT JOIN recipe_formats rf ON rf.id = ppi.format_id
+       LEFT JOIN production_contenants fpc ON fpc.id = rf.contenant_id
        LEFT JOIN users su ON su.id = ppi.started_by
        LEFT JOIN production_lot_numbers pln ON pln.plan_item_id = ppi.id
        LEFT JOIN LATERAL (
@@ -213,7 +220,14 @@ export const productionRepository = {
   async create(data: {
     planDate: string; type: string; notes?: string; createdBy: string; targetRole?: string; storeId?: string;
     orderId?: string;
-    items: { productId: string; plannedQuantity: number; notes?: string }[];
+    // Multi-format : un item peut avoir formats[] (chaque entry = 1 plan_item avec son format_id).
+    // Si pas de formats fournis, on cree 1 ligne legacy avec format_id NULL (compat descendante).
+    items: {
+      productId: string;
+      plannedQuantity: number;
+      notes?: string;
+      formats?: { formatId: string; plannedQuantity: number; notes?: string }[];
+    }[];
   }) {
     const client = await db.getClient();
     try {
@@ -229,11 +243,23 @@ export const productionRepository = {
 
       const productIds: string[] = [];
       for (const item of data.items) {
-        await client.query(
-          `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
-           VALUES ($1, $2, $3, $4)`,
-          [planId, item.productId, item.plannedQuantity, item.notes || null]
-        );
+        // Mode multi-format : une ligne par format choisi
+        if (item.formats && item.formats.length > 0) {
+          for (const fmt of item.formats) {
+            await client.query(
+              `INSERT INTO production_plan_items (plan_id, product_id, format_id, planned_quantity, notes)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null]
+            );
+          }
+        } else {
+          // Mode legacy : 1 ligne par (plan, product), format_id NULL
+          await client.query(
+            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
+             VALUES ($1, $2, $3, $4)`,
+            [planId, item.productId, item.plannedQuantity, item.notes || null]
+          );
+        }
         productIds.push(item.productId);
       }
 
@@ -261,17 +287,32 @@ export const productionRepository = {
     }
   },
 
-  async updateItems(planId: string, items: { productId: string; plannedQuantity: number; notes?: string }[]) {
+  async updateItems(planId: string, items: {
+    productId: string;
+    plannedQuantity: number;
+    notes?: string;
+    formats?: { formatId: string; plannedQuantity: number; notes?: string }[];
+  }[]) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       await client.query('DELETE FROM production_plan_items WHERE plan_id = $1', [planId]);
       for (const item of items) {
-        await client.query(
-          `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
-           VALUES ($1, $2, $3, $4)`,
-          [planId, item.productId, item.plannedQuantity, item.notes || null]
-        );
+        if (item.formats && item.formats.length > 0) {
+          for (const fmt of item.formats) {
+            await client.query(
+              `INSERT INTO production_plan_items (plan_id, product_id, format_id, planned_quantity, notes)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null]
+            );
+          }
+        } else {
+          await client.query(
+            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
+             VALUES ($1, $2, $3, $4)`,
+            [planId, item.productId, item.plannedQuantity, item.notes || null]
+          );
+        }
       }
       await client.query(`UPDATE production_plans SET updated_at = NOW() WHERE id = $1`, [planId]);
       await client.query('COMMIT');

@@ -27,11 +27,29 @@ export const recipeRepository = {
   async findAll() {
     // total_cost vient de la vue v_recipe_total_cost (recalcule a la volee).
     // Le champ recipes.total_cost stocke n'est jamais lu — toujours obsolete potentiel.
+    // formats_nb / formats_perte_pct exposes pour badge "multi-format" et alerte perte.
+    // formats : tableau JSON agrege via subquery pour les UI qui ont besoin de connaitre
+    // les formats par recette (ex: ProductionPage — Phase B multi-format).
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
               r.created_at, r.updated_at,
               vtc.total_cost,
+              vfs.nb_formats AS formats_nb,
+              vfs.perte_pct AS formats_perte_pct,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id', rf.id,
+                  'contenant_id', rf.contenant_id,
+                  'contenant_nom', pcf.nom,
+                  'quantite_par_format_g', rf.quantite_par_format_g,
+                  'quantite_par_format_unite', rf.quantite_par_format_unite,
+                  'nb_par_defaut', rf.nb_par_defaut
+                ) ORDER BY rf.ordre, pcf.nom)
+                FROM recipe_formats rf
+                JOIN production_contenants pcf ON pcf.id = rf.contenant_id
+                WHERE rf.recipe_id = r.id
+              ), '[]'::jsonb) AS formats,
               p.name as product_name, p.image_url as product_image, p.price as product_price,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
               pc.quantite_theorique as contenant_quantite_theorique,
@@ -42,6 +60,7 @@ export const recipeRepository = {
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
@@ -54,9 +73,14 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.taux_main_oeuvre_dh_h, r.cout_energie_fournee, r.taux_frais_structure_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
               vtw.total_weight_kg,
+              vfs.poids_utilise_kg AS formats_poids_utilise_kg,
+              vfs.perte_kg AS formats_perte_kg,
+              vfs.perte_pct AS formats_perte_pct,
+              vfs.nb_formats AS formats_nb,
               p.name as product_name, p.price as product_price,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
               pc.quantite_theorique as contenant_quantite_theorique,
@@ -68,6 +92,7 @@ export const recipeRepository = {
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
+       LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        WHERE r.id = $1`,
       [id]
     );
@@ -107,11 +132,30 @@ export const recipeRepository = {
       [id]
     );
 
+    // Formats de production : poids, nb, ventilation cout matiere/MO/energie/structure
+    const formatsResult = await db.query(
+      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
+              rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
+              pc.nom as contenant_nom, pc.unite_lancement as contenant_unite_lancement,
+              pc.type_production as contenant_type,
+              vfc.poids_format_g, vfc.poids_utilise_g,
+              vfc.cout_matiere_format, vfc.cout_matiere_unitaire,
+              vfc.cout_mo_format, vfc.cout_energie_format, vfc.cout_struct_format,
+              vfc.cout_unitaire_complet, vfc.prix_vente_unitaire
+       FROM recipe_formats rf
+       JOIN production_contenants pc ON pc.id = rf.contenant_id
+       LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
+       WHERE rf.recipe_id = $1
+       ORDER BY rf.ordre ASC, pc.nom ASC`,
+      [id]
+    );
+
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
       sub_recipes: subRecipesResult.rows,
       packaging: packagingResult.rows,
+      formats: formatsResult.rows,
     };
   },
 
@@ -158,11 +202,29 @@ export const recipeRepository = {
       [recipeId]
     );
 
+    const formatsResult = await db.query(
+      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
+              rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
+              pc.nom as contenant_nom, pc.unite_lancement as contenant_unite_lancement,
+              pc.type_production as contenant_type,
+              vfc.poids_format_g, vfc.poids_utilise_g,
+              vfc.cout_matiere_format, vfc.cout_matiere_unitaire,
+              vfc.cout_mo_format, vfc.cout_energie_format, vfc.cout_struct_format,
+              vfc.cout_unitaire_complet, vfc.prix_vente_unitaire
+       FROM recipe_formats rf
+       JOIN production_contenants pc ON pc.id = rf.contenant_id
+       LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
+       WHERE rf.recipe_id = $1
+       ORDER BY rf.ordre ASC, pc.nom ASC`,
+      [recipeId]
+    );
+
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
       sub_recipes: subRecipesResult.rows,
       packaging: packagingResult.rows,
+      formats: formatsResult.rows,
     };
   },
 
@@ -182,9 +244,12 @@ export const recipeRepository = {
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
+    // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
+    tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
+    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number }[];
   }) {
     const client = await db.getClient();
     try {
@@ -229,10 +294,21 @@ export const recipeRepository = {
 
       const margin = data.marginMultiplier && data.marginMultiplier > 0 ? data.marginMultiplier : 3;
       // total_cost INSERT a 0 par defaut — la vraie valeur vient toujours de la vue.
+      // Frais indirects : si non fournis, on les pre-remplit depuis company_settings.
+      const csResult = await client.query(
+        `SELECT taux_main_oeuvre_defaut_dh_h, taux_frais_structure_defaut_pct FROM company_settings LIMIT 1`
+      );
+      const csDefaults = csResult.rows[0] || {};
+      const tauxMo = data.tauxMainOeuvreDhH ?? parseFloat(csDefaults.taux_main_oeuvre_defaut_dh_h || '0');
+      const coutEnergie = data.coutEnergieFournee ?? 0;
+      const tauxStruct = data.tauxFraisStructurePct ?? parseFloat(csDefaults.taux_frais_structure_defaut_pct || '0');
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier)
-         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9) RETURNING *`,
-        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin]
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier,
+                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
+         data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
+         tauxMo, coutEnergie, tauxStruct]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -273,6 +349,24 @@ export const recipeRepository = {
         }
       }
 
+      // Insert recipe_formats (multi-formats de production)
+      if (data.formats && data.formats.length > 0) {
+        for (const fmt of data.formats) {
+          await client.query(
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
+               quantite_par_format_g = EXCLUDED.quantite_par_format_g,
+               quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
+               nb_par_defaut = EXCLUDED.nb_par_defaut,
+               cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
+               ordre = EXCLUDED.ordre,
+               updated_at = NOW()`,
+            [recipeId, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0]
+          );
+        }
+      }
+
       await this.syncProductPrice(client, data.productId || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
 
       await client.query('COMMIT');
@@ -304,9 +398,11 @@ export const recipeRepository = {
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
+    tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
+    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number }[];
     changedBy?: string; changeNote?: string;
   }) {
     const client = await db.getClient();
@@ -380,10 +476,16 @@ export const recipeRepository = {
         ? data.marginMultiplier
         : parseFloat(currentRecipe?.margin_multiplier || '3');
       // total_cost n'est plus stocke (vue v_recipe_total_cost gere) — on le force a 0.
+      // Frais indirects : si data ne les fournit pas, on conserve les valeurs existantes (COALESCE).
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = 0, is_base = $5, contenant_id = $6, etapes = $7, margin_multiplier = $8, updated_at = NOW()
-         WHERE id = $9`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin, id]
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = 0, is_base = $5, contenant_id = $6, etapes = $7, margin_multiplier = $8,
+           taux_main_oeuvre_dh_h = COALESCE($9, taux_main_oeuvre_dh_h),
+           cout_energie_fournee = COALESCE($10, cout_energie_fournee),
+           taux_frais_structure_pct = COALESCE($11, taux_frais_structure_pct),
+           updated_at = NOW()
+         WHERE id = $12`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
+         data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null, id]
       );
 
       // Re-insert ingredients
@@ -425,6 +527,20 @@ export const recipeRepository = {
           await client.query(
             `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
             [id, pk.packagingId, pk.quantity, pk.unit ?? null]
+          );
+        }
+      }
+
+      // Re-insert recipe_formats (delete-then-insert : permet renommage/suppression de formats)
+      // Si data.formats est absent (undefined), on conserve les formats existants.
+      // Si data.formats est present (meme vide), on remplace tout.
+      if (data.formats !== undefined) {
+        await client.query('DELETE FROM recipe_formats WHERE recipe_id = $1', [id]);
+        for (const fmt of data.formats) {
+          await client.query(
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [id, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0]
           );
         }
       }

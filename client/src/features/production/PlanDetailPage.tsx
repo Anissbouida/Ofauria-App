@@ -1988,7 +1988,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                             {item.nb_contenants && (
                               <div className="flex flex-wrap gap-1.5 mt-1">
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
-                                  <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'contenant'}
+                                  <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'format'}
                                 </span>
                                 {(item.qty_from_frigo as number) > 0 && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
@@ -2006,7 +2006,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                           <td className="px-3 py-3 text-center">
                             <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
                             {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
-                              <div className="text-[10px] text-indigo-500" title="Quantite brute totale (contenants)">
+                              <div className="text-[10px] text-indigo-500" title="Quantite brute totale (formats)">
                                 brut: {item.quantite_brute_totale as number}
                               </div>
                             )}
@@ -2142,7 +2142,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                       {item.nb_contenants && (
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
-                            <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'contenant'}
+                            <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'format'}
                           </span>
                           {(item.qty_from_frigo as number) > 0 && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
@@ -2160,7 +2160,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     <td className="px-3 py-3 text-center">
                       <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
                       {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
-                        <div className="text-[10px] text-indigo-500" title="Quantite brute totale (contenants)">
+                        <div className="text-[10px] text-indigo-500" title="Quantite brute totale (formats)">
                           brut: {item.quantite_brute_totale as number}
                         </div>
                       )}

@@ -35,6 +35,31 @@ interface SubRecipeRef {
   quantity: number;
 }
 
+interface RecipeFormat {
+  id: string;
+  contenant_id: string;
+  contenant_nom: string;
+  contenant_unite_lancement: string;
+  contenant_type: number | null;
+  quantite_par_format_g: string;
+  quantite_par_format_unite: string;
+  nb_par_defaut: number;
+  cout_emballage_unitaire: string;
+  ordre: number;
+  is_active: boolean;
+  // Valeurs calculees par v_recipe_format_cost (lecture seule)
+  poids_format_g: string | null;
+  poids_utilise_g: string | null;
+  cout_matiere_format: string | null;
+  cout_matiere_unitaire: string | null;
+  // Ventilation frais indirects (mig 160)
+  cout_mo_format: string | null;
+  cout_energie_format: string | null;
+  cout_struct_format: string | null;
+  cout_unitaire_complet: string | null;
+  prix_vente_unitaire: string | null;
+}
+
 interface RecipeEtape {
   ordre: number;
   nom: string;
@@ -68,10 +93,20 @@ interface RecipeDetail {
   contenant_unite_lancement: string | null;
   contenant_poids_kg: string | null;
   margin_multiplier?: number | string | null;
+  // Frais indirects au niveau recette (mig 159)
+  taux_main_oeuvre_dh_h?: string | number | null;
+  cout_energie_fournee?: string | number | null;
+  taux_frais_structure_pct?: string | number | null;
   packaging?: Record<string, unknown>[];
   etapes: RecipeEtape[];
   ingredients: RecipeIngredient[];
   sub_recipes: SubRecipeRef[];
+  formats?: RecipeFormat[];
+  // Synthese multi-formats (vue v_recipe_format_summary)
+  formats_poids_utilise_kg?: string | null;
+  formats_perte_kg?: string | null;
+  formats_perte_pct?: string | null;
+  formats_nb?: number | null;
 }
 
 // Unit conversion factors for cost calculation
@@ -218,7 +253,7 @@ export default function RecipesPage() {
           <span>Recettes</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
-            {activeTab === 'contenants' ? 'Contenants'
+            {activeTab === 'contenants' ? 'Formats de production'
               : activeTab === 'base' ? 'Préparations de base'
               : 'Recettes produits finis'}
           </span>
@@ -269,7 +304,7 @@ export default function RecipesPage() {
       <div className="odoo-tabs">
         <button onClick={() => { setActiveTab('contenants'); setSearch(''); }}
           className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
-          <Package size={13} /> Contenants
+          <Package size={13} /> Formats de production
         </button>
         <button onClick={() => { setActiveTab('base'); setSearch(''); }}
           className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
@@ -386,7 +421,7 @@ export default function RecipesPage() {
                 <th style={{ width: 24 }}></th>
                 <SortHeader label="Recette" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Contenant" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Coût total" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Coût/u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
@@ -531,6 +566,14 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   const [portions, setPortions] = useState<number | null>(null);
 
   const yieldQty = recipe?.yield_quantity || 1;
+  // Rendement effectif : si la recette a des formats, le rendement est la somme
+  // des nb_par_defaut (ex: 3 moyens + 3 petits = 6 unites). Sinon, yield_quantity
+  // legacy (1 unit par defaut). Utilise par les smart buttons du header.
+  const formatsTotalUnits = recipe?.formats
+    ? recipe.formats.reduce((sum, f) => sum + (f.nb_par_defaut || 0), 0)
+    : 0;
+  const hasFormats = formatsTotalUnits > 0;
+  const effectiveYield = hasFormats ? formatsTotalUnits : yieldQty;
   const targetPortions = portions || yieldQty;
   const multiplier = targetPortions / yieldQty;
 
@@ -561,12 +604,25 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
   // Prix de vente : priorite au product.price (defini), sinon fallback sur
   // costPerUnit * margin_multiplier (cas des recettes sans produit lie comme OFAURIA).
+  // En mode multi-formats : PV pondere = somme(PV_par_format × nb) / total_units.
   const productPrice = parseFloat(recipe?.product_price || '0');
   const recipeMargin = parseFloat(String(recipe?.margin_multiplier ?? '0'));
-  const sellingPrice = productPrice > 0
-    ? productPrice
-    : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0);
-  const margin = sellingPrice > 0 ? ((sellingPrice - costPerUnit) / sellingPrice * 100) : 0;
+  // Cout / unite effectif : moyenne ponderee si multi-format, sinon legacy.
+  const effectiveCostPerUnit = hasFormats && formatsTotalUnits > 0
+    ? totalCost / formatsTotalUnits
+    : costPerUnit;
+  // PV de reference :
+  // - multi-format : moyenne ponderee des PV par format (vue v_recipe_format_cost)
+  // - sinon : product.price si renseigne, sinon costPerUnit × margin_multiplier
+  const formatsPvWeightedAvg = hasFormats && formatsTotalUnits > 0
+    ? recipe!.formats!.reduce((sum, f) => sum + parseFloat(f.prix_vente_unitaire || '0') * f.nb_par_defaut, 0) / formatsTotalUnits
+    : 0;
+  const sellingPrice = hasFormats
+    ? formatsPvWeightedAvg
+    : (productPrice > 0
+        ? productPrice
+        : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0));
+  const margin = sellingPrice > 0 ? ((sellingPrice - effectiveCostPerUnit) / sellingPrice * 100) : 0;
 
   const steps = (() => {
     if (!recipe?.instructions) return [];
@@ -600,17 +656,21 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
         {recipe && (
           <div className="odoo-smart-button-row">
             <div className="odoo-smart-button">
-              <div className="odoo-smart-button-value">{yieldQty}</div>
-              <div className="odoo-smart-button-label"><Scale size={11} /> Rendement ({recipe.yield_unit || 'u.'})</div>
+              <div className="odoo-smart-button-value">{hasFormats ? formatsTotalUnits : yieldQty}</div>
+              <div className="odoo-smart-button-label">
+                <Scale size={11} /> Rendement {hasFormats ? `(${recipe.formats!.length} formats)` : `(${recipe.yield_unit || 'u.'})`}
+              </div>
             </div>
             <div className="odoo-smart-button">
               <div className="odoo-smart-button-value">{totalCost.toFixed(2)}</div>
               <div className="odoo-smart-button-label"><DollarSign size={11} /> Coût total (DH)</div>
             </div>
             <div className="odoo-smart-button">
-              <div className="odoo-smart-button-value">{costPerUnit.toFixed(2)}</div>
+              <div className="odoo-smart-button-value">
+                {hasFormats ? (totalCost / formatsTotalUnits).toFixed(2) : costPerUnit.toFixed(2)}
+              </div>
               <div className="odoo-smart-button-label">
-                <DollarSign size={11} /> {recipe.contenant_unite_lancement ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire : 'Coût/unité'}
+                <DollarSign size={11} /> {hasFormats ? 'Coût/unité (moyen)' : (recipe.contenant_unite_lancement ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire : 'Coût/unité')}
               </div>
             </div>
             {!recipe.is_base && (
@@ -626,7 +686,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
           </div>
         )}
 
-        {/* Form header (title + status tags + contenant) */}
+        {/* Form header (title + status tags + resume formats) */}
         {recipe && (
           <div className="odoo-form-header">
             <h1 className="odoo-form-title">{recipe.name}</h1>
@@ -637,7 +697,23 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               {recipe.product_name && !recipe.is_base && (
                 <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{recipe.product_name}</span>
               )}
-              {recipe.contenant_nom && (() => {
+              {/* Resume formats : remplace l'ancien tag "Contenant: X · QTE THEO ..." */}
+              {hasFormats && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginLeft: 4 }}>
+                  <Box size={12} />
+                  <strong style={{ color: 'var(--theme-text-strong)' }}>{recipe.formats!.length} format{recipe.formats!.length > 1 ? 's' : ''}</strong>
+                  <span>· {formatsTotalUnits} unité{formatsTotalUnits > 1 ? 's' : ''}</span>
+                  <span>·</span>
+                  {recipe.formats!.map((f, i) => (
+                    <span key={f.id} style={{ color: 'var(--theme-text-strong)' }}>
+                      {i > 0 && ', '}
+                      {f.contenant_nom} ×{f.nb_par_defaut}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {/* Fallback legacy : si pas de formats, on garde le tag contenant pour compat */}
+              {!hasFormats && recipe.contenant_nom && (() => {
                 const cMode = getModeCalcul(recipe.contenant_unite_lancement || 'unit');
                 const cLabels = MODE_LABELS[cMode];
                 const qteTheo = parseFloat(recipe.contenant_quantite_theorique || '0');
@@ -651,7 +727,6 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                     <span>· {cLabels.quantiteTheorique}: <strong>{qteTheo}</strong></span>
                     {pertes > 0 && <span>· {cLabels.pertesFixes}: <strong style={{ color: '#dc3545' }}>-{pertes}</strong></span>}
                     <span>· {cLabels.netCible}: <strong style={{ color: '#28a745' }}>{net}</strong></span>
-                    {cMode === 'pieces' && recipe.contenant_poids_kg && <span>· Poids: <strong>{recipe.contenant_poids_kg} kg</strong></span>}
                   </span>
                 );
               })()}
@@ -817,6 +892,122 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 </div>
               )}
 
+              {/* Formats de production (multi-formats par recette) */}
+              {recipe.formats && recipe.formats.length > 0 && (() => {
+                const pertePct = parseFloat(recipe.formats_perte_pct || '0');
+                const perteKg = parseFloat(recipe.formats_perte_kg || '0');
+                const poidsUtiliseKg = parseFloat(recipe.formats_poids_utilise_kg || '0');
+                const poidsCalculeKg = parseFloat(recipe.total_weight_kg || '0');
+                // Seuil d'alerte : perte > 5% ou < 0% (sur-allocation)
+                const showPerteAlert = poidsCalculeKg > 0 && (pertePct > 5 || pertePct < 0);
+                return (
+                  <div className="odoo-section">
+                    <div className="odoo-section-header">
+                      <Box size={12} /> Formats de production ({recipe.formats.length})
+                    </div>
+                    <table className="odoo-table">
+                      <thead>
+                        <tr>
+                          <th>Format</th>
+                          <th style={{ textAlign: 'right' }}>Qté</th>
+                          <th style={{ textAlign: 'right' }}>Pâte / unité</th>
+                          <th style={{ textAlign: 'right' }}>Total pâte</th>
+                          <th style={{ textAlign: 'right' }}>Coût mat. / unité</th>
+                          <th style={{ textAlign: 'right' }}>Emball.</th>
+                          <th style={{ textAlign: 'right' }}>Coût complet</th>
+                          {!recipe.is_base && <th style={{ textAlign: 'right' }}>Prix vente</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recipe.formats.map((fmt) => {
+                          const qtyPerFormat = parseFloat(fmt.quantite_par_format_g || '0');
+                          const unitFmt = fmt.quantite_par_format_unite || 'g';
+                          const toGramsFactor = (u: string) => (u === 'kg' || u === 'l') ? 1000 : 1;
+                          const nb = fmt.nb_par_defaut;
+                          const totalG = qtyPerFormat * nb * toGramsFactor(unitFmt);
+                          const coutMatUnit = parseFloat(fmt.cout_matiere_unitaire || '0');
+                          const emball = parseFloat(fmt.cout_emballage_unitaire || '0');
+                          const coutComplet = parseFloat(fmt.cout_unitaire_complet || '0');
+                          const pv = parseFloat(fmt.prix_vente_unitaire || '0');
+                          return (
+                            <tr key={fmt.id} style={{ cursor: 'default' }}>
+                              <td>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  <Box size={11} style={{ color: 'var(--theme-accent)' }} />
+                                  <strong>{fmt.contenant_nom}</strong>
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--theme-accent)' }}>{nb}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                {qtyPerFormat % 1 === 0 ? qtyPerFormat.toFixed(0) : qtyPerFormat.toFixed(3)} {unitFmt}
+                              </td>
+                              <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                                {totalG >= 1000 ? `${(totalG / 1000).toFixed(3)} kg` : `${totalG.toFixed(0)} g`}
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                {coutMatUnit.toFixed(2)} DH
+                                {(() => {
+                                  // Ventilation par unite : MO + energie + structure (proratees au poids puis / nb)
+                                  const nbF = fmt.nb_par_defaut || 1;
+                                  const moU = parseFloat(fmt.cout_mo_format || '0') / nbF;
+                                  const enU = parseFloat(fmt.cout_energie_format || '0') / nbF;
+                                  const stU = parseFloat(fmt.cout_struct_format || '0') / nbF;
+                                  if (moU + enU + stU < 0.01) return null;
+                                  return (
+                                    <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+                                      MO {moU.toFixed(2)} · En {enU.toFixed(2)} · Str {stU.toFixed(2)}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{emball > 0 ? `${emball.toFixed(2)} DH` : '—'}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{coutComplet.toFixed(2)} DH</td>
+                              {!recipe.is_base && <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{pv.toFixed(2)} DH</td>}
+                            </tr>
+                          );
+                        })}
+                        <tr style={{ backgroundColor: 'var(--theme-bg-page)', fontWeight: 700, cursor: 'default' }}>
+                          <td style={{ textAlign: 'right' }}>Total pâte utilisée</td>
+                          <td></td>
+                          <td></td>
+                          <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>
+                            {poidsUtiliseKg >= 1 ? `${poidsUtiliseKg.toFixed(3)} kg` : `${(poidsUtiliseKg * 1000).toFixed(0)} g`}
+                          </td>
+                          <td colSpan={!recipe.is_base ? 4 : 3}></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    {/* Alerte perte si écart significatif entre poids calculé et poids utilisé */}
+                    {showPerteAlert && (
+                      <div style={{
+                        margin: '0.5rem 1rem 0.75rem',
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: pertePct < 0 ? '#fdecea' : '#fff3cd',
+                        border: `1px solid ${pertePct < 0 ? '#dc3545' : '#ffc107'}`,
+                        borderRadius: 4,
+                        fontSize: '0.75rem',
+                        color: 'var(--theme-text-strong)',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}>
+                        <TrendingUp size={12} style={{ color: pertePct < 0 ? '#dc3545' : '#856404' }} />
+                        {pertePct < 0 ? (
+                          <span>
+                            <strong>Sur-allocation :</strong> les formats consomment {Math.abs(perteKg).toFixed(3)} kg de plus
+                            que le poids calculé ({poidsCalculeKg.toFixed(3)} kg). Vérifier les poids par format.
+                          </span>
+                        ) : (
+                          <span>
+                            <strong>Perte estimée : {perteKg.toFixed(3)} kg ({pertePct.toFixed(1)}%)</strong>
+                            {' '}— poids calculé {poidsCalculeKg.toFixed(3)} kg, utilisé {poidsUtiliseKg.toFixed(3)} kg.
+                            La perte est absorbée dans le coût des formats.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Instructions */}
               {recipe.instructions && (
                 <div className="odoo-section">
@@ -892,15 +1083,19 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Quantité à produire</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{targetPortions} {recipe.yield_unit || 'u.'}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>
+                      {hasFormats ? `${formatsTotalUnits} unités (${recipe.formats!.length} formats)` : `${targetPortions} ${recipe.yield_unit || 'u.'}`}
+                    </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût total matières</div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{totalCost.toFixed(2)} DH</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût par unité</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{costPerUnit.toFixed(2)} DH</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>
+                      {hasFormats ? 'Coût/unité (moyen)' : 'Coût par unité'}
+                    </div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{effectiveCostPerUnit.toFixed(2)} DH</div>
                   </div>
                   {!recipe.is_base && (
                     <div>
@@ -986,6 +1181,15 @@ interface FormEtape {
   est_repetable: boolean;
   nb_repetitions: string;
   responsable_role: string;
+}
+
+interface FormFormat {
+  contenantId: string;
+  quantiteParFormatG: string;
+  quantiteParFormatUnite: string;
+  nbParDefaut: string;
+  coutEmballageUnitaire: string;
+  ordre: number;
 }
 
 type FormTab = 'info' | 'composition' | 'etapes' | 'instructions';
@@ -1209,6 +1413,11 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const [formPackaging, setFormPackaging] = useState<{ packagingId: string; quantity: string; unit: string }[]>([]);
   const [formSubRecipes, setFormSubRecipes] = useState<FormSubRecipe[]>([]);
   const [formEtapes, setFormEtapes] = useState<FormEtape[]>([]);
+  const [formFormats, setFormFormats] = useState<FormFormat[]>([]);
+  // Frais indirects au niveau recette (mig 159)
+  const [tauxMo, setTauxMo] = useState('');
+  const [coutEnergie, setCoutEnergie] = useState('');
+  const [tauxStruct, setTauxStruct] = useState('');
 
   if (isEdit && existingRecipe && !initialized) {
     setName(existingRecipe.name);
@@ -1250,6 +1459,23 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
           }))
         : []
     );
+    setFormFormats(
+      existingRecipe.formats && existingRecipe.formats.length > 0
+        ? existingRecipe.formats.map(f => ({
+            contenantId: f.contenant_id,
+            quantiteParFormatG: trimZeros(f.quantite_par_format_g),
+            quantiteParFormatUnite: f.quantite_par_format_unite || 'g',
+            nbParDefaut: String(f.nb_par_defaut),
+            coutEmballageUnitaire: parseFloat(f.cout_emballage_unitaire || '0') > 0
+              ? trimZeros(f.cout_emballage_unitaire)
+              : '',
+            ordre: f.ordre,
+          }))
+        : []
+    );
+    setTauxMo(String(parseFloat(String(existingRecipe.taux_main_oeuvre_dh_h ?? 0))));
+    setCoutEnergie(String(parseFloat(String(existingRecipe.cout_energie_fournee ?? 0))));
+    setTauxStruct(String(parseFloat(String(existingRecipe.taux_frais_structure_pct ?? 0))));
     setInitialized(true);
   }
 
@@ -1300,6 +1526,26 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
     setFormEtapes(arr.map((e, i) => ({ ...e, ordre: i + 1 })));
   };
+
+  // Sync : pour produits finis avec formats, yieldQuantity = Σ nb_par_defaut.
+  // Ce yield est conserve cote backend pour la synchronisation product.price legacy,
+  // mais n'est plus visible dans le form (auto-derive).
+  useEffect(() => {
+    if (isBase || !initialized) return;
+    const totalUnits = formFormats.reduce((sum, f) => sum + (parseInt(f.nbParDefaut) || 0), 0);
+    if (totalUnits > 0 && String(totalUnits) !== yieldQuantity) {
+      setYieldQuantity(String(totalUnits));
+      setYieldUnit('unit');
+    }
+  }, [formFormats, isBase, initialized, yieldQuantity]);
+
+  // Formats de production (multi-formats par recette) — handlers
+  const addFormatRow = () => setFormFormats([...formFormats, {
+    contenantId: '', quantiteParFormatG: '', quantiteParFormatUnite: 'g', nbParDefaut: '1', coutEmballageUnitaire: '', ordre: formFormats.length,
+  }]);
+  const removeFormatRow = (idx: number) => setFormFormats(formFormats.filter((_, i) => i !== idx));
+  const updateFormatRow = (idx: number, field: keyof FormFormat, value: string) =>
+    setFormFormats(formFormats.map((row, i) => i === idx ? { ...row, [field]: value } : row));
 
   const availableBaseRecipes = baseRecipes.filter((br: Record<string, any>) => br.id !== recipeId);
 
@@ -1370,6 +1616,18 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       .filter(row => row.packagingId && row.quantity && parseFloat(row.quantity) > 0)
       .map(row => ({ packagingId: row.packagingId, quantity: parseFloat(row.quantity), unit: row.unit || 'piece' }));
 
+    // Formats valides : contenant choisi + poids > 0 + nb >= 1
+    const validFormats = formFormats
+      .filter(row => row.contenantId && parseFloat(row.quantiteParFormatG) > 0 && parseInt(row.nbParDefaut) > 0)
+      .map(row => ({
+        contenantId: row.contenantId,
+        quantiteParFormatG: parseFloat(row.quantiteParFormatG),
+        quantiteParFormatUnite: row.quantiteParFormatUnite || 'g',
+        nbParDefaut: parseInt(row.nbParDefaut) || 1,
+        coutEmballageUnitaire: row.coutEmballageUnitaire ? parseFloat(row.coutEmballageUnitaire) : 0,
+        ordre: row.ordre,
+      }));
+
     const data: Record<string, any> = {
       name,
       productId: isBase ? null : (productId || null),
@@ -1377,12 +1635,16 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
       marginMultiplier: parseFloat(marginMultiplier) || 3,
+      tauxMainOeuvreDhH: tauxMo === '' ? undefined : parseFloat(tauxMo),
+      coutEnergieFournee: coutEnergie === '' ? undefined : parseFloat(coutEnergie),
+      tauxFraisStructurePct: tauxStruct === '' ? undefined : parseFloat(tauxStruct),
       instructions,
       isBase,
       etapes: validEtapes,
       ingredients: validIngredients,
       subRecipes: validSubRecipes,
       packaging: validPackaging,
+      formats: validFormats,
     };
 
     if (isEdit) updateMutation.mutate(data);
@@ -1485,96 +1747,173 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 )}
 
-                {/* Contenant — optionnel (baguettes/pieces unitaires n'en ont pas) */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    <span className="flex items-center gap-2">
-                      <Box size={15} className="text-blue-500" />
-                      Contenant
-                      <span className="text-xs font-normal text-gray-400">(optionnel)</span>
-                    </span>
-                  </label>
-                  <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
-                    value={contenantId} onChange={(e) => {
-                      const cId = e.target.value;
-                      setContenantId(cId);
-                      if (cId) {
-                        const ct = allContenants.find((c: Record<string, any>) => c.id === cId) as Record<string, any> | undefined;
-                        if (ct) {
-                          const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
-                          const pertes = parseFloat(ct.pertes_fixes as string || '0');
-                          const net = qteTheo - pertes;
-                          setYieldQuantity(String(net > 0 ? net : qteTheo));
-                          setYieldUnit(ct.unite_lancement as string || 'unit');
-                        }
-                      }
-                    }}>
-                    <option value="">— Aucun contenant (produit unitaire) —</option>
-                    {allContenants.map((c: Record<string, any>) => {
-                      const cMode = getModeCalcul(c.unite_lancement as string || 'unit');
-                      const cLabels = MODE_LABELS[cMode];
-                      return (
-                        <option key={c.id as string} value={c.id as string}>
-                          [{cMode === 'poids' ? 'KG' : 'PCS'}] {c.nom as string} — {c.quantite_theorique as string} {cLabels.uniteRendement}{cMode === 'pieces' && c.poids_kg ? ` (${c.poids_kg} kg)` : ''} (pertes: {c.pertes_fixes as string})
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {contenantId && (() => {
-                    const ct = allContenants.find((c: Record<string, any>) => c.id === contenantId) as Record<string, any> | undefined;
-                    if (!ct) return null;
-                    const qteTheo = parseFloat(ct.quantite_theorique as string || '0');
-                    const pertes = parseFloat(ct.pertes_fixes as string || '0');
-                    const net = qteTheo - pertes;
-                    const ctMode = getModeCalcul(ct.unite_lancement as string || 'unit');
-                    const ctLabels = MODE_LABELS[ctMode];
-                    return (
-                      <div className="mt-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                ctMode === 'poids' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                              }`}>{ctMode === 'poids' ? 'POIDS' : 'PIECES'}</span>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs">
-                              <div className="text-center">
-                                <span className="block text-blue-400">{ctLabels.quantiteTheorique}</span>
-                                <span className="font-bold text-blue-700">{qteTheo}</span>
-                              </div>
-                              <div className="text-center">
-                                <span className="block text-blue-400">{ctLabels.pertesFixes}</span>
-                                <span className="font-bold text-red-500">-{pertes}</span>
-                              </div>
-                              <div className="text-center">
-                                <span className="block text-blue-400">{ctLabels.netCible}</span>
-                                <span className="font-bold text-green-600">{net} {ctLabels.uniteRendement}</span>
-                              </div>
-                              {ctMode === 'pieces' && ct.poids_kg && (
-                                <div className="text-center">
-                                  <span className="block text-blue-400">Poids matiere</span>
-                                  <span className="font-bold text-blue-700">{ct.poids_kg as string} kg</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                  })()}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement</label>
-                  <div className="flex gap-2">
-                    <input type="number" min={0.001} step="any"
-                      className="w-28 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
-                      value={yieldQuantity} onChange={(e) => setYieldQuantity(e.target.value)} required />
-                    <select
-                      className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-medium"
-                      value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}>
-                      {yieldUnits.map(u => (
-                        <option key={u.code} value={u.code}>{u.label}</option>
-                      ))}
-                    </select>
+                {/* Rendement — visible uniquement pour les preparations de base.
+                    Pour les produits finis, calcule auto depuis Σ nb_par_defaut (via useEffect). */}
+                {isBase && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Rendement de la préparation</label>
+                    <div className="flex gap-2">
+                      <input type="number" min={0.001} step="any"
+                        className="w-28 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                        value={yieldQuantity} onChange={(e) => setYieldQuantity(e.target.value)} required />
+                      <select
+                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-medium"
+                        value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)}>
+                        {yieldUnits.map(u => (
+                          <option key={u.code} value={u.code}>{u.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Ex: 2167 g pour une pâte croissante, 5 kg pour une crème pâtissière</p>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{contenantId ? 'Pre-rempli depuis le contenant — ajustable si besoin' : 'Ex: 5 kg pour une pate, 3 moules pour une genoise'}</p>
+                )}
+
+                {/* Formats de production (multi-formats par recette) */}
+                {(() => {
+                  // Synthese live cote client : compare poids ingredients (approx) vs poids alloue aux formats
+                  // Conversion : si l'unite est kg/l -> ×1000, sinon ×1 (densite 1 pour les liquides).
+                  const toGramsFactor = (u: string) => (u === 'kg' || u === 'l') ? 1000 : 1;
+                  const totalAlloueG = formFormats.reduce((sum, f) => {
+                    const qty = parseFloat(f.quantiteParFormatG) || 0;
+                    const nb = parseInt(f.nbParDefaut) || 0;
+                    return sum + qty * nb * toGramsFactor(f.quantiteParFormatUnite || 'g');
+                  }, 0);
+                  // Estimation du poids des ingredients (sans sous-recettes pour rester rapide cote UI)
+                  const ingPoidsKg = formIngredients.reduce((sum, row) => {
+                    if (!row.ingredientId || !row.quantity) return sum;
+                    const q = parseFloat(row.quantity) || 0;
+                    const kg = quantityToKg(q, row.unit || 'unit');
+                    return sum + (kg || 0);
+                  }, 0);
+                  const ingPoidsG = ingPoidsKg * 1000;
+                  const ecartG = ingPoidsG - totalAlloueG;
+                  const ecartPct = ingPoidsG > 0 ? (ecartG / ingPoidsG) * 100 : 0;
+                  const showWarning = formFormats.length > 0 && ingPoidsG > 0 && Math.abs(ecartPct) > 5;
+                  return (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                        <span className="flex items-center gap-2">
+                          <Box size={15} className="text-amber-500" />
+                          Formats de production
+                          <span className="text-xs font-normal text-gray-400">(multi-formats — ex: 3 moyens + 3 petits)</span>
+                        </span>
+                      </label>
+                      {formFormats.length === 0 ? (
+                        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 text-center">
+                          <p className="text-xs text-gray-500 mb-2">Aucun format defini. Ajoutez un format pour calculer le cout et le prix de vente par format.</p>
+                          <button type="button" onClick={addFormatRow}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold">
+                            <Plus size={12} /> Ajouter un format
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {formFormats.map((row, idx) => (
+                            <div key={idx} className="grid grid-cols-12 gap-2 items-end bg-gray-50 border border-gray-200 rounded-lg p-2">
+                              <div className="col-span-5">
+                                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Format de production</label>
+                                <select className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-xs focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                  value={row.contenantId} onChange={(e) => updateFormatRow(idx, 'contenantId', e.target.value)}>
+                                  <option value="">— Choisir un format —</option>
+                                  {allContenants.map((c: Record<string, any>) => (
+                                    <option key={c.id as string} value={c.id as string}>{c.nom as string}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Pâte / unité</label>
+                                <div className="flex items-center gap-1">
+                                  <input type="number" min={0.001} step="any"
+                                    className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                                    value={row.quantiteParFormatG} onChange={(e) => updateFormatRow(idx, 'quantiteParFormatG', e.target.value)}
+                                    placeholder="600" />
+                                  <select
+                                    className="px-1 py-1.5 bg-white border border-gray-200 rounded text-xs focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                    value={row.quantiteParFormatUnite}
+                                    onChange={(e) => updateFormatRow(idx, 'quantiteParFormatUnite', e.target.value)}>
+                                    <option value="g">g</option>
+                                    <option value="kg">kg</option>
+                                    <option value="ml">ml</option>
+                                    <option value="l">l</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Nb par défaut</label>
+                                <input type="number" min={1} step={1}
+                                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                                  value={row.nbParDefaut} onChange={(e) => updateFormatRow(idx, 'nbParDefaut', e.target.value)} />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Emballage (DH)</label>
+                                <input type="number" min={0} step="0.01"
+                                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                  value={row.coutEmballageUnitaire} onChange={(e) => updateFormatRow(idx, 'coutEmballageUnitaire', e.target.value)}
+                                  placeholder="0.00" />
+                              </div>
+                              <div className="col-span-1 flex justify-end">
+                                <button type="button" onClick={() => removeFormatRow(idx)}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Supprimer">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          <button type="button" onClick={addFormatRow}
+                            className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200">
+                            <Plus size={12} /> Ajouter un format
+                          </button>
+                          {/* Synthese poids */}
+                          <div className={`text-xs px-3 py-2 rounded-lg border ${
+                            showWarning
+                              ? (ecartG < 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700')
+                              : 'bg-gray-50 border-gray-200 text-gray-600'
+                          }`}>
+                            <strong>Pâte allouée : {totalAlloueG >= 1000 ? `${(totalAlloueG / 1000).toFixed(3)} kg` : `${totalAlloueG.toFixed(0)} g`}</strong>
+                            {ingPoidsG > 0 && (
+                              <> {' '}sur {ingPoidsKg.toFixed(3)} kg calculé depuis ingrédients
+                                {' '}— {ecartG >= 0 ? `perte ${ecartG.toFixed(0)}g (${ecartPct.toFixed(1)}%)` : `sur-allocation ${Math.abs(ecartG).toFixed(0)}g`}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Frais indirects (MO, énergie, structure) — niveau recette, prorate au poids par format */}
+                <div className="bg-indigo-50/50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                  <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <DollarSign size={15} className="text-indigo-500" />
+                    Frais indirects (au niveau recette)
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Main d'œuvre (DH/h)</label>
+                      <input type="number" min={0} step="0.5"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-bold"
+                        value={tauxMo} onChange={(e) => setTauxMo(e.target.value)} placeholder="30" />
+                      <p className="text-[10px] text-gray-400 mt-0.5">× durée totale étapes</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Énergie / fournée (DH)</label>
+                      <input type="number" min={0} step="0.5"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-bold"
+                        value={coutEnergie} onChange={(e) => setCoutEnergie(e.target.value)} placeholder="0" />
+                      <p className="text-[10px] text-gray-400 mt-0.5">forfait par production</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Structure (%)</label>
+                      <input type="number" min={0} max={100} step="0.5"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-bold"
+                        value={tauxStruct} onChange={(e) => setTauxStruct(e.target.value)} placeholder="15" />
+                      <p className="text-[10px] text-gray-400 mt-0.5">% sur (mat + MO + énergie)</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Ces frais sont répartis sur chaque format au prorata du poids de pâte.
+                  </p>
                 </div>
 
                 {!isBase && (() => {

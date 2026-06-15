@@ -5,9 +5,19 @@
 
 BEGIN;
 
+-- Idempotence : si la migration a deja partiellement tourne (ou si les donnees
+-- ont ete inserees autrement), on nettoie d'abord les liens recipe_ingredients
+-- pour les 3 recettes seed. Recipes et products sont conserves (ON CONFLICT
+-- ci-dessous) car peuvent etre referencees par d'autres tables.
+DELETE FROM recipe_ingredients WHERE recipe_id IN (
+  'a0000001-0001-4000-a000-000000000001',
+  'a0000002-0002-4000-a000-000000000002',
+  'a0000003-0003-4000-a000-000000000003'
+);
+
 -- ─── 0. Create "Eau" ingredient (used in all 3 recipes) ───
 INSERT INTO ingredients (id, name, unit, unit_cost, supplier)
-VALUES ('00000000-0000-4000-a000-000000000001', 'Eau', 'L', 0, NULL)
+VALUES ('00000000-0000-4000-a000-000000000001', 'Eau', 'l', 0, NULL)
 ON CONFLICT DO NOTHING;
 
 -- ─── 1. PÂTE CROISSANTE — recette de base (is_base = true) ───
@@ -35,13 +45,14 @@ VALUES (
     {"ordre":9, "nom":"Fermentation finale (apprêt) — 26°C / 75% HR", "duree_estimee_min":105, "est_bloquante":true, "timer_auto":true, "controle_qualite":true, "checklist_items":["Volume ×2","Croissants gonflés et tendres"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"},
     {"ordre":10, "nom":"2ème dorure + cuisson 180°C ventilé 16-18 min", "duree_estimee_min":18, "est_bloquante":true, "timer_auto":true, "controle_qualite":true, "checklist_items":["Coloration dorée uniforme","Feuilletage visible","Croustillant"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"}
   ]'::jsonb
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- Pâte croissante — ingrédients (détrempe)
 INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES
   ('a0000001-0001-4000-a000-000000000001', '753e0408-360f-4aae-b8b0-024c3f984d17', 1.0000, 'kg'),    -- Farine viennoiserie 1000g
-  ('a0000001-0001-4000-a000-000000000001', '00000000-0000-4000-a000-000000000001', 0.4000, 'L'),      -- Eau 400g
-  ('a0000001-0001-4000-a000-000000000001', '854839eb-30e8-4b42-8b30-dd0b6a0b46c0', 0.1000, 'L'),     -- Lait entier 100g
+  ('a0000001-0001-4000-a000-000000000001', '00000000-0000-4000-a000-000000000001', 0.4000, 'l'),      -- Eau 400g
+  ('a0000001-0001-4000-a000-000000000001', '854839eb-30e8-4b42-8b30-dd0b6a0b46c0', 0.1000, 'l'),     -- Lait entier 100g
   ('a0000001-0001-4000-a000-000000000001', '942672ed-6b5b-4165-9e68-3706c98b163b', 0.1200, 'kg'),    -- Sucre semoule 120g
   ('a0000001-0001-4000-a000-000000000001', '1c82cf60-3233-4b44-965c-47d1a6ebfa53', 0.0200, 'kg'),    -- Sel fin 20g
   ('a0000001-0001-4000-a000-000000000001', '2ebe4638-ed83-45e0-a6cc-0e903bf91254', 0.6000, 'kg'),    -- Beurre (100g détrempe + 500g tour)
@@ -62,7 +73,8 @@ VALUES (
   0,
   true,
   'BOU-BAG-SEM'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipes (id, product_id, name, instructions, yield_quantity, yield_unit, is_base, contenant_id, etapes)
 VALUES (
@@ -88,13 +100,14 @@ VALUES (
     {"ordre":11, "nom":"Enfournement avec buée + baisser à 240°C", "duree_estimee_min":2, "est_bloquante":true, "timer_auto":false, "controle_qualite":false, "checklist_items":["Buée bien diffusée, baguettes en place"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"},
     {"ordre":12, "nom":"Cuisson 240°C — 18 min", "duree_estimee_min":18, "est_bloquante":true, "timer_auto":true, "controle_qualite":true, "checklist_items":["Croûte dorée uniforme","T° mie ≥ 95°C","Son mat à la pichenette"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"}
   ]'::jsonb
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- Baguette semoule — ingrédients
 INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES
   ('a0000002-0002-4000-a000-000000000002', '2a44fd1a-1787-49cb-a492-c776cb200a50', 13.0000, 'kg'),   -- Farine Fleur (T55) 13kg — Note: using Farine Fleur as T55
   ('a0000002-0002-4000-a000-000000000002', 'a037ae45-60c2-41bd-a69e-44e3a7bc4098', 13.0000, 'kg'),   -- Semoule fine 13kg
-  ('a0000002-0002-4000-a000-000000000002', '00000000-0000-4000-a000-000000000001', 17.7000, 'L'),     -- Eau 17,7L
+  ('a0000002-0002-4000-a000-000000000002', '00000000-0000-4000-a000-000000000001', 17.7000, 'l'),     -- Eau 17,7L
   ('a0000002-0002-4000-a000-000000000002', '1c82cf60-3233-4b44-965c-47d1a6ebfa53', 0.5200, 'kg'),    -- Sel fin 520g
   ('a0000002-0002-4000-a000-000000000002', '2c0dd68d-e926-468e-b972-7cca34790fee', 0.2600, 'kg'),    -- Levure fraîche 260g
   ('a0000002-0002-4000-a000-000000000002', '26f4621e-2285-426f-9569-bbbad19ff440', 0.1300, 'kg');    -- Ibis 130g
@@ -112,7 +125,8 @@ VALUES (
   0,
   true,
   'BOU-BAG-CPL'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipes (id, product_id, name, instructions, yield_quantity, yield_unit, is_base, contenant_id, etapes)
 VALUES (
@@ -139,13 +153,14 @@ VALUES (
     {"ordre":12, "nom":"Scarification — 5 coups de lame en biais", "duree_estimee_min":10, "est_bloquante":true, "timer_auto":false, "controle_qualite":true, "checklist_items":["Coups nets, ouverture maîtrisée"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"},
     {"ordre":13, "nom":"Enfournement avec buée + cuisson 270→240°C — 22 min", "duree_estimee_min":22, "est_bloquante":true, "timer_auto":true, "controle_qualite":true, "checklist_items":["Croûte dorée foncée","T° mie ≥ 96°C","Son mat à la pichenette"], "est_repetable":false, "nb_repetitions":1, "responsable_role":"boulanger"}
   ]'::jsonb
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- Baguette complète — ingrédients
 INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES
   ('a0000003-0003-4000-a000-000000000003', '1d1b9603-f6ed-4618-846b-702e0e5b6c2d', 13.0000, 'kg'),   -- Farine Soisson 13kg
   ('a0000003-0003-4000-a000-000000000003', 'a9909ea6-0cbc-43ac-b408-78eaca81a008', 13.0000, 'kg'),   -- Farine Complète 13kg
-  ('a0000003-0003-4000-a000-000000000003', '00000000-0000-4000-a000-000000000001', 18.2000, 'L'),     -- Eau 18,2L
+  ('a0000003-0003-4000-a000-000000000003', '00000000-0000-4000-a000-000000000001', 18.2000, 'l'),     -- Eau 18,2L
   ('a0000003-0003-4000-a000-000000000003', '1c82cf60-3233-4b44-965c-47d1a6ebfa53', 0.5200, 'kg'),    -- Sel fin 520g
   ('a0000003-0003-4000-a000-000000000003', '2c0dd68d-e926-468e-b972-7cca34790fee', 0.3900, 'kg'),    -- Levure fraîche 390g
   ('a0000003-0003-4000-a000-000000000003', '26f4621e-2285-426f-9569-bbbad19ff440', 0.1300, 'kg');    -- Ibis 130g

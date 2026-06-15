@@ -275,7 +275,7 @@ export default function StockFrigoPage() {
                   <SortHeader label="Lot" sortKey="lot_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                   <SortHeader label="Production" sortKey="produced_at" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
                   <SortHeader label="Expiration" sortKey="expires_at" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
-                  <SortHeader label="Contenant" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
+                  <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="center" />
                   <th className="text-center px-3 py-2.5 w-28"></th>
                 </tr>
               </thead>

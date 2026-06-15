@@ -22,6 +22,10 @@ export const createRecipeSchema = z.object({
   yieldUnit: z.string().max(20).default('unit'),
   marginMultiplier: z.number().positive('Le multiplicateur doit être positif').default(3),
   salePrice: z.number().nonnegative('Le prix de vente doit être positif').optional().nullable(),
+  // Frais indirects au niveau recette (default 0 si absent — preserve le comportement existant)
+  tauxMainOeuvreDhH: z.number().nonnegative().optional(),
+  coutEnergieFournee: z.number().nonnegative().optional(),
+  tauxFraisStructurePct: z.number().min(0).max(100).optional(),
   isBase: z.boolean().default(false),
   etapes: z.array(etapeSchema).default([]),
   ingredients: z.array(z.object({
@@ -37,6 +41,16 @@ export const createRecipeSchema = z.object({
     packagingId: z.string().uuid('ID emballage invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
     unit: z.string().max(20).optional().nullable(),
+  })).default([]),
+  // Formats de production (multi-formats par recette). Optionnel — si vide ou absent,
+  // le calcul de cout/format se fait sur recipes.contenant_id (compat descendante).
+  formats: z.array(z.object({
+    contenantId: z.string().uuid('ID contenant invalide'),
+    quantiteParFormatG: z.number().positive('La quantité par format doit être > 0'),
+    quantiteParFormatUnite: z.enum(['g', 'kg', 'ml', 'l']).default('g'),
+    nbParDefaut: z.number().int().positive('Le nombre par défaut doit être >= 1').default(1),
+    coutEmballageUnitaire: z.number().nonnegative().default(0),
+    ordre: z.number().int().nonnegative().default(0),
   })).default([]),
 });
 
