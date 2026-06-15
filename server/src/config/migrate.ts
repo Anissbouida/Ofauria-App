@@ -85,9 +85,31 @@ async function migrate() {
     }
   }
 
+  // 2e passe : on relit _migrations.checksum apres que toutes les nouvelles
+  // migrations aient tourne. Cas vise : une migration "restamp" (ex: 164) qui
+  // execute un UPDATE _migrations.checksum pour reconcilier une mig modifiee
+  // apres application (ex: 115 fix L->l). Sans cette 2e passe, le compteur
+  // tampered est evalue avec le snapshot pre-loop -> exit 2 meme apres fix.
   if (tampered > 0) {
-    console.error(`\n⚠️  ${tampered} migration(s) modifiee(s) apres application (OWASP A08-1).`);
-    process.exit(2);
+    const refreshed = await db.query('SELECT name, checksum FROM _migrations ORDER BY name');
+    const refreshedMap = new Map(
+      refreshed.rows.map((r: { name: string; checksum: string | null }) => [r.name, r.checksum])
+    );
+    let tamperedFinal = 0;
+    for (const file of files) {
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+      const checksum = sha256(sql);
+      const stored = refreshedMap.get(file);
+      if (stored != null && stored !== checksum) {
+        console.error(`❌ ${file}: tampered confirme apres 2e passe (stored=${stored.slice(0, 12)}..., current=${checksum.slice(0, 12)}...)`);
+        tamperedFinal++;
+      }
+    }
+    if (tamperedFinal > 0) {
+      console.error(`\n⚠️  ${tamperedFinal} migration(s) modifiee(s) apres application (OWASP A08-1).`);
+      process.exit(2);
+    }
+    console.log(`\n✓ ${tampered} mismatch initialement detecte(s) → reconcilie(s) par une migration restamp.`);
   }
 
   console.log('\nMigrations complete.');
