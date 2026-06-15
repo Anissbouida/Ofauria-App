@@ -511,21 +511,48 @@ export const bonSortieRepository = {
                 il.quantity_remaining AS lot_remaining,
                 il.status AS lot_status,
                 CASE WHEN il.status = 'expired' THEN true ELSE false END AS lot_expired,
-                -- Stock courant total (pesage + economat) pour cet ingredient sur ce store.
-                -- Sert au frontend a savoir si une ligne 'rupture' a en realite ete reapprovisionnee
-                -- depuis la generation du BSI -> ne plus l'afficher dans le bandeau ruptures.
+                -- Stock courant LIBRE (pesage + economat) pour cet ingredient sur ce store.
+                -- "Libre" = quantite des lots moins ce qui est deja reserve par des lignes
+                -- BSI actives (en_attente/preleve/substitue) sur CE bon. Meme logique que
+                -- effective_pesage dans completePending : sans cette soustraction, une ligne
+                -- en rupture pouvait voir comme "disponible" du stock deja alloue a une
+                -- autre ligne du meme BSI -> bandeau "re-allouer" trompeur, click sans effet.
                 COALESCE((
-                  SELECT SUM(COALESCE(il2.pesage_quantity, 0) + COALESCE(il2.economat_quantity, 0))
+                  SELECT SUM(
+                    GREATEST(0, COALESCE(il2.pesage_quantity, 0) - COALESCE((
+                      SELECT SUM(bsl2.allocated_quantity)
+                        FROM production_bons_sortie_lignes bsl2
+                       WHERE bsl2.bon_id = bsl.bon_id
+                         AND bsl2.ingredient_lot_id = il2.id
+                         AND bsl2.source_location = 'PESAGE'
+                         AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
+                    ), 0))
+                    + GREATEST(0, COALESCE(il2.economat_quantity, 0) - COALESCE((
+                      SELECT SUM(bsl2.transfer_required_qty)
+                        FROM production_bons_sortie_lignes bsl2
+                       WHERE bsl2.bon_id = bsl.bon_id
+                         AND bsl2.suggested_economat_lot_id = il2.id
+                         AND bsl2.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+                         AND bsl2.status = 'en_attente'
+                    ), 0))
+                  )
                     FROM ingredient_lots il2
                    WHERE il2.ingredient_id = bsl.ingredient_id
                      AND il2.store_id = $2
                      AND il2.status = 'active'
                 ), 0) AS current_stock_total,
-                -- Stock courant pesage seul. Permet au frontend de detecter qu'une ligne
+                -- Stock courant pesage LIBRE. Permet au frontend de detecter qu'une ligne
                 -- ECONOMAT_REQUIRES_TRANSFER peut etre re-allouee depuis le pesage (le
                 -- magasinier a deja transfere via un autre flow et le BSI ne le sait pas).
                 COALESCE((
-                  SELECT SUM(COALESCE(il2.pesage_quantity, 0))
+                  SELECT SUM(GREATEST(0, COALESCE(il2.pesage_quantity, 0) - COALESCE((
+                    SELECT SUM(bsl2.allocated_quantity)
+                      FROM production_bons_sortie_lignes bsl2
+                     WHERE bsl2.bon_id = bsl.bon_id
+                       AND bsl2.ingredient_lot_id = il2.id
+                       AND bsl2.source_location = 'PESAGE'
+                       AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
+                  ), 0)))
                     FROM ingredient_lots il2
                    WHERE il2.ingredient_id = bsl.ingredient_id
                      AND il2.store_id = $2
@@ -572,17 +599,42 @@ export const bonSortieRepository = {
               ing.name AS ingredient_name, ing.unit AS ingredient_unit,
               il.lot_number, il.supplier_lot_number, il.expiration_date, il.quantity_remaining AS lot_remaining,
               il.status AS lot_status,
-              -- Stock courant total (pesage + economat) — voir findByPlan pour la motivation.
+              -- Stock courant LIBRE (pesage + economat) — voir findByPlan pour la motivation.
+              -- Soustrait les quantites deja reservees par les lignes BSI actives du meme bon.
               COALESCE((
-                SELECT SUM(COALESCE(il2.pesage_quantity, 0) + COALESCE(il2.economat_quantity, 0))
+                SELECT SUM(
+                  GREATEST(0, COALESCE(il2.pesage_quantity, 0) - COALESCE((
+                    SELECT SUM(bsl2.allocated_quantity)
+                      FROM production_bons_sortie_lignes bsl2
+                     WHERE bsl2.bon_id = bsl.bon_id
+                       AND bsl2.ingredient_lot_id = il2.id
+                       AND bsl2.source_location = 'PESAGE'
+                       AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
+                  ), 0))
+                  + GREATEST(0, COALESCE(il2.economat_quantity, 0) - COALESCE((
+                    SELECT SUM(bsl2.transfer_required_qty)
+                      FROM production_bons_sortie_lignes bsl2
+                     WHERE bsl2.bon_id = bsl.bon_id
+                       AND bsl2.suggested_economat_lot_id = il2.id
+                       AND bsl2.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+                       AND bsl2.status = 'en_attente'
+                  ), 0))
+                )
                   FROM ingredient_lots il2
                  WHERE il2.ingredient_id = bsl.ingredient_id
                    AND il2.store_id = $2
                    AND il2.status = 'active'
               ), 0) AS current_stock_total,
-              -- Stock courant pesage seul (voir findByPlan).
+              -- Stock courant pesage LIBRE (voir findByPlan).
               COALESCE((
-                SELECT SUM(COALESCE(il2.pesage_quantity, 0))
+                SELECT SUM(GREATEST(0, COALESCE(il2.pesage_quantity, 0) - COALESCE((
+                  SELECT SUM(bsl2.allocated_quantity)
+                    FROM production_bons_sortie_lignes bsl2
+                   WHERE bsl2.bon_id = bsl.bon_id
+                     AND bsl2.ingredient_lot_id = il2.id
+                     AND bsl2.source_location = 'PESAGE'
+                     AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
+                ), 0)))
                   FROM ingredient_lots il2
                  WHERE il2.ingredient_id = bsl.ingredient_id
                    AND il2.store_id = $2

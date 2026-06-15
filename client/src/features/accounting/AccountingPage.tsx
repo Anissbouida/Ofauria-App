@@ -2210,9 +2210,12 @@ function ChequesTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmingCheck, setConfirmingCheck] = useState<CheckRow | null>(null);
 
+  // On charge TOUS les cheques pour que les KPIs et l'equation tresorerie
+  // restent coherents quel que soit le filtre actif. Le tableau est ensuite
+  // filtre cote client (statut + recherche).
   const { data: checks = [], isLoading } = useQuery({
-    queryKey: ['payments-checks', statusFilter],
-    queryFn: () => paymentsApi.listChecks({ status: statusFilter }),
+    queryKey: ['payments-checks', 'all'],
+    queryFn: () => paymentsApi.listChecks({ status: 'all' }),
   });
 
   const markMutation = useMutation({
@@ -2266,27 +2269,60 @@ function ChequesTab() {
     },
   });
 
-  // Filtres frontend (recherche)
+  // Filtres frontend (statut + recherche, car la query renvoie tout)
   const data = checks as CheckRow[];
   const filtered = useMemo(() => {
-    if (!searchTerm) return data;
+    const byStatus = statusFilter === 'all'
+      ? data
+      : statusFilter === 'cashed'
+        ? data.filter(c => c.status === 'cashed')
+        : data.filter(c => c.status !== 'cashed'); // pending + overdue
+    if (!searchTerm) return byStatus;
     const q = searchTerm.toLowerCase();
-    return data.filter(c =>
+    return byStatus.filter(c =>
       (c.supplier_name || '').toLowerCase().includes(q) ||
       (c.employee_name || '').toLowerCase().includes(q) ||
       (c.check_number || '').toLowerCase().includes(q) ||
       (c.invoice_number || '').toLowerCase().includes(q) ||
       (c.description || '').toLowerCase().includes(q)
     );
-  }, [data, searchTerm]);
+  }, [data, statusFilter, searchTerm]);
 
-  // Compteurs par status (sur les donnees brutes, pas les filtrees)
+  // Compteurs globaux (toujours sur l'ensemble des cheques, peu importe le filtre)
   const counts = useMemo(() => {
     const acc = { pending: 0, cashed: 0, overdue: 0, totalPending: 0, totalCashed: 0 };
     data.forEach(c => {
       if (c.status === 'cashed') { acc.cashed++; acc.totalCashed += parseFloat(c.amount) || 0; }
       else { acc.pending++; acc.totalPending += parseFloat(c.amount) || 0; }
       if (c.status === 'overdue') acc.overdue++;
+    });
+    return acc;
+  }, [data]);
+
+  // Decoupage des cheques en attente par fenetre d'echeance — meme logique
+  // que le Pilotage (uncashedChecks). Sert au bandeau pipeline.
+  const breakdown = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const acc = {
+      overdue: 0, overdueCount: 0,
+      next7d: 0, next7dCount: 0,
+      next30d: 0, next30dCount: 0,
+      later: 0, laterCount: 0,
+    };
+    data.filter(c => c.status !== 'cashed').forEach(c => {
+      const amt = parseFloat(c.amount) || 0;
+      const dueStr = c.invoice_due_date || c.payment_date;
+      if (!dueStr) { acc.later += amt; acc.laterCount++; return; }
+      try {
+        const due = parseLocalDate(dueStr.slice(0, 10));
+        const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) { acc.overdue += amt; acc.overdueCount++; }
+        else if (diffDays <= 7) { acc.next7d += amt; acc.next7dCount++; }
+        else if (diffDays <= 30) { acc.next30d += amt; acc.next30dCount++; }
+        else { acc.later += amt; acc.laterCount++; }
+      } catch {
+        acc.later += amt; acc.laterCount++;
+      }
     });
     return acc;
   }, [data]);
@@ -2300,33 +2336,137 @@ function ChequesTab() {
   const beneficiaire = (c: CheckRow) =>
     c.supplier_name || c.employee_name || (c.payment_type === 'expense' ? c.category_name : null) || '—';
 
+  const totalEmis = counts.totalPending + counts.totalCashed;
+  const totalEmisCount = counts.pending + counts.cashed;
+
   return (
     <>
-      {/* Bandeau totaux : pending vs encaisses */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
-          <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>En attente d'encaissement</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 4 }}>{n(counts.totalPending)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-            {counts.pending} cheque{counts.pending > 1 ? 's' : ''}
-            {counts.overdue > 0 && (
-              <span style={{ color: '#b71c1c', marginLeft: 8, fontWeight: 600 }}>
-                ⚠ {counts.overdue} en retard
-              </span>
-            )}
+      {/* SECTION 1 : KPIs principaux (4 colonnes, meme grammaire visuelle que Pilotage) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        {/* En attente d'encaissement */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Coins size={11} /> En attente d'encaissement
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(counts.totalPending)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {counts.pending} cheque{counts.pending > 1 ? 's' : ''} a debourser
           </div>
         </div>
-        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
-          <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>Encaisses</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 4 }}>{n(counts.totalCashed)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{counts.cashed} cheque{counts.cashed > 1 ? 's' : ''}</div>
+
+        {/* Encaisses */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <ArrowDownRight size={11} /> Encaisses
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(counts.totalCashed)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {counts.cashed} cheque{counts.cashed > 1 ? 's' : ''} sortis du compte
+          </div>
         </div>
-        <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-          <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total emis</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{n(counts.totalPending + counts.totalCashed)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{counts.pending + counts.cashed} cheque{(counts.pending + counts.cashed) > 1 ? 's' : ''}</div>
+
+        {/* Total emis */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0d4d8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Receipt size={11} /> Total emis
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0d4d8c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(totalEmis)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {totalEmisCount} cheque{totalEmisCount > 1 ? 's' : ''} au total
+          </div>
+        </div>
+
+        {/* En retard (cheques dont l'echeance est depassee) */}
+        <div style={{ padding: '14px 16px', borderRadius: 4, border: breakdown.overdueCount > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: breakdown.overdueCount > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: breakdown.overdueCount > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <AlertTriangle size={11} /> En retard
+          </div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: breakdown.overdueCount > 0 ? '#b71c1c' : 'inherit', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(breakdown.overdue)} DH</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {breakdown.overdueCount === 0
+              ? 'Toutes les echeances sont a jour'
+              : `${breakdown.overdueCount} cheque${breakdown.overdueCount > 1 ? 's' : ''} hors delai`}
+          </div>
         </div>
       </div>
+
+      {/* Equation explicite — meme pattern que le Pilotage */}
+      {totalEmisCount > 0 && (
+        <div className="odoo-alert" style={{ fontSize: '0.8125rem', background: 'var(--theme-bg-page)', border: '1px solid var(--theme-bg-separator)' }}>
+          <strong>Suivi cheques :</strong> tu as emis{' '}
+          <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(totalEmis)} DH</strong>{' '}
+          de cheques au total. Sur ce montant,{' '}
+          <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0e7c3a' }}>{n(counts.totalCashed)} DH</strong>{' '}
+          ont deja ete debites du compte et{' '}
+          <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#856404' }}>{n(counts.totalPending)} DH</strong>{' '}
+          sont encore en attente d'encaissement.
+          {breakdown.overdue > 0 && (
+            <> Attention : <strong style={{ color: '#b71c1c' }}>{n(breakdown.overdue)} DH</strong> de cheques ont depasse leur echeance et peuvent etre presentes a tout moment — prevois la tresorerie.</>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 2 : Pipeline d'encaissement — quand l'argent va sortir */}
+      {counts.pending > 0 && (
+        <div>
+          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
+            Pipeline d'encaissement (vue a date — quand l'argent va sortir)
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {/* En retard */}
+            <div style={{ padding: '12px 14px', borderRadius: 4, border: breakdown.overdueCount > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: breakdown.overdueCount > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
+              <div style={{ fontSize: '0.6875rem', color: breakdown.overdueCount > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                ⚠ En retard
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: breakdown.overdueCount > 0 ? '#b71c1c' : 'inherit', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                {n(breakdown.overdue)} DH
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                {breakdown.overdueCount} cheque{breakdown.overdueCount > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* ≤ 7 jours */}
+            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+              <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                ≤ 7 jours
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#856404', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                {n(breakdown.next7d)} DH
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                {breakdown.next7dCount} cheque{breakdown.next7dCount > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* 8 - 30 jours */}
+            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                8 - 30 jours
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                {n(breakdown.next30d)} DH
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                {breakdown.next30dCount} cheque{breakdown.next30dCount > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* Plus tard */}
+            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Plus tard
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                {n(breakdown.later)} DH
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                {breakdown.laterCount} cheque{breakdown.laterCount > 1 ? 's' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

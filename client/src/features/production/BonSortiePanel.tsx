@@ -766,8 +766,10 @@ export function BonSortiePanel({
           const isDone = ['preleve', 'substitue'].includes(lineStatus);
           const isEditing = editingLine === (line.id as string);
           const hasEcart = lineStatus === 'ecart';
-          // Option B : pour le chef, on masque l'etat allocated (qui peut etre 0 si transfert
-          // requis non encore effectue par le magasinier). On affiche la qty demandee.
+          // Option B : pour le chef, on affiche le BESOIN reel (somme des needed agreges).
+          // L'ancienne logique affichait `allocated` quand >0, ce qui masquait les ruptures
+          // partielles : ex. besoin 1.10 kg, alloue 1.00 kg, rupture 100 g → affichait
+          // "1.00 kg En commande" au lieu de "1.10 kg" → le chef pensait que tout etait commande.
           // Pour le magasinier sur une ligne ECONOMAT_REQUIRES_TRANSFER, on affiche la qty
           // a transferer (transfer_required_qty) plutot que allocated=0.
           // Sur une ligne en rupture totale (status='rupture' + lot=NULL + allocated=0),
@@ -777,7 +779,7 @@ export function BonSortiePanel({
           const isFullRupture = lineStatus === 'rupture' && !line.ingredient_lot_id && allocated < 0.001;
           const displayedQty = isMagasinier
             ? (isTransferRequired ? transferRequiredQty : isFullRupture ? needed : allocated)
-            : (allocated > 0 ? allocated : needed);
+            : needed;
 
           // Source du stock : badge visuel pour aider le magasinier a savoir ou recuperer l'ingredient.
           //  - PESAGE : sac deja ouvert dans la zone pesage (rien a faire de special)
