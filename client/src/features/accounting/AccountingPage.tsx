@@ -21,7 +21,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'resume' | 'losses';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -192,6 +192,7 @@ export default function AccountingPage() {
     { key: 'caisse', label: 'Caisse', icon: Wallet },
     { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
     { key: 'cheques', label: 'Chèques', icon: Receipt },
+    { key: 'dettes', label: 'Dettes', icon: Scale },
     { key: 'resume', label: 'Résumé', icon: BarChart3 },
     { key: 'losses', label: 'Pertes', icon: AlertTriangle },
   ];
@@ -227,10 +228,483 @@ export default function AccountingPage() {
         {tab === 'caisse' && <CaisseTab />}
         {tab === 'charges' && <ChargesTab />}
         {tab === 'cheques' && <ChequesTab />}
+        {tab === 'dettes' && <DettesTab />}
         {tab === 'resume' && <ResumeTab />}
         {tab === 'losses' && <LossesTab />}
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════ DETTES TAB ═══════════════════════ */
+/**
+ * Suivi des dettes & creances adossees aux factures (vue "qui doit quoi").
+ *
+ *   - CREANCES ("Ils nous doivent") : factures emises (invoice_type='emitted')
+ *     non soldees -> ce que les clients nous doivent.
+ *   - DETTES   ("Nous leur devons") : factures recues (invoice_type='received')
+ *     non soldees -> ce qu'on doit aux fournisseurs.
+ *
+ * Vue agregee par tiers : pour chaque client/fournisseur, somme du reste a
+ * payer (total_amount - paid_amount) sur ses factures ouvertes, dont la part
+ * en retard (echeance depassee). On deplie un tiers pour voir le detail
+ * facture par facture et enregistrer un reglement (partiel ou total).
+ *
+ * Aucune table dediee : pure agregation sur invoices + payments existants.
+ * Enregistrer un reglement ici cree un `payment` lie a la facture (meme flux
+ * que le reste de la compta) -> paid_amount/status resynchronises, et l'argent
+ * apparait dans Caisse / Cheques selon la methode choisie.
+ */
+type DebtInvoice = {
+  id: string;
+  invoice_number: string;
+  invoice_type: 'received' | 'emitted';
+  invoice_date: string;
+  due_date: string | null;
+  total_amount: string;
+  paid_amount: string;
+  remaining_amount: string;
+  status: string;
+  is_overdue: boolean;
+  expected_payment_mode: string | null;
+  notes: string | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  supplier_phone: string | null;
+  customer_id: string | null;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
+  customer_phone: string | null;
+};
+
+function DettesTab() {
+  const queryClient = useQueryClient();
+  const { entries: paymentMethods } = useReferentiel('payment_methods');
+  const [side, setSide] = useState<'receivables' | 'payables'>('receivables');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [payingInvoice, setPayingInvoice] = useState<DebtInvoice | null>(null);
+  const [payMethod, setPayMethod] = useState('cash');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['invoice-debts'],
+    queryFn: () => invoicesApi.debts() as Promise<{ receivables: DebtInvoice[]; payables: DebtInvoice[] }>,
+  });
+
+  const createPayment = useMutation({
+    mutationFn: (payload: Record<string, any>) => paymentsApi.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice-debts'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notify.success('Règlement enregistré');
+      setPayingInvoice(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'enregistrement');
+    },
+  });
+
+  const isReceivable = side === 'receivables';
+
+  const rawInvoices: DebtInvoice[] = useMemo(() => {
+    if (!data) return [];
+    return (isReceivable ? data.receivables : data.payables) || [];
+  }, [data, isReceivable]);
+
+  const tierName = (inv: DebtInvoice): string => {
+    if (isReceivable) {
+      const full = [inv.customer_first_name, inv.customer_last_name].filter(Boolean).join(' ').trim();
+      return full || 'Client comptoir';
+    }
+    return inv.supplier_name || 'Sans fournisseur';
+  };
+  const tierKey = (inv: DebtInvoice): string =>
+    (isReceivable ? inv.customer_id : inv.supplier_id) || '__none__';
+  const tierPhone = (inv: DebtInvoice): string | null =>
+    isReceivable ? inv.customer_phone : inv.supplier_phone;
+
+  // Agrege les factures ouvertes par tiers, applique recherche + filtre retard.
+  const tiers = useMemo(() => {
+    const map = new Map<string, {
+      key: string; name: string; phone: string | null;
+      invoices: DebtInvoice[]; totalDue: number; overdueDue: number; oldestDue: string | null;
+    }>();
+    for (const inv of rawInvoices) {
+      const remaining = parseFloat(inv.remaining_amount) || 0;
+      if (remaining <= 0) continue;
+      const key = tierKey(inv);
+      if (!map.has(key)) {
+        map.set(key, { key, name: tierName(inv), phone: tierPhone(inv), invoices: [], totalDue: 0, overdueDue: 0, oldestDue: null });
+      }
+      const t = map.get(key)!;
+      t.invoices.push(inv);
+      t.totalDue += remaining;
+      if (inv.is_overdue) t.overdueDue += remaining;
+      const due = inv.due_date ? inv.due_date.slice(0, 10) : null;
+      if (due && (!t.oldestDue || due < t.oldestDue)) t.oldestDue = due;
+    }
+    let list = Array.from(map.values());
+    const q = searchTerm.trim().toLowerCase();
+    if (q) list = list.filter(t => t.name.toLowerCase().includes(q) || (t.phone || '').toLowerCase().includes(q));
+    if (onlyOverdue) list = list.filter(t => t.overdueDue > 0);
+    return list.sort((a, b) => b.totalDue - a.totalDue);
+  }, [rawInvoices, searchTerm, onlyOverdue, isReceivable]);
+
+  const totals = useMemo(() => {
+    let totalDue = 0, overdueDue = 0, invoiceCount = 0;
+    for (const t of tiers) { totalDue += t.totalDue; overdueDue += t.overdueDue; invoiceCount += t.invoices.length; }
+    return { totalDue, overdueDue, invoiceCount, tierCount: tiers.length };
+  }, [tiers]);
+
+  // Totaux globaux par sens (pour les boutons toggle), independants des filtres.
+  const sideTotals = useMemo(() => {
+    const sum = (rows: DebtInvoice[] = []) => rows.reduce((s, inv) => s + (parseFloat(inv.remaining_amount) || 0), 0);
+    return { receivables: sum(data?.receivables), payables: sum(data?.payables) };
+  }, [data]);
+
+  const toggleTier = (key: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
+  const openPayment = (inv: DebtInvoice) => {
+    setPayingInvoice(inv);
+    setPayMethod(inv.expected_payment_mode || 'cash');
+  };
+
+  const handleExport = () => {
+    const rows: string[][] = [];
+    for (const t of tiers) {
+      for (const inv of t.invoices) {
+        rows.push([
+          t.name,
+          inv.invoice_number,
+          fmtPaymentDate(inv.invoice_date, 'fr'),
+          inv.due_date ? fmtPaymentDate(inv.due_date, 'fr') : '',
+          n(parseFloat(inv.total_amount) || 0),
+          n(parseFloat(inv.paid_amount) || 0),
+          n(parseFloat(inv.remaining_amount) || 0),
+          inv.is_overdue ? 'En retard' : (INVOICE_STATUS_LABELS[inv.status] || inv.status),
+        ]);
+      }
+    }
+    exportCSV(`${isReceivable ? 'creances' : 'dettes'}_${format(new Date(), 'yyyy-MM-dd')}.csv`,
+      ['TIERS', 'N FACTURE', 'DATE', 'ECHEANCE', 'TOTAL', 'PAYE', 'RESTE (DH)', 'STATUT'], rows);
+  };
+
+  const accent = isReceivable ? '#0e7c3a' : '#b71c1c';
+  const tierLabel = isReceivable ? 'Client' : 'Fournisseur';
+
+  return (
+    <>
+      {/* Toggle sens : creances vs dettes */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {([
+          { key: 'receivables' as const, label: 'Ils nous doivent', sub: 'Créances clients', total: sideTotals.receivables, color: '#0e7c3a', Icon: ArrowDownRight },
+          { key: 'payables' as const, label: 'Nous leur devons', sub: 'Dettes fournisseurs', total: sideTotals.payables, color: '#b71c1c', Icon: ArrowUpRight },
+        ]).map(opt => {
+          const active = side === opt.key;
+          return (
+            <button key={opt.key} onClick={() => setSide(opt.key)}
+              style={{
+                flex: '1 1 240px', textAlign: 'left', cursor: 'pointer',
+                padding: '12px 16px', borderRadius: 6,
+                border: active ? `1.5px solid ${opt.color}` : '1px solid var(--theme-bg-separator)',
+                background: active ? (opt.key === 'receivables' ? '#f0f9f4' : '#fff5f5') : 'var(--theme-bg-card)',
+              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 600, color: active ? opt.color : 'var(--theme-text-muted)' }}>
+                <opt.Icon size={13} /> {opt.label}
+              </div>
+              <div style={{ fontSize: '1.375rem', fontWeight: 700, color: active ? opt.color : 'var(--theme-text)', fontFamily: 'ui-monospace, monospace', marginTop: 4 }}>
+                {n(opt.total)} DH
+              </div>
+              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{opt.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Stat tiles du sens actif */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Total dû</div>
+          <div className="odoo-stat-card-value" style={{ color: accent }}>{n(totals.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">{totals.tierCount} tiers · {totals.invoiceCount} facture{totals.invoiceCount > 1 ? 's' : ''}</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />En retard</div>
+          <div className="odoo-stat-card-value" style={{ color: totals.overdueDue > 0 ? '#dc3545' : 'var(--theme-text-muted)' }}>
+            {n(totals.overdueDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+          </div>
+          <div className="odoo-stat-card-sub">Échéance dépassée</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />À jour</div>
+          <div className="odoo-stat-card-value">{n(Math.max(0, totals.totalDue - totals.overdueDue))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-sub">Non encore échu</div>
+        </div>
+      </div>
+
+      {/* Filtres */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
+          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+          <input type="text" placeholder={`Rechercher un ${tierLabel.toLowerCase()}...`}
+            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} title="Effacer"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
+          <input type="checkbox" checked={onlyOverdue} onChange={e => setOnlyOverdue(e.target.checked)} />
+          En retard uniquement
+        </label>
+        <div style={{ flex: 1 }} />
+        <button onClick={handleExport} className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Download size={13} /> Exporter
+        </button>
+      </div>
+
+      {/* Tableau des tiers */}
+      {isLoading ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
+          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
+        </div>
+      ) : tiers.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Scale size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>
+            {onlyOverdue || searchTerm
+              ? 'Aucun tiers ne correspond aux filtres'
+              : isReceivable ? 'Aucune créance ouverte — tous les clients sont à jour' : 'Aucune dette ouverte — tous les fournisseurs sont réglés'}
+          </p>
+        </div>
+      ) : (
+        <div className="odoo-section">
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 20 }}></th>
+                <th>{tierLabel}</th>
+                <th style={{ textAlign: 'center' }}>Factures</th>
+                <th>Plus ancienne échéance</th>
+                <th style={{ textAlign: 'right' }}>En retard</th>
+                <th style={{ textAlign: 'right' }}>Total dû</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tiers.map(t => {
+                const open = expanded.has(t.key);
+                return (
+                  <Fragment key={t.key}>
+                    <tr onClick={() => toggleTier(t.key)} style={{ cursor: 'pointer' }}>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>
+                        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      </td>
+                      <td>
+                        <strong>{t.name}</strong>
+                        {t.phone && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 6 }}>{t.phone}</span>}
+                      </td>
+                      <td style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>{t.invoices.length}</td>
+                      <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+                        {t.oldestDue ? fmtPaymentDate(t.oldestDue, 'fr') : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                        {t.overdueDue > 0 ? <span className="odoo-tag odoo-tag-red">{n(t.overdueDue)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>
+                        {n(t.totalDue)} DH
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td colSpan={6} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '8px 16px' }}>
+                          <table className="odoo-table" style={{ margin: 0, background: 'transparent' }}>
+                            <thead>
+                              <tr>
+                                <th>N° facture</th>
+                                <th>Date</th>
+                                <th>Échéance</th>
+                                <th style={{ textAlign: 'right' }}>Total</th>
+                                <th style={{ textAlign: 'right' }}>Payé</th>
+                                <th style={{ textAlign: 'right' }}>Reste</th>
+                                <th style={{ textAlign: 'center' }}>Statut</th>
+                                <th style={{ textAlign: 'center', width: 90 }}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {t.invoices.map(inv => (
+                                <tr key={inv.id}>
+                                  <td style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{inv.invoice_number}</td>
+                                  <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtPaymentDate(inv.invoice_date, 'fr')}</td>
+                                  <td style={{ whiteSpace: 'nowrap', color: inv.is_overdue ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: inv.is_overdue ? 600 : 400 }}>
+                                    {inv.due_date ? fmtPaymentDate(inv.due_date, 'fr') : '—'}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(parseFloat(inv.total_amount) || 0)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{n(parseFloat(inv.paid_amount) || 0)}</td>
+                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>{n(parseFloat(inv.remaining_amount) || 0)}</td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span className={`odoo-tag ${inv.is_overdue ? 'odoo-tag-red' : 'odoo-tag-grey'}`}>
+                                      {inv.is_overdue ? 'En retard' : (INVOICE_STATUS_LABELS[inv.status] || inv.status)}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button onClick={() => openPayment(inv)}
+                                      className="odoo-btn-secondary"
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.6875rem' }}>
+                                      <Coins size={11} /> {isReceivable ? 'Encaisser' : 'Payer'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td colSpan={4} style={{ padding: 12, fontWeight: 600 }}>
+                  Total {isReceivable ? 'créances' : 'dettes'} ({totals.tierCount} tiers)
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc3545', fontFamily: 'ui-monospace, monospace' }}>
+                  {totals.overdueDue > 0 ? `${n(totals.overdueDue)}` : '—'}
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: accent, fontFamily: 'ui-monospace, monospace' }}>
+                  {n(totals.totalDue)} DH
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* Modal : enregistrer un reglement */}
+      {payingInvoice && (() => {
+        const remaining = parseFloat(payingInvoice.remaining_amount) || 0;
+        const partyName = isReceivable
+          ? ([payingInvoice.customer_first_name, payingInvoice.customer_last_name].filter(Boolean).join(' ').trim() || 'Client comptoir')
+          : (payingInvoice.supplier_name || 'Fournisseur');
+        return (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+              <div className={`p-5 flex items-center justify-between ${isReceivable ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Coins size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">{isReceivable ? 'Encaisser un règlement' : 'Payer une facture'}</h2>
+                    <p className="text-xs text-white/80">{payingInvoice.invoice_number} · {partyName}</p>
+                  </div>
+                </div>
+                <button onClick={() => setPayingInvoice(null)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
+                  <X size={18} className="text-white" />
+                </button>
+              </div>
+              <form onSubmit={e => {
+                e.preventDefault();
+                const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
+                const amount = parseFloat(fd.amount as string);
+                if (!Number.isFinite(amount) || amount <= 0) { notify.error('Montant invalide'); return; }
+                if (amount > remaining + 0.01) { notify.error(`Le montant dépasse le reste à payer (${n(remaining)} DH)`); return; }
+                const payload: Record<string, any> = {
+                  invoiceId: payingInvoice.id,
+                  type: isReceivable ? 'income' : 'invoice',
+                  amount,
+                  paymentMethod: fd.paymentMethod,
+                  paymentDate: fd.paymentDate,
+                  description: fd.description || undefined,
+                };
+                if (!isReceivable && payingInvoice.supplier_id) payload.supplierId = payingInvoice.supplier_id;
+                if (fd.paymentMethod === 'check') {
+                  payload.checkNumber = fd.checkNumber || undefined;
+                  payload.checkDate = fd.checkDate || undefined;
+                }
+                createPayment.mutate(payload);
+              }} className="p-5 space-y-4">
+                <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
+                  <span>Reste à payer</span>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: accent }}>{n(remaining)} DH</strong>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
+                    <input name="amount" type="number" step="0.01" min="0" max={remaining}
+                      defaultValue={remaining.toFixed(2)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
+                    <input name="paymentDate" type="date" defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Méthode</label>
+                  <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+                  </select>
+                </div>
+                {payMethod === 'check' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° chèque</label>
+                      <input name="checkNumber" type="text"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date chèque</label>
+                      <input name="checkDate" type="date"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Note</label>
+                  <textarea name="description" rows={2}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+                {payMethod === 'check' && (
+                  <p className="text-xs text-amber-600">
+                    Le chèque apparaîtra dans l'onglet <strong>Chèques</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
+                  </p>
+                )}
+                <div className="flex gap-3 justify-end pt-2">
+                  <button type="button" onClick={() => setPayingInvoice(null)}
+                    className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                  <button type="submit" disabled={createPayment.isPending}
+                    className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 ${isReceivable ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
+                    {createPayment.isPending && <Loader2 size={14} className="animate-spin" />}
+                    {isReceivable ? 'Encaisser' : 'Payer'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+    </>
   );
 }
 

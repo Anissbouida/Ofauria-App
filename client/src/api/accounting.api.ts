@@ -52,6 +52,8 @@ export const invoicesApi = {
   remove: (id: string, opts: { force?: boolean } = {}) =>
     api.delete(`/invoices/${id}`, { params: opts.force ? { force: 'true' } : undefined }).then(r => r.data.data),
   paymentAlerts: (days = 7) => api.get('/invoices/payment-alerts', { params: { days } }).then(r => r.data.data),
+  /** Dettes & creances ouvertes : { receivables (clients), payables (fournisseurs) }. */
+  debts: () => api.get('/invoices/debts').then(r => r.data.data),
   updatePaymentTerms: (id: string, data: { dueDate?: string | null; expectedPaymentMode?: string | null; receptionDate?: string | null }) =>
     api.put(`/invoices/${id}/payment-terms`, data).then(r => r.data.data),
   updateStatus: (id: string, status: string) =>

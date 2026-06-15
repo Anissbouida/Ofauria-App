@@ -911,6 +911,49 @@ export const invoiceRepository = {
   },
 
   /**
+   * Dettes & creances ouvertes (vue "qui doit quoi").
+   *
+   * Renvoie toutes les factures non soldees (reste a payer > 0), tous tiers
+   * confondus, a plat. Le frontend (DettesTab) les separe en deux sens :
+   *   - invoice_type='emitted'  -> creances (un client nous doit)
+   *   - invoice_type='received' -> dettes   (on doit a un fournisseur)
+   * et les agrege par tiers.
+   *
+   * Aucune table dediee : pure agregation sur invoices. `remaining_amount`
+   * (total_amount - paid_amount) et `is_overdue` (echeance depassee) sont
+   * calcules ici. Statuts exclus : paid (solde) et cancelled (annulee) ;
+   * pending / partial / overdue / disputed sont inclus.
+   */
+  async findOpenDebts(params: { storeId?: string }) {
+    const conditions: string[] = [
+      `inv.status NOT IN ('paid', 'cancelled')`,
+      `(inv.total_amount - inv.paid_amount) > 0.01`,
+    ];
+    const values: unknown[] = [];
+    let i = 1;
+    if (params.storeId) { conditions.push(`inv.store_id = $${i++}`); values.push(params.storeId); }
+    const result = await db.query(
+      `SELECT inv.id, inv.invoice_number, inv.invoice_type,
+              inv.invoice_date, inv.due_date,
+              inv.total_amount, inv.paid_amount, inv.status,
+              inv.expected_payment_mode, inv.notes,
+              (inv.total_amount - inv.paid_amount) AS remaining_amount,
+              CASE WHEN inv.due_date IS NOT NULL AND inv.due_date < CURRENT_DATE
+                   THEN true ELSE false END AS is_overdue,
+              inv.supplier_id, s.name AS supplier_name, s.phone AS supplier_phone,
+              inv.customer_id, c.first_name AS customer_first_name,
+              c.last_name AS customer_last_name, c.phone AS customer_phone
+         FROM invoices inv
+         LEFT JOIN suppliers s ON s.id = inv.supplier_id
+         LEFT JOIN customers c ON c.id = inv.customer_id
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY inv.due_date ASC NULLS LAST, inv.invoice_date ASC`,
+      values
+    );
+    return result.rows;
+  },
+
+  /**
    * Eclate les factures recues en une ligne par ingredient.
    *
    * Deux sources possibles selon comment la facture a ete saisie :

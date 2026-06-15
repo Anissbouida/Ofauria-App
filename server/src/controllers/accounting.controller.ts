@@ -231,6 +231,17 @@ export const invoiceController = {
     res.json({ success: true, data: rows });
   },
   /**
+   * GET /invoices/debts — Dettes & creances ouvertes, separees par sens.
+   *   - receivables : factures emises non soldees (clients qui nous doivent)
+   *   - payables    : factures recues non soldees (ce qu'on doit aux fournisseurs)
+   */
+  async debts(req: AuthRequest, res: Response) {
+    const rows = await invoiceRepository.findOpenDebts({ storeId: req.user!.storeId });
+    const receivables = rows.filter((r: Record<string, unknown>) => r.invoice_type === 'emitted');
+    const payables = rows.filter((r: Record<string, unknown>) => r.invoice_type === 'received');
+    res.json({ success: true, data: { receivables, payables } });
+  },
+  /**
    * PUT /invoices/:id/items — Remplace les lignes d'une facture (admin/gerant).
    * Recalcule amount + total_amount automatiquement (cf. invoiceRepository.replaceItems).
    */
