@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { receptionVoucherRepository } from './reception-voucher.repository.js';
+import { receptionVoucherRepository, createInvoiceFromPo } from './reception-voucher.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
 
 export const purchaseOrderRepository = {
@@ -21,7 +21,11 @@ export const purchaseOrderRepository = {
               (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id) as item_count,
               (SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount,
               (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as delivered_amount,
-              (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id AND unit_price IS NULL) as items_without_price
+              (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id AND unit_price IS NULL) as items_without_price,
+              EXISTS (
+                SELECT 1 FROM invoices inv
+                WHERE inv.purchase_order_id = po.id AND inv.status != 'cancelled'
+              ) as has_invoice
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
        LEFT JOIN users u ON u.id = po.created_by
@@ -467,5 +471,64 @@ export const purchaseOrderRepository = {
       `DELETE FROM purchase_orders WHERE id = $1 AND status IN ('en_attente', 'annule')`,
       [id]
     );
+  },
+
+  /**
+   * Generation manuelle de la facture pour un BC livre.
+   *
+   * Cas d'usage : la facture auto-generee n'a pas ete creee (typiquement parce
+   * que les prix etaient manquants au moment de la reception -> statut
+   * en_attente_facturation -> prix saisis a posteriori via updateItemPrices /
+   * replaceItems, qui ne re-declenchent pas la creation de facture).
+   *
+   * Pre-requis : BC livre_complet, toutes les lignes avec prix, pas de facture
+   * non-annulee deja liee. Les erreurs sont remontees telles quelles (le
+   * controller mappe sur 409/400).
+   */
+  async generateInvoice(id: string, createdBy: string, storeId: string | null) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Verrouille le BC pour serialiser avec une reception concurrente.
+      const poRes = await client.query(
+        `SELECT id, status FROM purchase_orders WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      const po = poRes.rows[0];
+      if (!po) { await client.query('ROLLBACK'); return { ok: false, code: 'not_found' as const }; }
+
+      if (po.status !== 'livre_complet') {
+        await client.query('ROLLBACK');
+        return { ok: false, code: 'wrong_status' as const, status: po.status as string };
+      }
+
+      // Garde-fou symetrique a la creation auto : tous les items doivent avoir
+      // un prix. Defense en profondeur — le statut livre_complet le garantit
+      // deja, mais on prefere une erreur explicite si un invariant a derive.
+      const missing = await client.query(
+        `SELECT COUNT(*)::text AS count FROM purchase_order_items
+         WHERE purchase_order_id = $1 AND unit_price IS NULL`,
+        [id]
+      );
+      if (parseInt(missing.rows[0].count as string) > 0) {
+        await client.query('ROLLBACK');
+        return { ok: false, code: 'missing_prices' as const };
+      }
+
+      const invoice = await createInvoiceFromPo(client, id, null, createdBy, storeId);
+      if (invoice === null) {
+        await client.query('ROLLBACK');
+        return { ok: false, code: 'invoice_exists' as const };
+      }
+
+      await client.query('COMMIT');
+      return { ok: true as const, invoice };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };

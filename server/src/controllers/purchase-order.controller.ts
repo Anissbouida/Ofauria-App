@@ -225,6 +225,50 @@ export const purchaseOrderController = {
     }
   },
 
+  /**
+   * POST /purchase-orders/:id/invoice — Genere manuellement la facture pour un
+   * BC livre dont la facture auto n'a pas ete creee (saisie de prix tardive).
+   */
+  async generateInvoice(req: AuthRequest, res: Response) {
+    const po = await purchaseOrderRepository.findById(req.params.id);
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    const userStore = effectiveStoreFilter(req);
+    if (userStore && po.store_id && po.store_id !== userStore) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    try {
+      // Store de la facture = store du BC ; fallback sur le store user si BC sans store.
+      const invoiceStoreId = (po.store_id as string | undefined) ?? req.user!.storeId ?? null;
+      const result = await purchaseOrderRepository.generateInvoice(req.params.id, req.user!.userId, invoiceStoreId);
+      if (result.ok) {
+        res.json({ success: true, data: result.invoice });
+        return;
+      }
+      switch (result.code) {
+        case 'not_found':
+          res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } });
+          return;
+        case 'wrong_status':
+          res.status(409).json({ success: false, error: {
+            message: `Le BC doit etre en statut "Livre" pour generer une facture (statut actuel : ${result.status}).`
+          }});
+          return;
+        case 'missing_prices':
+          res.status(409).json({ success: false, error: {
+            message: 'Certaines lignes du BC n\'ont pas de prix unitaire. Edite le BC pour les renseigner d\'abord.'
+          }});
+          return;
+        case 'invoice_exists':
+          res.status(409).json({ success: false, error: { message: 'Une facture existe deja pour ce BC.' } });
+          return;
+      }
+    } catch (err) {
+      console.error('[generateInvoice] Error:', err);
+      const message = err instanceof Error ? err.message : 'Erreur lors de la generation de la facture';
+      res.status(500).json({ success: false, error: { message } });
+    }
+  },
+
   async overdue(req: AuthRequest, res: Response) {
     const days = parseInt((req.query as Record<string, string>).days || '3');
     const data = await purchaseOrderRepository.findOverdue(days);

@@ -17,6 +17,9 @@ export const purchaseOrdersApi = {
     api.post(`/purchase-orders/${id}/cancel`).then(r => r.data.data),
   updatePrices: (id: string, data: { items: { itemId: string; unitPrice: number }[] }) =>
     api.post(`/purchase-orders/${id}/update-prices`, data).then(r => r.data.data),
+  /** Genere manuellement la facture d'un BC livre dont la facture auto n'a pas ete creee. */
+  generateInvoice: (id: string) =>
+    api.post(`/purchase-orders/${id}/invoice`).then(r => r.data.data),
   /** Edition en-tete (admin/gerant) : fournisseur, date prevue, notes. */
   updateHeader: (id: string, data: { supplierId?: string; expectedDeliveryDate?: string | null; notes?: string | null }) =>
     api.put(`/purchase-orders/${id}`, data).then(r => r.data.data),

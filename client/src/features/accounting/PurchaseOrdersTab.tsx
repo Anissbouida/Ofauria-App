@@ -6,7 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
-  Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil,
+  Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil, Receipt,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -95,6 +95,19 @@ export default function PurchaseOrdersTab() {
   const notDeliveredMutation = useMutation({
     mutationFn: purchaseOrdersApi.markNotDelivered,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('Marqué non livré'); },
+  });
+  // Generation manuelle de facture : rattrapage quand l'auto-creation au
+  // moment de la reception n'a pas eu lieu (typiquement prix saisis a posteriori).
+  const generateInvoiceMutation = useMutation({
+    mutationFn: purchaseOrdersApi.generateInvoice,
+    onSuccess: (inv: { invoice_number?: string } | null) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notify.success(`Facture ${inv?.invoice_number ?? ''} générée`);
+    },
+    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
+      notify.error(err?.response?.data?.error?.message ?? 'Erreur lors de la génération de la facture');
+    },
   });
 
   // Stats
@@ -344,6 +357,24 @@ export default function PurchaseOrdersTab() {
                           <button onClick={() => setShowDetail(po.id as string)} title="Voir détails" className="odoo-pager-btn">
                             <Eye size={13} />
                           </button>
+                          {/* Generer la facture : seulement si BC livre_complet sans facture liee.
+                              Rattrapage des cas ou la facture auto n'a pas ete creee
+                              (typiquement prix saisis apres la reception). */}
+                          {status === 'livre_complet' && !po.has_invoice && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Générer la facture pour le BC ${po.order_number} ?`)) {
+                                  generateInvoiceMutation.mutate(po.id as string);
+                                }
+                              }}
+                              title="Générer la facture"
+                              className="odoo-pager-btn"
+                              disabled={generateInvoiceMutation.isPending}
+                              style={{ color: '#7c3aed' }}
+                            >
+                              <Receipt size={13} />
+                            </button>
+                          )}
                           {/* Edition complete (admin/gerant) : qty/prix/lignes. Dispo sur tous statuts. */}
                           <button onClick={() => setEditPoId(po.id as string)} title="Modifier le BC (qty, prix, lignes)" className="odoo-pager-btn">
                             <Pencil size={13} />

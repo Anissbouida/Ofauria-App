@@ -16,6 +16,9 @@ router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.ADMI
 router.post('/:id/not-delivered', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.markNotDelivered);
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.cancel);
 router.post('/:id/update-prices', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.updatePrices);
+// Generation manuelle de la facture pour un BC livre_complet (rattrapage quand
+// l'auto-creation au moment de la reception n'a pas eu lieu — prix tardifs).
+router.post('/:id/invoice', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.generateInvoice);
 // Edition complete admin/gerant : en-tete + lignes (qty, prix, add/remove).
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.updateHeader);
 router.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.replaceItems);

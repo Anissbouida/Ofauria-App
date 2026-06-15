@@ -2,6 +2,176 @@ import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
 
+// UUIDs racine/parent des categories de depenses (cf. migration 059).
+const CAT_MATIERES_PREMIERES = '10000000-0000-0000-0000-000000000003'; // racine niveau 1
+const CAT_INGREDIENTS        = '20000000-0000-0000-0000-000000000004'; // niveau 2
+const CAT_EMBALLAGES         = '20000000-0000-0000-0000-000000000005'; // niveau 2
+
+/**
+ * Determine la categorie de depense la plus pertinente pour une facture
+ * auto-creee depuis un BC, en se basant sur les categories des ingredients
+ * commandes (ingredients.category mappe sur expense_categories.code niveau 3).
+ *
+ * Strategie :
+ *  - Toutes les lignes pointent vers UN seul leaf  -> ce leaf (ex: "Farines").
+ *  - Toutes les lignes ont le meme parent niveau 2 -> ce parent (ex: "Ingredients").
+ *  - Mixte (ingredients + emballages, ou rien)     -> racine "Matieres premieres".
+ *
+ * L'admin peut toujours raffiner via le bouton "Categoriser" cote UI.
+ */
+type TxClient = { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
+
+async function resolveInvoiceCategoryFromPo(
+  client: TxClient,
+  purchaseOrderId: string,
+): Promise<string> {
+  const res = await client.query(
+    `WITH cats AS (
+       SELECT DISTINCT ec.id::text AS id, ec.parent_id::text AS parent_id
+         FROM purchase_order_items poi
+         JOIN ingredients ing ON ing.id = poi.ingredient_id
+         JOIN expense_categories ec
+           ON ec.code = ing.category
+          AND ec.parent_id IN ($2::uuid, $3::uuid)
+        WHERE poi.purchase_order_id = $1
+     )
+     SELECT
+       CASE
+         WHEN COUNT(*) = 0 THEN $4
+         WHEN COUNT(*) = 1 THEN (SELECT id FROM cats LIMIT 1)
+         WHEN COUNT(DISTINCT parent_id) = 1 THEN (SELECT parent_id FROM cats LIMIT 1)
+         ELSE $4
+       END AS category_id
+     FROM cats`,
+    [purchaseOrderId, CAT_INGREDIENTS, CAT_EMBALLAGES, CAT_MATIERES_PREMIERES],
+  );
+  return (res.rows[0]?.category_id as string) ?? CAT_MATIERES_PREMIERES;
+}
+
+/**
+ * Cree la facture "received" associee a un BC livre, dans le client
+ * transactionnel fourni. Idempotent : retourne null si une facture
+ * non-annulee existe deja pour ce BC.
+ *
+ * Utilise par deux chemins :
+ *  - Reception complete (auto, depuis receptionVoucherRepository.create)
+ *  - Generation manuelle (depuis purchaseOrderRepository.generateInvoice),
+ *    quand l'utilisateur clique "Generer la facture" sur un BC livre_complet
+ *    dont la facture n'a pas ete auto-creee (ex: prix saisis a posteriori
+ *    via updateItemPrices / replaceItems).
+ *
+ * Prerequis attendus du caller : BC en statut livre_complet, toutes les
+ * lignes avec unit_price NOT NULL. Le helper ne re-valide pas le statut —
+ * c'est la responsabilite du caller.
+ */
+export async function createInvoiceFromPo(
+  client: TxClient,
+  purchaseOrderId: string,
+  receptionVoucherId: string | null,
+  createdBy: string,
+  storeId: string | null,
+): Promise<Record<string, unknown> | null> {
+  // Idempotence : ne pas creer de doublon si une facture existe deja.
+  const existingInv = await client.query(
+    `SELECT id FROM invoices WHERE purchase_order_id = $1 AND status != 'cancelled' LIMIT 1`,
+    [purchaseOrderId]
+  );
+  if (existingInv.rows.length > 0) return null;
+
+  const poRes = await client.query(
+    `SELECT id, order_number, supplier_id FROM purchase_orders WHERE id = $1`,
+    [purchaseOrderId]
+  );
+  const po = poRes.rows[0];
+  if (!po) throw new Error('Bon de commande non trouve');
+
+  // Effective price = dernier prix saisi en reception si dispo, sinon prix BC.
+  // Garantit que la facture refletera le prix reellement paye meme si le BC
+  // avait un prix 0/NULL au depart.
+  const poItemDetails = await client.query(
+    `SELECT poi.id, poi.ingredient_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
+            ing.name as ingredient_name,
+            COALESCE(
+              (SELECT rvi.unit_price FROM reception_voucher_items rvi
+               WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
+               ORDER BY rvi.id DESC LIMIT 1),
+              poi.unit_price
+            ) AS effective_unit_price
+     FROM purchase_order_items poi
+     JOIN ingredients ing ON ing.id = poi.ingredient_id
+     WHERE poi.purchase_order_id = $1`,
+    [purchaseOrderId]
+  );
+
+  const invoiceItems = poItemDetails.rows.map((it: Record<string, unknown>) => {
+    const qty = parseFloat(it.quantity_delivered as string);
+    const price = parseFloat((it.effective_unit_price as string) ?? '0') || 0;
+    return {
+      ingredientId: it.ingredient_id as string,
+      description: it.ingredient_name as string,
+      quantity: qty,
+      unitPrice: price,
+      subtotal: qty * price,
+    };
+  });
+
+  const amount = invoiceItems.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
+
+  // N° et date facture : on prefere ceux du fournisseur (saisis lors de la
+  // reception). Fallback sur auto-genere si non renseignes.
+  const supplierInvoiceLookup = await client.query(
+    `SELECT supplier_invoice_number AS number, supplier_invoice_date::text AS date
+     FROM reception_vouchers
+     WHERE purchase_order_id = $1 AND supplier_invoice_number IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [purchaseOrderId]
+  );
+  const lookedUpNumber = (supplierInvoiceLookup.rows[0]?.number as string | null) || null;
+  const lookedUpDate = (supplierInvoiceLookup.rows[0]?.date as string | null) || null;
+
+  const invoiceNumber = lookedUpNumber || await invoiceRepository.generateInvoiceNumber('received');
+  const notesLabel = lookedUpNumber
+    ? `Facture fournisseur ${lookedUpNumber} — reception depuis ${po.order_number}`
+    : `Facture auto-generee depuis ${po.order_number}`;
+
+  const derivedCategoryId = await resolveInvoiceCategoryFromPo(client, purchaseOrderId);
+
+  // Si pas de rv_id explicite (generation manuelle a posteriori), on rattache
+  // au dernier bon de reception du BC pour conserver le lien de tracabilite.
+  let effectiveRvId = receptionVoucherId;
+  if (effectiveRvId === null) {
+    const lastRv = await client.query(
+      `SELECT id FROM reception_vouchers WHERE purchase_order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [purchaseOrderId]
+    );
+    effectiveRvId = (lastRv.rows[0]?.id as string | null) ?? null;
+  }
+
+  const invResult = await client.query(
+    `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, purchase_order_id, reception_voucher_id,
+      invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id, category_id)
+     VALUES ($1, 'received', $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, 0, $6, $7, $8, $9, $10) RETURNING *`,
+    [invoiceNumber, po.supplier_id, purchaseOrderId, effectiveRvId,
+     lookedUpDate,
+     amount,
+     notesLabel,
+     createdBy, storeId,
+     derivedCategoryId]
+  );
+  const invoice = invResult.rows[0];
+
+  for (const item of invoiceItems) {
+    await client.query(
+      `INSERT INTO invoice_items (invoice_id, ingredient_id, description, quantity, unit_price, subtotal)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [invoice.id, item.ingredientId, item.description, item.quantity, item.unitPrice, item.subtotal]
+    );
+  }
+
+  return invoice;
+}
+
 export const receptionVoucherRepository = {
   async findAll(params: { purchaseOrderId?: string; storeId?: string }) {
     const conditions: string[] = [];
@@ -246,93 +416,15 @@ export const receptionVoucherRepository = {
         [newStatus, data.purchaseOrderId]
       );
 
-      // Auto-create received invoice when PO is fully delivered with prices
+      // Auto-create received invoice when PO is fully delivered with prices.
+      // Toute la logique de creation (categorisation, N° fournisseur, lignes)
+      // vit dans createInvoiceFromPo pour etre reutilisable depuis la generation
+      // manuelle (cf. purchaseOrderRepository.generateInvoice).
       let autoInvoice = null;
       if (newStatus === 'livre_complet') {
-        // Check if an invoice already exists for this PO
-        const existingInv = await client.query(
-          `SELECT id FROM invoices WHERE purchase_order_id = $1 AND status != 'cancelled' LIMIT 1`,
-          [data.purchaseOrderId]
+        autoInvoice = await createInvoiceFromPo(
+          client, data.purchaseOrderId, rv.id, data.receivedBy, data.storeId || null
         );
-        if (existingInv.rows.length === 0) {
-          // Build invoice items from PO items
-          const poItems = allItems.rows;
-          // Effective price = last reception voucher price if set, else PO price.
-          // Guarantees the invoice reflects the real paid price even when PO price was 0/NULL.
-          const poItemDetails = await client.query(
-            `SELECT poi.id, poi.ingredient_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
-                    ing.name as ingredient_name,
-                    COALESCE(
-                      (SELECT rvi.unit_price FROM reception_voucher_items rvi
-                       WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
-                       ORDER BY rvi.id DESC LIMIT 1),
-                      poi.unit_price
-                    ) AS effective_unit_price
-             FROM purchase_order_items poi
-             JOIN ingredients ing ON ing.id = poi.ingredient_id
-             WHERE poi.purchase_order_id = $1`,
-            [data.purchaseOrderId]
-          );
-
-          const invoiceItems = poItemDetails.rows.map((it: Record<string, unknown>) => {
-            const qty = parseFloat(it.quantity_delivered as string);
-            const price = parseFloat((it.effective_unit_price as string) ?? '0') || 0;
-            return {
-              ingredientId: it.ingredient_id as string,
-              description: it.ingredient_name as string,
-              quantity: qty,
-              unitPrice: price,
-              subtotal: qty * price,
-            };
-          });
-
-          const amount = invoiceItems.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
-
-          // N° et date facture : on prefere ceux du fournisseur (saisis lors
-          // de la reception). Fallback sur auto-genere si non renseignes
-          // (anciennes receptions, livraisons sans facture physique).
-          //
-          // Recherche le supplier_invoice_number sur la reception courante OU
-          // sur une reception anterieure du meme BC (cas livraison echelonnee
-          // ou la facture arrive avec la derniere livraison).
-          const supplierInvoiceLookup = await client.query<{ number: string | null; date: string | null }>(
-            `SELECT supplier_invoice_number AS number, supplier_invoice_date::text AS date
-             FROM reception_vouchers
-             WHERE purchase_order_id = $1 AND supplier_invoice_number IS NOT NULL
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [data.purchaseOrderId]
-          );
-          const lookedUpNumber = supplierInvoiceLookup.rows[0]?.number || null;
-          const lookedUpDate = supplierInvoiceLookup.rows[0]?.date || null;
-
-          const invoiceNumber = lookedUpNumber || await invoiceRepository.generateInvoiceNumber('received');
-          const invoiceDate = lookedUpDate; // null => DB DEFAULT CURRENT_DATE handled below
-          const notesLabel = lookedUpNumber
-            ? `Facture fournisseur ${lookedUpNumber} — reception depuis ${po.order_number}`
-            : `Facture auto-generee depuis ${po.order_number}`;
-
-          const invResult = await client.query(
-            `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, purchase_order_id, reception_voucher_id,
-              invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
-             VALUES ($1, 'received', $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, 0, $6, $7, $8, $9) RETURNING *`,
-            [invoiceNumber, po.supplier_id, data.purchaseOrderId, rv.id,
-             invoiceDate,
-             amount,
-             notesLabel,
-             data.receivedBy, data.storeId || null]
-          );
-          autoInvoice = invResult.rows[0];
-
-          // Insert invoice items
-          for (const item of invoiceItems) {
-            await client.query(
-              `INSERT INTO invoice_items (invoice_id, ingredient_id, description, quantity, unit_price, subtotal)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
-              [autoInvoice.id, item.ingredientId, item.description, item.quantity, item.unitPrice, item.subtotal]
-            );
-          }
-        }
       }
 
       await client.query('COMMIT');
