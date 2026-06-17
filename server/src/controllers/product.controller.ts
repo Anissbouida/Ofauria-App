@@ -2,6 +2,8 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { productLotRepository } from '../repositories/product-lot.repository.js';
+import { pricingTierRepository } from '../repositories/product-pricing-tier.repository.js';
+import { channelPricingRepository } from '../repositories/product-channel-pricing.repository.js';
 import { db } from '../config/database.js';
 import { adjustProductStock } from '../repositories/product-stock.helper.js';
 
@@ -30,6 +32,52 @@ function slugify(text: string): string {
 }
 
 export const productController = {
+  // ───── Paliers tarifaires (mig 171) ─────
+  async listPricingTiers(req: AuthRequest, res: Response) {
+    const tiers = await pricingTierRepository.listByProduct(req.params.id);
+    res.json({ success: true, data: tiers });
+  },
+
+  async listChannelPricing(req: AuthRequest, res: Response) {
+    const data = await channelPricingRepository.listByProduct(req.params.id);
+    res.json({ success: true, data });
+  },
+
+  async replaceChannelPricing(req: AuthRequest, res: Response) {
+    const body = req.body as { items?: Array<{ channel_id?: string; price_override?: number | null; price_per_kg_override?: number | null }> };
+    const items = Array.isArray(body.items) ? body.items : [];
+    const cleaned: Array<{ channel_id: string; price_override: number | null; price_per_kg_override: number | null }> = [];
+    for (const it of items) {
+      if (!it.channel_id) continue;
+      const po = it.price_override !== undefined && it.price_override !== null && Number(it.price_override) > 0
+        ? Number(it.price_override) : null;
+      const ppko = it.price_per_kg_override !== undefined && it.price_per_kg_override !== null && Number(it.price_per_kg_override) > 0
+        ? Number(it.price_per_kg_override) : null;
+      if (po === null && ppko === null) continue; // skip lignes vides
+      cleaned.push({ channel_id: it.channel_id, price_override: po, price_per_kg_override: ppko });
+    }
+    const result = await channelPricingRepository.replaceForProduct(req.params.id, cleaned);
+    res.json({ success: true, data: result });
+  },
+
+  async replacePricingTiers(req: AuthRequest, res: Response) {
+    const body = req.body as { tiers?: Array<{ min_grammes?: number; max_grammes?: number | null; prix_per_kg?: number; display_order?: number }> };
+    const tiers = Array.isArray(body.tiers) ? body.tiers : [];
+    // Validation minimale : chaque palier doit avoir min_grammes >= 0 et prix > 0
+    const cleaned: Array<{ min_grammes: number; max_grammes: number | null; prix_per_kg: number; display_order: number }> = [];
+    for (const t of tiers) {
+      const min = Number(t.min_grammes);
+      const max = t.max_grammes === null || t.max_grammes === undefined ? null : Number(t.max_grammes);
+      const prix = Number(t.prix_per_kg);
+      if (!isFinite(min) || min < 0) continue;
+      if (max !== null && (!isFinite(max) || max <= min)) continue;
+      if (!isFinite(prix) || prix <= 0) continue;
+      cleaned.push({ min_grammes: min, max_grammes: max, prix_per_kg: prix, display_order: Number(t.display_order) || 0 });
+    }
+    const result = await pricingTierRepository.replaceForProduct(req.params.id, cleaned);
+    res.json({ success: true, data: result });
+  },
+
   async topSelling(req: AuthRequest, res: Response) {
     const { limit = '20', days = '30' } = req.query as Record<string, string>;
     const data = await productRepository.findTopSelling({

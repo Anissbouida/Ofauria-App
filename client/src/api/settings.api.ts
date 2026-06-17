@@ -37,6 +37,9 @@ export interface CompanySettings {
   productionChargeLoyer: number;
   productionChargeEnergie: number;
   productionChargeAutres: number;
+  // Arrondi prix (mig 170)
+  prixArrondiStrategie?: 'aucun' | 'au_dh' | 'au_demi_dh' | 'au_5dh';
+  prixArrondiSens?: 'inferieur' | 'superieur' | 'naturel';
 }
 
 export const settingsApi = {

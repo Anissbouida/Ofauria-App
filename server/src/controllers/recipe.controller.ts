@@ -21,6 +21,10 @@ export const recipeController = {
     const recipes = await recipeRepository.findBaseRecipes();
     res.json({ success: true, data: recipes });
   },
+  async listCategories(_req: AuthRequest, res: Response) {
+    const categories = await recipeRepository.listCategories();
+    res.json({ success: true, data: categories });
+  },
   async create(req: AuthRequest, res: Response) {
     try {
       const recipe = await recipeRepository.create(req.body);
@@ -28,6 +32,10 @@ export const recipeController = {
     } catch (err: any) {
       if (err.message?.includes('circulaire')) {
         res.status(400).json({ success: false, error: { message: err.message } });
+        return;
+      }
+      if (err?.code === 'PIECE_WEIGHT_REQUIRED') {
+        res.status(422).json({ success: false, error: { code: err.code, message: err.message } });
         return;
       }
       throw err;
@@ -44,6 +52,10 @@ export const recipeController = {
     } catch (err: any) {
       if (err.message?.includes('circulaire')) {
         res.status(400).json({ success: false, error: { message: err.message } });
+        return;
+      }
+      if (err?.code === 'PIECE_WEIGHT_REQUIRED') {
+        res.status(422).json({ success: false, error: { code: err.code, message: err.message } });
         return;
       }
       throw err;

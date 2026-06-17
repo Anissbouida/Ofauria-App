@@ -6,6 +6,7 @@ import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
+import { salesChannelsApi } from '../../api/sales-channels.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { openingInventoryCheckApi } from '../../api/opening-inventory-check.api';
@@ -88,6 +89,8 @@ export default function POSPage() {
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  // Canal de vente (mig 172) — par defaut le canal "boutique" du serveur
+  const [channelId, setChannelId] = useState<string>('');
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
@@ -294,6 +297,19 @@ export default function POSPage() {
     queryFn: () => customersApi.list({ search: customerSearch, limit: '5' }),
     enabled: customerSearch.length >= 2,
   });
+
+  // Canaux de vente actifs (mig 172) — pour le sélecteur en tête de transaction
+  const { data: salesChannels = [] } = useQuery({
+    queryKey: ['sales-channels', 'active'],
+    queryFn: salesChannelsApi.listActive,
+    staleTime: 5 * 60_000,
+  });
+  // Initialise channelId au canal par défaut quand les canaux arrivent
+  useEffect(() => {
+    if (channelId || salesChannels.length === 0) return;
+    const def = salesChannels.find(c => c.is_default) || salesChannels[0];
+    if (def) setChannelId(def.id);
+  }, [salesChannels, channelId]);
 
   // Orders query for the orders tab
   const { data: ordersData } = useQuery({
@@ -828,6 +844,7 @@ export default function POSPage() {
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
+      channelId: channelId || undefined,
     });
   };
 
@@ -851,6 +868,7 @@ export default function POSPage() {
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
+      channelId: channelId || undefined,
     });
     setShowUnpaidModal(false);
     setUnpaidCustomerName('');
@@ -1309,6 +1327,23 @@ export default function POSPage() {
                         <User size={17} />
                         <span className="text-[9px] font-medium">Client</span>
                       </button>
+                    )}
+
+                    {/* Canal de vente (mig 172) — sélecteur compact */}
+                    {salesChannels.length > 1 && (
+                      <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-50 border border-gray-200" title="Canal de vente">
+                        <span className="text-[9px] font-semibold uppercase text-gray-400">Canal</span>
+                        <select
+                          value={channelId}
+                          onChange={e => setChannelId(e.target.value)}
+                          className="text-xs font-semibold bg-transparent border-0 focus:ring-0 cursor-pointer py-0"
+                          style={{ color: salesChannels.find(c => c.id === channelId)?.color || '#374151' }}
+                        >
+                          {salesChannels.map(c => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
                     )}
 
                     <div className="flex-1" />

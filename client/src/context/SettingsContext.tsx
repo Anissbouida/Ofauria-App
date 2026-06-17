@@ -46,6 +46,8 @@ const defaults: CompanySettings = {
   productionChargeLoyer: 0,
   productionChargeEnergie: 0,
   productionChargeAutres: 0,
+  prixArrondiStrategie: 'aucun',
+  prixArrondiSens: 'superieur',
 };
 
 function loadCachedSettings(): CompanySettings {

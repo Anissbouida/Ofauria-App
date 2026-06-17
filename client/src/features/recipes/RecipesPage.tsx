@@ -14,6 +14,8 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
+import { yieldInSellingUnit, requiresPieceWeight, type SellingUnit } from '../../utils/units';
+import type { RecipeCategory } from '../../api/recipes.api';
 
 interface RecipeIngredient {
   ingredient_id?: string;
@@ -58,6 +60,10 @@ interface RecipeFormat {
   cout_struct_format: string | null;
   cout_unitaire_complet: string | null;
   prix_vente_unitaire: string | null;
+  // Overrides editables (mig 168) — null = pas d'override actif
+  prix_vente_unitaire_override?: string | null;
+  margin_multiplier_override?: string | null;
+  marge_resolue?: string | null;
 }
 
 interface RecipeEtape {
@@ -82,6 +88,8 @@ interface RecipeDetail {
   instructions: string;
   yield_quantity: number;
   yield_unit: string;
+  // Poids unitaire d'une piece, requis quand yield_unit != products.sale_unit.
+  piece_weight_kg?: string | number | null;
   total_cost: string;
   total_weight_kg: string | null;
   is_base: boolean;
@@ -172,8 +180,13 @@ export default function RecipesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const { data: recipes = [], isLoading } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
+  const { data: recipeCategories = [] } = useQuery<RecipeCategory[]>({
+    queryKey: ['recipe-categories'],
+    queryFn: recipesApi.listCategories,
+  });
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>(''); // '' = toutes
   const [showForm, setShowForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('contenants');
@@ -196,7 +209,8 @@ export default function RecipesPage() {
     const s = search.toLowerCase();
     const matchSearch = !s || (r.name as string).toLowerCase().includes(s) || (r.product_name as string || '').toLowerCase().includes(s);
     const matchTab = activeTab === 'base' ? r.is_base === true : !r.is_base;
-    return matchSearch && matchTab;
+    const matchCategory = !categoryFilter || (r.category_id as string) === categoryFilter;
+    return matchSearch && matchTab && matchCategory;
   });
 
   const sortedFiltered = useMemo(() => {
@@ -330,12 +344,32 @@ export default function RecipesPage() {
           placeholder={activeTab === 'base' ? 'Rechercher une préparation de base...' : 'Rechercher une recette ou un produit...'}
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="odoo-search-input" />
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          style={{ marginLeft: 8, padding: '4px 8px', border: '1px solid var(--theme-border, #d1d5db)', borderRadius: 4, fontSize: '0.8125rem', background: 'white' }}
+          title="Filtrer par catégorie"
+        >
+          <option value="">Toutes catégories</option>
+          {recipeCategories.map(c => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
         {search && (
           <span className="odoo-filter-chip">
             Recherche: {search}
             <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
           </span>
         )}
+        {categoryFilter && (() => {
+          const cat = recipeCategories.find(c => c.id === categoryFilter);
+          return cat ? (
+            <span className="odoo-filter-chip" style={{ borderColor: cat.color, color: cat.color }}>
+              {cat.label}
+              <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
+            </span>
+          ) : null;
+        })()}
       </div>
 
       {/* ══════ CONTENT ══════ */}
@@ -374,8 +408,15 @@ export default function RecipesPage() {
                       {r.is_base ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
                       {r.name as string}
                     </span>
-                    <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
-                      {r.is_base ? 'Base' : 'Produit'}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {r.category_color && (
+                        <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '2px 6px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }} title={r.category_label as string}>
+                          {r.category_label as string}
+                        </span>
+                      )}
+                      <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
+                        {r.is_base ? 'Base' : 'Produit'}
+                      </span>
                     </span>
                   </div>
                   <div className="odoo-kanban-card-supplier">
@@ -454,6 +495,11 @@ export default function RecipesPage() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                         {r.is_base ? <Layers size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={13} style={{ color: 'var(--theme-accent)' }} />}
                         {r.name as string}
+                        {r.category_color && (
+                          <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }}>
+                            {r.category_label as string}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td>
@@ -781,6 +827,19 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   <div className="odoo-section-header">
                     <Layers size={12} /> Préparations de base ({recipe.sub_recipes.length})
                   </div>
+                  {(() => {
+                    // Sous-total poids : somme (quantite_utilisee × poids/unite-rendement)
+                    // sub_total_weight_kg est le poids total de la sous-recette pour son yield,
+                    // donc poids/unite = sub_total_weight_kg / sub_yield_quantity.
+                    let totalWeightKg = 0;
+                    for (const sr of recipe.sub_recipes!) {
+                      const wPerUnit = parseFloat(sr.sub_total_weight_kg || '0') / (sr.sub_yield_quantity || 1);
+                      totalWeightKg += sr.quantity * multiplier * wPerUnit;
+                    }
+                    const formatWeight = (kg: number) => kg >= 1
+                      ? `${kg.toFixed(3)} kg`
+                      : `${(kg * 1000).toFixed(0)} g`;
+                    return (
                   <table className="odoo-table">
                     <thead>
                       <tr>
@@ -812,11 +871,17 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                         );
                       })}
                       <tr style={{ backgroundColor: 'var(--theme-bg-page)', fontWeight: 700, cursor: 'default' }}>
-                        <td colSpan={4} style={{ textAlign: 'right' }}>Sous-total préparations</td>
+                        <td colSpan={2} style={{ textAlign: 'right' }}>Sous-total préparations</td>
+                        <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }} title="Somme des poids consommés par les préparations">
+                          {totalWeightKg > 0 ? formatWeight(totalWeightKg) : '—'}
+                        </td>
+                        <td></td>
                         <td style={{ textAlign: 'right', color: 'var(--theme-accent)' }}>{subRecipeCost.toFixed(2)} DH</td>
                       </tr>
                     </tbody>
                   </table>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1190,6 +1255,9 @@ interface FormFormat {
   nbParDefaut: string;
   coutEmballageUnitaire: string;
   ordre: number;
+  // Overrides (mig 168) — vides par defaut = utilise marge recette
+  prixVenteUnitaireOverride: string;
+  marginMultiplierOverride: string;
 }
 
 type FormTab = 'info' | 'composition' | 'etapes' | 'instructions';
@@ -1398,12 +1466,21 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const { entries: yieldUnits } = useReferentiel('yield_units');
 
+  const { data: recipeCategories = [] } = useQuery<RecipeCategory[]>({
+    queryKey: ['recipe-categories'],
+    queryFn: recipesApi.listCategories,
+  });
+
   const [initialized, setInitialized] = useState(false);
   const [name, setName] = useState('');
   const [productId, setProductId] = useState('');
   const [contenantId, setContenantId] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('1');
   const [yieldUnit, setYieldUnit] = useState('unit');
+  // Poids unitaire d'une piece (kg). Saisi quand yield_unit != product.sale_unit.
+  const [pieceWeightKg, setPieceWeightKg] = useState('');
+  // Categorie operationnelle (recipe_categories.id)
+  const [categoryId, setCategoryId] = useState<string>('');
   const [marginMultiplier, setMarginMultiplier] = useState('3');
   const [salePrice, setSalePrice] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -1425,6 +1502,12 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setContenantId(existingRecipe.contenant_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
     setYieldUnit(existingRecipe.yield_unit || 'unit');
+    setPieceWeightKg(
+      existingRecipe.piece_weight_kg !== null && existingRecipe.piece_weight_kg !== undefined
+        ? String(parseFloat(String(existingRecipe.piece_weight_kg)))
+        : ''
+    );
+    setCategoryId((existingRecipe as Record<string, any>).category_id as string || '');
     // Normalise a 2 decimales pour eviter "3.0400" stocke en NUMERIC SQL.
     setMarginMultiplier(parseFloat(String(existingRecipe.margin_multiplier ?? 3)).toFixed(2));
     setSalePrice(existingRecipe.product_price ? parseFloat(String(existingRecipe.product_price)).toFixed(2) : '');
@@ -1470,6 +1553,10 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
               ? trimZeros(f.cout_emballage_unitaire)
               : '',
             ordre: f.ordre,
+            prixVenteUnitaireOverride: f.prix_vente_unitaire_override
+              ? String(parseFloat(f.prix_vente_unitaire_override)) : '',
+            marginMultiplierOverride: f.margin_multiplier_override
+              ? String(parseFloat(f.margin_multiplier_override)) : '',
           }))
         : []
     );
@@ -1542,10 +1629,138 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   // Formats de production (multi-formats par recette) — handlers
   const addFormatRow = () => setFormFormats([...formFormats, {
     contenantId: '', quantiteParFormatG: '', quantiteParFormatUnite: 'g', nbParDefaut: '1', coutEmballageUnitaire: '', ordre: formFormats.length,
+    prixVenteUnitaireOverride: '', marginMultiplierOverride: '',
   }]);
   const removeFormatRow = (idx: number) => setFormFormats(formFormats.filter((_, i) => i !== idx));
+
+  // Poids total de la recette (en grammes) = somme ingredients directs + sous-recettes.
+  // Utilise par l'auto-fill des formats en mode pieces pour calculer
+  // poids/piece = total / nb_pieces.
+  // Pour les sous-recettes : poids_consomme = quantity_used × (sub_total_weight_kg / sub_yield_quantity)
+  const totalIngWeightG = useMemo(() => {
+    // Ingredients directs
+    const ingKg = formIngredients.reduce((sum, row) => {
+      if (!row.ingredientId || !row.quantity) return sum;
+      const q = parseFloat(row.quantity) || 0;
+      const kg = quantityToKg(q, row.unit || 'unit');
+      return sum + (kg || 0);
+    }, 0);
+    // Sous-recettes : lookup dans baseRecipes (qui expose total_weight_kg via mig backend)
+    const subKg = formSubRecipes.reduce((sum, row) => {
+      if (!row.subRecipeId || !row.quantity) return sum;
+      const q = parseFloat(row.quantity) || 0;
+      const sub = (baseRecipes as Record<string, any>[]).find(b => b.id === row.subRecipeId);
+      if (!sub) return sum;
+      const subWeightKg = parseFloat(String(sub.total_weight_kg || '0'));
+      const subYield = parseFloat(String(sub.yield_quantity || '1')) || 1;
+      if (subWeightKg <= 0 || subYield <= 0) return sum;
+      // poids consomme = qty utilisee × (poids total sous-recette / rendement sous-recette)
+      return sum + q * (subWeightKg / subYield);
+    }, 0);
+    return (ingKg + subKg) * 1000;
+  }, [formIngredients, formSubRecipes, baseRecipes]);
+
+  // Auto-remplit quantite_par_format et nb_par_defaut a partir du contenant.
+  // On suit STRICTEMENT le mode du contenant (cf shared/getModeCalcul) :
+  //   - mode 'poids' (kg_pate, fournee, pate) : derive QUE le poids, nb=1
+  //   - mode 'pieces' (cadre, moule, cercle, plaque, unit) : derive QUE le nb,
+  //     le poids reste vide (a saisir car peut varier selon la recette dans un meme moule)
+  // ECRASE les valeurs quand l'utilisateur change de contenant.
+  const deriveFromContenant = (contenantId: string): Partial<FormFormat> => {
+    const c = allContenants.find((x: Record<string, any>) => x.id === contenantId) as Record<string, any> | undefined;
+    if (!c) return {};
+    const out: Partial<FormFormat> = {};
+    const uniteLancement = String(c.unite_lancement || '').toLowerCase();
+    const mode = getModeCalcul(uniteLancement);
+    const qteTheo = c.quantite_theorique ? parseFloat(c.quantite_theorique as string) : 0;
+    const poidsKg = c.poids_kg ? parseFloat(c.poids_kg as string) : 0;
+    const nbDecoupe = c.nb_pieces_decoupe ? parseInt(String(c.nb_pieces_decoupe), 10) : 0;
+
+    if (mode === 'poids') {
+      // Mode POIDS — quantite_theorique est en kg de pate par defaut
+      const weightKg = poidsKg > 0 ? poidsKg : qteTheo;
+      if (weightKg > 0) {
+        if (weightKg >= 1) {
+          out.quantiteParFormatG = String(weightKg);
+          out.quantiteParFormatUnite = 'kg';
+        } else {
+          out.quantiteParFormatG = String(Math.round(weightKg * 1000));
+          out.quantiteParFormatUnite = 'g';
+        }
+        out.nbParDefaut = '1';
+      }
+    } else {
+      // Mode PIECES — auto-fill le nombre. Pour le poids/piece :
+      //   - Si poids_kg est explicite (moule individuel avec poids fixe) -> l'utilise
+      //   - Sinon, si on a un poids total d'ingredients connu (mono-format ou seul
+      //     format en mode pieces), on calcule poids/piece = total / nb
+      //   - Sinon, on laisse vide (saisie manuelle attendue)
+      const nb = nbDecoupe > 0 ? nbDecoupe : (qteTheo > 0 ? Math.max(1, Math.round(qteTheo)) : 0);
+      if (nb > 0) {
+        out.nbParDefaut = String(nb);
+      }
+
+      if (poidsKg > 0) {
+        // Poids fixe explicite
+        if (poidsKg >= 1) {
+          out.quantiteParFormatG = String(poidsKg);
+          out.quantiteParFormatUnite = 'kg';
+        } else {
+          out.quantiteParFormatG = String(Math.round(poidsKg * 1000));
+          out.quantiteParFormatUnite = 'g';
+        }
+      } else if (totalIngWeightG > 0 && nb > 0) {
+        // Auto-calcul depuis poids total ingredients / nb pieces
+        const weightPerPieceG = totalIngWeightG / nb;
+        if (weightPerPieceG >= 1000) {
+          out.quantiteParFormatG = (weightPerPieceG / 1000).toFixed(2);
+          out.quantiteParFormatUnite = 'kg';
+        } else {
+          out.quantiteParFormatG = weightPerPieceG.toFixed(1);
+          out.quantiteParFormatUnite = 'g';
+        }
+      }
+    }
+
+    return out;
+  };
+
+  // Recalcule le poids/piece d'un format en mode pieces quand le nb change.
+  // Utilise totalIngWeightG (poids total ingredients) divise par le nouveau nb.
+  // Ne fait rien si le contenant est en mode poids ou si pas d'ingredients saisis.
+  const recalcWeightFromNb = (row: FormFormat, newNb: string): Partial<FormFormat> => {
+    const c = allContenants.find((x: Record<string, any>) => x.id === row.contenantId) as Record<string, any> | undefined;
+    if (!c) return {};
+    const mode = getModeCalcul(String(c.unite_lancement || '').toLowerCase());
+    if (mode !== 'pieces') return {};
+    const nb = parseInt(newNb, 10);
+    if (!nb || nb <= 0 || totalIngWeightG <= 0) return {};
+    // Si poids_kg est explicite, on ne recalcule pas (le poids est fixe par contenant)
+    const poidsKg = c.poids_kg ? parseFloat(c.poids_kg as string) : 0;
+    if (poidsKg > 0) return {};
+    const weightPerPieceG = totalIngWeightG / nb;
+    if (weightPerPieceG >= 1000) {
+      return { quantiteParFormatG: (weightPerPieceG / 1000).toFixed(2), quantiteParFormatUnite: 'kg' };
+    }
+    return { quantiteParFormatG: weightPerPieceG.toFixed(1), quantiteParFormatUnite: 'g' };
+  };
+
   const updateFormatRow = (idx: number, field: keyof FormFormat, value: string) =>
-    setFormFormats(formFormats.map((row, i) => i === idx ? { ...row, [field]: value } : row));
+    setFormFormats(formFormats.map((row, i) => {
+      if (i !== idx) return row;
+      const next = { ...row, [field]: value };
+      // Quand on change le contenant, on ecrase les valeurs derivables
+      // (poids unitaire + nb par defaut). L'utilisateur peut modifier apres.
+      if (field === 'contenantId' && value) {
+        return { ...next, ...deriveFromContenant(value) };
+      }
+      // En mode pieces, si l'utilisateur change le nb par defaut et qu'on
+      // peut calculer le poids/piece depuis le total ingredients, on recalcule.
+      if (field === 'nbParDefaut' && row.contenantId) {
+        return { ...next, ...recalcWeightFromNb(next, value) };
+      }
+      return next;
+    }));
 
   const availableBaseRecipes = baseRecipes.filter((br: Record<string, any>) => br.id !== recipeId);
 
@@ -1626,6 +1841,10 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         nbParDefaut: parseInt(row.nbParDefaut) || 1,
         coutEmballageUnitaire: row.coutEmballageUnitaire ? parseFloat(row.coutEmballageUnitaire) : 0,
         ordre: row.ordre,
+        prixVenteUnitaireOverride: row.prixVenteUnitaireOverride && parseFloat(row.prixVenteUnitaireOverride) > 0
+          ? parseFloat(row.prixVenteUnitaireOverride) : null,
+        marginMultiplierOverride: row.marginMultiplierOverride && parseFloat(row.marginMultiplierOverride) > 0
+          ? parseFloat(row.marginMultiplierOverride) : null,
       }));
 
     const data: Record<string, any> = {
@@ -1634,6 +1853,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       contenantId: contenantId || null,
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
+      pieceWeightKg: pieceWeightKg && parseFloat(pieceWeightKg) > 0 ? parseFloat(pieceWeightKg) : null,
+      categoryId: categoryId || null,
       marginMultiplier: parseFloat(marginMultiplier) || 3,
       tauxMainOeuvreDhH: tauxMo === '' ? undefined : parseFloat(tauxMo),
       coutEnergieFournee: coutEnergie === '' ? undefined : parseFloat(coutEnergie),
@@ -1735,6 +1956,21 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   <input className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white font-medium"
                     value={name} onChange={(e) => setName(e.target.value)}
                     placeholder={isBase ? 'ex: Pate a croissant' : 'ex: Recette Croissant'} required />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Catégorie de production</label>
+                  <select
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white font-medium"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    <option value="">— Aucune (à classifier) —</option>
+                    {recipeCategories.map(c => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Sert au filtrage et aux rapports par section. Distincte de la catégorie commerciale du produit lié.</p>
                 </div>
 
                 {/* Produit associe — visible uniquement en edition */}
@@ -1857,6 +2093,42 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                                   <Trash2 size={14} />
                                 </button>
                               </div>
+                              {/* Overrides prix/marge par format (mig 168) — 2eme ligne du grid */}
+                              <div className="col-span-12 grid grid-cols-12 gap-2 mt-1 pt-2 border-t border-gray-200">
+                                <div className="col-span-1 text-[10px] uppercase font-semibold text-gray-400 flex items-center">Override</div>
+                                <div className="col-span-3">
+                                  <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">
+                                    Marge override
+                                    {row.marginMultiplierOverride && <span className="ml-1 text-amber-600">●</span>}
+                                  </label>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-400">×</span>
+                                    <input type="number" min={0.01} step="0.01"
+                                      className={`flex-1 min-w-0 px-2 py-1.5 border rounded text-xs text-right focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${row.marginMultiplierOverride ? 'bg-amber-50 border-amber-300 font-bold' : 'bg-white border-gray-200'}`}
+                                      value={row.marginMultiplierOverride}
+                                      onChange={(e) => updateFormatRow(idx, 'marginMultiplierOverride', e.target.value)}
+                                      placeholder={`auto (×${marginMultiplier})`} />
+                                  </div>
+                                </div>
+                                <div className="col-span-3">
+                                  <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">
+                                    Prix override (DH)
+                                    {row.prixVenteUnitaireOverride && <span className="ml-1 text-amber-600">●</span>}
+                                  </label>
+                                  <input type="number" min={0} step="0.01"
+                                    className={`w-full px-2 py-1.5 border rounded text-xs text-right focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${row.prixVenteUnitaireOverride ? 'bg-amber-50 border-amber-300 font-bold' : 'bg-white border-gray-200'}`}
+                                    value={row.prixVenteUnitaireOverride}
+                                    onChange={(e) => updateFormatRow(idx, 'prixVenteUnitaireOverride', e.target.value)}
+                                    placeholder="auto (calculé)" />
+                                </div>
+                                <div className="col-span-5 flex items-end text-[10px] text-gray-400 italic">
+                                  {row.prixVenteUnitaireOverride
+                                    ? '💲 Prix forcé — ignore marge'
+                                    : row.marginMultiplierOverride
+                                    ? `📊 Marge spécifique × ${row.marginMultiplierOverride}`
+                                    : 'Pas d\'override → utilise la marge de la recette'}
+                                </div>
+                              </div>
                             </div>
                           ))}
                           <button type="button" onClick={addFormatRow}
@@ -1881,6 +2153,111 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                     </div>
                   );
                 })()}
+
+                {/* Aperçu Coûts par Format — valeurs calculées par v_recipe_format_cost.
+                    Toujours visible (per spec) : si pas de format sauvegardé, placeholder.
+                    Les données viennent de existingRecipe.formats (snapshot DB), donc reflètent
+                    la dernière sauvegarde. Un re-render survient après chaque mutation update. */}
+                <div className="border border-pink-200 bg-pink-50/40 rounded-xl p-4 space-y-3">
+                  <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Box size={15} className="text-pink-500" />
+                    Aperçu Coûts par Format
+                    <span className="text-xs font-normal text-gray-400">(calculé après sauvegarde)</span>
+                  </div>
+
+                  {!existingRecipe?.formats || existingRecipe.formats.length === 0 ? (
+                    <div className="text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-lg p-3 text-center">
+                      {formFormats.length > 0
+                        ? '💾 Sauvegarde la recette pour voir le coût et le prix calculés par format.'
+                        : '➕ Ajoute des formats ci-dessus, puis sauvegarde pour voir le détail des coûts par format.'}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Bandeau de cohérence : compare poids ingrédients vs Σ formats */}
+                      {(() => {
+                        const poidsCalcKg = parseFloat(String((existingRecipe as Record<string, any>).formats_poids_utilise_kg ?? '0'));
+                        const perteKg = parseFloat(String((existingRecipe as Record<string, any>).formats_perte_kg ?? '0'));
+                        const pertePct = parseFloat(String((existingRecipe as Record<string, any>).formats_perte_pct ?? '0'));
+                        const status = Math.abs(pertePct) <= 2 ? 'ok' : Math.abs(pertePct) <= 10 ? 'warn' : 'danger';
+                        const palette = status === 'ok'
+                          ? 'bg-green-50 border-green-200 text-green-700'
+                          : status === 'warn'
+                          ? 'bg-amber-50 border-amber-200 text-amber-700'
+                          : 'bg-red-50 border-red-200 text-red-700';
+                        const icon = status === 'ok' ? '✓' : status === 'warn' ? '⚠' : '⛔';
+                        return (
+                          <div className={`text-xs px-3 py-2 rounded-lg border ${palette} flex items-center justify-between`}>
+                            <span><strong>{icon} Cohérence poids</strong> · {poidsCalcKg.toFixed(3)} kg alloués</span>
+                            <span>Perte théorique : <strong>{perteKg.toFixed(3)} kg ({pertePct.toFixed(1)}%)</strong></span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Détail par format */}
+                      <div className="space-y-2">
+                        {existingRecipe.formats.map((f) => {
+                          // poids_format_g de la vue = poids TOTAL alloue au format
+                          // (qty_par_format converti en g × nb_par_defaut). Le poids par
+                          // unite = poids_total / nb_par_defaut.
+                          const nb = f.nb_par_defaut || 1;
+                          const poidsTotalKg = parseFloat(String(f.poids_format_g || '0')) / 1000;
+                          const poidsParUniteKg = poidsTotalKg / nb;
+                          const coutMatiere = parseFloat(String(f.cout_matiere_unitaire || '0'));
+                          const coutMo = parseFloat(String(f.cout_mo_format || '0')) / (f.nb_par_defaut || 1);
+                          const coutEnergie = parseFloat(String(f.cout_energie_format || '0')) / (f.nb_par_defaut || 1);
+                          const coutStruct = parseFloat(String(f.cout_struct_format || '0')) / (f.nb_par_defaut || 1);
+                          const coutEmballage = parseFloat(String(f.cout_emballage_unitaire || '0'));
+                          const coutComplet = parseFloat(String(f.cout_unitaire_complet || '0'));
+                          const pv = parseFloat(String(f.prix_vente_unitaire || '0'));
+                          const marge = pv > 0 ? ((pv - coutComplet) / pv * 100) : 0;
+                          return (
+                            <div key={f.id} className="bg-white border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                  <Box size={13} className="text-pink-500" />
+                                  {f.contenant_nom} · {poidsParUniteKg < 1 ? `${(poidsParUniteKg * 1000).toFixed(0)} g` : `${poidsParUniteKg.toFixed(3)} kg`} / unité · ×{f.nb_par_defaut}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  Marge : <strong className={marge >= 50 ? 'text-green-600' : marge >= 30 ? 'text-amber-600' : 'text-red-600'}>{marge.toFixed(1)}%</strong>
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-6 gap-2 text-[11px]">
+                                <div>
+                                  <div className="text-gray-400">Matière</div>
+                                  <div className="font-semibold text-gray-700">{coutMatiere.toFixed(2)} DH</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">M.O.</div>
+                                  <div className="font-semibold text-gray-700">{coutMo.toFixed(2)} DH</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">Énergie</div>
+                                  <div className="font-semibold text-gray-700">{coutEnergie.toFixed(2)} DH</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">Structure</div>
+                                  <div className="font-semibold text-gray-700">{coutStruct.toFixed(2)} DH</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-400">Emballage</div>
+                                  <div className="font-semibold text-gray-700">{coutEmballage.toFixed(2)} DH</div>
+                                </div>
+                                <div>
+                                  <div className="text-pink-500 font-semibold">Coût total</div>
+                                  <div className="font-bold text-pink-700">{coutComplet.toFixed(2)} DH</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
+                                <span className="text-xs text-gray-500">Prix de vente proposé</span>
+                                <span className="text-base font-bold text-amber-700">{pv.toFixed(2)} DH</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {/* Frais indirects (MO, énergie, structure) — niveau recette, prorate au poids par format */}
                 <div className="bg-indigo-50/50 border border-indigo-200 rounded-xl p-4 space-y-3">
@@ -1917,26 +2294,75 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                 </div>
 
                 {!isBase && (() => {
+                  // Unite de vente du produit lie : 'unit' (piece) ou 'weight' (kg).
+                  // Fallback 'unit' si pas de produit selectionne ou produit introuvable.
+                  const linkedProduct = allProducts.find((p: Record<string, any>) => p.id === productId) as Record<string, any> | undefined;
+                  const sellingUnit: SellingUnit = linkedProduct?.sale_unit === 'weight' ? 'weight' : 'unit';
+                  const sellingUnitLabel = sellingUnit === 'weight' ? 'kg' : 'pièce';
+                  const sellingPriceSuffix = sellingUnit === 'weight' ? 'DH/kg' : 'DH/pièce';
                   const yieldQ = parseFloat(yieldQuantity) || 1;
-                  const costPerUnit = yieldQ > 0 ? liveCost / yieldQ : 0;
+                  const pwk = pieceWeightKg && parseFloat(pieceWeightKg) > 0 ? parseFloat(pieceWeightKg) : null;
+                  const needsPieceWeight = requiresPieceWeight(yieldUnit, sellingUnit);
+                  const conv = yieldInSellingUnit(yieldQ, yieldUnit, sellingUnit, pwk);
+
+                  const yieldInSU = conv.ok ? conv.value : 0;
+                  const costPerSellingUnit = yieldInSU > 0 ? liveCost / yieldInSU : 0;
+
                   const handleMultiplierChange = (val: string) => {
                     setMarginMultiplier(val);
                     const m = parseFloat(val);
-                    if (!isNaN(m) && costPerUnit > 0) setSalePrice((costPerUnit * m).toFixed(2));
+                    if (!isNaN(m) && costPerSellingUnit > 0) setSalePrice((costPerSellingUnit * m).toFixed(2));
                   };
                   const handlePriceChange = (val: string) => {
                     setSalePrice(val);
                     const p = parseFloat(val);
-                    if (!isNaN(p) && costPerUnit > 0) setMarginMultiplier((p / costPerUnit).toFixed(2));
+                    if (!isNaN(p) && costPerSellingUnit > 0) setMarginMultiplier((p / costPerSellingUnit).toFixed(2));
                   };
                   return (
                     <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-3">
                       <div className="text-sm font-semibold text-gray-700">Tarification</div>
 
-                      <div className="bg-white rounded-lg px-3 py-2 border border-amber-100">
-                        <div className="text-xs text-gray-500">Coût / pièce (calculé)</div>
-                        <div className="font-bold text-gray-800">{costPerUnit.toFixed(2)} DH</div>
-                      </div>
+                      {/* Champ poids unitaire — visible quand yield_unit != sale_unit */}
+                      {needsPieceWeight && (
+                        <div className="bg-white rounded-lg px-3 py-3 border border-amber-200">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Poids d'une pièce (kg) <span className="text-amber-600">*</span>
+                          </label>
+                          <input type="number" min={0.0001} step="0.001"
+                            className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                            value={pieceWeightKg}
+                            onChange={(e) => setPieceWeightKg(e.target.value)}
+                            placeholder="ex: 0.35 pour une pièce de 350 g"
+                            required={needsPieceWeight}
+                          />
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            Rendement en <strong>{yieldUnit}</strong> mais vente {sellingUnit === 'weight' ? 'au kg' : 'à la pièce'} : on a besoin du poids d'une pièce pour calculer le prix.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Apercu chiffre : rendement converti + cout/unite */}
+                      {conv.ok ? (
+                        <div className="bg-white rounded-lg px-3 py-2 border border-amber-100 space-y-1">
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="text-gray-500">Rendement</span>
+                            <span className="font-medium text-gray-700">
+                              {yieldQ} {yieldUnit}
+                              {yieldUnit !== sellingUnitLabel && yieldInSU > 0 && (
+                                <span className="text-gray-400"> → {yieldInSU.toFixed(2)} {sellingUnitLabel}</span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-xs text-gray-500">Coût / {sellingUnitLabel} (calculé)</span>
+                            <span className="font-bold text-gray-800">{costPerSellingUnit.toFixed(2)} {sellingPriceSuffix}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                          {conv.message}
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1952,13 +2378,13 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente (DH)</label>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Prix de vente ({sellingPriceSuffix})</label>
                           <input
                             type="number" min={0} step="0.01"
                             className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold text-amber-900"
                             value={salePrice}
                             onChange={(e) => handlePriceChange(e.target.value)}
-                            placeholder={(costPerUnit * (parseFloat(marginMultiplier) || 0)).toFixed(2)}
+                            placeholder={(costPerSellingUnit * (parseFloat(marginMultiplier) || 0)).toFixed(2)}
                           />
                         </div>
                       </div>

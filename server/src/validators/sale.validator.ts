@@ -45,6 +45,8 @@ export const checkoutSchema = z.object({
   sachetReason: z.enum([
     'client_demande', 'produit_fragile', 'produit_chaud', 'double_sachet', 'autre',
   ]).optional(),
+  // Canal de vente (mig 172). Si absent, le controller resout le canal par defaut.
+  channelId: uuid.optional().nullable(),
 });
 
 // Encaissement d'une vente a plus tard. 'credit' est exclu : c'est le marqueur

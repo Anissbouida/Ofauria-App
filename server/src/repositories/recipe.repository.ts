@@ -1,4 +1,10 @@
 import { db } from '../config/database.js';
+import {
+  yieldInSellingUnit,
+  requiresPieceWeight,
+  YieldConversionError,
+  type SellingUnit,
+} from '../utils/units.js';
 
 // Unit conversion factors to a common base (kg for weight, l for volume)
 const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
@@ -32,7 +38,9 @@ export const recipeRepository = {
     // les formats par recette (ex: ProductionPage — Phase B multi-format).
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
-              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.category_id,
+              rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.created_at, r.updated_at,
               vtc.total_cost,
               vfs.nb_formats AS formats_nb,
@@ -48,7 +56,7 @@ export const recipeRepository = {
                 ) ORDER BY rf.ordre, pcf.nom)
                 FROM recipe_formats rf
                 JOIN production_contenants pcf ON pcf.id = rf.contenant_id
-                WHERE rf.recipe_id = r.id
+                WHERE rf.recipe_id = r.id AND rf.is_active = true
               ), '[]'::jsonb) AS formats,
               p.name as product_name, p.image_url as product_image, p.price as product_price,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
@@ -59,6 +67,7 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       LEFT JOIN recipe_categories rc ON rc.id = r.category_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        ORDER BY r.is_base DESC, r.name`
@@ -72,7 +81,9 @@ export const recipeRepository = {
     // (densite 1 pour les liquides, pieces ignorees).
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
-              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.category_id,
+              rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.taux_main_oeuvre_dh_h, r.cout_energie_fournee, r.taux_frais_structure_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
@@ -90,6 +101,7 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
+       LEFT JOIN recipe_categories rc ON rc.id = r.category_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
@@ -136,16 +148,17 @@ export const recipeRepository = {
     const formatsResult = await db.query(
       `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
               rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
+              rf.prix_vente_unitaire_override, rf.margin_multiplier_override,
               pc.nom as contenant_nom, pc.unite_lancement as contenant_unite_lancement,
               pc.type_production as contenant_type,
               vfc.poids_format_g, vfc.poids_utilise_g,
               vfc.cout_matiere_format, vfc.cout_matiere_unitaire,
               vfc.cout_mo_format, vfc.cout_energie_format, vfc.cout_struct_format,
-              vfc.cout_unitaire_complet, vfc.prix_vente_unitaire
+              vfc.cout_unitaire_complet, vfc.prix_vente_unitaire, vfc.marge_resolue
        FROM recipe_formats rf
        JOIN production_contenants pc ON pc.id = rf.contenant_id
        LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
-       WHERE rf.recipe_id = $1
+       WHERE rf.recipe_id = $1 AND rf.is_active = true
        ORDER BY rf.ordre ASC, pc.nom ASC`,
       [id]
     );
@@ -163,7 +176,7 @@ export const recipeRepository = {
   async findByProductId(productId: string) {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
-              r.yield_quantity, r.yield_unit, r.margin_multiplier, r.etapes,
+              r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.created_at, r.updated_at,
               vtc.total_cost,
               p.name as product_name, p.price as product_price
@@ -214,7 +227,7 @@ export const recipeRepository = {
        FROM recipe_formats rf
        JOIN production_contenants pc ON pc.id = rf.contenant_id
        LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
-       WHERE rf.recipe_id = $1
+       WHERE rf.recipe_id = $1 AND rf.is_active = true
        ORDER BY rf.ordre ASC, pc.nom ASC`,
       [recipeId]
     );
@@ -228,13 +241,25 @@ export const recipeRepository = {
     };
   },
 
+  /** List recipe categories (sections de production) — pour les selecteurs UI. */
+  async listCategories() {
+    const result = await db.query(
+      `SELECT id, code, label, color, display_order
+       FROM recipe_categories
+       ORDER BY display_order, label`
+    );
+    return result.rows;
+  },
+
   /** List only base recipes (for sub-recipe picker).
    *  total_cost vient de la vue v_recipe_total_cost. */
   async findBaseRecipes() {
     const result = await db.query(
-      `SELECT r.id, r.name, r.yield_quantity, r.yield_unit, vtc.total_cost
+      `SELECT r.id, r.name, r.yield_quantity, r.yield_unit, vtc.total_cost,
+              vtw.total_weight_kg
        FROM recipes r
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        WHERE r.is_base = true
        ORDER BY r.name`
     );
@@ -242,18 +267,29 @@ export const recipeRepository = {
   },
 
   async create(data: {
-    productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
+    pieceWeightKg?: number | null; isBase?: boolean;
+    categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
-    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number }[];
+    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
   }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+
+      // Garde-fou yield_unit vs products.sale_unit : si pas de piece_weight_kg
+      // alors qu'il est requis, on refuse l'enregistrement avec un message clair.
+      await this.ensureYieldUnitCompatible(
+        client,
+        data.productId || null,
+        data.yieldUnit || 'unit',
+        data.pieceWeightKg ?? null,
+      );
 
       // Calcul du cout JS pour syncProductPrice uniquement (le champ recipes.total_cost
       // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
@@ -303,12 +339,13 @@ export const recipeRepository = {
       const coutEnergie = data.coutEnergieFournee ?? 0;
       const tauxStruct = data.tauxFraisStructurePct ?? parseFloat(csDefaults.taux_frais_structure_defaut_pct || '0');
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, total_cost, is_base, contenant_id, etapes, margin_multiplier,
-                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct)
-         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, contenant_id, etapes, margin_multiplier,
+                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
         [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
+         data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
-         tauxMo, coutEnergie, tauxStruct]
+         tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -353,21 +390,33 @@ export const recipeRepository = {
       if (data.formats && data.formats.length > 0) {
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
                quantite_par_format_g = EXCLUDED.quantite_par_format_g,
                quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
                nb_par_defaut = EXCLUDED.nb_par_defaut,
                cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
                ordre = EXCLUDED.ordre,
+               prix_vente_unitaire_override = EXCLUDED.prix_vente_unitaire_override,
+               margin_multiplier_override = EXCLUDED.margin_multiplier_override,
                updated_at = NOW()`,
-            [recipeId, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0]
+            [recipeId, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0,
+             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null]
           );
         }
       }
 
-      await this.syncProductPrice(client, data.productId || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
+      await this.syncProductPrice(
+        client,
+        data.productId || null,
+        totalCost,
+        data.yieldQuantity || 1,
+        data.yieldUnit || 'unit',
+        data.pieceWeightKg ?? null,
+        margin,
+        data.salePrice ?? null,
+      );
 
       await client.query('COMMIT');
       return recipeResult.rows[0];
@@ -379,30 +428,116 @@ export const recipeRepository = {
     }
   },
 
-  /** Sync linked product cost_price + price.
-   *  If `overridePrice` is provided (manual entry), use it as-is for `products.price`.
-   *  Otherwise compute price = cost_per_unit * marginMultiplier.
+  /** Garde-fou : si la recette est liee a un produit dont sale_unit ne coincide
+   *  pas avec yield_unit, piece_weight_kg est obligatoire (sinon le prix de vente
+   *  ne peut pas etre calcule). Throw un Error avec un message clair que le
+   *  controller traduit en 422.
    */
-  async syncProductPrice(executor: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, productId: string | null, totalCost: number, yieldQuantity: number, marginMultiplier: number, overridePrice: number | null = null) {
-    if (!productId || yieldQuantity <= 0) return;
-    const costPerUnit = totalCost / yieldQuantity;
-    const price = overridePrice !== null && overridePrice >= 0
-      ? overridePrice
-      : costPerUnit * marginMultiplier;
-    await executor.query(
-      `UPDATE products SET cost_price = $1, price = $2, updated_at = NOW() WHERE id = $3`,
-      [costPerUnit, price, productId]
+  async ensureYieldUnitCompatible(
+    executor: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+    productId: string | null,
+    yieldUnit: string,
+    pieceWeightKg: number | null,
+  ) {
+    if (!productId) return; // recette sans produit lie (sous-recette pure) : pas de prix a calculer
+    const productResult = await executor.query(
+      `SELECT sale_unit FROM products WHERE id = $1`,
+      [productId],
     );
+    const row = (productResult as { rows: { sale_unit: string | null }[] }).rows[0];
+    if (!row) return;
+    const sellingUnit: SellingUnit = row.sale_unit === 'weight' ? 'weight' : 'unit';
+    if (!requiresPieceWeight(yieldUnit, sellingUnit)) return;
+    if (pieceWeightKg !== null && pieceWeightKg > 0) return;
+    const target = sellingUnit === 'weight' ? 'au kg' : 'a la piece';
+    const err = new Error(
+      `Le rendement est en "${yieldUnit}" mais le produit lie est vendu ${target}. ` +
+      `Indique le poids unitaire d'une piece (en kg) pour permettre le calcul du prix de vente.`,
+    );
+    (err as Error & { code?: string }).code = 'PIECE_WEIGHT_REQUIRED';
+    throw err;
+  },
+
+  /** Sync linked product cost_price + price.
+   *
+   *  Convertit d'abord le rendement de la recette (yieldQuantity dans yieldUnit)
+   *  vers l'unite de vente du produit (products.sale_unit = 'unit' | 'weight').
+   *  Ainsi cost_price et price sont TOUJOURS dans la meme unite que le produit :
+   *   - sale_unit='weight' -> ecrit dans products.price_per_kg (DH/kg)
+   *   - sale_unit='unit'   -> ecrit dans products.price       (DH/piece)
+   *
+   *  Si la conversion est impossible (combinaison non geree, ou piece_weight_kg
+   *  manquant alors qu'il est requis), on ne touche a rien et on log. Le garde-fou
+   *  de validation a la creation/edition de recette est cense empecher ce cas;
+   *  ici c'est un filet de securite pour les cascades de propagation (sous-recettes,
+   *  ingredients, packaging) afin de ne pas casser les flux en aval.
+   *
+   *  Si `overridePrice` est fourni (saisie manuelle), il est utilise tel quel
+   *  pour le prix; cost_price est tout de meme recalcule.
+   */
+  async syncProductPrice(
+    executor: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+    productId: string | null,
+    totalCost: number,
+    yieldQuantity: number,
+    yieldUnit: string,
+    pieceWeightKg: number | null,
+    marginMultiplier: number,
+    overridePrice: number | null = null,
+  ) {
+    if (!productId || yieldQuantity <= 0) return;
+
+    // Lire l'unite de vente du produit
+    const productResult = await executor.query(
+      `SELECT sale_unit FROM products WHERE id = $1`,
+      [productId],
+    );
+    const productRow = (productResult as { rows: { sale_unit: string | null }[] }).rows[0];
+    if (!productRow) return;
+    const sellingUnit: SellingUnit = productRow.sale_unit === 'weight' ? 'weight' : 'unit';
+
+    // Convertir le rendement dans l'unite de vente
+    let yieldInSU: number;
+    try {
+      yieldInSU = yieldInSellingUnit(yieldQuantity, yieldUnit, sellingUnit, pieceWeightKg);
+    } catch (err) {
+      if (err instanceof YieldConversionError) {
+        console.warn(`syncProductPrice skip product=${productId}: ${err.message}`);
+        return;
+      }
+      throw err;
+    }
+    if (yieldInSU <= 0) return;
+
+    const costPerSellingUnit = totalCost / yieldInSU;
+    const computedPrice = costPerSellingUnit * marginMultiplier;
+    const finalPrice = overridePrice !== null && overridePrice >= 0 ? overridePrice : computedPrice;
+
+    if (sellingUnit === 'weight') {
+      // Vendu au kg : on alimente price_per_kg (lu par POS et sales).
+      // products.price reste intact (saisi manuellement ou non).
+      await executor.query(
+        `UPDATE products SET cost_price = $1, price_per_kg = $2, updated_at = NOW() WHERE id = $3`,
+        [costPerSellingUnit, finalPrice, productId],
+      );
+    } else {
+      await executor.query(
+        `UPDATE products SET cost_price = $1, price = $2, updated_at = NOW() WHERE id = $3`,
+        [costPerSellingUnit, finalPrice, productId],
+      );
+    }
   },
 
   async update(id: string, data: {
-    name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string; isBase?: boolean;
+    name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
+    pieceWeightKg?: number | null; isBase?: boolean;
+    categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
-    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number }[];
+    formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
     changedBy?: string; changeNote?: string;
   }) {
     const client = await db.getClient();
@@ -411,6 +546,15 @@ export const recipeRepository = {
 
       // Snapshot current state for versioning
       const currentRecipe = await this.findById(id);
+
+      // Garde-fou yield_unit vs sale_unit : voir create() pour le rationale.
+      await this.ensureYieldUnitCompatible(
+        client,
+        currentRecipe?.product_id || null,
+        data.yieldUnit || 'unit',
+        data.pieceWeightKg ?? null,
+      );
+
       if (currentRecipe) {
         const versionNumResult = await client.query(
           `SELECT COALESCE(MAX(version_number), 0) + 1 as next_version FROM recipe_versions WHERE recipe_id = $1`,
@@ -419,8 +563,8 @@ export const recipeRepository = {
         const nextVersion = versionNumResult.rows[0].next_version;
 
         await client.query(
-          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, yield_unit, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             id,
             nextVersion,
@@ -428,6 +572,7 @@ export const recipeRepository = {
             currentRecipe.instructions,
             currentRecipe.yield_quantity,
             currentRecipe.yield_unit || 'unit',
+            currentRecipe.piece_weight_kg ?? null,
             currentRecipe.total_cost,
             currentRecipe.is_base,
             JSON.stringify(currentRecipe.ingredients),
@@ -478,14 +623,17 @@ export const recipeRepository = {
       // total_cost n'est plus stocke (vue v_recipe_total_cost gere) — on le force a 0.
       // Frais indirects : si data ne les fournit pas, on conserve les valeurs existantes (COALESCE).
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, total_cost = 0, is_base = $5, contenant_id = $6, etapes = $7, margin_multiplier = $8,
-           taux_main_oeuvre_dh_h = COALESCE($9, taux_main_oeuvre_dh_h),
-           cout_energie_fournee = COALESCE($10, cout_energie_fournee),
-           taux_frais_structure_pct = COALESCE($11, taux_frais_structure_pct),
+        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, piece_weight_kg = $5, total_cost = 0, is_base = $6, contenant_id = $7, etapes = $8, margin_multiplier = $9,
+           taux_main_oeuvre_dh_h = COALESCE($10, taux_main_oeuvre_dh_h),
+           cout_energie_fournee = COALESCE($11, cout_energie_fournee),
+           taux_frais_structure_pct = COALESCE($12, taux_frais_structure_pct),
+           category_id = $13,
            updated_at = NOW()
-         WHERE id = $12`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
-         data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null, id]
+         WHERE id = $14`,
+        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.pieceWeightKg ?? null,
+         data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
+         data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
+         data.categoryId ?? null, id]
       );
 
       // Re-insert ingredients
@@ -531,21 +679,67 @@ export const recipeRepository = {
         }
       }
 
-      // Re-insert recipe_formats (delete-then-insert : permet renommage/suppression de formats)
-      // Si data.formats est absent (undefined), on conserve les formats existants.
-      // Si data.formats est present (meme vide), on remplace tout.
+      // recipe_formats : soft-delete + upsert.
+      //
+      // Probleme avec DELETE brut : si un recipe_format est reference par un
+      // production_plan_items historique (status produced), le FK cascade
+      // (ON DELETE SET NULL) tente d'UPDATE format_id = NULL, ce qui viole
+      // l'index unique partiel uq_plan_item_product_legacy quand un autre
+      // plan_item du meme (plan_id, product_id) avait deja format_id IS NULL.
+      // -> erreur transaction abort, save plante.
+      //
+      // Solution : on ne supprime jamais physiquement. Les formats absents de
+      // data.formats sont marques is_active=false (preserve l'historique).
+      // Les formats presents sont upsertes (ON CONFLICT reactive si etait
+      // inactif). Si data.formats est undefined, on ne touche a rien.
       if (data.formats !== undefined) {
-        await client.query('DELETE FROM recipe_formats WHERE recipe_id = $1', [id]);
+        const keptContenants = data.formats.map((f) => f.contenantId);
+        // 1. Soft-delete des formats qui ne sont plus dans data.formats
+        if (keptContenants.length > 0) {
+          await client.query(
+            `UPDATE recipe_formats
+             SET is_active = false, updated_at = NOW()
+             WHERE recipe_id = $1 AND contenant_id <> ALL($2::uuid[])`,
+            [id, keptContenants],
+          );
+        } else {
+          // data.formats vide : tout desactiver
+          await client.query(
+            `UPDATE recipe_formats SET is_active = false, updated_at = NOW() WHERE recipe_id = $1`,
+            [id],
+          );
+        }
+        // 2. Upsert (insert ou reactive + maj des valeurs)
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [id, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0]
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+             ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
+               quantite_par_format_g = EXCLUDED.quantite_par_format_g,
+               quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
+               nb_par_defaut = EXCLUDED.nb_par_defaut,
+               cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
+               ordre = EXCLUDED.ordre,
+               prix_vente_unitaire_override = EXCLUDED.prix_vente_unitaire_override,
+               margin_multiplier_override = EXCLUDED.margin_multiplier_override,
+               is_active = true,
+               updated_at = NOW()`,
+            [id, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0,
+             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null]
           );
         }
       }
 
-      await this.syncProductPrice(client, currentRecipe?.product_id || null, totalCost, data.yieldQuantity || 1, margin, data.salePrice ?? null);
+      await this.syncProductPrice(
+        client,
+        currentRecipe?.product_id || null,
+        totalCost,
+        data.yieldQuantity || 1,
+        data.yieldUnit || 'unit',
+        data.pieceWeightKg ?? null,
+        margin,
+        data.salePrice ?? null,
+      );
 
       await client.query('COMMIT');
 
@@ -585,7 +779,10 @@ export const recipeRepository = {
       if (!recipe) continue;
       const margin = parseFloat(recipe.margin_multiplier || '3');
       const yieldQty = parseFloat(recipe.yield_quantity || '1');
-      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+      const yieldUnit = recipe.yield_unit || 'unit';
+      const pieceWeightKg = recipe.piece_weight_kg !== null && recipe.piece_weight_kg !== undefined
+        ? parseFloat(recipe.piece_weight_kg as string) : null;
+      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, yieldUnit, pieceWeightKg, margin);
       // Cascade aux parents (si cette recette est utilisee comme sous-recette)
       await this.recalcParents(row.recipe_id);
     }
@@ -608,7 +805,10 @@ export const recipeRepository = {
       const totalCost = await this.computeFullCost(row.recipe_id);
       const margin = parseFloat(recipe.margin_multiplier || '3');
       const yieldQty = parseFloat(recipe.yield_quantity || '1');
-      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+      const yieldUnit = recipe.yield_unit || 'unit';
+      const pieceWeightKg = recipe.piece_weight_kg !== null && recipe.piece_weight_kg !== undefined
+        ? parseFloat(recipe.piece_weight_kg as string) : null;
+      await this.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, yieldUnit, pieceWeightKg, margin);
 
       // Recurse up to grandparents
       await this.recalcParents(row.recipe_id, visited);

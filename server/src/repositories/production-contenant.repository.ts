@@ -29,15 +29,24 @@ export const productionContenantRepository = {
     seuil_rendement_defaut: number;
     etapes_defaut: unknown[];
     categories_pertes: string[];
+    longueur_cm?: number | null;
+    largeur_cm?: number | null;
+    profondeur_cm?: number | null;
+    diametre_cm?: number | null;
+    type_decoupe?: string | null;
+    nb_pieces_decoupe?: number | null;
   }) {
     const result = await db.query(
       `INSERT INTO production_contenants
-        (nom, type_production, unite_lancement, quantite_theorique, pertes_fixes, poids_kg, seuil_rendement_defaut, etapes_defaut, categories_pertes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (nom, type_production, unite_lancement, quantite_theorique, pertes_fixes, poids_kg, seuil_rendement_defaut, etapes_defaut, categories_pertes,
+         longueur_cm, largeur_cm, profondeur_cm, diametre_cm, type_decoupe, nb_pieces_decoupe)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *, quantite_nette_cible`,
       [data.nom, data.type_production, data.unite_lancement, data.quantite_theorique,
        data.pertes_fixes, data.poids_kg ?? null, data.seuil_rendement_defaut,
-       JSON.stringify(data.etapes_defaut), JSON.stringify(data.categories_pertes)]
+       JSON.stringify(data.etapes_defaut), JSON.stringify(data.categories_pertes),
+       data.longueur_cm ?? null, data.largeur_cm ?? null, data.profondeur_cm ?? null,
+       data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null]
     );
     return result.rows[0];
   },
@@ -54,6 +63,12 @@ export const productionContenantRepository = {
       etapes_defaut: 'etapes_defaut',
       categories_pertes: 'categories_pertes',
       is_active: 'is_active',
+      longueur_cm: 'longueur_cm',
+      largeur_cm: 'largeur_cm',
+      profondeur_cm: 'profondeur_cm',
+      diametre_cm: 'diametre_cm',
+      type_decoupe: 'type_decoupe',
+      nb_pieces_decoupe: 'nb_pieces_decoupe',
     };
 
     const fields: string[] = [];

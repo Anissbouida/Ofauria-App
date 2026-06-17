@@ -42,6 +42,7 @@ router.post(
 
 router.get('/', authenticate, recipeController.list);
 router.get('/base', authenticate, recipeController.baseRecipes);
+router.get('/categories', authenticate, recipeController.listCategories);
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);

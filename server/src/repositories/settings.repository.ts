@@ -26,6 +26,9 @@ export const settingsRepository = {
     productionStepsEnabled?: boolean; productionStepsBlocking?: boolean;
     productionYieldEnabled?: boolean; productionCostEnabled?: boolean;
     productionChargeLoyer?: number; productionChargeEnergie?: number; productionChargeAutres?: number;
+    // Arrondi prix (mig 170)
+    prixArrondiStrategie?: string;
+    prixArrondiSens?: string;
   }) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -70,6 +73,9 @@ export const settingsRepository = {
       productionChargeLoyer: 'production_charge_loyer',
       productionChargeEnergie: 'production_charge_energie',
       productionChargeAutres: 'production_charge_autres',
+      // Arrondi prix (mig 170)
+      prixArrondiStrategie: 'prix_arrondi_strategie',
+      prixArrondiSens: 'prix_arrondi_sens',
     };
 
     const fields: string[] = [];

@@ -30,6 +30,13 @@ interface Contenant {
   is_active: boolean;
   created_at: string;
   products?: { id: string; name: string }[];
+  // Dimensions physiques (mig 167)
+  longueur_cm?: string | null;
+  largeur_cm?: string | null;
+  profondeur_cm?: string | null;
+  diametre_cm?: string | null;
+  type_decoupe?: string | null;
+  nb_pieces_decoupe?: number | null;
 }
 
 interface LinkedRecipe {
@@ -402,6 +409,13 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [pertesFixes, setPertesFixes] = useState(contenant?.pertes_fixes || '0');
   const [seuilRendement, setSeuilRendement] = useState(contenant?.seuil_rendement_defaut || '90');
   const [categoriesPertes, setCategoriesPertes] = useState(contenant?.categories_pertes?.join(', ') || '');
+  // Dimensions physiques (mig 167)
+  const [longueurCm, setLongueurCm] = useState(contenant?.longueur_cm || '');
+  const [largeurCm, setLargeurCm] = useState(contenant?.largeur_cm || '');
+  const [profondeurCm, setProfondeurCm] = useState(contenant?.profondeur_cm || '');
+  const [diametreCm, setDiametreCm] = useState(contenant?.diametre_cm || '');
+  const [typeDecoupe, setTypeDecoupe] = useState(contenant?.type_decoupe || '');
+  const [nbPiecesDecoupe, setNbPiecesDecoupe] = useState(contenant?.nb_pieces_decoupe?.toString() || '');
 
   const mode = getModeCalcul(uniteLancement);
   const modeLabels = MODE_LABELS[mode];
@@ -434,6 +448,12 @@ function ContenantForm({ contenant, onClose, onSaved }: {
         .split(',')
         .map(s => s.trim())
         .filter(Boolean),
+      longueur_cm: longueurCm ? parseFloat(longueurCm) : null,
+      largeur_cm: largeurCm ? parseFloat(largeurCm) : null,
+      profondeur_cm: profondeurCm ? parseFloat(profondeurCm) : null,
+      diametre_cm: diametreCm ? parseFloat(diametreCm) : null,
+      type_decoupe: typeDecoupe || null,
+      nb_pieces_decoupe: nbPiecesDecoupe ? parseInt(nbPiecesDecoupe, 10) : null,
     });
   };
 
@@ -532,6 +552,74 @@ function ContenantForm({ contenant, onClose, onSaved }: {
             <input type="text" value={categoriesPertes} onChange={e => setCategoriesPertes(e.target.value)}
               placeholder="bords, accidents_decoupe, qualite_visuelle"
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          {/* Dimensions physiques (mig 167) — sert au libelle, au rendement decoupe et a la comparaison */}
+          <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/50 space-y-3">
+            <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              📐 Dimensions physiques <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Longueur (cm)</label>
+                <input type="number" step="0.1" min="0"
+                  value={longueurCm} onChange={e => setLongueurCm(e.target.value)}
+                  placeholder="40"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Largeur (cm)</label>
+                <input type="number" step="0.1" min="0"
+                  value={largeurCm} onChange={e => setLargeurCm(e.target.value)}
+                  placeholder="60"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Profondeur (cm)</label>
+                <input type="number" step="0.1" min="0"
+                  value={profondeurCm} onChange={e => setProfondeurCm(e.target.value)}
+                  placeholder="4.5"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Diamètre (cm)</label>
+                <input type="number" step="0.1" min="0"
+                  value={diametreCm} onChange={e => setDiametreCm(e.target.value)}
+                  placeholder="18 (pour les cercles)"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Type de découpe</label>
+                <select value={typeDecoupe} onChange={e => setTypeDecoupe(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+                  <option value="">— Non spécifié —</option>
+                  <option value="sans_decoupe">Sans découpe</option>
+                  <option value="damier">Damier (grille régulière)</option>
+                  <option value="bande">Bande (tranches)</option>
+                  <option value="triangle">Triangle (parts)</option>
+                  <option value="forme_libre">Forme libre (emporte-pièce)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nb pièces après découpe</label>
+                <input type="number" step="1" min="1"
+                  value={nbPiecesDecoupe} onChange={e => setNbPiecesDecoupe(e.target.value)}
+                  placeholder="20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+            {/* Apercu format libelle */}
+            {(longueurCm && largeurCm) || diametreCm ? (
+              <div className="text-xs text-gray-500 italic">
+                Format affiché : <strong className="not-italic text-gray-700">
+                  {diametreCm ? `Ø${diametreCm} cm` : `${longueurCm}×${largeurCm} cm`}
+                  {profondeurCm && ` × ${profondeurCm} cm`}
+                </strong>
+                {nbPiecesDecoupe && <span> → <strong className="not-italic text-gray-700">{nbPiecesDecoupe} pièces</strong></span>}
+              </div>
+            ) : null}
           </div>
 
           {/* Info: étapes gérées dans les recettes */}

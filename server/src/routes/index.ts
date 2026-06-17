@@ -39,6 +39,7 @@ import printerRoutes from './printer.routes.js';
 import sachetConfigRoutes from './sachet-config.routes.js';
 import productionMarkupRoutes from './production-markup.routes.js';
 import manualShiftEntryRoutes from './manual-shift-entry.routes.js';
+import salesChannelRoutes from './sales-channel.routes.js';
 
 const router = Router();
 
@@ -95,5 +96,6 @@ router.use('/printers', printerRoutes);
 router.use('/sachet-config', sachetConfigRoutes);
 router.use('/production-markup', productionMarkupRoutes);
 router.use('/manual-shift-entries', manualShiftEntryRoutes);
+router.use('/sales-channels', salesChannelRoutes);
 
 export default router;

@@ -19,9 +19,17 @@ export const createContenantSchema = z.object({
   unite_lancement: z.string().min(1).max(30).default('unit'),
   quantite_theorique: z.number().positive('La quantite doit etre positive'),
   pertes_fixes: z.number().min(0).default(0),
+  poids_kg: z.number().positive().nullable().optional(),
   seuil_rendement_defaut: z.number().min(0).max(100).default(90),
   etapes_defaut: z.array(etapeSchema).default([]),
   categories_pertes: z.array(z.string()).default([]),
+  // Dimensions physiques (mig 167) — toutes nullables, saisie progressive
+  longueur_cm: z.number().positive().nullable().optional(),
+  largeur_cm: z.number().positive().nullable().optional(),
+  profondeur_cm: z.number().positive().nullable().optional(),
+  diametre_cm: z.number().positive().nullable().optional(),
+  type_decoupe: z.string().max(30).nullable().optional(),
+  nb_pieces_decoupe: z.number().int().positive().nullable().optional(),
 });
 
 export const updateContenantSchema = createContenantSchema.partial();

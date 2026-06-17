@@ -2,6 +2,9 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
+import { pricingTierRepository } from '../repositories/product-pricing-tier.repository.js';
+import { channelPricingRepository } from '../repositories/product-channel-pricing.repository.js';
+import { salesChannelRepository } from '../repositories/sales-channel.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
 import { attendanceRepository } from '../repositories/employee.repository.js';
@@ -51,7 +54,15 @@ export const saleController = {
       customerId, items, paymentMethod, notes, discountAmount = 0,
       paymentStatus = 'paid', unpaidCustomerName, employeeId: explicitEmployeeId,
       sachetsGiven, sachetsSuggested, sachetReason,
+      channelId: explicitChannelId,
     } = req.body;
+
+    // Resolution du canal de vente : si non fourni, on prend le canal par defaut.
+    let channelId: string | null = explicitChannelId || null;
+    if (!channelId) {
+      const defaultChannel = await salesChannelRepository.findDefault();
+      channelId = defaultChannel?.id || null;
+    }
 
     // POS strictly consumes from vitrine (product_store_stock). Cashier must be
     // rattached to a store — otherwise we risk silently decrementing the global
@@ -92,14 +103,30 @@ export const saleController = {
       // Unité d'affichage du recu : memorise le toggle g/kg du caissier pour
       // les ventes au poids. NULL pour les produits unitaires.
       let lineDisplayUnit: 'g' | 'kg' | null = null;
+      // Resolution prix selon le canal (mig 173) :
+      //   1) product_channel_pricing si un override existe pour (product, channel)
+      //   2) palier tarifaire (sale_unit=weight)
+      //   3) products.price / price_per_kg
+      const channelOverride = await channelPricingRepository.findOverride(item.productId, channelId);
+
       if (product.sale_unit === 'weight') {
-        const pricePerKg = parseFloat(product.price_per_kg ?? product.price);
+        let pricePerKg: number;
+        if (channelOverride?.price_per_kg_override) {
+          pricePerKg = parseFloat(channelOverride.price_per_kg_override);
+        } else {
+          const tier = await pricingTierRepository.findMatchingTier(item.productId, item.quantity);
+          pricePerKg = tier
+            ? parseFloat(tier.prix_per_kg)
+            : parseFloat(product.price_per_kg ?? product.price);
+        }
         unitPrice = pricePerKg;
         itemSubtotal = (item.quantity / 1000) * pricePerKg;
         lineUnit = 'g';
         lineDisplayUnit = item.displayUnit === 'kg' ? 'kg' : 'g';
       } else {
-        unitPrice = parseFloat(product.price);
+        unitPrice = channelOverride?.price_override
+          ? parseFloat(channelOverride.price_override)
+          : parseFloat(product.price);
         itemSubtotal = unitPrice * item.quantity;
       }
       // Arrondi à 2 décimales (centimes) pour éviter les écarts d'arrondi
@@ -172,6 +199,7 @@ export const saleController = {
       sachetsGiven: sg,
       sachetsSuggested: ss,
       sachetReason: sr,
+      channelId,
     });
 
     res.status(201).json({ success: true, data: sale });

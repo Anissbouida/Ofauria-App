@@ -17,9 +17,15 @@ export const createRecipeSchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
   productId: z.string().uuid().optional().nullable(),
   contenantId: z.string().uuid().optional().nullable(),
+  // Classification operationnelle (recipe_categories.id). Distincte de la
+  // categorie commerciale du produit lie.
+  categoryId: z.string().uuid().optional().nullable(),
   instructions: z.string().optional().nullable(),
   yieldQuantity: z.number().positive('Le rendement doit être positif').default(1),
   yieldUnit: z.string().max(20).default('unit'),
+  // Poids unitaire d'une piece, en kg. Requis quand yield_unit != products.sale_unit
+  // (la validation finale est faite dans le repository via ensureYieldUnitCompatible).
+  pieceWeightKg: z.number().positive('Le poids unitaire doit être positif').nullable().optional(),
   marginMultiplier: z.number().positive('Le multiplicateur doit être positif').default(3),
   salePrice: z.number().nonnegative('Le prix de vente doit être positif').optional().nullable(),
   // Frais indirects au niveau recette (default 0 si absent — preserve le comportement existant)
@@ -51,6 +57,9 @@ export const createRecipeSchema = z.object({
     nbParDefaut: z.number().int().positive('Le nombre par défaut doit être >= 1').default(1),
     coutEmballageUnitaire: z.number().nonnegative().default(0),
     ordre: z.number().int().nonnegative().default(0),
+    // Overrides (mig 168) — null = utilise le calcul auto cout × marge_recette
+    prixVenteUnitaireOverride: z.number().positive().nullable().optional(),
+    marginMultiplierOverride: z.number().positive().nullable().optional(),
   })).default([]),
 });
 

@@ -57,3 +57,89 @@ export function smartFormat(quantityInBase: number, baseUnit: string | null): { 
   }
   return { value: quantityInBase, unit: baseUnit };
 }
+
+// products.sale_unit n'a que 2 valeurs (contrainte SQL mig 128) :
+//   'unit'   -> vendu a la piece
+//   'weight' -> vendu au kg
+export type SellingUnit = 'unit' | 'weight';
+
+export class YieldConversionError extends Error {
+  readonly yieldUnit: string;
+  readonly sellingUnit: SellingUnit;
+  readonly needsPieceWeight: boolean;
+  constructor(yieldUnit: string, sellingUnit: SellingUnit, needsPieceWeight: boolean) {
+    const target = sellingUnit === 'weight' ? 'kg' : 'piece';
+    const tail = needsPieceWeight
+      ? ' — renseigne le poids unitaire (piece_weight_kg) sur la recette.'
+      : ' — combinaison non supportee.';
+    super(`Impossible de convertir un rendement en "${yieldUnit}" vers une vente "${target}"${tail}`);
+    this.name = 'YieldConversionError';
+    this.yieldUnit = yieldUnit;
+    this.sellingUnit = sellingUnit;
+    this.needsPieceWeight = needsPieceWeight;
+  }
+}
+
+/**
+ * Convertit un rendement de recette (exprime en yieldUnit) vers son equivalent
+ * dans l'unite de vente du produit lie (products.sale_unit).
+ *
+ * Utilisation : recipe.repository.ts syncProductPrice() pour calculer le
+ * cout/prix unitaire dans la BONNE unite (DH/kg si vente au poids, DH/piece
+ * si vente a la piece).
+ *
+ * Regles :
+ *   yield_unit    sale_unit       resultat
+ *   kg            weight (kg)     yieldQty                  (identite)
+ *   g             weight (kg)     yieldQty / 1000
+ *   unit          weight (kg)     yieldQty * pieceWeightKg  (requis)
+ *   unit          unit            yieldQty                  (identite)
+ *   kg            unit            yieldQty / pieceWeightKg  (requis)
+ *   g             unit            (yieldQty/1000) / pieceWeightKg
+ *   l, ml, moule, plaque, batch   -> YieldConversionError
+ *
+ * @throws YieldConversionError si la conversion est impossible (combinaison non geree
+ *         ou pieceWeightKg manquant alors qu'il est requis).
+ */
+export function yieldInSellingUnit(
+  yieldQty: number,
+  yieldUnit: string,
+  sellingUnit: SellingUnit,
+  pieceWeightKg: number | null,
+): number {
+  if (yieldQty <= 0) return 0;
+  const norm = (yieldUnit || 'unit').toLowerCase();
+  const hasPieceWeight = pieceWeightKg !== null && pieceWeightKg > 0;
+
+  if (sellingUnit === 'weight') {
+    if (norm === 'kg') return yieldQty;
+    if (norm === 'g')  return yieldQty / K;
+    if (norm === 'unit') {
+      if (!hasPieceWeight) throw new YieldConversionError(yieldUnit, sellingUnit, true);
+      return yieldQty * (pieceWeightKg as number);
+    }
+    throw new YieldConversionError(yieldUnit, sellingUnit, false);
+  }
+
+  // sellingUnit === 'unit'
+  if (norm === 'unit') return yieldQty;
+  if (norm === 'kg') {
+    if (!hasPieceWeight) throw new YieldConversionError(yieldUnit, sellingUnit, true);
+    return yieldQty / (pieceWeightKg as number);
+  }
+  if (norm === 'g') {
+    if (!hasPieceWeight) throw new YieldConversionError(yieldUnit, sellingUnit, true);
+    return (yieldQty / K) / (pieceWeightKg as number);
+  }
+  throw new YieldConversionError(yieldUnit, sellingUnit, false);
+}
+
+/**
+ * True si pieceWeightKg est obligatoire pour convertir yieldUnit vers sellingUnit.
+ * Sert au garde-fou de validation a la creation/edition de recette.
+ */
+export function requiresPieceWeight(yieldUnit: string, sellingUnit: SellingUnit): boolean {
+  const norm = (yieldUnit || 'unit').toLowerCase();
+  if (sellingUnit === 'weight') return norm === 'unit';
+  return norm === 'kg' || norm === 'g';
+}

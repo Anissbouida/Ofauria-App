@@ -39,6 +39,8 @@ function toApi(row: Record<string, unknown>) {
     productionChargeLoyer: parseFloat(String(row.production_charge_loyer)) || 0,
     productionChargeEnergie: parseFloat(String(row.production_charge_energie)) || 0,
     productionChargeAutres: parseFloat(String(row.production_charge_autres)) || 0,
+    prixArrondiStrategie: (row.prix_arrondi_strategie as string) || 'aucun',
+    prixArrondiSens: (row.prix_arrondi_sens as string) || 'superieur',
   };
 }
 
@@ -61,6 +63,7 @@ export const settingsController = {
       themeAccent, themeAccentHover, themeAccentLight,
       themeCtaColor, themeCtaText,
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
+      prixArrondiStrategie, prixArrondiSens,
     } = req.body;
 
     if (primaryColor && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
@@ -94,6 +97,7 @@ export const settingsController = {
       themeAccent, themeAccentHover, themeAccentLight,
       themeCtaColor, themeCtaText,
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
+      prixArrondiStrategie, prixArrondiSens,
     });
     res.json({ success: true, data: toApi(settings) });
   },

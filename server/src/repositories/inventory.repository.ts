@@ -247,7 +247,10 @@ export const ingredientRepository = {
         const totalCost = parseFloat(recipe.total_cost || '0');
         const margin = parseFloat(recipe.margin_multiplier || '3');
         const yieldQty = parseFloat(recipe.yield_quantity || '1');
-        await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, margin);
+        const yieldUnit = recipe.yield_unit || 'unit';
+        const pieceWeightKg = recipe.piece_weight_kg !== null && recipe.piece_weight_kg !== undefined
+          ? parseFloat(recipe.piece_weight_kg as string) : null;
+        await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, yieldUnit, pieceWeightKg, margin);
         // Cascade up to parent recipes (also syncs their product price via recalcParents)
         await recipeRepository.recalcParents(row.recipe_id);
       }

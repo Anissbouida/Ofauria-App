@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
+import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
@@ -1099,6 +1100,19 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <span className="text-sm font-medium text-gray-700">Sur commande</span>
                   </label>
                 </div>
+
+                {/* Paliers tarifaires (mig 171) — visible uniquement pour les produits vendus au poids */}
+                {product && product.sale_unit === 'weight' && (
+                  <PricingTiersPanel productId={product.id as string} />
+                )}
+
+                {/* Prix par canal de vente (mig 173) — visible pour tous les produits existants */}
+                {product && (
+                  <ChannelPricingPanel
+                    productId={product.id as string}
+                    saleUnit={(product.sale_unit as string) || 'unit'}
+                  />
+                )}
               </>
             )}
 
@@ -1280,5 +1294,255 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         </form>
       </div>
     </ModalBackdrop>
+  );
+}
+
+// ─── Paliers tarifaires (mig 171) ───
+// Permet de definir N tranches min/max poids → prix/kg specifique.
+// Le POS resout automatiquement le palier au moment de la vente.
+function PricingTiersPanel({ productId }: { productId: string }) {
+  const queryClient = useQueryClient();
+  const { data: existingTiers = [] } = useQuery({
+    queryKey: ['product-pricing-tiers', productId],
+    queryFn: () => productsApi.listPricingTiers(productId),
+  });
+
+  type TierRow = { min: string; max: string; prix: string };
+  const [rows, setRows] = useState<TierRow[]>([]);
+  const [initialized, setInitialized] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (initialized || !existingTiers) return;
+    setRows(
+      existingTiers.length > 0
+        ? existingTiers
+            .sort((a, b) => a.min_grammes - b.min_grammes)
+            .map(t => ({
+              min: String(t.min_grammes),
+              max: t.max_grammes !== null ? String(t.max_grammes) : '',
+              prix: String(parseFloat(String(t.prix_per_kg))),
+            }))
+        : []
+    );
+    setInitialized(true);
+  }, [existingTiers, initialized]);
+
+  const addRow = () => setRows([...rows, { min: '', max: '', prix: '' }]);
+  const removeRow = (idx: number) => setRows(rows.filter((_, i) => i !== idx));
+  const updateRow = (idx: number, field: keyof TierRow, value: string) =>
+    setRows(rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const cleaned = rows
+        .filter(r => r.min !== '' && r.prix !== '' && parseFloat(r.prix) > 0)
+        .map((r, i) => ({
+          min_grammes: parseInt(r.min, 10) || 0,
+          max_grammes: r.max ? parseInt(r.max, 10) : null,
+          prix_per_kg: parseFloat(r.prix),
+          display_order: i,
+        }));
+      await productsApi.replacePricingTiers(productId, cleaned);
+      await queryClient.invalidateQueries({ queryKey: ['product-pricing-tiers', productId] });
+      notify.success('Paliers tarifaires enregistrés');
+    } catch {
+      notify.error('Erreur lors de la sauvegarde des paliers');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Aperçu live : pour un poids 350g, quel palier matche ?
+  const previewWeight = 350;
+  const matchingRow = rows.find(r => {
+    const min = parseInt(r.min || '0', 10);
+    const max = r.max ? parseInt(r.max, 10) : Infinity;
+    return previewWeight >= min && previewWeight < max && parseFloat(r.prix) > 0;
+  });
+
+  return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            🪙 Paliers tarifaires (vente au kg)
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Définit un prix au kg par tranche de poids. Au POS, le palier matchant est appliqué automatiquement.
+          </p>
+        </div>
+        <button type="button" onClick={addRow}
+          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+          <Plus size={12} /> Ajouter
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-lg p-3 text-center">
+          Aucun palier — le POS utilisera le prix unique du produit (price_per_kg).
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-end bg-white border border-gray-200 rounded-lg p-2">
+              <div className="col-span-3">
+                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">À partir de (g)</label>
+                <input type="number" min={0} step={1}
+                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold"
+                  value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" />
+              </div>
+              <div className="col-span-3">
+                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Jusqu'à (g)</label>
+                <input type="number" min={0} step={1}
+                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold"
+                  value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" />
+              </div>
+              <div className="col-span-5">
+                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Prix au kg (DH)</label>
+                <input type="number" min={0} step="0.01"
+                  className="w-full px-2 py-1.5 bg-emerald-50 border border-emerald-300 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold text-emerald-900"
+                  value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" />
+              </div>
+              <div className="col-span-1 flex justify-end">
+                <button type="button" onClick={() => removeRow(idx)}
+                  className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Supprimer">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Aperçu live */}
+      {rows.length > 0 && (
+        <div className="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 flex items-center justify-between">
+          <span className="text-gray-500">Aperçu pour <strong>{previewWeight}g</strong> :</span>
+          {matchingRow ? (
+            <span className="font-bold text-emerald-700">
+              {((previewWeight / 1000) * parseFloat(matchingRow.prix)).toFixed(2)} DH
+              <span className="ml-2 text-gray-400 font-normal">({matchingRow.prix} DH/kg)</span>
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">Aucun palier ne matche — fallback sur le prix produit</span>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button type="button" onClick={handleSave} disabled={saving}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60">
+          {saving ? 'Enregistrement...' : 'Enregistrer les paliers'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Prix par canal de vente (mig 173) ───
+function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleUnit: string }) {
+  const queryClient = useQueryClient();
+  const { data: channels = [] } = useQuery({
+    queryKey: ['sales-channels', 'active'],
+    queryFn: salesChannelsApi.listActive,
+  });
+  const { data: existingOverrides = [] } = useQuery({
+    queryKey: ['product-channel-pricing', productId],
+    queryFn: () => productsApi.listChannelPricing(productId),
+  });
+
+  type RowState = Record<string, { price: string; priceKg: string }>; // par channel_id
+  const [rows, setRows] = useState<RowState>({});
+  const [initialized, setInitialized] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (initialized || channels.length === 0) return;
+    const init: RowState = {};
+    for (const c of channels) {
+      const ex = existingOverrides.find(o => o.channel_id === c.id);
+      init[c.id] = {
+        price: ex?.price_override ? String(parseFloat(String(ex.price_override))) : '',
+        priceKg: ex?.price_per_kg_override ? String(parseFloat(String(ex.price_per_kg_override))) : '',
+      };
+    }
+    setRows(init);
+    setInitialized(true);
+  }, [channels, existingOverrides, initialized]);
+
+  const updateField = (channelId: string, field: 'price' | 'priceKg', value: string) =>
+    setRows(prev => ({ ...prev, [channelId]: { ...prev[channelId], [field]: value } }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const items = Object.entries(rows)
+        .map(([channelId, vals]) => ({
+          channel_id: channelId,
+          price_override: vals.price && parseFloat(vals.price) > 0 ? parseFloat(vals.price) : null,
+          price_per_kg_override: vals.priceKg && parseFloat(vals.priceKg) > 0 ? parseFloat(vals.priceKg) : null,
+        }))
+        .filter(it => it.price_override !== null || it.price_per_kg_override !== null);
+      await productsApi.replaceChannelPricing(productId, items);
+      await queryClient.invalidateQueries({ queryKey: ['product-channel-pricing', productId] });
+      notify.success('Prix par canal enregistrés');
+    } catch {
+      notify.error('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (channels.length === 0) return null;
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+      <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        🎯 Prix par canal de vente
+      </div>
+      <p className="text-xs text-gray-500">
+        Override le prix par défaut du produit pour un canal spécifique. Laisse vide pour utiliser le prix de catalogue (ou le palier tarifaire pour la vente au poids).
+      </p>
+      <div className="space-y-2">
+        {channels.map((c: SalesChannel) => {
+          const row = rows[c.id] || { price: '', priceKg: '' };
+          const hasOverride = (saleUnit === 'weight' ? row.priceKg : row.price) !== '';
+          return (
+            <div key={c.id} className={`flex items-center gap-3 p-2 rounded-lg border ${hasOverride ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+              <div className="flex items-center gap-2 min-w-[160px]">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                <span className="text-sm font-medium text-gray-700">{c.label}</span>
+                {c.is_default && <span className="text-[9px] bg-green-100 text-green-700 px-1 rounded">défaut</span>}
+              </div>
+              {saleUnit === 'weight' ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <input type="number" min={0} step="0.01"
+                    className={`flex-1 px-3 py-1.5 rounded border text-sm text-right font-bold ${hasOverride ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-gray-50 border-gray-200'}`}
+                    value={row.priceKg} onChange={e => updateField(c.id, 'priceKg', e.target.value)}
+                    placeholder="auto (prix produit / palier)" />
+                  <span className="text-xs text-gray-500 font-medium">DH/kg</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-1">
+                  <input type="number" min={0} step="0.01"
+                    className={`flex-1 px-3 py-1.5 rounded border text-sm text-right font-bold ${hasOverride ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-gray-50 border-gray-200'}`}
+                    value={row.price} onChange={e => updateField(c.id, 'price', e.target.value)}
+                    placeholder="auto (prix produit)" />
+                  <span className="text-xs text-gray-500 font-medium">DH/pièce</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-end">
+        <button type="button" onClick={handleSave} disabled={saving}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60">
+          {saving ? 'Enregistrement...' : 'Enregistrer les prix par canal'}
+        </button>
+      </div>
+    </div>
   );
 }

@@ -35,5 +35,11 @@ router.patch('/:id/toggle-availability', authenticate, authorize(...ROLE_GROUPS.
 router.post('/:id/image', authenticate, upload.single('image'), productController.uploadImage);
 router.post('/:id/stock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.adjustStock);
 router.get('/:id/stock-history', authenticate, productController.stockHistory);
+// Paliers tarifaires (mig 171)
+router.get('/:id/pricing-tiers', authenticate, productController.listPricingTiers);
+router.put('/:id/pricing-tiers', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.replacePricingTiers);
+// Overrides prix par canal (mig 173)
+router.get('/:id/channel-pricing', authenticate, productController.listChannelPricing);
+router.put('/:id/channel-pricing', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.replaceChannelPricing);
 
 export default router;

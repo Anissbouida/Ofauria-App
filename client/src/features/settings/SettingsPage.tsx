@@ -5,6 +5,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { settingsApi } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { referentielApi } from '../../api/referentiel.api';
+import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
 import {
   Save, Building2, RotateCcw, MapPin, Plus, Pencil, Trash2, Store,
   Printer, Upload, Image, Eye, Type,
@@ -102,6 +103,8 @@ export default function SettingsPage() {
       {activeTab === 'production' && (
         <>
           <ProductionChargesTab />
+          <PriceRoundingTab />
+          <SalesChannelsTab />
           <ProductionMarkupTab />
         </>
       )}
@@ -1867,6 +1870,208 @@ function EntryRow({
 }
 
 /* ============ PRODUCTION CHARGES TAB ============ */
+
+function PriceRoundingTab() {
+  const { settings, updateSettings } = useSettings();
+  const [strategie, setStrategie] = useState<'aucun' | 'au_dh' | 'au_demi_dh' | 'au_5dh'>(settings.prixArrondiStrategie || 'aucun');
+  const [sens, setSens] = useState<'inferieur' | 'superieur' | 'naturel'>(settings.prixArrondiSens || 'superieur');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setStrategie(settings.prixArrondiStrategie || 'aucun');
+    setSens(settings.prixArrondiSens || 'superieur');
+  }, [settings.prixArrondiStrategie, settings.prixArrondiSens]);
+
+  const hasChanges = strategie !== (settings.prixArrondiStrategie || 'aucun')
+    || sens !== (settings.prixArrondiSens || 'superieur');
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSettings({ prixArrondiStrategie: strategie, prixArrondiSens: sens });
+      notify.success('Strategie d\'arrondi enregistree');
+    } catch {
+      notify.error('Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Aperçu sur un prix de réf : 47.32 DH
+  const previewBrut = 47.32;
+  const applyRounding = (p: number) => {
+    if (strategie === 'aucun') return p;
+    const pas = strategie === 'au_dh' ? 1 : strategie === 'au_demi_dh' ? 0.5 : 5;
+    if (sens === 'inferieur') return Math.floor(p / pas) * pas;
+    if (sens === 'superieur') return Math.ceil(p / pas) * pas;
+    return Math.round(p / pas) * pas;
+  };
+  const previewArrondi = applyRounding(previewBrut);
+
+  return (
+    <SettingsSection
+      title="Arrondi des prix de vente"
+      description="Strategie appliquee au prix calcule (cout × marge) pour les recettes et formats. Le POS continue d'afficher avec 2 decimales."
+    >
+      <SettingItem title="Strategie" description="Pas de l'arrondi">
+        <select value={strategie} onChange={e => setStrategie(e.target.value as typeof strategie)} className="input w-56">
+          <option value="aucun">Aucun (decimales brutes)</option>
+          <option value="au_demi_dh">Au 0.5 DH</option>
+          <option value="au_dh">Au DH (entier)</option>
+          <option value="au_5dh">Au 5 DH</option>
+        </select>
+      </SettingItem>
+      <SettingItem title="Sens" description="Comment arrondir">
+        <select value={sens} onChange={e => setSens(e.target.value as typeof sens)} className="input w-56" disabled={strategie === 'aucun'}>
+          <option value="superieur">Vers le haut (protege la marge)</option>
+          <option value="inferieur">Vers le bas</option>
+          <option value="naturel">Naturel (0.5 -&gt; haut)</option>
+        </select>
+      </SettingItem>
+      <SettingItem title="Aperçu" description={`Prix brut : ${previewBrut.toFixed(2)} DH`}>
+        <div className="text-sm">
+          <span className="text-gray-500">Apres arrondi : </span>
+          <strong className="text-amber-700 text-base">{previewArrondi.toFixed(2)} DH</strong>
+        </div>
+      </SettingItem>
+      <div className="sm:col-span-2 pt-4">
+        <button onClick={handleSave} disabled={saving || !hasChanges}
+          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60">
+          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer l\'arrondi'}
+        </button>
+      </div>
+    </SettingsSection>
+  );
+}
+
+// ─── Canaux de vente (mig 172) ───
+function SalesChannelsTab() {
+  const queryClient = useQueryClient();
+  const { data: channels = [], isLoading } = useQuery({
+    queryKey: ['sales-channels'],
+    queryFn: salesChannelsApi.list,
+  });
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newColor, setNewColor] = useState('#64748b');
+
+  const createMutation = useMutation({
+    mutationFn: salesChannelsApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-channels'] });
+      notify.success('Canal créé');
+      setNewCode(''); setNewLabel(''); setNewColor('#64748b');
+      setShowAddForm(false);
+    },
+    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
+      notify.error(err?.response?.data?.error?.message || 'Erreur lors de la création');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<{ label: string; color: string; isDefault: boolean; isActive: boolean }> }) =>
+      salesChannelsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-channels'] });
+      notify.success('Canal mis à jour');
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: salesChannelsApi.deactivate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-channels'] });
+      notify.success('Canal désactivé');
+    },
+    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
+      notify.error(err?.response?.data?.error?.message || 'Erreur');
+    },
+  });
+
+  const handleSetDefault = (channel: SalesChannel) => {
+    updateMutation.mutate({ id: channel.id, data: { isDefault: true } });
+  };
+
+  return (
+    <SettingsSection
+      title="Canaux de vente"
+      description="Boutique, commande, événement, gros, livraison... Chaque vente est rattachée à un canal. Les prix peuvent être différents par canal (voir fiche produit)."
+    >
+      {isLoading ? (
+        <div className="text-sm text-gray-500">Chargement...</div>
+      ) : (
+        <div className="sm:col-span-2 space-y-2">
+          {channels.map(c => (
+            <div key={c.id} className={`flex items-center justify-between p-3 rounded-lg border ${c.is_active ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full" style={{ backgroundColor: c.color }} />
+                <div>
+                  <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    {c.label}
+                    {c.is_default && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-semibold">Par défaut</span>}
+                    {!c.is_active && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Inactif</span>}
+                  </div>
+                  <div className="text-xs text-gray-400 font-mono">{c.code}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {!c.is_default && c.is_active && (
+                  <button onClick={() => handleSetDefault(c)}
+                    className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded font-medium">
+                    Définir par défaut
+                  </button>
+                )}
+                {!c.is_default && c.is_active && (
+                  <button onClick={() => deactivateMutation.mutate(c.id)}
+                    className="text-xs px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded font-medium">
+                    Désactiver
+                  </button>
+                )}
+                {!c.is_active && (
+                  <button onClick={() => updateMutation.mutate({ id: c.id, data: { isActive: true } })}
+                    className="text-xs px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded font-medium">
+                    Réactiver
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {showAddForm ? (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <input type="text" placeholder="code (ex: pro_b2b)"
+                  value={newCode} onChange={e => setNewCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  className="input text-sm" />
+                <input type="text" placeholder="Libellé"
+                  value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                  className="input text-sm" />
+                <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)}
+                  className="w-full h-10 rounded border border-gray-200" />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowAddForm(false)} className="text-xs px-3 py-1.5 bg-white border border-gray-200 rounded">Annuler</button>
+                <button
+                  onClick={() => createMutation.mutate({ code: newCode, label: newLabel, color: newColor })}
+                  disabled={!newCode || !newLabel || createMutation.isPending}
+                  className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold disabled:opacity-50">
+                  Créer
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddForm(true)}
+              className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg text-sm font-medium border border-dashed border-gray-300">
+              + Ajouter un canal
+            </button>
+          )}
+        </div>
+      )}
+    </SettingsSection>
+  );
+}
 
 function ProductionChargesTab() {
   const { settings, updateSettings } = useSettings();

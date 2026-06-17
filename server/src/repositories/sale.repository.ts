@@ -158,6 +158,7 @@ export const saleRepository = {
     sachetsGiven?: number;
     sachetsSuggested?: number;
     sachetReason?: string;
+    channelId?: string | null; // mig 172
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null }[];
   }) {
     const client = await db.getClient();
@@ -169,20 +170,22 @@ export const saleRepository = {
       const paymentStatus = data.paymentStatus || 'paid';
       // paid_at est NULL pour une vente impayee : sera renseigne lors de l'encaissement differe.
       // Pour une vente saisie a posteriori (special B2B), on prend la date fournie.
-      const createdAtExpr = data.createdAt ? `$22` : 'NOW()';
-      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$22' : 'NOW()') : 'NULL';
+      // channel_id (mig 172) est en $22 ; createdAt eventuel passe en $23.
+      const createdAtExpr = data.createdAt ? `$23` : 'NOW()';
+      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$23' : 'NOW()') : 'NULL';
       const insertValues: unknown[] = [
         saleNumber, data.customerId || null, data.userId, data.subtotal,
         data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
         data.advanceAmount || 0, data.advanceDate || null, data.orderId || null, data.saleType || 'standard',
         paymentStatus, data.unpaidCustomerName || null, data.employeeId || null,
         data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null,
+        data.channelId || null,
       ];
       if (data.createdAt) insertValues.push(data.createdAt);
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, ${createdAtExpr}) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, ${createdAtExpr}) RETURNING *`,
         insertValues
       );
 
