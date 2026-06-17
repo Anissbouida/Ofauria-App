@@ -6,6 +6,14 @@ import { orderRepository } from '../repositories/order.repository.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
+import { refEntryRepository } from '../repositories/referentiel.repository.js';
+
+// Valide un code de mode de reglement contre le referentiel payment_methods
+// (table de reference) plutot que contre une liste figee en dur.
+async function isValidPaymentMode(code: string): Promise<boolean> {
+  const entries = await refEntryRepository.findAll('payment_methods');
+  return entries.some((e: { code: string }) => e.code === code);
+}
 
 export const caisseController = {
   async register(req: AuthRequest, res: Response) {
@@ -198,7 +206,7 @@ export const invoiceController = {
 
     const body = req.body as Record<string, unknown>;
     // Validation mode de reglement
-    if (body.expectedPaymentMode && !['cash', 'check', 'transfer'].includes(body.expectedPaymentMode as string)) {
+    if (body.expectedPaymentMode && !(await isValidPaymentMode(body.expectedPaymentMode as string))) {
       res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
       return;
     }
@@ -312,7 +320,7 @@ export const invoiceController = {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const { dueDate, expectedPaymentMode, receptionDate } = req.body as Record<string, string | null | undefined>;
-    if (expectedPaymentMode && !['cash', 'check', 'transfer'].includes(expectedPaymentMode)) {
+    if (expectedPaymentMode && !(await isValidPaymentMode(expectedPaymentMode))) {
       res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
       return;
     }
