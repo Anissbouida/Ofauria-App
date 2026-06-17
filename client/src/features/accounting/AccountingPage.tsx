@@ -2311,13 +2311,18 @@ function ChequesTab() {
     };
     data.filter(c => c.status !== 'cashed').forEach(c => {
       const amt = parseFloat(c.amount) || 0;
-      const dueStr = c.invoice_due_date || c.payment_date;
+      // L'echeance effective doit utiliser la meme priorite que :
+      //   - le statut calcule par le backend (COALESCE(check_date, invoice_due_date))
+      //   - la colonne "Echeance" du tableau (check_date || invoice_due_date)
+      // Sinon les KPIs et la liste affichent des comptes contradictoires
+      // (KPI dit "5 en retard" mais aucune ligne avec badge Retard).
+      if (c.status === 'overdue') { acc.overdue += amt; acc.overdueCount++; return; }
+      const dueStr = c.check_date || c.invoice_due_date;
       if (!dueStr) { acc.later += amt; acc.laterCount++; return; }
       try {
         const due = parseLocalDate(dueStr.slice(0, 10));
         const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays < 0) { acc.overdue += amt; acc.overdueCount++; }
-        else if (diffDays <= 7) { acc.next7d += amt; acc.next7dCount++; }
+        if (diffDays <= 7) { acc.next7d += amt; acc.next7dCount++; }
         else if (diffDays <= 30) { acc.next30d += amt; acc.next30dCount++; }
         else { acc.later += amt; acc.laterCount++; }
       } catch {
