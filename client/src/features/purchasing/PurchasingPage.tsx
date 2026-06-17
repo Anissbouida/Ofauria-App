@@ -972,6 +972,7 @@ function ReceivedInvoiceFormModal({
   isPending: boolean;
 }) {
   const isEdit = !!invoice;
+  const { entries: paymentMethods } = useReferentiel('payment_methods');
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>(invoice?.invoice_number as string || '');
   const [invoiceDate, setInvoiceDate] = useState<string>(
@@ -1073,9 +1074,10 @@ function ReceivedInvoiceFormModal({
     if (receptionDate) data.receptionDate = receptionDate; else data.receptionDate = null;
     if (expectedPaymentMode) data.expectedPaymentMode = expectedPaymentMode;
     else data.expectedPaymentMode = null;
-    // N° cheque : seulement si mode = cheque (sinon on neutralise pour eviter
-    // les valeurs orphelines apres un changement de mode)
-    data.checkNumber = expectedPaymentMode === 'check' ? (checkNumber.trim() || null) : null;
+    // N° effet : seulement pour les modes a encaisser (cheque/traite), sinon on
+    // neutralise pour eviter les valeurs orphelines apres un changement de mode
+    data.checkNumber = (expectedPaymentMode === 'check' || expectedPaymentMode === 'traite')
+      ? (checkNumber.trim() || null) : null;
     onSubmit(data);
   };
 
@@ -1175,17 +1177,17 @@ function ReceivedInvoiceFormModal({
                 <select value={expectedPaymentMode} onChange={e => setExpectedPaymentMode(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
                   <option value="">— Non défini —</option>
-                  <option value="cash">Espèces</option>
-                  <option value="check">Chèque</option>
-                  <option value="transfer">Virement</option>
+                  {paymentMethods.map(pm => (
+                    <option key={pm.code} value={pm.code}>{pm.label}</option>
+                  ))}
                 </select></div>
             </div>
-            {/* N° cheque : affiche uniquement quand le mode est "Cheque".
+            {/* N° effet : affiche uniquement pour les modes a encaisser (cheque/traite).
                 Pre-remplira automatiquement le payment.check_number au moment du reglement. */}
-            {expectedPaymentMode === 'check' && (
+            {(expectedPaymentMode === 'check' || expectedPaymentMode === 'traite') && (
               <div style={{ padding: '8px 10px', backgroundColor: '#fef3c7', borderRadius: 4, border: '1px solid #fde68a' }}>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
-                  N° Chèque
+                  N° {expectedPaymentMode === 'traite' ? 'Traite' : 'Chèque'}
                 </label>
                 <input type="text" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
                   placeholder="Ex: 1234567"
