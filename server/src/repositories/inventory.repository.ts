@@ -304,19 +304,17 @@ export const ingredientRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
-      // Desactive le trigger trg_inventory_sync_lots le temps de la transaction.
-      // Sinon, le CASCADE de DELETE FROM ingredients vers ingredient_lots fait fire
-      // le trigger par ligne, qui tente INSERT/UPDATE sur inventory avec un
-      // ingredient_id en train d'etre supprime -> FK violation. La table inventory
-      // est de toute facon supprimee dans cette transaction, donc le sync est inutile.
-      // session_replication_role = replica saute tous les triggers user pour cette
-      // session — ne requiert pas superuser sur PG >= 9.5.
-      await client.query(`SET LOCAL session_replication_role = replica`);
-
-      // Cascade manuelle pour les tables qui referencent ingredients(id) SANS ON DELETE CASCADE.
-      // Les tables qui CASCADE (ingredient_lots, purchase_requests, unsold_extras,
-      // semi_fini_storages, etc.) sont nettoyees automatiquement par PG via la cle etrangere.
+      // Ordre de suppression pour eviter la course du trigger trg_inventory_sync_lots :
+      //   1. inventory_transactions (orphan-proof : reference ingredient + lot)
+      //   2. ingredient_lots : le trigger fait fire sync_inventory_from_lots qui
+      //      UPDATE inventory.current_quantity sur les lignes existantes — pas de
+      //      FK violation tant qu'on ne SUPPRIME pas inventory avant.
+      //   3. inventory : maintenant safe, plus de trigger pour reinsereer.
+      //   4. Autres tables qui referencent ingredients sans ON DELETE CASCADE.
+      //   5. ingredients : plus de cascade restante.
+      // session_replication_role exigerait superuser (refuse sur Cloud SQL).
       await client.query(`DELETE FROM inventory_transactions WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM ingredient_lots WHERE ingredient_id = $1`, [id]);
       await client.query(`DELETE FROM inventory WHERE ingredient_id = $1`, [id]);
       await client.query(`DELETE FROM production_ingredient_needs WHERE ingredient_id = $1`, [id]);
       await client.query(`DELETE FROM production_bons_sortie_lignes WHERE ingredient_id = $1`, [id]);
@@ -332,7 +330,6 @@ export const ingredientRepository = {
         await client.query('ROLLBACK');
         return { ok: false, reason: 'Ingredient introuvable' };
       }
-      // session_replication_role est automatiquement reset au COMMIT (SET LOCAL).
       await client.query('COMMIT');
       // En mode force, on remonte au caller la qty jetee pour message UI.
       return opts.force && qty > 0 ? { ok: true, wastedQty: qty } : { ok: true };
