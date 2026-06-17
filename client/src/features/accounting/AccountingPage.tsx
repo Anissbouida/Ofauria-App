@@ -2202,6 +2202,7 @@ type CheckRow = {
   description: string | null;
   reference: string | null;
   status: 'pending' | 'cashed' | 'overdue';
+  payment_method: 'check' | 'traite';
 };
 
 function ChequesTab() {
@@ -2209,6 +2210,20 @@ function ChequesTab() {
   const [statusFilter, setStatusFilter] = useState<'pending' | 'cashed' | 'all'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmingCheck, setConfirmingCheck] = useState<CheckRow | null>(null);
+  // Filtres avances : KPIs cliquables (dueWindow), fournisseurs multi-select,
+  // periode d'echeance, methode (cheque/traite), fourchette de montant.
+  // Le panneau "advanced" est repli par defaut pour ne pas surcharger l'UI.
+  const [dueWindow, setDueWindow] = useState<'all' | 'overdue' | 'next7d' | 'next30d' | 'later'>('all');
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [dueFromDate, setDueFromDate] = useState<string>('');
+  const [dueToDate, setDueToDate] = useState<string>('');
+  const [methodFilter, setMethodFilter] = useState<'all' | 'check' | 'traite'>('all');
+  const [amountMin, setAmountMin] = useState<string>('');
+  const [amountMax, setAmountMax] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'echeance' | 'emission' | 'amount' | 'supplier'>('echeance');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
 
   // On charge TOUS les cheques pour que les KPIs et l'equation tresorerie
   // restent coherents quel que soit le filtre actif. Le tableau est ensuite
@@ -2271,22 +2286,115 @@ function ChequesTab() {
 
   // Filtres frontend (statut + recherche, car la query renvoie tout)
   const data = checks as CheckRow[];
+
+  // Liste des fournisseurs distincts pour le multi-select. On inclut les
+  // employes et categories pour les paiements non-fournisseur, sous un meme nom.
+  const uniqueSuppliers = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(c => {
+      const name = c.supplier_name || c.employee_name || c.category_name;
+      if (name) set.add(name);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  }, [data]);
+
   const filtered = useMemo(() => {
-    const byStatus = statusFilter === 'all'
-      ? data
-      : statusFilter === 'cashed'
-        ? data.filter(c => c.status === 'cashed')
-        : data.filter(c => c.status !== 'cashed'); // pending + overdue
-    if (!searchTerm) return byStatus;
-    const q = searchTerm.toLowerCase();
-    return byStatus.filter(c =>
-      (c.supplier_name || '').toLowerCase().includes(q) ||
-      (c.employee_name || '').toLowerCase().includes(q) ||
-      (c.check_number || '').toLowerCase().includes(q) ||
-      (c.invoice_number || '').toLowerCase().includes(q) ||
-      (c.description || '').toLowerCase().includes(q)
-    );
-  }, [data, statusFilter, searchTerm]);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const minAmt = amountMin ? parseFloat(amountMin) : null;
+    const maxAmt = amountMax ? parseFloat(amountMax) : null;
+    const fromDate = dueFromDate ? parseLocalDate(dueFromDate) : null;
+    const toDate = dueToDate ? parseLocalDate(dueToDate) : null;
+    const q = searchTerm.trim().toLowerCase();
+
+    let result = data.filter(c => {
+      // ─── Statut ────────────────────────────────────────────
+      if (statusFilter === 'cashed' && c.status !== 'cashed') return false;
+      if (statusFilter === 'pending' && c.status === 'cashed') return false;
+
+      // ─── Fenetre d'echeance (KPI cliquable) ────────────────
+      // Meme priorite que le statut backend et la colonne Echeance.
+      if (dueWindow !== 'all' && c.status !== 'cashed') {
+        const dueStr = c.check_date || c.invoice_due_date;
+        if (dueWindow === 'overdue') {
+          if (c.status !== 'overdue') return false;
+        } else if (!dueStr) {
+          if (dueWindow !== 'later') return false;
+        } else {
+          const due = parseLocalDate(dueStr.slice(0, 10));
+          const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (dueWindow === 'next7d' && (diffDays < 0 || diffDays > 7)) return false;
+          if (dueWindow === 'next30d' && (diffDays < 8 || diffDays > 30)) return false;
+          if (dueWindow === 'later' && diffDays <= 30) return false;
+        }
+      }
+
+      // ─── Fournisseurs (multi) ──────────────────────────────
+      if (selectedSuppliers.length > 0) {
+        const name = c.supplier_name || c.employee_name || c.category_name || '';
+        if (!selectedSuppliers.includes(name)) return false;
+      }
+
+      // ─── Periode d'echeance ────────────────────────────────
+      if (fromDate || toDate) {
+        const dueStr = c.check_date || c.invoice_due_date;
+        if (!dueStr) return false;
+        const due = parseLocalDate(dueStr.slice(0, 10));
+        if (fromDate && due < fromDate) return false;
+        if (toDate && due > toDate) return false;
+      }
+
+      // ─── Methode (cheque/traite) ───────────────────────────
+      if (methodFilter !== 'all' && c.payment_method !== methodFilter) return false;
+
+      // ─── Fourchette de montant ─────────────────────────────
+      const amt = parseFloat(c.amount) || 0;
+      if (minAmt !== null && amt < minAmt) return false;
+      if (maxAmt !== null && amt > maxAmt) return false;
+
+      // ─── Recherche texte ───────────────────────────────────
+      if (q) {
+        const hay = [
+          c.supplier_name, c.employee_name, c.category_name,
+          c.check_number, c.invoice_number, c.purchase_order_number,
+          c.description, c.reference,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    // ─── Tri ─────────────────────────────────────────────────
+    const dir = sortDir === 'asc' ? 1 : -1;
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'echeance') {
+        const da = (a.check_date || a.invoice_due_date || a.payment_date || '').slice(0, 10);
+        const db = (b.check_date || b.invoice_due_date || b.payment_date || '').slice(0, 10);
+        cmp = da.localeCompare(db);
+      } else if (sortBy === 'emission') {
+        cmp = (a.payment_date || '').slice(0, 10).localeCompare((b.payment_date || '').slice(0, 10));
+      } else if (sortBy === 'amount') {
+        cmp = (parseFloat(a.amount) || 0) - (parseFloat(b.amount) || 0);
+      } else if (sortBy === 'supplier') {
+        const sa = a.supplier_name || a.employee_name || a.category_name || '';
+        const sb = b.supplier_name || b.employee_name || b.category_name || '';
+        cmp = sa.localeCompare(sb, 'fr');
+      }
+      return cmp * dir;
+    });
+    return result;
+  }, [data, statusFilter, dueWindow, selectedSuppliers, dueFromDate, dueToDate,
+      methodFilter, amountMin, amountMax, searchTerm, sortBy, sortDir]);
+
+  const hasActiveFilters = dueWindow !== 'all' || selectedSuppliers.length > 0 ||
+    dueFromDate !== '' || dueToDate !== '' || methodFilter !== 'all' ||
+    amountMin !== '' || amountMax !== '';
+
+  const resetFilters = () => {
+    setDueWindow('all'); setSelectedSuppliers([]);
+    setDueFromDate(''); setDueToDate('');
+    setMethodFilter('all'); setAmountMin(''); setAmountMax('');
+  };
 
   // Compteurs globaux (toujours sur l'ensemble des cheques, peu importe le filtre)
   const counts = useMemo(() => {
@@ -2411,67 +2519,56 @@ function ChequesTab() {
         </div>
       )}
 
-      {/* SECTION 2 : Pipeline d'encaissement — quand l'argent va sortir */}
-      {counts.pending > 0 && (
-        <div>
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
-            Pipeline d'encaissement (vue a date — quand l'argent va sortir)
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {/* En retard */}
-            <div style={{ padding: '12px 14px', borderRadius: 4, border: breakdown.overdueCount > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: breakdown.overdueCount > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
-              <div style={{ fontSize: '0.6875rem', color: breakdown.overdueCount > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                ⚠ En retard
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: breakdown.overdueCount > 0 ? '#b71c1c' : 'inherit', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-                {n(breakdown.overdue)} DH
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                {breakdown.overdueCount} cheque{breakdown.overdueCount > 1 ? 's' : ''}
-              </div>
-            </div>
-
-            {/* ≤ 7 jours */}
-            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
-              <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                ≤ 7 jours
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#856404', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-                {n(breakdown.next7d)} DH
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                {breakdown.next7dCount} cheque{breakdown.next7dCount > 1 ? 's' : ''}
-              </div>
-            </div>
-
-            {/* 8 - 30 jours */}
-            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                8 - 30 jours
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-                {n(breakdown.next30d)} DH
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                {breakdown.next30dCount} cheque{breakdown.next30dCount > 1 ? 's' : ''}
-              </div>
-            </div>
-
-            {/* Plus tard */}
-            <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Plus tard
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-                {n(breakdown.later)} DH
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                {breakdown.laterCount} cheque{breakdown.laterCount > 1 ? 's' : ''}
-              </div>
+      {/* SECTION 2 : Pipeline d'encaissement — cartes cliquables qui filtrent la liste */}
+      {counts.pending > 0 && (() => {
+        const buckets = [
+          { key: 'overdue' as const, label: '⚠ En retard', amt: breakdown.overdue, count: breakdown.overdueCount, color: '#b71c1c', bg: '#fff5f5', border: '#f5c6cb' },
+          { key: 'next7d' as const, label: '≤ 7 jours', amt: breakdown.next7d, count: breakdown.next7dCount, color: '#856404', bg: '#fff9e6', border: '#ffeaa7' },
+          { key: 'next30d' as const, label: '8 - 30 jours', amt: breakdown.next30d, count: breakdown.next30dCount, color: 'var(--theme-text)', bg: 'var(--theme-bg-card)', border: 'var(--theme-bg-separator)' },
+          { key: 'later' as const, label: 'Plus tard', amt: breakdown.later, count: breakdown.laterCount, color: 'var(--theme-text)', bg: 'var(--theme-bg-card)', border: 'var(--theme-bg-separator)' },
+        ];
+        return (
+          <div>
+            <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
+              Pipeline d'encaissement <span style={{ fontWeight: 400, color: 'var(--theme-text-muted)' }}>(clique une carte pour filtrer)</span>
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              {buckets.map(b => {
+                const active = dueWindow === b.key;
+                const dim = b.count === 0;
+                return (
+                  <button
+                    key={b.key}
+                    type="button"
+                    onClick={() => setDueWindow(active ? 'all' : b.key)}
+                    disabled={dim}
+                    title={active ? `Annuler le filtre ${b.label}` : `Filtrer sur ${b.label}`}
+                    style={{
+                      padding: '12px 14px', borderRadius: 4,
+                      border: active ? `2px solid ${b.color}` : `1px solid ${b.border}`,
+                      background: b.bg, textAlign: 'left',
+                      cursor: dim ? 'default' : 'pointer',
+                      opacity: dim ? 0.55 : 1,
+                      transition: 'box-shadow 0.15s, transform 0.05s',
+                      boxShadow: active ? `0 2px 6px ${b.color}33` : 'none',
+                      transform: active ? 'translateY(-1px)' : 'none',
+                    }}>
+                    <div style={{ fontSize: '0.6875rem', color: b.color, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+                      {b.label}{active && ' ✓'}
+                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: b.color, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                      {n(b.amt)} DH
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      {b.count} cheque{b.count > 1 ? 's' : ''}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2493,13 +2590,118 @@ function ChequesTab() {
             </button>
           ))}
         </div>
-        <div style={{ flex: 1, position: 'relative', maxWidth: 320 }}>
+        <div style={{ flex: 1, position: 'relative', minWidth: 220, maxWidth: 360 }}>
           <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--theme-text-muted)' }} />
           <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Beneficiaire, N° cheque, N° facture..."
+            placeholder="Beneficiaire, N° cheque, facture, BC, notes..."
             className="odoo-input" style={{ width: '100%', paddingLeft: 30 }} />
         </div>
+        <button type="button" onClick={() => setShowAdvancedFilters(v => !v)}
+          className="odoo-btn-secondary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem' }}>
+          {showAdvancedFilters ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Filtres avances{hasActiveFilters && <span style={{ background: 'var(--theme-accent)', color: 'white', padding: '0 6px', borderRadius: 10, fontSize: '0.6875rem', marginLeft: 4 }}>actifs</span>}
+        </button>
+        {hasActiveFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
+            style={{ fontSize: '0.8125rem', color: '#b71c1c' }}>
+            Reinitialiser
+          </button>
+        )}
+        <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          {filtered.length} / {data.length} cheque{filtered.length > 1 ? 's' : ''}
+        </div>
       </div>
+
+      {/* Panneau filtres avances */}
+      {showAdvancedFilters && (
+        <div style={{ padding: 14, border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-page)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          {/* Fournisseurs multi-select */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Beneficiaire(s)
+            </label>
+            <button type="button" onClick={() => setSupplierDropdownOpen(v => !v)}
+              className="odoo-input" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                {selectedSuppliers.length === 0 ? 'Tous' :
+                 selectedSuppliers.length === 1 ? selectedSuppliers[0] :
+                 `${selectedSuppliers.length} selectionnes`}
+              </span>
+              <ChevronDown size={12} />
+            </button>
+            {supplierDropdownOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: 2, background: 'var(--theme-bg-card)', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 260, overflow: 'auto' }}>
+                {uniqueSuppliers.length === 0 ? (
+                  <div style={{ padding: 10, fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun beneficiaire</div>
+                ) : (
+                  uniqueSuppliers.map(name => {
+                    const checked = selectedSuppliers.includes(name);
+                    return (
+                      <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.8125rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          setSelectedSuppliers(prev => checked ? prev.filter(s => s !== name) : [...prev, name]);
+                        }} />
+                        <span>{name}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Periode d'echeance */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Echeance du / au
+            </label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input type="date" value={dueFromDate} onChange={e => setDueFromDate(e.target.value)}
+                className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
+              <input type="date" value={dueToDate} onChange={e => setDueToDate(e.target.value)}
+                className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
+            </div>
+          </div>
+
+          {/* Methode */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Methode
+            </label>
+            <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-card)', borderRadius: 4 }}>
+              {[
+                { key: 'all' as const, label: 'Toutes' },
+                { key: 'check' as const, label: 'Cheque' },
+                { key: 'traite' as const, label: 'Traite' },
+              ].map(opt => (
+                <button key={opt.key} type="button" onClick={() => setMethodFilter(opt.key)}
+                  style={{
+                    flex: 1, padding: '4px 8px', border: 'none', borderRadius: 3,
+                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500,
+                    background: methodFilter === opt.key ? 'var(--theme-accent)' : 'transparent',
+                    color: methodFilter === opt.key ? 'white' : 'var(--theme-text-muted)',
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Montant min/max */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+              Montant (DH)
+            </label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input type="number" min="0" step="0.01" value={amountMin} onChange={e => setAmountMin(e.target.value)}
+                placeholder="Min" className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
+              <input type="number" min="0" step="0.01" value={amountMax} onChange={e => setAmountMax(e.target.value)}
+                placeholder="Max" className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tableau */}
       {isLoading ? (
@@ -2508,9 +2710,19 @@ function ChequesTab() {
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          {statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
-           statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :
-           'Aucun cheque emis.'}
+          {(hasActiveFilters || searchTerm) ? (
+            <>
+              Aucun cheque ne correspond aux filtres actuels.
+              <div style={{ marginTop: 8 }}>
+                <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
+                  className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
+                  Reinitialiser les filtres
+                </button>
+              </div>
+            </>
+          ) : statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
+             statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :
+             'Aucun cheque emis.'}
         </div>
       ) : (
         <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'auto' }}>
@@ -2518,12 +2730,24 @@ function ChequesTab() {
             <thead>
               <tr>
                 <th style={{ width: 110 }}>N° Cheque</th>
-                <th>Beneficiaire</th>
+                <th style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => { if (sortBy === 'supplier') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('supplier'); setSortDir('asc'); } }}>
+                  Beneficiaire {sortBy === 'supplier' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
                 <th>Contexte</th>
-                <th style={{ width: 110 }}>Date emission</th>
-                <th style={{ width: 110 }}>Echeance</th>
+                <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => { if (sortBy === 'emission') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('emission'); setSortDir('desc'); } }}>
+                  Date emission {sortBy === 'emission' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
+                <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => { if (sortBy === 'echeance') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('echeance'); setSortDir('asc'); } }}>
+                  Echeance {sortBy === 'echeance' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
                 <th style={{ width: 110 }}>Encaisse le</th>
-                <th style={{ width: 110, textAlign: 'right' }}>Montant</th>
+                <th style={{ width: 110, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
+                  Montant {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
                 <th style={{ width: 100 }}>Statut</th>
                 <th style={{ width: 160, textAlign: 'right' }}>Actions</th>
               </tr>

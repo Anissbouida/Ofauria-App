@@ -1392,7 +1392,7 @@ export const paymentRepository = {
     const result = await db.query(
       `SELECT p.id, p.amount, p.payment_date, p.check_number, p.check_date,
               p.cashed_at, p.cashed_note, p.created_at, p.description, p.reference,
-              p.type AS payment_type,
+              p.type AS payment_type, p.payment_method,
               s.name AS supplier_name, s.id AS supplier_id,
               COALESCE(e.first_name || ' ' || e.last_name, NULL) AS employee_name,
               e.id AS employee_id,
