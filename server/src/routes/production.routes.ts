@@ -17,6 +17,7 @@ router.get('/:id', authenticate, asyncHandler(productionController.getById));
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.create));
 router.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.updateItems));
 router.post('/:id/confirm', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirm));
+router.post('/:id/revert-to-draft', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.revertToDraft));
 router.post('/:id/start', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.start));
 router.post('/:id/start-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.startItems));
 router.post('/:id/produce-items', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.produceItems));

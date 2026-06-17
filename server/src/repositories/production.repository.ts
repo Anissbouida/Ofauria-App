@@ -533,6 +533,88 @@ export const productionRepository = {
     }
   },
 
+  /** Revert un plan confirmed -> draft pour permettre des modifications.
+   *  Conditions :
+   *   - status doit etre 'confirmed' (pas in_progress, completed, etc.)
+   *   - aucun item ne doit avoir commence ('in_progress' ou 'produced')
+   *   - le BSI (s'il existe) ne doit pas etre preleve/verifie/cloture
+   *  Effets :
+   *   - supprime le BSI (status 'genere') et ses lignes
+   *   - supprime production_ingredient_needs (sera recree au prochain confirm)
+   *   - status plan -> 'draft', confirmed_at -> NULL
+   *  Les production_plan_dependencies (semi-finis) restent : le prochain
+   *  confirm les re-evaluera.
+   */
+  async revertToDraft(planId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1) Verifie l'etat du plan
+      const planResult = await client.query(
+        `SELECT id, status, confirmed_at FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId],
+      );
+      if (planResult.rows.length === 0) {
+        throw new Error('Plan introuvable');
+      }
+      const planStatus = planResult.rows[0].status as string;
+      if (planStatus !== 'confirmed') {
+        throw new Error(`Le plan est en statut "${planStatus}". Seul un plan confirme peut etre repasse en brouillon.`);
+      }
+
+      // 2) Verifie qu'aucun item n'a commence
+      const startedItems = await client.query(
+        `SELECT COUNT(*)::int AS nb FROM production_plan_items
+         WHERE plan_id = $1 AND status IN ('in_progress', 'produced')`,
+        [planId],
+      );
+      if (startedItems.rows[0].nb > 0) {
+        throw new Error('Impossible : au moins un produit a deja ete demarre ou produit. Annulez d\'abord les items en cours.');
+      }
+
+      // 3) Verifie l'etat du BSI : refuse si preleve/verifie/cloture
+      const bsiActive = await client.query(
+        `SELECT COUNT(*)::int AS nb FROM production_bons_sortie
+         WHERE plan_id = $1 AND status IN ('preleve', 'verifie', 'cloture')`,
+        [planId],
+      );
+      if (bsiActive.rows[0].nb > 0) {
+        throw new Error('Impossible : le bon de sortie a deja ete preleve. Annulez d\'abord le BSI.');
+      }
+
+      // 4) Supprime BSI 'genere' (et lignes via cascade ou explicite)
+      const bsiToDelete = await client.query(
+        `SELECT id FROM production_bons_sortie
+         WHERE plan_id = $1 AND status IN ('genere', 'annule')`,
+        [planId],
+      );
+      for (const row of bsiToDelete.rows) {
+        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bs_id = $1`, [row.id]);
+        await client.query(`DELETE FROM production_bons_sortie WHERE id = $1`, [row.id]);
+      }
+
+      // 5) Supprime les besoins en ingredients (recalcules au prochain confirm)
+      await client.query(`DELETE FROM production_ingredient_needs WHERE plan_id = $1`, [planId]);
+
+      // 6) Plan -> draft, confirmed_at -> NULL, warnings nettoye
+      await client.query(
+        `UPDATE production_plans
+         SET status = 'draft', confirmed_at = NULL, warnings = NULL, updated_at = NOW()
+         WHERE id = $1`,
+        [planId],
+      );
+
+      await client.query('COMMIT');
+      return { reverted: true, bsiDeleted: bsiToDelete.rows.length };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   async start(planId: string) {
     // Check if this plan has unfulfilled semi-finished dependencies
     const depsResult = await db.query(

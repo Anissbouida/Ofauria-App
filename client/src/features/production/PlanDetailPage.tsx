@@ -216,6 +216,20 @@ export default function PlanDetailPage() {
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
   });
 
+  const revertMutation = useMutation({
+    mutationFn: () => productionApi.revertToDraft(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      notify.success('Plan repasse en brouillon — vous pouvez le modifier');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        || (err as Error)?.message
+        || 'Erreur lors de la repasse en brouillon';
+      notify.error(msg);
+    },
+  });
+
   const confirmMutation = useMutation({
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
@@ -1526,6 +1540,37 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
           </button>
         )}
+        {/* Repasse en brouillon : visible quand confirme/awaiting/ready ET avant tout demarrage.
+            Le backend verifie aussi qu'aucun item n'a commence ni le BSI preleve. */}
+        {['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && isChef && (() => {
+          const items = (plan.items || []) as Record<string, any>[];
+          const anyStarted = items.some((it) => it.status === 'in_progress' || it.status === 'produced');
+          const bsiActive = activeBon && ['preleve', 'verifie', 'cloture'].includes(activeBon.status as string);
+          const blocked = anyStarted || bsiActive;
+          const tooltip = anyStarted
+            ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
+            : bsiActive
+              ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI'
+              : 'Repasser en brouillon pour modifier le plan';
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Repasser le plan en brouillon ?\n\nLe bon de sortie (BSI) sera supprime et les besoins en ingredients recalcules au prochain confirm.')) {
+                  revertMutation.mutate();
+                }
+              }}
+              disabled={revertMutation.isPending || blocked}
+              title={tooltip}
+              className="px-5 py-2.5 bg-white border border-amber-200 text-amber-700 rounded-xl font-medium hover:bg-amber-50 transition-all flex items-center gap-2 text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {revertMutation.isPending
+                ? <Loader2 size={16} className="animate-spin" />
+                : <ArrowLeft size={16} />}
+              {revertMutation.isPending ? 'Repasse...' : 'Modifier (revenir en brouillon)'}
+            </button>
+          );
+        })()}
         {showPrepBsi && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && (
           <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
             <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients

@@ -146,6 +146,24 @@ export const productionController = {
     });
   },
 
+  // Revert un plan confirme -> draft pour permettre des modifications.
+  // Pre-condition : status='confirmed' ET aucun item demarre/produit ET BSI non preleve.
+  async revertToDraft(req: AuthRequest, res: Response) {
+    const plan = await productionRepository.findById(req.params.id);
+    if (!plan) {
+      res.status(404).json({ success: false, error: { message: 'Plan non trouve' } });
+      return;
+    }
+    try {
+      const result = await productionRepository.revertToDraft(req.params.id);
+      const updated = await productionRepository.findById(req.params.id);
+      res.json({ success: true, data: updated, info: result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur lors de la repasse en brouillon';
+      res.status(409).json({ success: false, error: { message } });
+    }
+  },
+
   async start(req: AuthRequest, res: Response) {
     const plan = await productionRepository.findById(req.params.id);
     if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }

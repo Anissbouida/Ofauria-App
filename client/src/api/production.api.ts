@@ -6,6 +6,9 @@ export const productionApi = {
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
   updateItems: (id: string, items: Record<string, any>[]) => api.put(`/production/${id}/items`, { items }).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
+  /** Repasse un plan confirme -> draft pour permettre des modifications.
+   *  Refuse si un item a deja demarre ou si le BSI a ete preleve. */
+  revertToDraft: (id: string) => api.post(`/production/${id}/revert-to-draft`).then(r => r.data.data),
   start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
   startItems: (id: string, itemIds: string[], startedAt?: string) =>
     api.post(`/production/${id}/start-items`, { itemIds, startedAt }).then(r => r.data),
