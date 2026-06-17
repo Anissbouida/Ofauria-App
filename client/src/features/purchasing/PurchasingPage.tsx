@@ -926,7 +926,10 @@ function ReceivedInvoicesSection() {
                         <input name="checkNumber" defaultValue={(showPayForm.check_number as string) || ''}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
-                        <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+                        {/* Pre-rempli avec l'echeance de la facture : c'est la date a laquelle le
+                            fournisseur presentera le cheque/la traite a la banque. Fallback aujourd'hui
+                            si la facture n'a pas de due_date. */}
+                        <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={(showPayForm.due_date as string)?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
                   </div>
                 )}

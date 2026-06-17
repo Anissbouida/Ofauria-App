@@ -1551,6 +1551,16 @@ export const paymentRepository = {
          data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
       );
 
+      // Sync invoice.check_number avec le N° reellement utilise au paiement.
+      // Sinon le modal facture continue a afficher l'ancien N° prevu alors que
+      // l'onglet Effets montre le vrai → incoherence visible par l'utilisateur.
+      if ((data.paymentMethod === 'check' || data.paymentMethod === 'traite') && data.checkNumber) {
+        await client.query(
+          `UPDATE invoices SET check_number = $1 WHERE id = $2`,
+          [data.checkNumber, data.invoiceId]
+        );
+      }
+
       await client.query('COMMIT');
 
       // Resync paid_amount + status (sa propre transaction, hors lock)
