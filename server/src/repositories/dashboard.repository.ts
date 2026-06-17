@@ -45,12 +45,12 @@ export const dashboardRepository = {
     const treasuryRes = await db.query(
       `WITH effective AS (
          SELECT p.payment_method, p.amount,
-                CASE WHEN p.payment_method = 'check' THEN p.cashed_at
+                CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
                      ELSE p.payment_date
                 END AS effective_date
          FROM payments p
          WHERE p.type IN ('invoice', 'salary', 'expense')
-           AND (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
+           AND (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
            ${storeFilterP}
        )
        SELECT payment_method, COUNT(*)::text AS count, COALESCE(SUM(amount), 0)::text AS total
@@ -123,7 +123,7 @@ export const dashboardRepository = {
               COALESCE(SUM(CASE WHEN inv.due_date IS NULL OR inv.due_date > CURRENT_DATE + 30 THEN p.amount ELSE 0 END), 0)::text AS later
        FROM payments p
        LEFT JOIN invoices inv ON inv.id = p.invoice_id
-       WHERE p.payment_method = 'check'
+       WHERE p.payment_method IN ('check', 'traite')
          AND p.cashed_at IS NULL
          ${storeFilterPNow}`,
       nowParams
@@ -147,7 +147,7 @@ export const dashboardRepository = {
                 COALESCE(SUM(p.amount), 0) AS total,
                 COUNT(*) AS cnt
          FROM payments p
-         WHERE p.payment_method = 'check'
+         WHERE p.payment_method IN ('check', 'traite')
            AND p.cashed_at IS NULL
            ${storeFilterPNow}
          GROUP BY p.supplier_id

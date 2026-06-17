@@ -580,7 +580,7 @@ export default function EmittedInvoicesTab() {
                   invoiceId: inv.id as string, type: 'income', amount, paymentMethod: payMethod,
                   paymentDate,
                   description: `Encaissement facture ${inv.invoice_number}`,
-                  ...(payMethod === 'check' ? { checkNumber: fd.get('checkNumber') as string, checkDate: fd.get('checkDate') as string } : {}),
+                  ...(payMethod === 'check' || payMethod === 'traite' ? { checkNumber: fd.get('checkNumber') as string, checkDate: fd.get('checkDate') as string } : {}),
                 });
               }}>
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/50 rounded-xl p-4 space-y-2">
@@ -597,7 +597,7 @@ export default function EmittedInvoicesTab() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
                   <div className="flex gap-2">
-                    {(['cash', 'bank', 'check'] as const).map(m => (
+                    {(['cash', 'bank', 'check', 'traite'] as const).map(m => (
                       <button key={m} type="button" onClick={() => setPayMethod(m)}
                         className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${payMethod === m ? 'bg-green-500 text-white border-green-500 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                         {getPaymentLabel(m)}
@@ -605,11 +605,11 @@ export default function EmittedInvoicesTab() {
                     ))}
                   </div>
                 </div>
-                {payMethod === 'check' && (
+                {(payMethod === 'check' || payMethod === 'traite') && (
                   <div className="space-y-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">N° du chèque</label>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">N° {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
                       <input name="checkNumber" type="text" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30" /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Date du chèque</label>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Date {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
                       <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30" /></div>
                   </div>
                 )}

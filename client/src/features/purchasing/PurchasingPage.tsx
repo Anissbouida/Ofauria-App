@@ -900,7 +900,7 @@ function ReceivedInvoicesSection() {
               fd.supplierId = showPayForm.supplier_id;
               fd.categoryId = showPayForm.category_id || undefined;
               fd.description = `Paiement facture ${showPayForm.invoice_number}`;
-              if (payMethod !== 'check') { fd.checkNumber = undefined; fd.checkDate = undefined; }
+              if (payMethod !== 'check' && payMethod !== 'traite') { fd.checkNumber = undefined; fd.checkDate = undefined; }
               payMutation.mutate(fd);
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -918,14 +918,14 @@ function ReceivedInvoicesSection() {
                   <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
                     <input name="paymentDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>
                 </div>
-                {payMethod === 'check' && (
+                {(payMethod === 'check' || payMethod === 'traite') && (
                   <div className="odoo-alert" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <strong style={{ fontSize: '0.75rem' }}>Détails du chèque</strong>
+                    <strong style={{ fontSize: '0.75rem' }}>Détails {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</strong>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° Chèque *</label>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° {payMethod === 'traite' ? 'Traite' : 'Chèque'} *</label>
                         <input name="checkNumber" defaultValue={(showPayForm.check_number as string) || ''}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
-                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date du chèque</label>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
                   </div>

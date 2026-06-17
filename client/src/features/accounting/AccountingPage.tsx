@@ -636,7 +636,7 @@ function DettesTab() {
                   description: fd.description || undefined,
                 };
                 if (!isReceivable && payingInvoice.supplier_id) payload.supplierId = payingInvoice.supplier_id;
-                if (fd.paymentMethod === 'check') {
+                if (fd.paymentMethod === 'check' || fd.paymentMethod === 'traite') {
                   payload.checkNumber = fd.checkNumber || undefined;
                   payload.checkDate = fd.checkDate || undefined;
                 }
@@ -666,15 +666,15 @@ function DettesTab() {
                     {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select>
                 </div>
-                {payMethod === 'check' && (
+                {(payMethod === 'check' || payMethod === 'traite') && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° chèque</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {payMethod === 'traite' ? 'traite' : 'chèque'}</label>
                       <input name="checkNumber" type="text"
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date chèque</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date {payMethod === 'traite' ? 'traite' : 'chèque'}</label>
                       <input name="checkDate" type="date"
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
@@ -685,9 +685,9 @@ function DettesTab() {
                   <textarea name="description" rows={2}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
-                {payMethod === 'check' && (
+                {(payMethod === 'check' || payMethod === 'traite') && (
                   <p className="text-xs text-amber-600">
-                    Le chèque apparaîtra dans l'onglet <strong>Chèques</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
+                    {payMethod === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
                   </p>
                 )}
                 <div className="flex gap-3 justify-end pt-2">

@@ -25,7 +25,7 @@ export const caisseRepository = {
     // d'effet, on garde tel quel.
     const payments = await db.query(
       `SELECT p.id,
-              (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) AS payment_date,
+              (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) AS payment_date,
               p.type, p.amount, p.payment_method, p.description, p.reference,
               s.name as supplier_name, ec.name as category_name, ec.type as category_type,
               e.first_name as employee_first_name, e.last_name as employee_last_name
@@ -33,10 +33,10 @@ export const caisseRepository = {
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN employees e ON e.id = p.employee_id
-       WHERE (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
-         AND (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) BETWEEN $1 AND $2
+       WHERE (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
+         AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) BETWEEN $1 AND $2
          ${storeFilterP}
-       ORDER BY (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END), p.created_at`,
+       ORDER BY (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END), p.created_at`,
       params
     );
 
@@ -108,8 +108,8 @@ export const caisseRepository = {
         COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method = 'cash' THEN p.amount ELSE 0 END), 0) as cash_exits,
         COALESCE(SUM(CASE WHEN p.type != 'income' AND p.payment_method != 'cash' THEN p.amount ELSE 0 END), 0) as bank_exits
        FROM payments p
-       WHERE (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
-         AND (CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END) < $1
+       WHERE (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
+         AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) < $1
          ${prevStoreFilter}`,
       prevParams
     );
@@ -1023,7 +1023,7 @@ export const invoiceRepository = {
            p.invoice_id,
            MAX(
              CASE
-               WHEN p.payment_method = 'check' THEN p.cashed_at
+               WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
                ELSE p.payment_date
              END
            ) AS effective_date
@@ -1033,13 +1033,13 @@ export const invoiceRepository = {
            -- Exclut les paiements non concretises (cheques pas encore encaisses).
            -- Sans cette ligne, une facture status=paid avec uniquement un
            -- cheque en attente apparaitrait dans les charges avec un MAX(NULL).
-           AND (p.payment_method != 'check' OR p.cashed_at IS NOT NULL)
+           AND (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
          GROUP BY p.invoice_id
          -- Une facture "paid" qui n'a que des cheques en attente sera
          -- exclue ici (HAVING MAX retourne NULL -> filtre downstream).
          HAVING MAX(
            CASE
-             WHEN p.payment_method = 'check' THEN p.cashed_at
+             WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
              ELSE p.payment_date
            END
          ) IS NOT NULL
@@ -1155,13 +1155,13 @@ export const paymentRepository = {
   async findAll(params: { type?: string; dateFrom?: string; dateTo?: string; supplierId?: string; storeId?: string }) {
     const conditions: string[] = [
       // Exclut les cheques pas encore encaisses (cash pas encore sorti)
-      `(p.payment_method != 'check' OR p.cashed_at IS NOT NULL)`,
+      `(p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)`,
     ];
     const values: unknown[] = []; let i = 1;
     if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
     if (params.type) { conditions.push(`p.type = $${i++}`); values.push(params.type); }
     // Date filter applique sur la date effective (cashed_at pour cheque, sinon payment_date)
-    const effectiveDateExpr = `(CASE WHEN p.payment_method = 'check' THEN p.cashed_at ELSE p.payment_date END)`;
+    const effectiveDateExpr = `(CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END)`;
     if (params.dateFrom) { conditions.push(`${effectiveDateExpr} >= $${i++}`); values.push(params.dateFrom); }
     if (params.dateTo) { conditions.push(`${effectiveDateExpr} <= $${i++}`); values.push(params.dateTo); }
     if (params.supplierId) { conditions.push(`p.supplier_id = $${i++}`); values.push(params.supplierId); }
@@ -1205,7 +1205,7 @@ export const paymentRepository = {
     supplierId?: string; employeeId?: string;
     storeId?: string;
   }) {
-    const conditions: string[] = [`p.payment_method = 'check'`];
+    const conditions: string[] = [`p.payment_method IN ('check', 'traite')`];
     const values: unknown[] = []; let i = 1;
     if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
     if (params.status === 'pending') conditions.push(`p.cashed_at IS NULL`);
@@ -1259,11 +1259,11 @@ export const paymentRepository = {
   async markCashed(id: string, data: { cashedAt?: string; cashedBy: string; note?: string }) {
     const cur = await db.query(`SELECT payment_method, cashed_at FROM payments WHERE id = $1`, [id]);
     if (!cur.rows[0]) throw new Error('Paiement introuvable');
-    if (cur.rows[0].payment_method !== 'check') {
-      throw new Error('Seuls les cheques peuvent etre marques encaisses');
+    if (cur.rows[0].payment_method !== 'check' && cur.rows[0].payment_method !== 'traite') {
+      throw new Error('Seuls les cheques et traites peuvent etre marques encaisses');
     }
     if (cur.rows[0].cashed_at) {
-      throw new Error('Ce cheque est deja marque encaisse');
+      throw new Error('Ce moyen de paiement est deja marque encaisse');
     }
     const result = await db.query(
       `UPDATE payments
@@ -1285,7 +1285,7 @@ export const paymentRepository = {
     const result = await db.query(
       `UPDATE payments
        SET cashed_at = NULL, cashed_by = NULL, cashed_note = NULL
-       WHERE id = $1 AND payment_method = 'check'
+       WHERE id = $1 AND payment_method IN ('check', 'traite')
        RETURNING *`,
       [id]
     );
