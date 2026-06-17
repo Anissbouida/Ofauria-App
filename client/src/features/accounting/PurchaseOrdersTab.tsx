@@ -180,20 +180,23 @@ export default function PurchaseOrdersTab() {
   }, [allOrders]);
 
   // Etat selection : eligibilite et validite pour fusion.
-  // Seuls les BCs avec une facture liee (has_invoice) peuvent etre fusionnes,
-  // et tous les selectionnes doivent etre du meme fournisseur.
+  // Un BC est eligible s'il a une facture liee OU des articles deja livres
+  // (le backend creera une facture a la volee sur le perimetre livre).
+  // Tous les selectionnes doivent etre du meme fournisseur.
   const selectedPOs = useMemo(
     () => allOrders.filter(po => selectedPoIds.has(po.id as string)),
     [allOrders, selectedPoIds]
   );
+  const poIsEligible = (po: Record<string, any>) =>
+    po.has_invoice || parseFloat((po.delivered_amount as string) || '0') > 0;
   const mergeSupplierIds = new Set(selectedPOs.map(po => po.supplier_id as string));
   const mergeReady = selectedPOs.length >= 2
     && mergeSupplierIds.size === 1
-    && selectedPOs.every(po => po.has_invoice);
+    && selectedPOs.every(poIsEligible);
   const mergeWarning = selectedPOs.length >= 2 && !mergeReady
     ? (mergeSupplierIds.size > 1
         ? 'Les BCs selectionnes doivent etre du meme fournisseur.'
-        : 'Tous les BCs selectionnes doivent avoir une facture generee.')
+        : 'Chaque BC selectionne doit avoir au moins une livraison partielle.')
     : '';
 
   const togglePoSelection = (po: Record<string, any>) => {
@@ -372,12 +375,19 @@ export default function PurchaseOrdersTab() {
                   <Fragment key={po.id as string}>
                     <tr onClick={() => setExpandedRow(isExpanded ? null : po.id as string)} style={{ cursor: 'pointer' }}>
                       <td onClick={e => e.stopPropagation()}>
-                        <input type="checkbox"
-                          checked={selectedPoIds.has(po.id as string)}
-                          onChange={() => togglePoSelection(po)}
-                          disabled={!po.has_invoice}
-                          title={po.has_invoice ? 'Selectionner pour fusion' : 'Pas de facture liee — fusion impossible'}
-                          style={{ cursor: po.has_invoice ? 'pointer' : 'not-allowed' }} />
+                        {(() => {
+                          const eligible = poIsEligible(po);
+                          return (
+                            <input type="checkbox"
+                              checked={selectedPoIds.has(po.id as string)}
+                              onChange={() => togglePoSelection(po)}
+                              disabled={!eligible}
+                              title={eligible
+                                ? (po.has_invoice ? 'Selectionner pour fusion' : 'Selectionner — la facture sera generee a la fusion')
+                                : 'Aucun article livre — fusion impossible'}
+                              style={{ cursor: eligible ? 'pointer' : 'not-allowed' }} />
+                          );
+                        })()}
                       </td>
                       <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td>

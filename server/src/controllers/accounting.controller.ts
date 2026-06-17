@@ -163,7 +163,12 @@ export const invoiceController = {
     try {
       const invoice = await invoiceRepository.mergeForPurchaseOrders(
         purchaseOrderIds,
-        { supplierInvoiceNumber, invoiceDate }
+        {
+          supplierInvoiceNumber,
+          invoiceDate,
+          createdBy: req.user!.userId,
+          storeId: req.user!.storeId ?? null,
+        }
       );
       res.json({ success: true, data: invoice });
     } catch (err) {

@@ -599,7 +599,7 @@ export const invoiceRepository = {
    */
   async mergeForPurchaseOrders(
     purchaseOrderIds: string[],
-    options: { supplierInvoiceNumber?: string; invoiceDate?: string }
+    options: { supplierInvoiceNumber?: string; invoiceDate?: string; createdBy: string; storeId?: string | null }
   ): Promise<Record<string, unknown>> {
     if (purchaseOrderIds.length < 2) {
       throw new Error('Selectionnez au moins 2 BCs a fusionner.');
@@ -608,6 +608,18 @@ export const invoiceRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+
+      // 0. Pre-generer une facture pour les BCs partiels sans facture. On
+      //    importe la fonction dynamiquement pour eviter une dependance
+      //    circulaire entre accounting.repository et reception-voucher.repository.
+      //    createInvoiceFromPo est idempotent (pas de doublon) et utilise les
+      //    quantites deja livrees + prix saisis en reception. Les BCs sans
+      //    aucun article livre ressortent en erreur metier plus bas (filtre
+      //    minimum 2 factures).
+      const { createInvoiceFromPo } = await import('./reception-voucher.repository.js');
+      for (const poId of purchaseOrderIds) {
+        await createInvoiceFromPo(client, poId, null, options.createdBy, options.storeId ?? null);
+      }
 
       // 1. Recuperer toutes les factures liees a ces BCs (via la colonne
       //    historique purchase_order_id OU la table de jonction). DISTINCT
