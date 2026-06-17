@@ -325,9 +325,13 @@ export const invoiceController = {
       const invoice = await invoiceRepository.findById(req.params.id);
       if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
 
-      // Get invoice items with product category (join by product_id, fallback by product name)
+      // Get invoice items with product category (join by product_id, fallback by product name).
+      // Description fallback : la ligne de commande peut etre creee sans description
+      // texte (notes ligne). On retombe sur le nom du produit lie pour eviter une
+      // colonne DESIGNATION vide sur la facture.
       const itemsResult = await db.query(
-        `SELECT ii.description, ii.quantity, ii.unit_price, ii.subtotal,
+        `SELECT COALESCE(NULLIF(ii.description, ''), p.name, p2.name, '') AS description,
+                ii.quantity, ii.unit_price, ii.subtotal,
                 COALESCE(cat.name, cat2.name, '') AS category_name
          FROM invoice_items ii
          LEFT JOIN products p ON p.id = ii.product_id
@@ -368,13 +372,16 @@ export const invoiceController = {
       let taxAmount = parseFloat(inv.tax_amount as string) || 0;
       let tvaRate = 20; // Default TVA rate
 
-      // If amount (HT) is 0 or equals totalAmount (TTC), recalculate from TTC
-      if (amount <= 0 || (taxAmount <= 0 && totalAmount > 0)) {
-        // total_amount is TTC, calculate HT = TTC / (1 + tvaRate/100)
+      // amount manquant entierement → reverse-calc depuis le TTC en supposant 20%.
+      // Si amount est present mais sans tax_amount, on respecte : facture sans TVA.
+      if (amount <= 0 && totalAmount > 0) {
         amount = Math.round((totalAmount / (1 + tvaRate / 100)) * 100) / 100;
         taxAmount = Math.round((totalAmount - amount) * 100) / 100;
       } else if (amount > 0 && taxAmount > 0) {
         tvaRate = Math.round((taxAmount / amount) * 100);
+      } else {
+        // amount > 0 et taxAmount = 0 : facture HT = TTC, pas de TVA.
+        tvaRate = 0;
       }
 
       const invoiceDate = new Date(inv.invoice_date as string);

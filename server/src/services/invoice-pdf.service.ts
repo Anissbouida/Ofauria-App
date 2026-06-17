@@ -69,7 +69,12 @@ const BORDER = '#D6CFC4';
 const WHITE = '#FFFFFF';
 
 function n(val: number): string {
-  return val.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // toLocaleString('fr-FR') inserts U+202F (narrow no-break space) as the
+  // thousands separator. PDFKit's default Helvetica encoding can't render it
+  // and emits a stray glyph ('/'). On retombe sur l'espace standard.
+  return val
+    .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .replace(/[\u202F\u00A0]/g, ' ');
 }
 
 function numberToWordsFR(num: number): string {
