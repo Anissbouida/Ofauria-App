@@ -12,7 +12,7 @@ import {
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search,
-  Check, RotateCcw, Calendar,
+  Check, RotateCcw, Calendar, ListTree, Notebook,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -20,8 +20,11 @@ import CaisseImportModal from './CaisseImportModal';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { useAuth } from '../../context/AuthContext';
+import PlanComptableTab from './PlanComptableTab';
+import EcrituresTab from './EcrituresTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -185,7 +188,12 @@ function buildDailyData(
 }
 
 export default function AccountingPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<AccTab>('pilotage');
+
+  // Les onglets comptables normes (plan + ecritures) sont reserves a l'admin
+  // pour la Phase 1. L'admin pourra etendre l'acces via la gestion des utilisateurs.
+  const isAdmin = user?.role === 'admin';
 
   const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
     { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard },
@@ -195,6 +203,10 @@ export default function AccountingPage() {
     { key: 'dettes', label: 'Dettes', icon: Scale },
     { key: 'resume', label: 'Résumé', icon: BarChart3 },
     { key: 'losses', label: 'Pertes', icon: AlertTriangle },
+    ...(isAdmin ? [
+      { key: 'plan_comptable' as const, label: 'Plan comptable', icon: ListTree },
+      { key: 'ecritures' as const, label: 'Écritures', icon: Notebook },
+    ] : []),
   ];
 
   return (
@@ -231,6 +243,8 @@ export default function AccountingPage() {
         {tab === 'dettes' && <DettesTab />}
         {tab === 'resume' && <ResumeTab />}
         {tab === 'losses' && <LossesTab />}
+        {tab === 'plan_comptable' && <PlanComptableTab />}
+        {tab === 'ecritures' && <EcrituresTab />}
       </div>
     </div>
   );
@@ -2191,6 +2205,7 @@ type CheckRow = {
   cashed_note: string | null;
   cashed_by_name: string | null;
   payment_type: string;
+  payment_method: 'check' | 'traite';
   supplier_name: string | null;
   employee_name: string | null;
   category_name: string | null;
@@ -2202,7 +2217,6 @@ type CheckRow = {
   description: string | null;
   reference: string | null;
   status: 'pending' | 'cashed' | 'overdue';
-  payment_method: 'check' | 'traite';
 };
 
 function ChequesTab() {
@@ -2623,12 +2637,14 @@ function ChequesTab() {
           {(hasActiveFilters || searchTerm) ? (
             <>
               Aucun cheque ne correspond aux filtres actuels.
-              <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
-                  className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
-                  Reinitialiser les filtres
-                </button>
-              </div>
+              {(hasActiveFilters || searchTerm) && (
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
+                    className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
+                    Reinitialiser les filtres
+                  </button>
+                </div>
+              )}
             </>
           ) : statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
              statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :

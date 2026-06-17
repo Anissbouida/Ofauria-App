@@ -2,6 +2,8 @@ import { db } from '../config/database.js';
 import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromSale, persistEntry, reverseEntriesForSource, regenerateSaleEntry } from '../services/journal-generator.service.js';
 
 export const saleRepository = {
   async findAll(params: {
@@ -259,6 +261,23 @@ export const saleRepository = {
         );
       }
 
+      // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
+      // Seules les ventes payees generent une ecriture (les unpaid attendront
+      // l'encaissement differe via paymentRepository.create).
+      if (FLAGS.LEDGER_AUTOGEN && saleResult.rows[0].payment_status === 'paid') {
+        await client.query('SAVEPOINT ledger_gen');
+        try {
+          const entry = await fromSale(client, saleResult.rows[0]);
+          if (entry) await persistEntry(client, entry, { userId: data.userId });
+          await client.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec pour vente', saleResult.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+      }
+
       await client.query('COMMIT');
       return saleResult.rows[0];
     } catch (err) {
@@ -362,6 +381,12 @@ export const saleRepository = {
         );
       }
 
+      // Montant / statut de paiement ont pu changer -> reverser + regenerer
+      // l'ecriture de la vente (ou la supprimer si elle passe en impaye).
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await regenerateSaleEntry(client, saleId, updateResult.rows[0].user_id);
+      }
+
       await client.query('COMMIT');
       return { ok: true as const, sale: updateResult.rows[0] };
     } catch (err) {
@@ -402,6 +427,11 @@ export const saleRepository = {
           `UPDATE customers SET total_spent = GREATEST(0, total_spent - $1), loyalty_points = GREATEST(0, loyalty_points - $2) WHERE id = $3`,
           [parseFloat(prev.total as string) || 0, prevPoints, prev.customer_id]
         );
+      }
+
+      // Reverser l'ecriture comptable de la vente avant suppression.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await reverseEntriesForSource(client, { sourceId: saleId, sourceKinds: ['sale', 'backfill'] });
       }
 
       await client.query(`DELETE FROM sales WHERE id = $1`, [saleId]);

@@ -1,6 +1,8 @@
 import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromInvoice, persistEntry } from '../services/journal-generator.service.js';
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).
 const CAT_MATIERES_PREMIERES = '10000000-0000-0000-0000-000000000003'; // racine niveau 1
@@ -167,6 +169,22 @@ export async function createInvoiceFromPo(
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [invoice.id, item.ingredientId, item.description, item.quantity, item.unitPrice, item.subtotal]
     );
+  }
+
+  // Generation auto de l'ecriture comptable pour les factures crees via BC
+  // (meme logique que invoiceRepository.create, SAVEPOINT pour isoler).
+  if (FLAGS.LEDGER_AUTOGEN) {
+    await client.query('SAVEPOINT ledger_gen');
+    try {
+      const entry = await fromInvoice(client, invoice);
+      if (entry) await persistEntry(client, entry, { userId: createdBy });
+      await client.query('RELEASE SAVEPOINT ledger_gen');
+    } catch (genErr) {
+      await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+      // eslint-disable-next-line no-console
+      console.error('[ledger] generation echec pour facture BC', invoice.id,
+        genErr instanceof Error ? genErr.message : genErr);
+    }
   }
 
   return invoice;
