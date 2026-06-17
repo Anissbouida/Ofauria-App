@@ -216,6 +216,17 @@ export const orderRepository = {
     return `CMD-${today}-${String(seq).padStart(4, '0')}`;
   },
 
+  async delete(id: string): Promise<{ deleted: boolean; reason?: 'not_found' | 'not_cancelled' }> {
+    const existing = await db.query('SELECT status FROM orders WHERE id = $1', [id]);
+    if (!existing.rows[0]) return { deleted: false, reason: 'not_found' };
+    if (existing.rows[0].status !== 'cancelled') return { deleted: false, reason: 'not_cancelled' };
+    // order_items: ON DELETE CASCADE. production_plans.order_id: ON DELETE SET NULL.
+    // invoices.order_id has no ON DELETE rule (RESTRICT) — if any invoice references
+    // this order the DB will throw 23503; the controller maps that to a 409.
+    await db.query('DELETE FROM orders WHERE id = $1', [id]);
+    return { deleted: true };
+  },
+
   async findByPickupDate(date: string, storeId?: string) {
     const conditions = [`o.pickup_date::date = $1`, `o.status IN ('confirmed', 'in_production')`];
     const values: unknown[] = [date];

@@ -8,4 +8,5 @@ export const ordersApi = {
   updateStatus: (id: string, status: string) => api.put(`/orders/${id}/status`, { status }).then(r => r.data.data),
   deliver: (id: string, data: { amountPaid: number; paymentMethod: string }) => api.post(`/orders/${id}/deliver`, data).then(r => r.data.data),
   forDate: (date: string) => api.get('/orders/for-date', { params: { date } }).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/orders/${id}`).then(r => r.data.data),
 };

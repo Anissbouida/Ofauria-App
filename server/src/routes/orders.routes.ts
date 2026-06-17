@@ -15,5 +15,6 @@ router.post('/', authenticate, authorize(...ORDER_ROLES), orderController.create
 router.put('/:id', authenticate, authorize(...ORDER_ROLES), orderController.update);
 router.put('/:id/status', authenticate, authorize(...ORDER_ROLES), orderController.updateStatus);
 router.post('/:id/deliver', authenticate, authorize(...ORDER_ROLES), orderController.deliver);
+router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), orderController.remove);
 
 export default router;

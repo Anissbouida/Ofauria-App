@@ -333,6 +333,28 @@ export const orderController = {
     }
   },
 
+  async remove(req: AuthRequest, res: Response) {
+    try {
+      const result = await orderRepository.delete(req.params.id);
+      if (!result.deleted) {
+        if (result.reason === 'not_found') {
+          res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } });
+          return;
+        }
+        res.status(409).json({ success: false, error: { message: 'Seules les commandes annulees peuvent etre supprimees' } });
+        return;
+      }
+      res.json({ success: true, data: null });
+    } catch (err: unknown) {
+      // FK violation: a facture (or other dependent record) references this order
+      if ((err as { code?: string }).code === '23503') {
+        res.status(409).json({ success: false, error: { message: 'Impossible de supprimer cette commande (facture liee)' } });
+        return;
+      }
+      throw err;
+    }
+  },
+
   // Get pending orders for a specific date (for production planning)
   async forDate(req: AuthRequest, res: Response) {
     const { date } = req.query as Record<string, string>;

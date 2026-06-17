@@ -9,7 +9,7 @@ import {
   ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, ChevronRight, User, Package, FileText,
-  AlertCircle,
+  AlertCircle, Trash2,
 } from 'lucide-react';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 
@@ -89,6 +89,18 @@ export default function OrdersPage() {
     mutationFn: ({ id, status }: { id: string; status: string }) => ordersApi.updateStatus(id, status),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); notify.success('Statut mis à jour'); },
     onError: () => notify.error('Erreur lors de la mise à jour'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => ordersApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notify.success('Commande supprimee');
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || 'Impossible de supprimer la commande';
+      notify.error(msg);
+    },
   });
 
   const deliverMutation = useMutation({
@@ -356,6 +368,17 @@ export default function OrdersPage() {
                               className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
                               title="Annuler">
                               <Ban size={14} />
+                            </button>
+                          )}
+
+                          {status === 'cancelled' && (
+                            <button onClick={() => {
+                              if (confirm('Supprimer definitivement cette commande annulee ?'))
+                                deleteMutation.mutate(o.id as string);
+                            }}
+                              className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-400 hover:text-red-600 transition-colors"
+                              title="Supprimer">
+                              <Trash2 size={14} />
                             </button>
                           )}
                         </div>
