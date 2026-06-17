@@ -36,6 +36,9 @@ export const invoicesApi = {
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
   createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
+  /** Fusionne les factures fournisseurs des BCs en une seule. */
+  merge: (data: { purchaseOrderIds: string[]; supplierInvoiceNumber?: string; invoiceDate?: string }) =>
+    api.post('/invoices/merge', data).then(r => r.data.data),
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
   /** Modification complete (admin + gerant) — sert aussi pour ajuster une facture. */
   update: (id: string, data: Record<string, any>) => api.put(`/invoices/${id}`, data).then(r => r.data.data),

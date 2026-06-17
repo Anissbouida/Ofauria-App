@@ -65,6 +65,7 @@ invoicesRouter.put('/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_M
 invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.update);
 invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.create);
 invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.createFromOrder);
+invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.merge);
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.cancel);
 // DELETE /:id : suppression physique (admin + gerant). ?force=true cascade les paiements.
 invoicesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.remove);

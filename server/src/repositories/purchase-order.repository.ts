@@ -22,9 +22,14 @@ export const purchaseOrderRepository = {
               (SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount,
               (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as delivered_amount,
               (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id AND unit_price IS NULL) as items_without_price,
+              -- has_invoice : facture liee via la colonne historique
+              -- (purchase_order_id) OU via la table de jonction (mig 178)
+              -- pour les BCs fusionnes dans une facture unique.
               EXISTS (
                 SELECT 1 FROM invoices inv
-                WHERE inv.purchase_order_id = po.id AND inv.status != 'cancelled'
+                LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = inv.id
+                WHERE inv.status != 'cancelled'
+                  AND (inv.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
               ) as has_invoice
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id

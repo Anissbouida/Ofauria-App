@@ -147,6 +147,30 @@ export const invoiceController = {
     );
     res.status(201).json({ success: true, data: invoice });
   },
+  /**
+   * POST /invoices/merge — fusionne les factures fournisseurs liees aux BCs
+   * passes en parametre. Cas typique : le fournisseur a livre plusieurs BCs
+   * en une seule fois avec un seul N° facture.
+   */
+  async merge(req: AuthRequest, res: Response) {
+    const { purchaseOrderIds, supplierInvoiceNumber, invoiceDate } = req.body as {
+      purchaseOrderIds?: string[]; supplierInvoiceNumber?: string; invoiceDate?: string;
+    };
+    if (!Array.isArray(purchaseOrderIds) || purchaseOrderIds.length < 2) {
+      res.status(400).json({ success: false, error: { message: 'Selectionnez au moins 2 BCs a fusionner.' } });
+      return;
+    }
+    try {
+      const invoice = await invoiceRepository.mergeForPurchaseOrders(
+        purchaseOrderIds,
+        { supplierInvoiceNumber, invoiceDate }
+      );
+      res.json({ success: true, data: invoice });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la fusion';
+      res.status(409).json({ success: false, error: { message: msg } });
+    }
+  },
   async cancel(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
     res.json({ success: true, data: invoice });

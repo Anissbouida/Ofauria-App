@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
-import { suppliersApi } from '../../api/accounting.api';
+import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
   Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil, Receipt,
+  Combine,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -65,6 +66,9 @@ export default function PurchaseOrdersTab() {
   // Modal d'edition complete (admin) : qty/prix/ajout/suppression de lignes
   const [editPoId, setEditPoId] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  // Selection multi-BC pour fusionner leurs factures fournisseurs en une seule.
+  const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
+  const [showMergeModal, setShowMergeModal] = useState(false);
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['purchase-orders', statusFilter],
@@ -107,6 +111,21 @@ export default function PurchaseOrdersTab() {
     },
     onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
       notify.error(err?.response?.data?.error?.message ?? 'Erreur lors de la génération de la facture');
+    },
+  });
+
+  const mergeInvoicesMutation = useMutation({
+    mutationFn: invoicesApi.merge,
+    onSuccess: (inv: { invoice_number?: string } | null) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      notify.success(`Factures fusionnees en ${inv?.invoice_number ?? ''}`);
+      setSelectedPoIds(new Set());
+      setShowMergeModal(false);
+    },
+    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
+      notify.error(err?.response?.data?.error?.message ?? 'Erreur lors de la fusion');
     },
   });
 
@@ -159,6 +178,31 @@ export default function PurchaseOrdersTab() {
     allOrders.forEach(po => map.set(po.supplier_id as string, po.supplier_name as string));
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [allOrders]);
+
+  // Etat selection : eligibilite et validite pour fusion.
+  // Seuls les BCs avec une facture liee (has_invoice) peuvent etre fusionnes,
+  // et tous les selectionnes doivent etre du meme fournisseur.
+  const selectedPOs = useMemo(
+    () => allOrders.filter(po => selectedPoIds.has(po.id as string)),
+    [allOrders, selectedPoIds]
+  );
+  const mergeSupplierIds = new Set(selectedPOs.map(po => po.supplier_id as string));
+  const mergeReady = selectedPOs.length >= 2
+    && mergeSupplierIds.size === 1
+    && selectedPOs.every(po => po.has_invoice);
+  const mergeWarning = selectedPOs.length >= 2 && !mergeReady
+    ? (mergeSupplierIds.size > 1
+        ? 'Les BCs selectionnes doivent etre du meme fournisseur.'
+        : 'Tous les BCs selectionnes doivent avoir une facture generee.')
+    : '';
+
+  const togglePoSelection = (po: Record<string, any>) => {
+    const id = po.id as string;
+    const next = new Set(selectedPoIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedPoIds(next);
+  };
 
   const statusTabs = [
     { key: '', label: 'Tous', icon: ShoppingBag, color: 'text-gray-600' },
@@ -223,11 +267,35 @@ export default function PurchaseOrdersTab() {
           );
         })}
         <div style={{ flex: 1 }} />
+        {selectedPoIds.size > 0 && (
+          <>
+            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              {selectedPoIds.size} BC selectionne{selectedPoIds.size > 1 ? 's' : ''}
+            </span>
+            <button onClick={() => setSelectedPoIds(new Set())} className="odoo-btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title="Tout deselectionner">
+              <X size={13} />
+            </button>
+            <button onClick={() => setShowMergeModal(true)} disabled={!mergeReady}
+              className="odoo-btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: mergeReady ? 1 : 0.5 }}
+              title={mergeReady ? 'Fusionner les factures liees' : mergeWarning}>
+              <Combine size={13} /> Fusionner les factures
+            </button>
+          </>
+        )}
         <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouveau BC
         </button>
       </div>
+      {mergeWarning && (
+        <div className="odoo-alert" style={{ fontSize: '0.75rem' }}>
+          <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
+          {mergeWarning}
+        </div>
+      )}
 
       <div className="odoo-search-panel">
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
@@ -271,6 +339,7 @@ export default function PurchaseOrdersTab() {
           <table className="odoo-table">
             <thead>
               <tr>
+                <th style={{ width: 28 }} title="Cocher pour fusionner les factures liees"></th>
                 <th style={{ width: 24 }}></th>
                 <th>N° BC</th>
                 <th>Fournisseur</th>
@@ -302,6 +371,14 @@ export default function PurchaseOrdersTab() {
                 return (
                   <Fragment key={po.id as string}>
                     <tr onClick={() => setExpandedRow(isExpanded ? null : po.id as string)} style={{ cursor: 'pointer' }}>
+                      <td onClick={e => e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={selectedPoIds.has(po.id as string)}
+                          onChange={() => togglePoSelection(po)}
+                          disabled={!po.has_invoice}
+                          title={po.has_invoice ? 'Selectionner pour fusion' : 'Pas de facture liee — fusion impossible'}
+                          style={{ cursor: po.has_invoice ? 'pointer' : 'not-allowed' }} />
+                      </td>
                       <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -395,7 +472,7 @@ export default function PurchaseOrdersTab() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={9} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                        <td colSpan={10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
                           <ExpandedPORow poId={po.id as string} status={status}
                             onSend={() => sendMutation.mutate(po.id as string)}
                             onDelivery={() => setShowDelivery(po.id as string)}
@@ -418,6 +495,18 @@ export default function PurchaseOrdersTab() {
       {showDetail && <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)} />}
       {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
       {editPoId && <EditPOModal poId={editPoId} onClose={() => setEditPoId(null)} />}
+      {showMergeModal && (
+        <MergeInvoicesModal
+          selectedPOs={selectedPOs}
+          isPending={mergeInvoicesMutation.isPending}
+          onClose={() => setShowMergeModal(false)}
+          onConfirm={(data) => mergeInvoicesMutation.mutate({
+            purchaseOrderIds: Array.from(selectedPoIds),
+            supplierInvoiceNumber: data.supplierInvoiceNumber || undefined,
+            invoiceDate: data.invoiceDate || undefined,
+          })}
+        />
+      )}
     </>
   );
 }
@@ -1549,6 +1638,95 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
             className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl text-sm font-medium shadow flex items-center gap-2">
             {isPending && <Loader2 size={14} className="animate-spin" />}
             <CheckCircle2 size={14} /> Enregistrer
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ═══ Merge Invoices Modal ═══
+   Confirme la fusion des factures liees aux BCs selectionnes. L'utilisateur
+   peut fournir le N° facture fournisseur consolide et la date.
+*/
+function MergeInvoicesModal({
+  selectedPOs, isPending, onClose, onConfirm,
+}: {
+  selectedPOs: Record<string, any>[];
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: (data: { supplierInvoiceNumber: string; invoiceDate: string }) => void;
+}) {
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const totalAmount = selectedPOs.reduce((s, po) => s + (parseFloat(po.total_amount as string) || 0), 0);
+  const supplierName = selectedPOs[0]?.supplier_name as string || '';
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Combine size={18} className="text-indigo-600" />
+            <h2 className="text-base font-bold text-gray-800">Fusionner les factures</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex gap-2">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <div>
+              Cette action remplace plusieurs factures par une seule, en additionnant les lignes et les montants.
+              Refus si l'une des factures a deja un paiement enregistre.
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5">Fournisseur</div>
+            <div className="text-sm font-medium text-gray-800">{supplierName}</div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5">BCs a fusionner ({selectedPOs.length})</div>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1 max-h-48 overflow-auto">
+              {selectedPOs.map(po => (
+                <div key={po.id as string} className="flex justify-between text-xs">
+                  <span className="font-mono">{po.order_number as string}</span>
+                  <span className="font-semibold">{n(parseFloat(po.total_amount as string))} DH</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-sm font-bold pt-2 mt-2 border-t border-gray-200">
+                <span>Total fusionne</span>
+                <span>{n(totalAmount)} DH</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">N° facture fournisseur</label>
+              <input type="text" value={supplierInvoiceNumber}
+                onChange={e => setSupplierInvoiceNumber(e.target.value)}
+                placeholder="Optionnel"
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Date facture</label>
+              <input type="date" value={invoiceDate}
+                onChange={e => setInvoiceDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t px-5 py-3 flex justify-end gap-2 bg-white rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-50">Annuler</button>
+          <button onClick={() => onConfirm({ supplierInvoiceNumber, invoiceDate })}
+            disabled={isPending}
+            className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow flex items-center gap-2 disabled:opacity-50">
+            {isPending && <Loader2 size={14} className="animate-spin" />}
+            <Combine size={14} /> Confirmer la fusion
           </button>
         </div>
       </div>

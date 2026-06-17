@@ -576,6 +576,167 @@ export const invoiceRepository = {
   },
 
   /**
+   * Fusionne les factures fournisseurs des BCs passes en parametre en une seule
+   * facture. Regle metier classique : un fournisseur peut livrer plusieurs BCs
+   * en une fois avec une seule facture (un seul N° facture). Apres reception
+   * separee de chaque BC, l'utilisateur peut consolider via cette fonction.
+   *
+   * Garde-fous :
+   *   - Tous les BCs doivent etre du MEME fournisseur.
+   *   - Aucune des factures concernees ne doit avoir de paiement enregistre
+   *     (sinon il faudrait re-router les paiements vers la facture maitre,
+   *     ce qui complique le rapprochement comptable — refus explicite).
+   *   - Au moins 2 factures distinctes (sinon rien a fusionner).
+   *
+   * Strategie :
+   *   - On prend la premiere facture comme maitre.
+   *   - On reaffecte ses invoice_items + ceux des autres vers la maitre.
+   *   - On recalcule amount / total_amount via SUM des subtotals.
+   *   - On lie tous les BCs a la maitre via invoice_purchase_orders.
+   *   - On supprime les autres factures (CASCADE nettoie leurs items).
+   *   - On met a jour le N° facture fournisseur (supplier_invoice_number sur
+   *     les reception_vouchers des BCs concernes, pour la coherence).
+   */
+  async mergeForPurchaseOrders(
+    purchaseOrderIds: string[],
+    options: { supplierInvoiceNumber?: string; invoiceDate?: string }
+  ): Promise<Record<string, unknown>> {
+    if (purchaseOrderIds.length < 2) {
+      throw new Error('Selectionnez au moins 2 BCs a fusionner.');
+    }
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Recuperer toutes les factures liees a ces BCs (via la colonne
+      //    historique purchase_order_id OU la table de jonction). DISTINCT
+      //    sur id pour eviter les doublons quand un BC apparait dans les deux.
+      const invRes = await client.query(
+        `SELECT DISTINCT inv.*
+         FROM invoices inv
+         WHERE inv.id IN (
+           SELECT id FROM invoices WHERE purchase_order_id = ANY($1::uuid[])
+           UNION
+           SELECT invoice_id FROM invoice_purchase_orders WHERE purchase_order_id = ANY($1::uuid[])
+         )`,
+        [purchaseOrderIds]
+      );
+      const invoices = invRes.rows as Record<string, unknown>[];
+
+      if (invoices.length < 2) {
+        throw new Error('Aucune facture fusionnable trouvee pour ces BCs (il en faut au moins 2).');
+      }
+
+      // 2. Verifier : meme fournisseur
+      const suppliers = new Set(invoices.map((inv) => inv.supplier_id as string));
+      if (suppliers.size !== 1) {
+        throw new Error('Les factures doivent toutes provenir du meme fournisseur.');
+      }
+
+      // 3. Verifier : aucun paiement enregistre
+      const invoiceIds = invoices.map((inv) => inv.id as string);
+      const payRes = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM payments WHERE invoice_id = ANY($1::uuid[])`,
+        [invoiceIds]
+      );
+      if (parseInt(payRes.rows[0].cnt, 10) > 0) {
+        throw new Error(
+          'Au moins une des factures a deja un paiement. Annule les paiements avant la fusion.'
+        );
+      }
+
+      // 4. Choisir la maitre (la plus ancienne par invoice_date puis created_at).
+      invoices.sort((a, b) => {
+        const da = new Date(a.invoice_date as string).getTime();
+        const db_ = new Date(b.invoice_date as string).getTime();
+        if (da !== db_) return da - db_;
+        return new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime();
+      });
+      const master = invoices[0];
+      const otherIds = invoices.slice(1).map((inv) => inv.id as string);
+
+      // 5. Deplacer les invoice_items des autres factures vers la maitre.
+      await client.query(
+        `UPDATE invoice_items SET invoice_id = $1 WHERE invoice_id = ANY($2::uuid[])`,
+        [master.id, otherIds]
+      );
+
+      // 6. Recalculer amount + total_amount via SUM des subtotals.
+      const sumRes = await client.query(
+        `SELECT COALESCE(SUM(subtotal), 0)::numeric AS amount FROM invoice_items WHERE invoice_id = $1`,
+        [master.id]
+      );
+      const newAmount = parseFloat(sumRes.rows[0].amount);
+
+      // tax_amount conserve : on additionne ceux des factures fusionnees.
+      const newTax = invoices.reduce(
+        (acc, inv) => acc + (parseFloat((inv.tax_amount as string) || '0') || 0),
+        0
+      );
+      const newTotal = newAmount + newTax;
+
+      // 7. Mettre a jour la maitre (numero fournisseur optionnel, date, totaux).
+      const sets: string[] = ['amount = $1', 'tax_amount = $2', 'total_amount = $3'];
+      const values: unknown[] = [newAmount, newTax, newTotal];
+      let i = 4;
+      if (options.supplierInvoiceNumber && options.supplierInvoiceNumber.trim()) {
+        sets.push(`invoice_number = $${i++}`);
+        values.push(options.supplierInvoiceNumber.trim());
+      }
+      if (options.invoiceDate) {
+        sets.push(`invoice_date = $${i++}`);
+        values.push(options.invoiceDate);
+      }
+      values.push(master.id);
+      await client.query(
+        `UPDATE invoices SET ${sets.join(', ')} WHERE id = $${i}`,
+        values
+      );
+
+      // 8. Lier tous les BCs a la maitre via la table de jonction. ON CONFLICT
+      //    DO NOTHING pour idempotence (un BC peut deja etre dans la junction
+      //    via le backfill).
+      for (const poId of purchaseOrderIds) {
+        await client.query(
+          `INSERT INTO invoice_purchase_orders (invoice_id, purchase_order_id)
+           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [master.id, poId]
+        );
+      }
+
+      // 9. Propager le N° facture fournisseur sur les reception_vouchers des
+      //    BCs concernes, pour que la coherence soit visible cote receptions.
+      if (options.supplierInvoiceNumber && options.supplierInvoiceNumber.trim()) {
+        await client.query(
+          `UPDATE reception_vouchers
+              SET supplier_invoice_number = $1
+            WHERE purchase_order_id = ANY($2::uuid[])`,
+          [options.supplierInvoiceNumber.trim(), purchaseOrderIds]
+        );
+      }
+
+      // 10. Supprimer les autres factures (CASCADE nettoie les invoice_items
+      //     restants — il n'y en a normalement plus apres l'UPDATE ci-dessus).
+      await client.query(
+        `DELETE FROM invoices WHERE id = ANY($1::uuid[])`,
+        [otherIds]
+      );
+
+      await client.query('COMMIT');
+
+      // Retourne la facture maitre rafraichie.
+      const finalRes = await db.query(`SELECT * FROM invoices WHERE id = $1`, [master.id]);
+      return finalRes.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
    * Trouve la facture emise liee a une commande (ou null s'il n'y en a pas).
    * Utilise pour resynchroniser la facture quand la commande est modifiee.
    */
