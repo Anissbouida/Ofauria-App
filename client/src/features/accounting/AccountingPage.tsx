@@ -2210,20 +2210,15 @@ function ChequesTab() {
   const [statusFilter, setStatusFilter] = useState<'pending' | 'cashed' | 'all'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmingCheck, setConfirmingCheck] = useState<CheckRow | null>(null);
-  // Filtres avances : KPIs cliquables (dueWindow), fournisseurs multi-select,
-  // periode d'echeance, methode (cheque/traite), fourchette de montant.
-  // Le panneau "advanced" est repli par defaut pour ne pas surcharger l'UI.
+  // Filtres : KPI clic (dueWindow), beneficiaire (single), periode echeance, methode.
+  // Tous inline dans la meme barre — meme style que ChargesTab.
   const [dueWindow, setDueWindow] = useState<'all' | 'overdue' | 'next7d' | 'next30d' | 'later'>('all');
-  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [dueFromDate, setDueFromDate] = useState<string>('');
   const [dueToDate, setDueToDate] = useState<string>('');
   const [methodFilter, setMethodFilter] = useState<'all' | 'check' | 'traite'>('all');
-  const [amountMin, setAmountMin] = useState<string>('');
-  const [amountMax, setAmountMax] = useState<string>('');
   const [sortBy, setSortBy] = useState<'echeance' | 'emission' | 'amount' | 'supplier'>('echeance');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
 
   // On charge TOUS les cheques pour que les KPIs et l'equation tresorerie
   // restent coherents quel que soit le filtre actif. Le tableau est ensuite
@@ -2287,8 +2282,7 @@ function ChequesTab() {
   // Filtres frontend (statut + recherche, car la query renvoie tout)
   const data = checks as CheckRow[];
 
-  // Liste des fournisseurs distincts pour le multi-select. On inclut les
-  // employes et categories pour les paiements non-fournisseur, sous un meme nom.
+  // Liste des beneficiaires distincts pour le dropdown.
   const uniqueSuppliers = useMemo(() => {
     const set = new Set<string>();
     data.forEach(c => {
@@ -2300,8 +2294,6 @@ function ChequesTab() {
 
   const filtered = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const minAmt = amountMin ? parseFloat(amountMin) : null;
-    const maxAmt = amountMax ? parseFloat(amountMax) : null;
     const fromDate = dueFromDate ? parseLocalDate(dueFromDate) : null;
     const toDate = dueToDate ? parseLocalDate(dueToDate) : null;
     const q = searchTerm.trim().toLowerCase();
@@ -2328,10 +2320,10 @@ function ChequesTab() {
         }
       }
 
-      // ─── Fournisseurs (multi) ──────────────────────────────
-      if (selectedSuppliers.length > 0) {
+      // ─── Beneficiaire ──────────────────────────────────────
+      if (supplierFilter !== 'all') {
         const name = c.supplier_name || c.employee_name || c.category_name || '';
-        if (!selectedSuppliers.includes(name)) return false;
+        if (name !== supplierFilter) return false;
       }
 
       // ─── Periode d'echeance ────────────────────────────────
@@ -2345,11 +2337,6 @@ function ChequesTab() {
 
       // ─── Methode (cheque/traite) ───────────────────────────
       if (methodFilter !== 'all' && c.payment_method !== methodFilter) return false;
-
-      // ─── Fourchette de montant ─────────────────────────────
-      const amt = parseFloat(c.amount) || 0;
-      if (minAmt !== null && amt < minAmt) return false;
-      if (maxAmt !== null && amt > maxAmt) return false;
 
       // ─── Recherche texte ───────────────────────────────────
       if (q) {
@@ -2383,17 +2370,16 @@ function ChequesTab() {
       return cmp * dir;
     });
     return result;
-  }, [data, statusFilter, dueWindow, selectedSuppliers, dueFromDate, dueToDate,
-      methodFilter, amountMin, amountMax, searchTerm, sortBy, sortDir]);
+  }, [data, statusFilter, dueWindow, supplierFilter, dueFromDate, dueToDate,
+      methodFilter, searchTerm, sortBy, sortDir]);
 
-  const hasActiveFilters = dueWindow !== 'all' || selectedSuppliers.length > 0 ||
-    dueFromDate !== '' || dueToDate !== '' || methodFilter !== 'all' ||
-    amountMin !== '' || amountMax !== '';
+  const hasActiveFilters = dueWindow !== 'all' || supplierFilter !== 'all' ||
+    dueFromDate !== '' || dueToDate !== '' || methodFilter !== 'all';
 
   const resetFilters = () => {
-    setDueWindow('all'); setSelectedSuppliers([]);
+    setDueWindow('all'); setSupplierFilter('all');
     setDueFromDate(''); setDueToDate('');
-    setMethodFilter('all'); setAmountMin(''); setAmountMax('');
+    setMethodFilter('all');
   };
 
   // Compteurs globaux (toujours sur l'ensemble des cheques, peu importe le filtre)
@@ -2570,138 +2556,62 @@ function ChequesTab() {
         );
       })()}
 
-      {/* Filtres */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
-          {[
-            { key: 'pending' as const, label: `En attente (${counts.pending})` },
-            { key: 'cashed' as const, label: `Encaisses (${counts.cashed})` },
-            { key: 'all' as const, label: 'Tous' },
-          ].map(opt => (
-            <button key={opt.key} onClick={() => setStatusFilter(opt.key)}
-              style={{
-                padding: '6px 12px', border: 'none', borderRadius: 3,
-                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
-                background: statusFilter === opt.key ? 'var(--theme-bg-card)' : 'transparent',
-                color: statusFilter === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
-                boxShadow: statusFilter === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-              }}>
-              {opt.label}
+      {/* Filtres : tous inline dans une seule barre — meme style que ChargesTab */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
+          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+          <input type="text"
+            placeholder="Rechercher (beneficiaire, N° cheque, facture, BC, notes...)"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="odoo-search-input"
+            style={{ flex: 1, minWidth: 0 }} />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} title="Effacer la recherche"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
+              <X size={12} />
             </button>
-          ))}
+          )}
         </div>
-        <div style={{ flex: 1, position: 'relative', minWidth: 220, maxWidth: 360 }}>
-          <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--theme-text-muted)' }} />
-          <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Beneficiaire, N° cheque, facture, BC, notes..."
-            className="odoo-input" style={{ width: '100%', paddingLeft: 30 }} />
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'pending' | 'cashed' | 'all')}
+          className="odoo-filter-dropdown">
+          <option value="pending">En attente ({counts.pending})</option>
+          <option value="cashed">Encaisses ({counts.cashed})</option>
+          <option value="all">Tous</option>
+        </select>
+        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
+          <option value="all">Tous beneficiaires</option>
+          {uniqueSuppliers.map(name => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <select value={methodFilter} onChange={e => setMethodFilter(e.target.value as 'all' | 'check' | 'traite')}
+          className="odoo-filter-dropdown">
+          <option value="all">Toutes methodes</option>
+          <option value="check">Cheque</option>
+          <option value="traite">Traite</option>
+        </select>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          title="Filtre echeance">
+          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>Du</span>
+          <input type="date" value={dueFromDate}
+            onChange={e => setDueFromDate(e.target.value)}
+            className="odoo-filter-dropdown"
+            style={{ padding: '4px 6px' }} />
+          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>au</span>
+          <input type="date" value={dueToDate}
+            onChange={e => setDueToDate(e.target.value)}
+            className="odoo-filter-dropdown"
+            style={{ padding: '4px 6px' }} />
         </div>
-        <button type="button" onClick={() => setShowAdvancedFilters(v => !v)}
-          className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem' }}>
-          {showAdvancedFilters ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Filtres avances{hasActiveFilters && <span style={{ background: 'var(--theme-accent)', color: 'white', padding: '0 6px', borderRadius: 10, fontSize: '0.6875rem', marginLeft: 4 }}>actifs</span>}
-        </button>
-        {hasActiveFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
-            style={{ fontSize: '0.8125rem', color: '#b71c1c' }}>
-            Reinitialiser
+        {(hasActiveFilters || searchTerm) && (
+          <button onClick={() => { resetFilters(); setSearchTerm(''); }}
+            className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={11} /> Reinitialiser
           </button>
         )}
-        <div style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          {filtered.length} / {data.length} cheque{filtered.length > 1 ? 's' : ''}
-        </div>
+        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
+          {filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
+        </span>
       </div>
-
-      {/* Panneau filtres avances */}
-      {showAdvancedFilters && (
-        <div style={{ padding: 14, border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-page)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-          {/* Fournisseurs multi-select */}
-          <div style={{ position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-              Beneficiaire(s)
-            </label>
-            <button type="button" onClick={() => setSupplierDropdownOpen(v => !v)}
-              className="odoo-input" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                {selectedSuppliers.length === 0 ? 'Tous' :
-                 selectedSuppliers.length === 1 ? selectedSuppliers[0] :
-                 `${selectedSuppliers.length} selectionnes`}
-              </span>
-              <ChevronDown size={12} />
-            </button>
-            {supplierDropdownOpen && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: 2, background: 'var(--theme-bg-card)', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 260, overflow: 'auto' }}>
-                {uniqueSuppliers.length === 0 ? (
-                  <div style={{ padding: 10, fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun beneficiaire</div>
-                ) : (
-                  uniqueSuppliers.map(name => {
-                    const checked = selectedSuppliers.includes(name);
-                    return (
-                      <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.8125rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
-                        <input type="checkbox" checked={checked} onChange={() => {
-                          setSelectedSuppliers(prev => checked ? prev.filter(s => s !== name) : [...prev, name]);
-                        }} />
-                        <span>{name}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Periode d'echeance */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-              Echeance du / au
-            </label>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input type="date" value={dueFromDate} onChange={e => setDueFromDate(e.target.value)}
-                className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
-              <input type="date" value={dueToDate} onChange={e => setDueToDate(e.target.value)}
-                className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
-            </div>
-          </div>
-
-          {/* Methode */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-              Methode
-            </label>
-            <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-card)', borderRadius: 4 }}>
-              {[
-                { key: 'all' as const, label: 'Toutes' },
-                { key: 'check' as const, label: 'Cheque' },
-                { key: 'traite' as const, label: 'Traite' },
-              ].map(opt => (
-                <button key={opt.key} type="button" onClick={() => setMethodFilter(opt.key)}
-                  style={{
-                    flex: 1, padding: '4px 8px', border: 'none', borderRadius: 3,
-                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500,
-                    background: methodFilter === opt.key ? 'var(--theme-accent)' : 'transparent',
-                    color: methodFilter === opt.key ? 'white' : 'var(--theme-text-muted)',
-                  }}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Montant min/max */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-              Montant (DH)
-            </label>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input type="number" min="0" step="0.01" value={amountMin} onChange={e => setAmountMin(e.target.value)}
-                placeholder="Min" className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
-              <input type="number" min="0" step="0.01" value={amountMax} onChange={e => setAmountMax(e.target.value)}
-                placeholder="Max" className="odoo-input" style={{ flex: 1, fontSize: '0.75rem' }} />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Tableau */}
       {isLoading ? (
