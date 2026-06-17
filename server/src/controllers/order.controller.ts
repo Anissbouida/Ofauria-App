@@ -223,7 +223,7 @@ export const orderController = {
     });
 
     if (!order) {
-      res.status(400).json({ success: false, error: { message: 'Commande non modifiable (statut avance)' } });
+      res.status(400).json({ success: false, error: { message: 'Commande non modifiable (livree ou annulee)' } });
       return;
     }
 

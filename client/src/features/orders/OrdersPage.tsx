@@ -328,7 +328,7 @@ export default function OrdersPage() {
                             <Eye size={16} />
                           </button>
 
-                          {(status === 'pending' || status === 'confirmed') && (
+                          {status !== 'completed' && status !== 'cancelled' && (
                             <button onClick={() => setEditingOrder(o)}
                               className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-blue-50 flex items-center justify-center text-gray-400 hover:text-blue-600 transition-colors"
                               title="Modifier">

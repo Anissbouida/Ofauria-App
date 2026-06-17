@@ -157,12 +157,16 @@ export const orderRepository = {
     try {
       await client.query('BEGIN');
 
+      // Edition autorisee tant que la commande n'est pas livree (completed) ni annulee.
+      // Une commande en production ou prete peut donc encore changer de contenu ;
+      // si un plan de production est lie, ses items ne sont PAS resynchronises ici
+      // (les chefs doivent etre prevenus a la main d'un eventuel ajustement).
       const orderResult = await client.query(
         `UPDATE orders SET customer_id = $1, customer_name = $2, customer_phone = $3,
          type = COALESCE($4, type),
          subtotal = $5, tax_amount = $6, discount_amount = $7, total = $8, advance_amount = $9,
          payment_method = COALESCE($10, payment_method), notes = $11, pickup_date = COALESCE($12, pickup_date)
-         WHERE id = $13 AND status IN ('pending', 'confirmed') RETURNING *`,
+         WHERE id = $13 AND status NOT IN ('completed', 'cancelled') RETURNING *`,
         [data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.type || null, data.subtotal, data.taxAmount,
          data.discountAmount, data.total, data.advanceAmount || 0,
