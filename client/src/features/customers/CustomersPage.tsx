@@ -73,6 +73,7 @@ export default function CustomersPage() {
       notify.success(editing ? 'Client mis a jour' : 'Client cree');
       setShowForm(false); setEditing(null);
     },
+    onError: () => notify.error(editing ? 'Impossible de mettre a jour le client' : 'Impossible de creer le client'),
   });
 
   const customers = data?.data || [];

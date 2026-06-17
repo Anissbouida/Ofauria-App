@@ -72,12 +72,16 @@ export const customerRepository = {
       customerType: 'customer_type', companyName: 'company_name', address: 'address',
       city: 'city', birthday: 'birthday', preferredContact: 'preferred_contact', allergies: 'allergies',
     };
+    const nullable = new Set(['email', 'phone', 'notes', 'companyName', 'address', 'city', 'birthday', 'allergies']);
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     for (const [key, col] of Object.entries(mapping)) {
-      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
+      if (data[key] !== undefined) {
+        const v = nullable.has(key) && data[key] === '' ? null : data[key];
+        fields.push(`${col} = $${i++}`); values.push(v);
+      }
     }
     if (fields.length === 0) return this.findById(id);
     values.push(id);
