@@ -46,7 +46,7 @@ export const orderController = {
 
   async create(req: AuthRequest, res: Response) {
     let { customerId } = req.body;
-    const { customerName, customerPhone, type, items, paymentMethod, notes, pickupDate, discountAmount = 0, advanceAmount = 0 } = req.body;
+    const { customerName, customerPhone, type, items, paymentMethod, notes, pickupDate, orderDate, discountAmount = 0, advanceAmount = 0 } = req.body;
 
     // Walk-in clients: store name/phone on order directly, no customer record
     // Known clients: customerId is provided by the frontend
@@ -95,7 +95,7 @@ export const orderController = {
     const order = await orderRepository.create({
       orderNumber, customerId, customerName, customerPhone,
       userId: req.user!.userId, type: type || 'custom',
-      subtotal, taxAmount, discountAmount, total, advanceAmount, paymentMethod, notes, pickupDate, items: orderItems,
+      subtotal, taxAmount, discountAmount, total, advanceAmount, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
 

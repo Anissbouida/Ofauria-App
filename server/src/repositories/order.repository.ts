@@ -51,20 +51,24 @@ export const orderRepository = {
     userId: string; type: string;
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
-    sessionId?: string; storeId?: string;
+    sessionId?: string; storeId?: string; orderDate?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
   }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
+      // orderDate permet de saisir une commande retroactivement (created_at au
+      // lieu de NOW()). Conserve l'heure exacte de saisie pour l'audit en
+      // ajoutant le time courant a la date fournie.
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW())) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
-         data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null]
+         data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null,
+         data.orderDate || null]
       );
 
       const orderId = orderResult.rows[0].id;

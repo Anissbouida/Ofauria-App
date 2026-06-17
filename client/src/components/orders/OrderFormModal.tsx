@@ -89,6 +89,12 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const [pickupDate, setPickupDate] = useState(
     isEdit && order.pickup_date ? format(new Date(order.pickup_date as string), 'yyyy-MM-dd') : format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
   );
+  // Date de commande (created_at) — modifiable a la creation pour saisir une
+  // commande retroactivement. Sur l'edition, l'historique n'est pas remis en
+  // cause : on affiche la date d'origine sans la repousser au backend.
+  const [orderDate, setOrderDate] = useState(
+    isEdit && order.created_at ? format(new Date(order.created_at as string), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
+  );
   const [type, setType] = useState(isEdit ? (order.type as string || 'custom') : 'custom');
 
   // Step 2: Products (unitPrice is editable per-order — defaults to product.price)
@@ -276,6 +282,9 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const handleSubmit = () => {
     const payload: Record<string, any> = {
       type, pickupDate,
+      // orderDate envoye uniquement a la creation pour eviter de reecrire
+      // l'historique d'une commande deja saisie.
+      ...(isEdit ? {} : { orderDate }),
       paymentMethod: deferPayment ? 'deferred' : paymentMethod,
       notes: notes || undefined,
       discountAmount: effectiveDiscount,
@@ -440,10 +449,18 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       );
                     })}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                      className="input text-base py-3" required />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
+                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
+                        disabled={isEdit}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                        className="input text-base py-3" required />
+                    </div>
                   </div>
                 </div>
               )}
@@ -477,10 +494,18 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         className="input text-base py-3 w-full pl-10" />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                      className="input text-base py-3" required />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
+                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
+                        disabled={isEdit}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                        className="input text-base py-3" required />
+                    </div>
                   </div>
                 </div>
               )}
@@ -502,11 +527,19 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     </div>
                   </div>
 
-                  {/* Date de retrait */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                    <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                      className="input text-base py-3" required />
+                  {/* Dates : commande + retrait */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
+                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
+                        disabled={isEdit}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
+                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+                        className="input text-base py-3" required />
+                    </div>
                   </div>
 
                   {/* Employee search */}
