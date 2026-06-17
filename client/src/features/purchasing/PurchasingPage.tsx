@@ -28,7 +28,6 @@ const INVOICE_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700',
   cancelled: 'bg-gray-100 text-gray-500', disputed: 'bg-purple-100 text-purple-700',
 };
-const PAYMENT_MODE_LABELS: Record<string, string> = { cash: 'Espèces', check: 'Chèque', transfer: 'Virement' };
 // Statuts modifiables manuellement (admin/gérant). 'overdue' et 'cancelled' restent
 // pilotés par leur logique propre (cancel button + flag automatique d'echeance depassee).
 const MANUAL_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -711,12 +710,12 @@ function ReceivedInvoicesSection() {
                           </span>
                           {expectedMode && (
                             <span style={{ fontSize: '0.6875rem' }}>
-                              {PAYMENT_MODE_LABELS[expectedMode] || expectedMode}
+                              {getPaymentLabel(expectedMode)}
                             </span>
                           )}
                         </div>
                       ) : expectedMode ? (
-                        <span style={{ fontSize: '0.6875rem' }}>{PAYMENT_MODE_LABELS[expectedMode]}</span>
+                        <span style={{ fontSize: '0.6875rem' }}>{getPaymentLabel(expectedMode)}</span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
                     <td>
@@ -1508,6 +1507,7 @@ function InvoicePaymentsModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { getLabel: getPaymentLabel, getColor: getPaymentColor } = useReferentiel('payment_methods');
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', invoiceId],
     queryFn: () => invoicesApi.getById(invoiceId),
@@ -1541,14 +1541,6 @@ function InvoicePaymentsModal({
     if (!iso) return '—';
     try { return format(new Date(String(iso).slice(0, 10)), 'dd/MM/yyyy'); }
     catch { return String(iso); }
-  };
-
-  const methodLabel = (m: string) => {
-    if (m === 'cash') return 'Espèces';
-    if (m === 'check') return 'Chèque';
-    if (m === 'transfer') return 'Virement';
-    if (m === 'bank') return 'Banque';
-    return m;
   };
 
   return (
@@ -1618,15 +1610,18 @@ function InvoicePaymentsModal({
                       <tr key={p.id as string}>
                         <td>{fmtDate(p.payment_date as string)}</td>
                         <td>
-                          <span className={`odoo-tag ${p.payment_method === 'check' ? 'odoo-tag-orange' : ''}`}>
-                            {methodLabel(p.payment_method as string)}
+                          <span className="odoo-tag"
+                            style={getPaymentColor(p.payment_method as string)
+                              ? { backgroundColor: getPaymentColor(p.payment_method as string) + '22', color: getPaymentColor(p.payment_method as string) }
+                              : undefined}>
+                            {getPaymentLabel(p.payment_method as string)}
                           </span>
                         </td>
                         <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>
                           {(p.check_number as string) || '—'}
                         </td>
                         <td>
-                          {p.payment_method === 'check' ? (
+                          {p.check_number ? (
                             p.cashed_at ? (
                               <span style={{ color: '#0e7c3a', fontSize: '0.75rem' }}>{fmtDate(p.cashed_at as string)}</span>
                             ) : (
