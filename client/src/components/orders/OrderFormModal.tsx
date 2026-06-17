@@ -177,13 +177,19 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const createMutation = useMutation({
     mutationFn: ordersApi.create,
     onSuccess: (data: Record<string, any>) => { notify.success('Commande creee avec succes'); onSaved(data); },
-    onError: () => { notify.error('Erreur lors de la creation'); },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || 'Erreur lors de la creation';
+      notify.error(msg);
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, any>) => ordersApi.update(order!.id as string, data),
     onSuccess: () => { notify.success('Commande modifiee avec succes'); onSaved(); },
-    onError: () => { notify.error('Erreur lors de la modification'); },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || 'Erreur lors de la modification';
+      notify.error(msg);
+    },
   });
 
   const [productSearch, setProductSearch] = useState('');
