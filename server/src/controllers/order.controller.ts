@@ -69,9 +69,13 @@ export const orderController = {
         res.status(400).json({ success: false, error: { message: `Produit ${item.productId} non trouve` } });
         return;
       }
-      const itemSubtotal = parseFloat(product.price) * item.quantity;
+      // Custom per-order price if provided (>= 0), else fall back to product's default
+      const unitPrice = item.unitPrice != null && Number.isFinite(parseFloat(item.unitPrice)) && parseFloat(item.unitPrice) >= 0
+        ? parseFloat(item.unitPrice)
+        : parseFloat(product.price);
+      const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
-      orderItems.push({ productId: item.productId, quantity: item.quantity, unitPrice: parseFloat(product.price), subtotal: itemSubtotal, notes: item.notes });
+      orderItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, notes: item.notes });
       // Track responsible chefs for targeted notifications
       if (product.responsible_user_id) {
         responsibleUserIds.add(product.responsible_user_id);
@@ -201,9 +205,13 @@ export const orderController = {
         res.status(400).json({ success: false, error: { message: `Produit ${item.productId} non trouve` } });
         return;
       }
-      const itemSubtotal = parseFloat(product.price) * item.quantity;
+      // Custom per-order price if provided (>= 0), else fall back to product's default
+      const unitPrice = item.unitPrice != null && Number.isFinite(parseFloat(item.unitPrice)) && parseFloat(item.unitPrice) >= 0
+        ? parseFloat(item.unitPrice)
+        : parseFloat(product.price);
+      const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
-      orderItems.push({ productId: item.productId, quantity: item.quantity, unitPrice: parseFloat(product.price), subtotal: itemSubtotal, notes: item.notes });
+      orderItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, notes: item.notes });
     }
 
     const taxAmount = 0;

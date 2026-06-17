@@ -91,9 +91,9 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   );
   const [type, setType] = useState(isEdit ? (order.type as string || 'custom') : 'custom');
 
-  // Step 2: Products
-  const [items, setItems] = useState<{ productId: string; quantity: number; notes: string }[]>([
-    { productId: '', quantity: 1, notes: '' },
+  // Step 2: Products (unitPrice is editable per-order — defaults to product.price)
+  const [items, setItems] = useState<{ productId: string; quantity: number; unitPrice: number; notes: string }[]>([
+    { productId: '', quantity: 1, unitPrice: 0, notes: '' },
   ]);
 
   // Step 3: Payment
@@ -120,6 +120,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       setItems(o.items.map((it: Record<string, any>) => ({
         productId: it.product_id as string,
         quantity: it.quantity as number,
+        unitPrice: parseFloat(it.unit_price as string) || 0,
         notes: (it.notes as string) || '',
       })));
     }
@@ -196,15 +197,30 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       if (existing) {
         setItems(items.map(it => it.productId === productId ? { ...it, quantity: qty } : it));
       } else {
+        // New line: initialize unitPrice with the product's current default
+        const prod = products.find(p => p.id === productId);
+        const defaultPrice = prod ? parseFloat(prod.price as string) : 0;
         const cleanItems = items.filter(it => it.productId);
-        setItems([...cleanItems, { productId, quantity: qty, notes: '' }]);
+        setItems([...cleanItems, { productId, quantity: qty, unitPrice: defaultPrice, notes: '' }]);
       }
     }
+  };
+
+  const setItemPrice = (productId: string, price: number) => {
+    const safe = Number.isFinite(price) && price >= 0 ? price : 0;
+    setItems(items.map(it => it.productId === productId ? { ...it, unitPrice: safe } : it));
   };
 
   const getItemQty = (productId: string) => {
     const item = items.find(it => it.productId === productId);
     return item ? item.quantity : 0;
+  };
+
+  const getItemPrice = (productId: string) => {
+    const item = items.find(it => it.productId === productId);
+    if (item) return item.unitPrice;
+    const prod = products.find(p => p.id === productId);
+    return prod ? parseFloat(prod.price as string) : 0;
   };
 
   const filteredOrderProducts = products.filter(p => {
@@ -215,8 +231,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const subtotal = items.reduce((sum, item) => {
     if (!item.productId) return sum;
-    const prod = products.find((p) => p.id === item.productId);
-    return sum + (prod ? parseFloat(prod.price as string) * item.quantity : 0);
+    return sum + (item.unitPrice || 0) * item.quantity;
   }, 0);
   // Auto-calculate staff discount
   const effectiveDiscount = type === 'staff' ? Math.round(subtotal * staffDiscountPercent) / 100 : discountAmount;
@@ -260,7 +275,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       discountAmount: effectiveDiscount,
       advanceAmount: deferPayment ? 0 : advanceAmount,
       deferPayment,
-      items: validItems.map((it) => ({ productId: it.productId, quantity: it.quantity, notes: it.notes || undefined })),
+      items: validItems.map((it) => ({ productId: it.productId, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes || undefined })),
     };
     if (type === 'staff' && selectedEmployee) {
       payload.customerName = `${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim();
@@ -576,8 +591,10 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     {filteredOrderProducts.map(p => {
                     const pid = p.id as string;
                     const qty = getItemQty(pid);
-                    const price = parseFloat(p.price as string);
+                    const defaultPrice = parseFloat(p.price as string);
                     const isSelected = qty > 0;
+                    const linePrice = isSelected ? getItemPrice(pid) : defaultPrice;
+                    const priceChanged = isSelected && Math.abs(linePrice - defaultPrice) > 0.001;
                     return (
                       <div key={pid}
                         className={`rounded-xl border-2 p-3 transition-all select-none ${
@@ -589,8 +606,28 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                           <span className="line-clamp-2">{p.name as string}</span>
                         </div>
                         <div className="flex items-center gap-1.5 mb-2">
-                          <span className="text-xs text-gray-400">{p.category_name as string || ''}</span>
-                          <span className="text-xs font-semibold text-primary-600 ml-auto">{price.toFixed(2)} DH</span>
+                          <span className="text-xs text-gray-400 truncate">{p.category_name as string || ''}</span>
+                          {!isSelected ? (
+                            <span className="text-xs font-semibold text-primary-600 ml-auto">{defaultPrice.toFixed(2)} DH</span>
+                          ) : (
+                            <div className="ml-auto flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={linePrice}
+                                onChange={e => setItemPrice(pid, parseFloat(e.target.value) || 0)}
+                                onFocus={e => e.target.select()}
+                                title={priceChanged ? `Prix par defaut: ${defaultPrice.toFixed(2)} DH` : 'Modifier le prix'}
+                                className={`w-16 text-xs font-semibold text-right border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 ${
+                                  priceChanged
+                                    ? 'border-amber-300 bg-amber-50 text-amber-700 focus:ring-amber-400'
+                                    : 'border-primary-200 text-primary-600 focus:ring-primary-400'
+                                }`}
+                              />
+                              <span className="text-xs text-primary-600">DH</span>
+                            </div>
+                          )}
                         </div>
 
                         {!isSelected ? (
@@ -614,8 +651,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                               </button>
                             </div>
                             <div className="text-xs text-gray-500 text-center mt-1">
-                              {price.toFixed(2)} x {qty} = <span className="font-bold text-gray-700">{(price * qty).toFixed(2)} DH</span>
+                              {linePrice.toFixed(2)} x {qty} = <span className="font-bold text-gray-700">{(linePrice * qty).toFixed(2)} DH</span>
                             </div>
+                            {priceChanged && (
+                              <button type="button" onClick={() => setItemPrice(pid, defaultPrice)}
+                                className="w-full mt-1 text-[10px] text-amber-600 hover:text-amber-700 underline">
+                                Reinitialiser au prix par defaut
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -686,10 +729,19 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                 <div className="space-y-1.5">
                   {validItems.map((item, idx) => {
                     const prod = products.find((p) => p.id === item.productId);
-                    const lineTotal = prod ? parseFloat(prod.price as string) * item.quantity : 0;
+                    const defaultPrice = prod ? parseFloat(prod.price as string) : 0;
+                    const lineTotal = item.unitPrice * item.quantity;
+                    const priceChanged = prod && Math.abs(item.unitPrice - defaultPrice) > 0.001;
                     return (
                       <div key={idx} className="flex items-center justify-between text-sm">
-                        <span>{prod?.name as string} <span className="text-gray-400">x{item.quantity}</span></span>
+                        <span>
+                          {prod?.name as string} <span className="text-gray-400">x{item.quantity}</span>
+                          {priceChanged && (
+                            <span className="ml-2 text-[10px] text-amber-600 font-medium">
+                              ({item.unitPrice.toFixed(2)} DH · defaut {defaultPrice.toFixed(2)})
+                            </span>
+                          )}
+                        </span>
                         <span className="font-medium">{lineTotal.toFixed(2)} DH</span>
                       </div>
                     );
