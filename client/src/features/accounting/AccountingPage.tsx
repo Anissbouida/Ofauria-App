@@ -191,7 +191,7 @@ export default function AccountingPage() {
     { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard },
     { key: 'caisse', label: 'Caisse', icon: Wallet },
     { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
-    { key: 'cheques', label: 'Chèques', icon: Receipt },
+    { key: 'cheques', label: 'Chèques et Traites', icon: Receipt },
     { key: 'dettes', label: 'Dettes', icon: Scale },
     { key: 'resume', label: 'Résumé', icon: BarChart3 },
     { key: 'losses', label: 'Pertes', icon: AlertTriangle },
@@ -687,7 +687,7 @@ function DettesTab() {
                 </div>
                 {(payMethod === 'check' || payMethod === 'traite') && (
                   <p className="text-xs text-amber-600">
-                    {payMethod === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
+                    {payMethod === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques et Traites</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
                   </p>
                 )}
                 <div className="flex gap-3 justify-end pt-2">
@@ -2558,7 +2558,7 @@ function ChequesTab() {
                     </td>
                     <td>{fmtDate(c.payment_date)}</td>
                     <td>
-                      {fmtDate(c.invoice_due_date)}
+                      {fmtDate(c.check_date || c.invoice_due_date)}
                       {isOverdue && (
                         <div style={{ fontSize: '0.6875rem', color: '#b71c1c', fontWeight: 600 }}>en retard</div>
                       )}

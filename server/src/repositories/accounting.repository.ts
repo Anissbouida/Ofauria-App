@@ -1228,9 +1228,13 @@ export const paymentRepository = {
               inv.total_amount AS invoice_total,
               po.order_number AS purchase_order_number,
               cby.first_name || ' ' || cby.last_name AS cashed_by_name,
-              -- Etat derive pour l'UI
+              -- Etat derive pour l'UI. Echeance effective = check_date (date
+              -- marquee sur le cheque/la traite) sinon due_date de la facture
+              -- liee. Une traite peut etre tiree a 60j sans que la facture ait
+              -- de due_date — sans COALESCE elle ne passerait jamais "overdue".
               CASE WHEN p.cashed_at IS NOT NULL THEN 'cashed'
-                   WHEN inv.due_date IS NOT NULL AND inv.due_date < CURRENT_DATE THEN 'overdue'
+                   WHEN COALESCE(p.check_date, inv.due_date) IS NOT NULL
+                        AND COALESCE(p.check_date, inv.due_date) < CURRENT_DATE THEN 'overdue'
                    ELSE 'pending'
               END AS status
        FROM payments p
@@ -1244,7 +1248,7 @@ export const paymentRepository = {
        ORDER BY
          -- En attente d'abord (action requise), puis par echeance/date
          CASE WHEN p.cashed_at IS NULL THEN 0 ELSE 1 END,
-         COALESCE(inv.due_date, p.payment_date) ASC,
+         COALESCE(p.check_date, inv.due_date, p.payment_date) ASC,
          p.created_at DESC`,
       values
     );
