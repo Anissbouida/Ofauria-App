@@ -16,6 +16,12 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Normalise les valeurs du backend a 2 decimales (ex: "48.0000" -> "48.00", "25.8300" -> "25.83")
+function trimNum(v: unknown): string {
+  if (v == null || v === '') return '';
+  const f = parseFloat(String(v));
+  return Number.isFinite(f) ? f.toFixed(2) : '';
+}
 
 const STATUS_LABELS: Record<string, string> = {
   en_attente: 'En attente',
@@ -1452,9 +1458,9 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
       ingredientId: it.ingredient_id as string,
       ingredientName: (it.ingredient_name as string) || '',
       ingredientUnit: (it.ingredient_unit as string) || '',
-      quantityOrdered: String(it.quantity_ordered ?? ''),
-      quantityDelivered: String(it.quantity_delivered ?? ''),
-      unitPrice: it.unit_price != null ? String(it.unit_price) : '',
+      quantityOrdered: trimNum(it.quantity_ordered),
+      quantityDelivered: trimNum(it.quantity_delivered),
+      unitPrice: it.unit_price != null ? trimNum(it.unit_price) : '',
     })));
     setInitialized(true);
   }, [po, initialized]);
