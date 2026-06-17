@@ -301,7 +301,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
       switch (col) {
         case 0:
-          text = item.description;
+          text = (item.description || '').toLocaleUpperCase('fr-FR');
           font = 'Helvetica-Bold';
           break;
         case 1:
