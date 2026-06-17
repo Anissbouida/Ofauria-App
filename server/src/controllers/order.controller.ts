@@ -227,6 +227,25 @@ export const orderController = {
       return;
     }
 
+    // Resynchroniser la facture emise liee (paiement reporte) avec les nouveaux
+    // produits et montants. Sans ca, le module Comptabilite > Dettes continuait
+    // d'afficher l'ancien total. replaceItems refuse si le nouveau total devient
+    // inferieur au paid_amount deja encaisse (verrou comptable).
+    try {
+      const linkedInvoice = await invoiceRepository.findEmittedByOrderId(req.params.id);
+      if (linkedInvoice) {
+        await invoiceRepository.replaceItems(linkedInvoice.id, orderItems.map(it => ({
+          productId: it.productId,
+          description: items.find((i: Record<string, unknown>) => i.productId === it.productId)?.notes || undefined,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          subtotal: it.subtotal,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to resync linked invoice after order update:', err);
+    }
+
     res.json({ success: true, data: order });
   },
 

@@ -575,6 +575,18 @@ export const invoiceRepository = {
     }
   },
 
+  /**
+   * Trouve la facture emise liee a une commande (ou null s'il n'y en a pas).
+   * Utilise pour resynchroniser la facture quand la commande est modifiee.
+   */
+  async findEmittedByOrderId(orderId: string) {
+    const result = await db.query(
+      `SELECT * FROM invoices WHERE order_id = $1 AND invoice_type = 'emitted' LIMIT 1`,
+      [orderId]
+    );
+    return result.rows[0] || null;
+  },
+
   async updatePaidAmount(id: string) {
     const client = await db.getClient();
     try {
