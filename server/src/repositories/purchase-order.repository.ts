@@ -161,6 +161,7 @@ export const purchaseOrderRepository = {
     storeId?: string,
     supplierInvoiceNumber?: string,
     supplierInvoiceDate?: string,
+    forceComplete?: boolean,
   ) {
     // Get PO items to map ingredientId
     const po = await this.findById(id);
@@ -188,6 +189,7 @@ export const purchaseOrderRepository = {
       storeId,
       supplierInvoiceNumber,
       supplierInvoiceDate,
+      forceComplete,
       items: rvItems,
     });
 

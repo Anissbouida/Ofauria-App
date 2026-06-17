@@ -244,6 +244,13 @@ export const receptionVoucherRepository = {
     storeId?: string;
     supplierInvoiceNumber?: string;
     supplierInvoiceDate?: string;
+    /**
+     * forceComplete : le fournisseur ne livrera pas le reste — on cloture le BC
+     * en alignant les quantites commandees sur les quantites livrees. Les lignes
+     * non livrees (qty_delivered=0) sont supprimees du BC. La facture est creee
+     * sur la base de ce qui a effectivement ete recu.
+     */
+    forceComplete?: boolean;
     items: { poItemId: string; ingredientId: string; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[];
   }) {
     const client = await db.getClient();
@@ -382,6 +389,27 @@ export const receptionVoucherRepository = {
           [item.ingredientId, item.quantityReceived,
            `Reception ${voucherNumber} — BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
            data.receivedBy, item.poItemId, rv.id, data.storeId || null]
+        );
+      }
+
+      // forceComplete : on aligne le BC sur ce qui a ete livre.
+      //   - Les lignes 0 livre sont supprimees (le fournisseur ne livrera pas).
+      //     Pas de RVi dessus (qty_received > 0 contraint), donc DELETE safe.
+      //   - Les lignes partielles voient quantity_ordered descendre a
+      //     quantity_delivered (le BC ne represente plus que le reel facture).
+      // Apres ca, le calcul de statut ci-dessous tombe naturellement sur
+      // 'livre_complet' (ou 'en_attente_facturation' si prix manquants).
+      if (data.forceComplete) {
+        await client.query(
+          `DELETE FROM purchase_order_items
+             WHERE purchase_order_id = $1 AND quantity_delivered = 0`,
+          [data.purchaseOrderId]
+        );
+        await client.query(
+          `UPDATE purchase_order_items
+              SET quantity_ordered = quantity_delivered
+            WHERE purchase_order_id = $1 AND quantity_delivered < quantity_ordered`,
+          [data.purchaseOrderId]
         );
       }
 

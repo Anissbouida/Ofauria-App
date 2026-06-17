@@ -80,7 +80,7 @@ export const purchaseOrderController = {
         res.status(409).json({ success: false, error: { message: 'Le bon doit être envoyé ou en livraison partielle' } });
         return;
       }
-      const { items, supplierInvoiceNumber, supplierInvoiceDate } = req.body;
+      const { items, supplierInvoiceNumber, supplierInvoiceDate, forceComplete } = req.body;
       if (!items || items.length === 0) {
         res.status(400).json({ success: false, error: { message: 'Articles livrés requis' } });
         return;
@@ -89,7 +89,7 @@ export const purchaseOrderController = {
       const stockStoreId = (po.store_id as string | undefined) ?? req.user!.storeId;
       const result = await purchaseOrderRepository.confirmDelivery(
         req.params.id, items, req.user!.userId, stockStoreId,
-        supplierInvoiceNumber, supplierInvoiceDate
+        supplierInvoiceNumber, supplierInvoiceDate, forceComplete
       );
       res.json({ success: true, data: result });
     } catch (err: unknown) {

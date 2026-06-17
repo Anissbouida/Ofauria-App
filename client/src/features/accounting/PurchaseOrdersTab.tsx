@@ -1090,9 +1090,13 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('');
+  // forceComplete : le fournisseur ne livrera pas le reste. Le BC est cloture
+  // sur ce qui a ete recu (qty_ordered alignee sur qty_delivered, lignes vides
+  // supprimees).
+  const [forceComplete, setForceComplete] = useState(false);
 
   const confirmMutation = useMutation({
-    mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string }) =>
+    mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean }) =>
       purchaseOrdersApi.confirmDelivery(poId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -1124,12 +1128,14 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
   // Cette reception va-t-elle completer entierement le BC ?
   // (impacte la creation automatique de la facture cote backend)
-  const willCompletePO = items.every((item) => {
+  // forceComplete : on cloture meme si la couverture n'est pas totale.
+  const naturallyComplete = items.every((item) => {
     const ordered = parseFloat(item.quantity_ordered);
     const alreadyDelivered = parseFloat(item.quantity_delivered);
     const beingDelivered = deliveries[item.id] || 0;
     return alreadyDelivered + beingDelivered >= ordered;
   });
+  const willCompletePO = naturallyComplete || forceComplete;
 
   const handleSubmit = () => {
     const deliveredItems = Object.entries(deliveries)
@@ -1157,6 +1163,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
       items: deliveredItems,
       ...(supplierInvoiceNumber.trim() ? { supplierInvoiceNumber: supplierInvoiceNumber.trim() } : {}),
       ...(supplierInvoiceDate ? { supplierInvoiceDate } : {}),
+      ...(forceComplete ? { forceComplete: true } : {}),
     });
   };
 
@@ -1199,6 +1206,27 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
         </div>
 
         <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+          {/* Force-complete : le fournisseur ne livrera pas le reste, on
+              cloture le BC sur ce qui est recu et la facture est emise sur ce
+              perimetre. */}
+          {!naturallyComplete && (
+            <label className={`flex items-start gap-3 rounded-xl p-3 border cursor-pointer transition-colors ${
+              forceComplete ? 'bg-orange-50 border-orange-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+            }`}>
+              <input type="checkbox" checked={forceComplete}
+                onChange={e => setForceComplete(e.target.checked)}
+                className="mt-0.5 accent-orange-500" />
+              <div className="flex-1">
+                <div className={`text-sm font-semibold ${forceComplete ? 'text-orange-800' : 'text-gray-700'}`}>
+                  Cloturer le BC : le fournisseur ne livrera pas le reste
+                </div>
+                <div className={`text-xs mt-0.5 ${forceComplete ? 'text-orange-700' : 'text-gray-500'}`}>
+                  Les lignes non livrees sont supprimees du BC, les lignes partielles sont alignees sur la quantite recue. La facture est creee sur ce perimetre.
+                </div>
+              </div>
+            </label>
+          )}
+
           {/* Facture fournisseur — N° et date imprimes sur le document papier */}
           <div className={`rounded-xl p-4 border ${willCompletePO ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex items-start gap-2 mb-3">
