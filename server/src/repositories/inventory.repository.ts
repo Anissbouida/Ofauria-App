@@ -36,7 +36,7 @@ export const inventoryRepository = {
            ${txStoreFilter}
          GROUP BY ingredient_id
        )
-       SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category,
+       SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.unit_cost, ing.supplier, ing.category, ing.category_id,
               ing.container_size,
               COALESCE(ls.economat_quantity, 0) as economat_quantity,
               COALESCE(ls.pesage_quantity, 0) as pesage_quantity,
@@ -192,13 +192,15 @@ export const ingredientRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string; storeId?: string | null }) {
+  async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string; categoryId?: string | null; storeId?: string | null }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      // category_id (hierarchie) fait foi ; le trigger ingredients_category_sync
+      // maintient la colonne texte 'category' (code) automatiquement.
       const result = await client.query(
-        `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre']
+        `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre', data.categoryId || null]
       );
       // Create inventory entry, scoped to the current store (multi-store).
       // Sans store_id, le listing (WHERE inv.store_id = $1) ne montre pas
@@ -221,7 +223,7 @@ export const ingredientRepository = {
 
   async update(id: string, data: Record<string, unknown>) {
     const mapping: Record<string, string> = {
-      name: 'name', unit: 'unit', unitCost: 'unit_cost', supplier: 'supplier', allergens: 'allergens', category: 'category',
+      name: 'name', unit: 'unit', unitCost: 'unit_cost', supplier: 'supplier', allergens: 'allergens', category: 'category', categoryId: 'category_id',
     };
     const fields: string[] = [];
     const values: unknown[] = [];

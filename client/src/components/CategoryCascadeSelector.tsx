@@ -2,6 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { expenseCategoriesApi } from '../api/accounting.api';
 
+/**
+ * Branches "stockables" de la hierarchie expense_categories proposees dans
+ * l'economat et les bons de commande : Matieres premieres (Ingredients,
+ * Emballages) + Equipements & Materiel. (Energie, Loyer, Salaires... exclus.)
+ */
+export const STOCKABLE_ROOT_IDS = [
+  '10000000-0000-0000-0000-000000000003', // Matieres premieres
+  '10000000-0000-0000-0000-000000000008', // Equipements & Materiel
+];
+
 interface CascadeSelectorProps {
   /** Currently selected category ID (leaf-level) */
   value: string;
@@ -15,6 +25,8 @@ interface CascadeSelectorProps {
   required?: boolean;
   /** Disabled? */
   disabled?: boolean;
+  /** Restreint les categories de niveau 1 a ces IDs (ex: branches stockables de l'economat) */
+  rootIds?: string[];
 }
 
 /**
@@ -29,6 +41,7 @@ export default function CategoryCascadeSelector({
   className = '',
   required = false,
   disabled = false,
+  rootIds,
 }: CascadeSelectorProps) {
   const { data: allCategories = [] } = useQuery({
     queryKey: [type === 'expense' ? 'expense-categories' : 'revenue-categories'],
@@ -38,7 +51,10 @@ export default function CategoryCascadeSelector({
   const categories = allCategories as Record<string, any>[];
 
   // Organize by level
-  const level1 = useMemo(() => categories.filter(c => (c.level as number) === 1), [categories]);
+  const level1 = useMemo(
+    () => categories.filter(c => (c.level as number) === 1 && (!rootIds || rootIds.includes(String(c.id)))),
+    [categories, rootIds]
+  );
   const level2 = useMemo(() => categories.filter(c => (c.level as number) === 2), [categories]);
   const level3 = useMemo(() => categories.filter(c => (c.level as number) === 3), [categories]);
 

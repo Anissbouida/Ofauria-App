@@ -17,73 +17,25 @@ import ConsommationTab from './ConsommationTab';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
+import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
+import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 import { format } from 'date-fns';
 
-type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock';
+type SortKey = 'name' | 'category' | 'supplier' | 'quantity' | 'lots' | 'dlc' | 'days_stock' | 'price' | 'value';
 type SortDir = 'asc' | 'desc';
-type ViewFilter = 'all' | 'low' | 'ok' | 'expiring';
+type ViewFilter = 'all' | 'low' | 'ok' | 'expiring' | 'rupture' | 'expired' | 'stale';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  name: 'Nom', category: 'Catégorie', supplier: 'Fournisseur', price: 'Dernier prix',
+  value: 'Valeur stock', quantity: 'Stock', lots: 'Lots', days_stock: 'Jours stock', dlc: 'DLC',
+};
+
+const STATE_LABELS: Record<ViewFilter, string> = {
+  all: 'Tous les états', low: 'Stock bas', ok: 'Stock OK', expiring: 'DLC critique',
+  rupture: 'En rupture (0)', expired: 'Périmés à retirer', stale: 'Sans mouvement (30j)',
+};
 type EconomatTab = 'stock' | 'transfers' | 'ruptures' | 'consumption';
 type ViewMode = 'list' | 'kanban';
-
-const INGREDIENT_CATEGORIES = [
-  { value: 'farines', label: 'Farines & Céréales' },
-  { value: 'sucres', label: 'Sucres & Édulcorants' },
-  { value: 'lait', label: 'Lait & Boissons lactées' },
-  { value: 'cremes', label: 'Crèmes (fraîche, liquide, épaisse)' },
-  { value: 'beurre', label: 'Beurre & Margarines' },
-  { value: 'fromages', label: 'Fromages & Fromages frais' },
-  { value: 'produits_laitiers', label: 'Produits laitiers (divers)' },
-  { value: 'oeufs', label: 'Oeufs & Ovoproduits' },
-  { value: 'matieres_grasses', label: 'Matières grasses & Huiles' },
-  { value: 'chocolat', label: 'Chocolat & Cacao' },
-  { value: 'fruits', label: 'Fruits & Purées' },
-  { value: 'fruits_secs', label: 'Fruits secs & Oléagineux' },
-  { value: 'viandes', label: 'Viandes & Volailles' },
-  { value: 'poissons_fruits_de_mer', label: 'Poissons & Fruits de mer' },
-  { value: 'legumes', label: 'Légumes' },
-  { value: 'epices', label: 'Épices & Arômes' },
-  { value: 'sel_vinaigre', label: 'Sel & Vinaigre' },
-  { value: 'levures', label: 'Levures & Agents levants' },
-  { value: 'gelifiants', label: 'Gélifiants' },
-  { value: 'colorants', label: 'Colorants' },
-  { value: 'decors', label: 'Décors & Garnitures' },
-  { value: 'sauces', label: 'Sauces & Condiments' },
-  { value: 'conserves', label: 'Conserves' },
-  { value: 'preparations', label: 'Préparations' },
-  { value: 'pates_riz', label: 'Pâtes & Riz' },
-  { value: 'emballages', label: 'Emballages' },
-  { value: 'autre', label: 'Autre' },
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  farines: 'bg-amber-100 text-amber-700',
-  sucres: 'bg-pink-100 text-pink-700',
-  lait: 'bg-sky-100 text-sky-700',
-  cremes: 'bg-amber-50 text-amber-600',
-  beurre: 'bg-yellow-50 text-yellow-600',
-  fromages: 'bg-orange-200 text-orange-800',
-  produits_laitiers: 'bg-blue-100 text-blue-700',
-  oeufs: 'bg-yellow-100 text-yellow-700',
-  matieres_grasses: 'bg-orange-100 text-orange-700',
-  chocolat: 'bg-stone-200 text-stone-700',
-  fruits: 'bg-green-100 text-green-700',
-  fruits_secs: 'bg-lime-100 text-lime-700',
-  viandes: 'bg-red-200 text-red-800',
-  poissons_fruits_de_mer: 'bg-teal-200 text-teal-800',
-  legumes: 'bg-emerald-100 text-emerald-700',
-  epices: 'bg-red-100 text-red-700',
-  sel_vinaigre: 'bg-slate-100 text-slate-700',
-  levures: 'bg-violet-100 text-violet-700',
-  gelifiants: 'bg-cyan-100 text-cyan-700',
-  colorants: 'bg-fuchsia-100 text-fuchsia-700',
-  decors: 'bg-purple-100 text-purple-700',
-  sauces: 'bg-rose-100 text-rose-700',
-  conserves: 'bg-teal-100 text-teal-700',
-  preparations: 'bg-indigo-100 text-indigo-700',
-  pates_riz: 'bg-yellow-200 text-yellow-800',
-  emballages: 'bg-gray-100 text-gray-600',
-  autre: 'bg-gray-100 text-gray-500',
-};
 
 interface InventoryItem {
   id: string;
@@ -95,6 +47,7 @@ interface InventoryItem {
   unit_cost: string;
   supplier: string;
   category: string;
+  category_id: string | null;
   last_restocked_at: string | null;
   active_lots_count: string;
   // Phase Économat / Pesage
@@ -160,7 +113,10 @@ export default function InventoryPage() {
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const { resolve: resolveCategory, branches: categoryBranches, leavesUnder, isUnder, tagClass: categoryTagClass } = useStockCategories();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showAddIngredient, setShowAddIngredient] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -204,24 +160,41 @@ export default function InventoryPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); setShowAddIngredient(false); notify.success('Ingrédient ajouté'); },
   });
 
+  // Fournisseurs distincts presents dans l'inventaire (pour le filtre dedie).
+  const supplierOptions = useMemo(() => {
+    const set = new Set<string>();
+    (inventory as InventoryItem[]).forEach(i => { if (i.supplier) set.add(i.supplier); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
+
+  const stockValue = (i: InventoryItem) => parseFloat(i.current_quantity || '0') * parseFloat(i.unit_cost || '0');
+
   const filteredInventory = useMemo(() => {
     let items = inventory as InventoryItem[];
     if (search) {
       const q = search.toLowerCase();
       items = items.filter(i => i.ingredient_name.toLowerCase().includes(q) || (i.supplier || '').toLowerCase().includes(q) || (i.active_lot_numbers || '').toLowerCase().includes(q));
     }
-    if (categoryFilter) items = items.filter(i => (i.category || 'autre') === categoryFilter);
+    // Filtre categorie a 2 niveaux : branche (sous-arbre) puis type precis.
+    if (branchFilter) items = items.filter(i => isUnder(i.category_id, branchFilter));
+    if (typeFilter) items = items.filter(i => String(i.category_id || '') === typeFilter);
+    if (supplierFilter) items = items.filter(i => (i.supplier || '') === supplierFilter);
     if (viewFilter === 'low') items = items.filter(i => parseFloat(i.current_quantity) <= parseFloat(i.minimum_threshold));
     else if (viewFilter === 'ok') items = items.filter(i => parseFloat(i.current_quantity) > parseFloat(i.minimum_threshold));
     else if (viewFilter === 'expiring') items = items.filter(i => (parseInt(i.expired_lots_count) || 0) > 0 || (parseInt(i.expiring_soon_count) || 0) > 0);
+    else if (viewFilter === 'rupture') items = items.filter(i => parseFloat(i.current_quantity) <= 0);
+    else if (viewFilter === 'expired') items = items.filter(i => (parseInt(i.expired_lots_count) || 0) > 0);
+    else if (viewFilter === 'stale') items = items.filter(i => parseFloat(i.avg_daily_consumption || '0') <= 0);
 
     items = [...items].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
         case 'name': cmp = a.ingredient_name.localeCompare(b.ingredient_name); break;
-        case 'category': cmp = (a.category || '').localeCompare(b.category || ''); break;
+        case 'category': cmp = (resolveCategory(a.category_id)?.path || '~').localeCompare(resolveCategory(b.category_id)?.path || '~'); break;
         case 'supplier': cmp = (a.supplier || '').localeCompare(b.supplier || ''); break;
         case 'quantity': cmp = parseFloat(a.current_quantity) - parseFloat(b.current_quantity); break;
+        case 'price': cmp = parseFloat(a.unit_cost || '0') - parseFloat(b.unit_cost || '0'); break;
+        case 'value': cmp = stockValue(a) - stockValue(b); break;
         case 'dlc': {
           const aDlc = a.nearest_dlc ? new Date(a.nearest_dlc).getTime() : Infinity;
           const bDlc = b.nearest_dlc ? new Date(b.nearest_dlc).getTime() : Infinity;
@@ -234,10 +207,15 @@ export default function InventoryPage() {
           cmp = aDays - bDays; break;
         }
       }
+      // Tri secondaire stable : a egalite, ordre alphabetique du nom.
+      if (cmp === 0 && sortKey !== 'name') cmp = a.ingredient_name.localeCompare(b.ingredient_name);
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return items;
-  }, [inventory, search, categoryFilter, viewFilter, sortKey, sortDir]);
+  }, [inventory, search, branchFilter, typeFilter, supplierFilter, viewFilter, sortKey, sortDir, isUnder, resolveCategory]);
+
+  const hasActiveFilters = Boolean(search || branchFilter || typeFilter || supplierFilter || viewFilter !== 'all');
+  const resetFilters = () => { setSearch(''); setBranchFilter(''); setTypeFilter(''); setSupplierFilter(''); setViewFilter('all'); };
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -542,7 +520,7 @@ export default function InventoryPage() {
       })()}
 
       {/* ══════ SEARCH PANEL Odoo ══════ */}
-      <div className="odoo-search-panel">
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
         <input
           type="text"
@@ -551,27 +529,84 @@ export default function InventoryPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="odoo-search-input"
         />
+
+        {/* Chips de filtres actifs */}
         {search && (
-          <span className="odoo-filter-chip">
-            Recherche: {search}
+          <span className="odoo-filter-chip">Recherche: {search}
             <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
           </span>
         )}
-        {categoryFilter && (
-          <span className="odoo-filter-chip">
-            {INGREDIENT_CATEGORIES.find(c => c.value === categoryFilter)?.label}
-            <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
+        {branchFilter && (
+          <span className="odoo-filter-chip">{resolveCategory(branchFilter)?.typeName || 'Catégorie'}
+            <span className="odoo-filter-chip-remove" onClick={() => { setBranchFilter(''); setTypeFilter(''); }}>×</span>
           </span>
         )}
-        <select
-          value={categoryFilter}
-          onChange={e => setCategoryFilter(e.target.value)}
-          className="odoo-filter-dropdown"
-          style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}
-        >
+        {typeFilter && (
+          <span className="odoo-filter-chip">{resolveCategory(typeFilter)?.typeName || 'Type'}
+            <span className="odoo-filter-chip-remove" onClick={() => setTypeFilter('')}>×</span>
+          </span>
+        )}
+        {supplierFilter && (
+          <span className="odoo-filter-chip">{supplierFilter}
+            <span className="odoo-filter-chip-remove" onClick={() => setSupplierFilter('')}>×</span>
+          </span>
+        )}
+        {viewFilter !== 'all' && (
+          <span className="odoo-filter-chip">{STATE_LABELS[viewFilter]}
+            <span className="odoo-filter-chip-remove" onClick={() => setViewFilter('all')}>×</span>
+          </span>
+        )}
+
+        {/* Catégorie (branche) → Type (feuille) */}
+        <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setTypeFilter(''); }}
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
           <option value="">▾ Catégorie</option>
-          {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {categoryBranches.map(b => (
+            <option key={b.id} value={b.id}>{`${'  '.repeat(b.depth)}${b.name}`}</option>
+          ))}
         </select>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          <option value="">▾ Type</option>
+          {leavesUnder(branchFilter).map(l => (
+            <option key={l.id} value={String(l.id)}>{l.name}</option>
+          ))}
+        </select>
+
+        {/* Fournisseur */}
+        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          <option value="">▾ Fournisseur</option>
+          {supplierOptions.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        {/* État de stock */}
+        <select value={viewFilter} onChange={e => setViewFilter(e.target.value as ViewFilter)}
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          {(Object.keys(STATE_LABELS) as ViewFilter[]).map(k => (
+            <option key={k} value={k}>{k === 'all' ? '▾ État' : STATE_LABELS[k]}</option>
+          ))}
+        </select>
+
+        <span style={{ flex: 1 }} />
+
+        {/* Tri */}
+        <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+            <option key={k} value={k}>{`Trier : ${SORT_LABELS[k]}`}</option>
+          ))}
+        </select>
+        <button type="button" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+          className="odoo-pager-btn" title={sortDir === 'asc' ? 'Croissant' : 'Décroissant'}>
+          {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+        </button>
+
+        {hasActiveFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={13} /> Réinitialiser
+          </button>
+        )}
       </div>
 
       {/* ══════ TABLE Odoo (dense) — vue liste ══════ */}
@@ -584,12 +619,7 @@ export default function InventoryPage() {
               <SortHeader col="name">Ingrédient</SortHeader>
               <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
               <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
-              <th
-                className="hidden md:table-cell"
-                style={{ textAlign: 'right' }}
-                title="Dernier prix d'achat saisi — base du cout estime des recettes">
-                Dernier prix
-              </th>
+              <SortHeader col="price" className="hidden md:table-cell" align="right">Dernier prix</SortHeader>
               <SortHeader col="quantity" align="right">Stock</SortHeader>
               <SortHeader col="lots" className="hidden lg:table-cell" align="right">Lots</SortHeader>
               <SortHeader col="days_stock" className="hidden lg:table-cell" align="right">Jours stock</SortHeader>
@@ -623,16 +653,8 @@ export default function InventoryPage() {
                   <td><span className={`odoo-status-dot ${statusDot}`} /></td>
                   <td><span style={{ fontWeight: 500 }}>{item.ingredient_name}</span></td>
                   <td className="hidden sm:table-cell">
-                    <span className={`odoo-tag ${
-                      ['farines','pates_riz'].includes(item.category) ? 'odoo-tag-yellow' :
-                      ['sucres','decors'].includes(item.category) ? 'odoo-tag-purple' :
-                      ['produits_laitiers','gelifiants'].includes(item.category) ? 'odoo-tag-blue' :
-                      ['fruits','legumes','preparations'].includes(item.category) ? 'odoo-tag-green' :
-                      ['chocolat','viandes','epices','sauces','colorants'].includes(item.category) ? 'odoo-tag-red' :
-                      ['matieres_grasses','levures','conserves'].includes(item.category) ? 'odoo-tag-orange' :
-                      'odoo-tag-grey'
-                    }`}>
-                      {INGREDIENT_CATEGORIES.find(c => c.value === (item.category || 'autre'))?.label || 'Autre'}
+                    <span className={`odoo-tag ${categoryTagClass(item.category_id)}`}>
+                      {resolveCategory(item.category_id)?.typeName || 'Non classé'}
                     </span>
                   </td>
                   <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{item.supplier || '—'}</td>
@@ -735,7 +757,7 @@ export default function InventoryPage() {
 function AddIngredientModal({ onClose, onSave, isLoading }: {
   onClose: () => void; onSave: (data: Record<string, any>) => void; isLoading: boolean;
 }) {
-  const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', category: 'autre' });
+  const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', categoryId: '' });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
@@ -746,7 +768,7 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
           </div>
           <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, category: form.category }); }}
+        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, categoryId: form.categoryId || null }); }}
           style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom de l'ingrédient *</label>
@@ -766,9 +788,7 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-            <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-              {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            <CategoryCascadeSelector value={form.categoryId} onChange={id => setForm({ ...form, categoryId: id })} rootIds={STOCKABLE_ROOT_IDS} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
@@ -902,17 +922,29 @@ function KanbanView({ items, onSelect }: {
   items: InventoryItem[];
   onSelect: (ingredientId: string) => void;
 }) {
+  const { groups: categoryGroups, resolve: resolveCategory } = useStockCategories();
   const grouped = useMemo(() => {
-    const groups: Record<string, InventoryItem[]> = {};
+    const byCat: Record<string, InventoryItem[]> = {};
     items.forEach((item) => {
-      const cat = item.category || 'autre';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(item);
+      const key = String(item.category_id || 'none');
+      if (!byCat[key]) byCat[key] = [];
+      byCat[key].push(item);
     });
-    return INGREDIENT_CATEGORIES
-      .map((c) => ({ key: c.value, label: c.label, items: groups[c.value] || [] }))
+    // Ordre = feuilles des branches stockables, puis le reste (non classé / legacy)
+    const orderedLeaves = categoryGroups.flatMap(g => g.leaves);
+    const known = new Set(orderedLeaves.map(l => String(l.id)));
+    const result = orderedLeaves
+      .map((leaf) => ({ key: String(leaf.id), label: leaf.name, items: byCat[String(leaf.id)] || [] }))
       .filter((g) => g.items.length > 0);
-  }, [items]);
+    Object.keys(byCat)
+      .filter(k => !known.has(k))
+      .forEach(k => result.push({
+        key: k,
+        label: k === 'none' ? 'Non classé' : (resolveCategory(k)?.typeName || 'Non classé'),
+        items: byCat[k],
+      }));
+    return result;
+  }, [items, categoryGroups, resolveCategory]);
 
   if (items.length === 0) {
     return (
