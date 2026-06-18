@@ -224,9 +224,9 @@ export default function AccountingPage() {
   const [tab, setTab] = useState<AccTab>('pilotage');
   const [section, setSection] = useState<AccSection>('exploitation');
 
-  // La section Comptabilité (états normés CGNC) est réservée à l'admin.
+  // La section Comptabilité (états normés CGNC) est accessible à l'admin et au gérant.
   // L'admin pourra étendre l'accès via la gestion des utilisateurs.
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const sections: { key: AccSection; label: string; icon: typeof Wallet }[] = [
     { key: 'exploitation', label: 'Exploitation', icon: LayoutDashboard },

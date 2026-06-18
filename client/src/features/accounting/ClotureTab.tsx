@@ -16,7 +16,7 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; ic
 
 export default function ClotureTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const queryClient = useQueryClient();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -46,7 +46,7 @@ export default function ClotureTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>La clôture est réservée à l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>La clôture est réservée à l'administrateur ou au gérant.</p>
       </div>
     );
   }

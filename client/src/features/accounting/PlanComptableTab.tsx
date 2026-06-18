@@ -46,7 +46,7 @@ export default function PlanComptableTab() {
   const [classFilter, setClassFilter] = useState<number | 'all'>('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   // Tous les hooks DOIVENT etre appeles avant tout return conditionnel
   // (regle des hooks React : meme ordre a chaque render).
@@ -133,7 +133,7 @@ export default function PlanComptableTab() {
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
         <p style={{ fontSize: '0.875rem' }}>
-          Le plan comptable est reserve a l'administrateur. Contactez-le pour autoriser votre acces.
+          Le plan comptable est reserve a l'administrateur ou au gerant. Contactez l'admin pour autoriser votre acces.
         </p>
       </div>
     );
