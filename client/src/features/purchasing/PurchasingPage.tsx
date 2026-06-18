@@ -545,6 +545,17 @@ function ReceivedInvoicesSection() {
     return sorted;
   }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
 
+  // Totaux de la liste affichée (recalculés selon l'onglet de statut et les filtres)
+  const displayedTotals = useMemo(() => {
+    return displayedInvoices.reduce((acc, inv) => {
+      const total = parseFloat(inv.total_amount as string || '0');
+      const paid = parseFloat(inv.paid_amount as string || '0');
+      acc.total += total;
+      if (inv.status !== 'cancelled') acc.remaining += total - paid;
+      return acc;
+    }, { total: 0, remaining: 0 });
+  }, [displayedInvoices]);
+
   const toggleSort = (field: string) => {
     if (sortBy === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -865,6 +876,21 @@ function ReceivedInvoicesSection() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <td colSpan={8} style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                  Total — {displayedInvoices.length} facture{displayedInvoices.length > 1 ? 's' : ''}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <span style={{ fontWeight: 700 }}>{n(displayedTotals.total)}</span>
+                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                  {displayedTotals.remaining > 0 && (
+                    <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(displayedTotals.remaining)}</div>
+                  )}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}
