@@ -9,6 +9,7 @@ import {
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, ArrowDownRight, Filter, ArrowUpDown, ArrowUp, ArrowDown,
+  Clock, CheckCircle2, Scale,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -35,6 +36,16 @@ const MANUAL_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'partial', label: 'Partiellement réglée' },
   { value: 'paid', label: 'Réglée' },
   { value: 'disputed', label: 'En litige' },
+];
+
+// Onglets de filtrage par statut pour les factures reçues (clé '' = toutes)
+const INVOICE_STATUS_TABS: Array<{ key: string; label: string; icon: typeof FileText; color: string }> = [
+  { key: '', label: 'Toutes', icon: Receipt, color: '#6b7280' },
+  { key: 'pending', label: 'Non réglées', icon: Clock, color: '#b45309' },
+  { key: 'partial', label: 'Partiellement réglées', icon: ArrowDownRight, color: '#1d4ed8' },
+  { key: 'paid', label: 'Réglées', icon: CheckCircle2, color: '#15803d' },
+  { key: 'overdue', label: 'En retard', icon: AlertTriangle, color: '#dc2626' },
+  { key: 'disputed', label: 'En litige', icon: Scale, color: '#7c3aed' },
 ];
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -318,9 +329,12 @@ function ReceivedInvoicesSection() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
 
+  // On charge toutes les factures reçues (sans filtre serveur) pour pouvoir
+  // afficher les compteurs par statut dans les onglets ; le filtrage par statut
+  // est appliqué côté client (cf. displayedInvoices).
   const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ['invoices', 'received', statusFilter],
-    queryFn: () => invoicesApi.list({ invoiceType: 'received', ...(statusFilter ? { status: statusFilter } : {}) }),
+    queryKey: ['invoices', 'received'],
+    queryFn: () => invoicesApi.list({ invoiceType: 'received' }),
   });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
@@ -467,9 +481,22 @@ function ReceivedInvoicesSection() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [invoicesList]);
 
-  // Application des filtres (recherche, fournisseur, categorie) puis tri
+  // Nombre de factures par statut, pour les badges des onglets
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    invoicesList.forEach(inv => {
+      const st = (inv.status as string) || '';
+      counts[st] = (counts[st] || 0) + 1;
+    });
+    return counts;
+  }, [invoicesList]);
+
+  // Application des filtres (statut, recherche, fournisseur, categorie) puis tri
   const displayedInvoices = useMemo(() => {
     let list = invoicesList;
+    if (statusFilter) {
+      list = list.filter(inv => inv.status === statusFilter);
+    }
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       list = list.filter(inv =>
@@ -516,7 +543,7 @@ function ReceivedInvoicesSection() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [invoicesList, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
+  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
 
   const toggleSort = (field: string) => {
     if (sortBy === field) {
@@ -562,16 +589,25 @@ function ReceivedInvoicesSection() {
         </div>
       </div>
 
-      {/* Search panel — statut + bouton nouvelle facture */}
+      {/* Search panel — onglets par statut + bouton nouvelle facture */}
       <div className="odoo-search-panel">
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="odoo-filter-dropdown">
-          <option value="">Tous les statuts</option>
-          <option value="pending">Non réglée</option>
-          <option value="partial">Partiellement réglée</option>
-          <option value="paid">Réglée</option>
-          <option value="overdue">En retard</option>
-          <option value="disputed">En litige</option>
-        </select>
+        {INVOICE_STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const count = tab.key === '' ? invoicesList.length : (statusCounts[tab.key] || 0);
+          const active = statusFilter === tab.key;
+          return (
+            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+                color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+                fontWeight: active ? 600 : 400,
+              }}>
+              <Icon size={11} style={{ color: active ? undefined : tab.color }} /> {tab.label}
+              {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+            </button>
+          );
+        })}
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
