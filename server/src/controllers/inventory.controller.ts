@@ -221,6 +221,19 @@ export const inventoryController = {
     });
     res.json({ success: true, data: rows });
   },
+  /**
+   * GET /inventory/purchases?dateFrom=...&dateTo=...
+   * Renvoie les ENTREES de stock (matiere premiere achetee/receptionnee via BC
+   * ou achat direct) agregees par (article, origine) pour la periode. Vue
+   * "montant depense" valorise au prix de reception — l'inverse de consumption.
+   */
+  async purchases(req: AuthRequest, res: Response) {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const rows = await inventoryRepository.findMaterialPurchases({
+      dateFrom, dateTo, storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: rows });
+  },
 };
 
 export const ingredientController = {
