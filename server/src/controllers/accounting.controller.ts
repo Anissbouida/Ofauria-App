@@ -135,6 +135,16 @@ export const invoiceController = {
     const updated = await invoiceRepository.updateCategory(id, categoryId ?? null);
     res.json({ success: true, data: updated });
   },
+  // Categorise une seule ligne de charge (ne touche pas les autres lignes de
+  // la meme facture / bon de commande).
+  async updateLineCategory(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const { categoryId, source } = req.body as { categoryId?: string | null; source?: string };
+    const target = source === 'reception_item' ? 'reception_item' : 'invoice_item';
+    const updated = await invoiceRepository.updateLineCategory(id, target, categoryId ?? null);
+    if (!updated) { res.status(404).json({ success: false, error: { message: 'Ligne non trouvee' } }); return; }
+    res.json({ success: true, data: updated });
+  },
   async getById(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }

@@ -1637,13 +1637,14 @@ function ChargesTab() {
     },
   });
 
-  // Categorise une facture en bloc (touche toutes les lignes derivees).
+  // Categorise UNE seule ligne de charge (les autres lignes de la meme
+  // facture / bon de commande ne sont pas touchees).
   const updateInvoiceCategoryMutation = useMutation({
-    mutationFn: ({ id, categoryId }: { id: string; categoryId: string | null }) =>
-      invoicesApi.updateCategory(id, categoryId),
+    mutationFn: ({ id, source, categoryId }: { id: string; source: string; categoryId: string | null }) =>
+      invoicesApi.updateLineCategory(id, source, categoryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
-      notify.success('Facture categorisee');
+      notify.success('Ligne categorisee');
       setCategorizingInvoice(null);
       setCategorizingCategoryId('');
     },
@@ -1940,7 +1941,7 @@ function ChargesTab() {
                             setCategorizingCategoryId((p.category_id as string) || '');
                           }}
                           style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
-                          title="Categoriser la facture (s'applique a toutes ses lignes)">
+                          title="Categoriser cette ligne">
                           <Pencil size={13} />
                         </button>
                       ) : p.type !== 'salary' ? (
@@ -2179,7 +2180,7 @@ function ChargesTab() {
         </div>
       )}
 
-      {/* Modal de categorisation d'une facture (impacte toutes ses lignes) */}
+      {/* Modal de categorisation d'une ligne de charge (ligne seule) */}
       {categorizingInvoice && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -2189,7 +2190,7 @@ function ChargesTab() {
                   <Pencil size={18} className="text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-white">Catégoriser la facture</h2>
+                  <h2 className="text-lg font-bold text-white">Catégoriser la ligne</h2>
                   <p className="text-xs text-white/80">
                     {(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}
                   </p>
@@ -2203,12 +2204,13 @@ function ChargesTab() {
               e.preventDefault();
               if (!categorizingCategoryId) { notify.error('Sélectionnez une catégorie'); return; }
               updateInvoiceCategoryMutation.mutate({
-                id: categorizingInvoice.invoice_id as string,
+                id: categorizingInvoice.id as string,
+                source: (categorizingInvoice.line_source as string) || 'invoice_item',
                 categoryId: categorizingCategoryId,
               });
             }} className="p-5 space-y-4">
               <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                Cette catégorie s&apos;applique à <strong>toutes les lignes</strong> de la facture (modifie <code>invoices.category_id</code>).
+                Cette catégorie s&apos;applique <strong>uniquement à cette ligne</strong>. Les autres lignes de la facture / du bon de commande ne sont pas modifiées.
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie *</label>

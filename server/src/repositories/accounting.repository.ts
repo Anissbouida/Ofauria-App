@@ -886,6 +886,18 @@ export const invoiceRepository = {
     return result.rows[0];
   },
 
+  // Categorise UNE seule ligne de charge (invoice_items ou
+  // reception_voucher_items). Contrairement a updateCategory (qui touche la
+  // facture entiere), chaque ligne garde sa propre categorie.
+  async updateLineCategory(lineId: string, source: string, categoryId: string | null) {
+    const table = source === 'reception_item' ? 'reception_voucher_items' : 'invoice_items';
+    const result = await db.query(
+      `UPDATE ${table} SET category_id = $1 WHERE id = $2 RETURNING *`,
+      [categoryId, lineId]
+    );
+    return result.rows[0] ?? null;
+  },
+
   async updateAttachment(id: string, url: string | null) {
     const result = await db.query(`UPDATE invoices SET attachment_url = $1 WHERE id = $2 RETURNING *`, [url, id]);
     return result.rows[0];
@@ -1335,6 +1347,8 @@ export const invoiceRepository = {
            inv.status                                  AS invoice_status,
            inv.supplier_id                             AS supplier_id,
            inv.category_id                             AS invoice_category_id,
+           ii.category_id                              AS line_category_id,
+           'invoice_item'::text                        AS line_source,
            inv.purchase_order_id                       AS invoice_po_id,
            ii.ingredient_id                            AS ingredient_id,
            COALESCE(ing.name, p.name, ii.description)  AS designation,
@@ -1359,6 +1373,8 @@ export const invoiceRepository = {
            inv.status                                              AS invoice_status,
            inv.supplier_id                                         AS supplier_id,
            inv.category_id                                         AS invoice_category_id,
+           rvi.category_id                                         AS line_category_id,
+           'reception_item'::text                                  AS line_source,
            inv.purchase_order_id                                   AS invoice_po_id,
            rvi.ingredient_id                                       AS ingredient_id,
            ing.name                                                AS designation,
@@ -1386,11 +1402,14 @@ export const invoiceRepository = {
          al.designation, al.ingredient_category,
          al.quantity, al.unit_price, al.amount,
          'invoice'::text       AS type,
+         -- line_source : indique a l'UI quelle table mettre a jour pour
+         -- categoriser CETTE ligne (invoice_items vs reception_voucher_items).
+         al.line_source        AS line_source,
          s.name                AS supplier_name,
          po.order_number       AS purchase_order_number,
-         -- category_id : utilise par la cascade de filtres (root) de l'UI.
-         -- On expose celle de la facture (souvent "Matieres premieres").
-         al.invoice_category_id AS category_id,
+         -- category_id (effective) : categorie propre a la ligne si definie,
+         -- sinon repli sur celle de la facture. Sert de root a la cascade UI.
+         COALESCE(al.line_category_id, al.invoice_category_id) AS category_id,
          -- Description : sert d'etiquette dans la colonne Designation cote UI.
          CONCAT(
            al.designation,
@@ -1399,13 +1418,20 @@ export const invoiceRepository = {
                 ELSE ''
            END
          )                     AS description,
-         -- Categorie affichee (leaf) : on prefere la categorie de l'ingredient
-         -- (farines / produits_laitiers / ...) plutot que celle de la facture.
-         COALESCE(al.ingredient_category, ec.name) AS category_name
+         -- Categorie affichee (leaf) :
+         --   - si une categorie de ligne a ete choisie explicitement, on
+         --     affiche cette feuille (le choix de l'utilisateur prime) ;
+         --   - sinon on prefere la categorie de l'ingredient (farines /
+         --     produits_laitiers / ...) plutot que celle de la facture.
+         COALESCE(
+           CASE WHEN al.line_category_id IS NOT NULL THEN ec.name END,
+           al.ingredient_category,
+           ec.name
+         ) AS category_name
        FROM all_lines al
        LEFT JOIN suppliers s ON s.id = al.supplier_id
        LEFT JOIN purchase_orders po ON po.id = al.invoice_po_id
-       LEFT JOIN expense_categories ec ON ec.id = al.invoice_category_id
+       LEFT JOIN expense_categories ec ON ec.id = COALESCE(al.line_category_id, al.invoice_category_id)
        ORDER BY al.payment_date DESC, al.invoice_number, al.sort_at`,
       values
     );

@@ -57,6 +57,7 @@ invoicesRouter.get('/line-expenses', authenticate, authorize(...ROLE_GROUPS.ADMI
 invoicesRouter.get('/payment-alerts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.paymentAlerts);
 invoicesRouter.get('/debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.debts);
 invoicesRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.getById);
+invoicesRouter.put('/line/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateLineCategory);
 invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateCategory);
 invoicesRouter.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.replaceItems);
 invoicesRouter.put('/:id/payment-terms', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updatePaymentTerms);
