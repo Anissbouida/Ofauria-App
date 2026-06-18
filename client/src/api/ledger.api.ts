@@ -79,6 +79,22 @@ export const journalEntriesApi = {
     api.get(`/ledger/entries/${id}`).then(r => r.data.data),
 };
 
+/* ═══ Backfill (génération des écritures depuis l'historique) ═══ */
+export interface BackfillSummary {
+  invoices: number;
+  payments: number;
+  cashings: number;
+  sales: number;
+  created: number;
+  skipped: number;
+  errors: number;
+  errorSamples: string[];
+}
+export const ledgerBackfillApi = {
+  run: (): Promise<BackfillSummary> =>
+    api.post('/ledger/backfill').then(r => r.data.data),
+};
+
 /* ═══ Etats comptables ═══ */
 export interface LedgerMovement {
   entry_date: string;

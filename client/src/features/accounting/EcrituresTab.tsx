@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, Eye,
+  Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, Eye, Wand2,
 } from 'lucide-react';
-import { journalEntriesApi, journalsApi, reconciliationApi } from '../../api/ledger.api';
+import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
+import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import type { JournalEntryStatus, JournalEntrySummary, JournalEntryDetail } from '@ofauria/shared';
 
@@ -97,6 +98,17 @@ export default function EcrituresTab() {
     enabled: isAdmin,
   });
 
+  const queryClient = useQueryClient();
+  const backfill = useMutation({
+    mutationFn: () => ledgerBackfillApi.run(),
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['ledger-reconciliation'] });
+      notify.success(`${r.created} écriture(s) générée(s)${r.skipped ? ` · ${r.skipped} déjà existante(s)` : ''}${r.errors ? ` · ${r.errors} erreur(s)` : ''}`);
+    },
+    onError: () => notify.error('Erreur lors de la génération des écritures'),
+  });
+
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -163,6 +175,13 @@ export default function EcrituresTab() {
           <span style={{ marginLeft: 'auto', fontFamily: 'ui-monospace, monospace' }}>
             delta total: {reconciliation.summary.total_delta} DH
           </span>
+          {reconciliation.summary.missing_entries > 0 && (
+            <button onClick={() => { if (window.confirm('Générer les écritures manquantes depuis l\'historique ? Opération idempotente.')) backfill.mutate(); }}
+              disabled={backfill.isPending}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #791F1F', background: '#fff', color: '#791F1F', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500 }}>
+              {backfill.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Générer
+            </button>
+          )}
         </div>
       )}
 
@@ -237,11 +256,18 @@ export default function EcrituresTab() {
       ) : rows.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Notebook size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.875rem', marginBottom: 4 }}>Aucune ecriture comptable</p>
-          <p style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-            Les ecritures seront generees automatiquement quand le moteur d'evenements sera active (Phase suivante).
-            <br />En attendant, la liste reste vide — c'est attendu.
+          <p style={{ fontSize: '0.875rem', marginBottom: 4 }}>Aucune écriture comptable</p>
+          <p style={{ fontSize: '0.75rem', opacity: 0.8, maxWidth: 520, margin: '0 auto 1rem' }}>
+            Les nouvelles opérations (factures, paiements, ventes) génèrent leur écriture automatiquement.
+            Pour comptabiliser l'<strong>historique déjà saisi</strong>, lancez la génération ci-dessous —
+            l'opération est idempotente (relançable sans risque de doublon).
           </p>
+          <button onClick={() => { if (window.confirm('Générer les écritures comptables pour tout l\'historique (factures, paiements, ventes) ? Opération idempotente.')) backfill.mutate(); }}
+            disabled={backfill.isPending} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {backfill.isPending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+            {backfill.isPending ? 'Génération en cours...' : 'Générer les écritures depuis l\'historique'}
+          </button>
         </div>
       ) : (
         <div className="odoo-section" style={{ padding: 0 }}>

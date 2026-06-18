@@ -9,6 +9,7 @@ import {
   financialStatementsController,
   tvaDeclarationController,
   balanceSheetController,
+  backfillController,
 } from '../controllers/ledger.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -51,3 +52,6 @@ ledgerRouter.get('/tva-declaration',  authenticate, authorize(ROLES.ADMIN), tvaD
 
 // Bilan (actif / passif)
 ledgerRouter.get('/balance-sheet',    authenticate, authorize(ROLES.ADMIN), balanceSheetController.balanceSheet);
+
+// Backfill des ecritures (admin) — generation depuis l'historique existant
+ledgerRouter.post('/backfill',        authenticate, authorize(ROLES.ADMIN), backfillController.run);

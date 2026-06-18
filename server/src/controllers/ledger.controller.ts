@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { runFullBackfill } from '../services/ledger-backfill.service.js';
 import {
   accountRepository,
   accountAuxiliaryRepository,
@@ -229,6 +230,23 @@ export const tvaDeclarationController = {
     }
     const data = await tvaDeclarationRepository.declaration({ startDate, endDate, storeId: req.user!.storeId });
     res.json({ success: true, data });
+  },
+};
+
+/* ═══ Backfill des ecritures (declenchement admin depuis l'UI) ═══ */
+export const backfillController = {
+  /**
+   * POST /api/v1/ledger/backfill — genere les ecritures pour les invoices /
+   * payments / sales existants (idempotent). Pratique en production Cloud Run
+   * pour alimenter le grand livre sans acces shell.
+   */
+  async run(req: AuthRequest, res: Response) {
+    try {
+      const summary = await runFullBackfill(req.user!.userId);
+      res.json({ success: true, data: summary });
+    } catch (err) {
+      res.status(500).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur backfill' } });
+    }
   },
 };
 
