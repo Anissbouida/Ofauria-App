@@ -42,6 +42,7 @@ import manualShiftEntryRoutes from './manual-shift-entry.routes.js';
 import salesChannelRoutes from './sales-channel.routes.js';
 import { ledgerRouter } from './ledger.routes.js';
 import fixedAssetRoutes from './fixed-asset.routes.js';
+import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 
 const router = Router();
 
@@ -101,5 +102,6 @@ router.use('/manual-shift-entries', manualShiftEntryRoutes);
 router.use('/sales-channels', salesChannelRoutes);
 router.use('/ledger', ledgerRouter);
 router.use('/fixed-assets', fixedAssetRoutes);
+router.use('/bank-reconciliation', bankReconciliationRoutes);
 
 export default router;
