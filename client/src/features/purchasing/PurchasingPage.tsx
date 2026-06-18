@@ -1299,7 +1299,12 @@ type InvoiceLine = {
   description: string;
   quantity: string;  // en string pour permettre input vide
   unitPrice: string;
+  // Taux TVA de la ligne en % ('' = pas de taux explicite -> fallback en-tete).
+  tvaRate: string;
 };
+
+// Taux TVA usuels au Maroc. '' = pas de TVA explicite sur la ligne.
+const TVA_RATES = ['0', '7', '10', '14', '20'];
 
 function InvoiceLinesEditorModal({
   invoiceId, onClose, onSuccess,
@@ -1333,12 +1338,13 @@ function InvoiceLinesEditorModal({
       description: (it.description as string) || (it.ingredient_name as string) || '',
       quantity: String(it.quantity ?? ''),
       unitPrice: String(it.unit_price ?? ''),
+      tvaRate: it.tva_rate !== null && it.tva_rate !== undefined ? String(parseFloat(it.tva_rate as string)) : '',
     })));
     setInitialized(true);
   }, [invoice, initialized]);
 
   const mutation = useMutation({
-    mutationFn: (items: Array<{ ingredientId: string | null; description: string | null; quantity: number; unitPrice: number; subtotal: number }>) =>
+    mutationFn: (items: Array<{ ingredientId: string | null; description: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null }>) =>
       invoicesApi.replaceItems(invoiceId, items),
     onSuccess,
     onError: (err: unknown) => {
@@ -1349,16 +1355,37 @@ function InvoiceLinesEditorModal({
     },
   });
 
-  // Recalcul du total au fur et a mesure des edits
-  const newTotal = useMemo(() => {
-    return lines.reduce((sum, l) => {
+  // Recalcul live des totaux. La TVA est ventilee par ligne quand au moins une
+  // ligne porte un taux ; sinon on conserve la TVA globale d'en-tete (fallback).
+  const { newTotal, perLineTva, hasAnyRate, tvaByRate } = useMemo(() => {
+    let ht = 0;
+    let tva = 0;
+    let anyRate = false;
+    const byRate = new Map<string, number>();
+    for (const l of lines) {
       const q = parseFloat(l.quantity) || 0;
       const p = parseFloat(l.unitPrice) || 0;
-      return sum + q * p;
-    }, 0);
+      const sub = q * p;
+      ht += sub;
+      if (l.tvaRate !== '') {
+        anyRate = true;
+        const rate = parseFloat(l.tvaRate) || 0;
+        const lineTva = Math.round(sub * (rate / 100) * 100) / 100;
+        tva += lineTva;
+        byRate.set(l.tvaRate, (byRate.get(l.tvaRate) || 0) + lineTva);
+      }
+    }
+    return {
+      newTotal: ht,
+      perLineTva: Math.round(tva * 100) / 100,
+      hasAnyRate: anyRate,
+      tvaByRate: byRate,
+    };
   }, [lines]);
 
-  const taxAmount = parseFloat((invoice?.tax_amount as string) || '0');
+  const headerTax = parseFloat((invoice?.tax_amount as string) || '0');
+  // TVA effective : somme des lignes si un taux est saisi, sinon TVA d'en-tete.
+  const taxAmount = hasAnyRate ? perLineTva : headerTax;
   const paidAmount = parseFloat((invoice?.paid_amount as string) || '0');
   const newTtc = newTotal + taxAmount;
   const ttcBelowPaid = paidAmount > 0 && newTtc < paidAmount;
@@ -1370,7 +1397,7 @@ function InvoiceLinesEditorModal({
     setLines(prev => prev.filter((_, i) => i !== idx));
   };
   const addLine = () => {
-    setLines(prev => [...prev, { ingredientId: null, description: '', quantity: '1', unitPrice: '0' }]);
+    setLines(prev => [...prev, { ingredientId: null, description: '', quantity: '1', unitPrice: '0', tvaRate: '' }]);
   };
 
   const handleSave = () => {
@@ -1385,6 +1412,7 @@ function InvoiceLinesEditorModal({
           quantity: q,
           unitPrice: p,
           subtotal: q * p,
+          tvaRate: l.tvaRate === '' ? null : (parseFloat(l.tvaRate) || 0),
         };
       });
     if (payload.length === 0) {
@@ -1419,7 +1447,7 @@ function InvoiceLinesEditorModal({
           ) : (
             <>
               <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-                Edite, ajoute ou supprime des lignes. Le <strong>total HT</strong> de la facture sera recalcule comme somme des sous-totaux. La TVA ({n(taxAmount)} DH) reste inchangee.
+                Edite, ajoute ou supprime des lignes. Le <strong>total HT</strong> est recalcule comme somme des sous-totaux. Choisis un <strong>taux de TVA par ligne</strong> (les articles peuvent avoir des taux differents) : la TVA totale devient la somme des TVA par ligne. Laisse le taux vide (—) pour conserver la TVA d'en-tete actuelle.
               </div>
 
               <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
@@ -1429,6 +1457,7 @@ function InvoiceLinesEditorModal({
                     <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>Description</th>
                     <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 90 }}>Qte</th>
                     <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 110 }}>Prix U.</th>
+                    <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 80 }}>TVA %</th>
                     <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', textAlign: 'right', width: 110 }}>Sous-total</th>
                     <th style={{ padding: '8px 6px', width: 36 }}></th>
                   </tr>
@@ -1471,6 +1500,16 @@ function InvoiceLinesEditorModal({
                             onChange={e => updateLine(idx, { unitPrice: e.target.value })}
                             style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', textAlign: 'right' }} />
                         </td>
+                        <td style={{ padding: '4px 6px' }}>
+                          <select value={line.tvaRate}
+                            onChange={e => updateLine(idx, { tvaRate: e.target.value })}
+                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', textAlign: 'right', background: 'white' }}>
+                            <option value="">—</option>
+                            {TVA_RATES.map(r => (
+                              <option key={r} value={r}>{r} %</option>
+                            ))}
+                          </select>
+                        </td>
                         <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>
                           {n(q * p)}
                         </td>
@@ -1496,10 +1535,25 @@ function InvoiceLinesEditorModal({
                   <span style={{ color: 'var(--theme-text-muted)' }}>Nouveau total HT</span>
                   <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(newTotal)} DH</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>TVA (inchangee)</span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</span>
-                </div>
+                {hasAnyRate ? (
+                  <>
+                    {[...tvaByRate.entries()].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).map(([rate, amt]) => (
+                      <div key={rate} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>TVA {rate} %</span>
+                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(amt)} DH</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--theme-text-muted)' }}>Total TVA</span>
+                      <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</strong>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--theme-text-muted)' }}>TVA (en-tete, inchangee)</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 6, marginTop: 2 }}>
                   <strong>Nouveau total TTC</strong>
                   <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>{n(newTtc)} DH</strong>

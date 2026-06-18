@@ -43,6 +43,9 @@ interface InvoiceData {
   tvaRate: number;
   totalTVA: number;
   totalTTC: number;
+  // Ventilation TVA par taux (factures multi-taux). Si fourni avec >1 entree,
+  // on affiche une ligne TVA par taux ; sinon on retombe sur la ligne unique.
+  tvaBreakdown?: { rate: number; amount: number }[];
   companyName: string;
   companyAddress?: string;
   companyPhone?: string;
@@ -395,7 +398,15 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   drawTotalRow('SOUS-TOTAL HT', `${n(data.totalHT)} DH`, { bold: true });
   drawTotalRow('REMISE', '0 %');
-  drawTotalRow(`TVA (${data.tvaRate} %)`, `${n(data.totalTVA)} DH`);
+  // TVA : une ligne par taux si la facture est multi-taux, sinon ligne unique.
+  const breakdown = (data.tvaBreakdown || []).filter(b => b.amount !== 0);
+  if (breakdown.length > 1) {
+    for (const b of breakdown) {
+      drawTotalRow(`TVA (${b.rate} %)`, `${n(b.amount)} DH`);
+    }
+  } else {
+    drawTotalRow(`TVA (${data.tvaRate} %)`, `${n(data.totalTVA)} DH`);
+  }
   drawTotalRow('TOTAL TTC', `${n(data.totalTTC)} DH`, { bg: BROWN, textColor: WHITE, bold: true, height: 28 });
 
   y = Math.max(y + notesContentH + 18, ty + 8);

@@ -42,7 +42,8 @@ export const invoicesApi = {
   cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
   /** Modification complete (admin + gerant) — sert aussi pour ajuster une facture. */
   update: (id: string, data: Record<string, any>) => api.put(`/invoices/${id}`, data).then(r => r.data.data),
-  /** Remplace les lignes (admin + gerant). Recalcule amount + total_amount automatiquement. */
+  /** Remplace les lignes (admin + gerant). Recalcule amount + TVA + total_amount automatiquement.
+   *  tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite, fallback en-tete). */
   replaceItems: (id: string, items: Array<{
     productId?: string | null;
     ingredientId?: string | null;
@@ -50,6 +51,7 @@ export const invoicesApi = {
     quantity: number;
     unitPrice: number;
     subtotal?: number;
+    tvaRate?: number | null;
   }>) => api.put(`/invoices/${id}/items`, { items }).then(r => r.data.data),
   /** Suppression physique (admin + gerant). force=true cascade les paiements lies. */
   remove: (id: string, opts: { force?: boolean } = {}) =>

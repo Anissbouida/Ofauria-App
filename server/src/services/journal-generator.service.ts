@@ -97,6 +97,32 @@ function computeTvaRate(amountHT: number, tva: number): number {
   return (tva / amountHT) * 100;
 }
 
+/**
+ * TVA ventilee par taux a partir des lignes de la facture (invoice_items).
+ * Ne renvoie que les groupes ayant un taux explicite (tva_rate NOT NULL) ;
+ * un tableau vide signifie "pas de TVA par ligne" -> l'appelant retombe sur
+ * la TVA globale d'en-tete. Chaque groupe est deja mappe sur son compte CGNC.
+ */
+async function tvaGroupsForInvoice(
+  client: PoolClient | typeof db,
+  invoiceId: string,
+  direction: 'collected' | 'deductible'
+): Promise<{ accountCode: string; rate: number; tva: number }[]> {
+  const res = await client.query(
+    `SELECT tva_rate, SUM(tva_amount) AS tva
+       FROM invoice_items
+      WHERE invoice_id = $1 AND tva_rate IS NOT NULL AND tva_amount IS NOT NULL
+      GROUP BY tva_rate
+     HAVING ROUND(SUM(tva_amount)::numeric, 2) <> 0
+      ORDER BY tva_rate`,
+    [invoiceId]
+  );
+  return res.rows.map((r: { tva_rate: string; tva: string }) => {
+    const rate = parseFloat(r.tva_rate);
+    return { accountCode: tvaAccountForRate(rate, direction), rate, tva: round2(parseFloat(r.tva)) };
+  });
+}
+
 /* ═══ Resolution recursive d'un account_id depuis une expense/revenue_category ═══ */
 /**
  * Remonte la chaine parent_id jusqu'a trouver un compte associe. Si rien
@@ -166,14 +192,19 @@ export async function fromInvoice(
     if (!inv.supplier_id) return null;
 
     const chargeCode = await resolveCategoryAccountCode(client, inv.category_id, 'expense');
-    const tvaCode = tax > 0
-      ? tvaAccountForRate(computeTvaRate(amount, tax), 'deductible')
-      : null;
 
     const lines: GeneratedLine[] = [
       { account_code: chargeCode, debit: round2(amount), credit: 0, label: `Achat ${inv.invoice_number}` },
     ];
-    if (tvaCode && tax > 0) {
+    // TVA deductible : une ligne par taux si la facture a un detail par ligne,
+    // sinon une seule ligne sur le taux global deduit du HT/TVA.
+    const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'deductible');
+    if (tvaGroups.length > 0) {
+      for (const g of tvaGroups) {
+        lines.push({ account_code: g.accountCode, debit: round2(g.tva), credit: 0, label: `TVA recuperable ${g.rate}%` });
+      }
+    } else if (tax > 0) {
+      const tvaCode = tvaAccountForRate(computeTvaRate(amount, tax), 'deductible');
       lines.push({ account_code: tvaCode, debit: round2(tax), credit: 0, label: 'TVA recuperable' });
     }
     lines.push({
@@ -201,9 +232,6 @@ export async function fromInvoice(
     if (!inv.customer_id) return null;
 
     const revCode = '7111';
-    const tvaCode = tax > 0
-      ? tvaAccountForRate(computeTvaRate(amount, tax), 'collected')
-      : null;
 
     const lines: GeneratedLine[] = [
       {
@@ -216,7 +244,14 @@ export async function fromInvoice(
       },
       { account_code: revCode, debit: 0, credit: round2(amount), label: `Vente ${inv.invoice_number}` },
     ];
-    if (tvaCode && tax > 0) {
+    // TVA collectee : une ligne par taux si detail par ligne, sinon ligne unique.
+    const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'collected');
+    if (tvaGroups.length > 0) {
+      for (const g of tvaGroups) {
+        lines.push({ account_code: g.accountCode, debit: 0, credit: round2(g.tva), label: `TVA facturee ${g.rate}%` });
+      }
+    } else if (tax > 0) {
+      const tvaCode = tvaAccountForRate(computeTvaRate(amount, tax), 'collected');
       lines.push({ account_code: tvaCode, debit: 0, credit: round2(tax), label: 'TVA facturee' });
     }
 

@@ -28,6 +28,9 @@ interface InvoiceData {
   tvaRate: number;
   totalTVA: number;
   totalTTC: number;
+  // Ventilation TVA par taux (factures multi-taux). Si fourni avec >1 entree,
+  // on affiche une ligne TVA par taux ; sinon ligne unique.
+  tvaBreakdown?: { rate: number; amount: number }[];
   companyName: string;
   companyAddress?: string;
   companyPhone?: string;
@@ -362,16 +365,36 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
     if (data.companyBankAccount) notesContent.push(mk([t(`RIB. : ${data.companyBankAccount}`, { sz: 16, color: C.textMuted })]));
   }
 
+  // TVA : une ligne par taux si la facture est multi-taux, sinon ligne unique.
+  const tvaBreakdown = (data.tvaBreakdown || []).filter(b => b.amount !== 0);
+  const tvaRows = tvaBreakdown.length > 1
+    ? tvaBreakdown.map(b => new TableRow({
+        height: { value: 380, rule: HeightRule.ATLEAST },
+        children: [
+          c([mk([t(`TVA (${b.rate} %)`, { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
+          c([mk([t(`${n(b.amount)} DH`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
+        ],
+      }))
+    : [new TableRow({
+        height: { value: 380, rule: HeightRule.ATLEAST },
+        children: [
+          c([mk([t(`TVA (${data.tvaRate} %)`, { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
+          c([mk([t(`${n(data.totalTVA)} DH`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
+        ],
+      })];
+  // Notes occupe toute la hauteur : HT + REMISE + lignes TVA + TTC.
+  const totalsRowSpan = 3 + tvaRows.length;
+
   const totalsTable = new Table({
     width: { size: W, type: WidthType.DXA },
     layout: TableLayoutType.FIXED,
     columnWidths: [NW, TLW, TVW],
     rows: [
-      // Row 1: Notes (rowSpan 4) | SOUS-TOTAL HT | value
+      // Row 1: Notes (rowSpan dynamique) | SOUS-TOTAL HT | value
       new TableRow({
         height: { value: 380, rule: HeightRule.ATLEAST },
         children: [
-          c(notesContent, { w: NW, bg: C.beige, rowSpan: 4 }),
+          c(notesContent, { w: NW, bg: C.beige, rowSpan: totalsRowSpan }),
           c([mk([t('SOUS-TOTAL HT', { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
           c([mk([t(`${n(data.totalHT)} DH`, { sz: 20, b: true })], AlignmentType.RIGHT)], { w: TVW }),
         ],
@@ -384,15 +407,9 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
           c([mk([t('0 %', { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
         ],
       }),
-      // Row 3: TVA
-      new TableRow({
-        height: { value: 380, rule: HeightRule.ATLEAST },
-        children: [
-          c([mk([t(`TVA (${data.tvaRate} %)`, { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
-          c([mk([t(`${n(data.totalTVA)} DH`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
-        ],
-      }),
-      // Row 4: TOTAL TTC (brown background)
+      // Rows TVA (une ou plusieurs selon multi-taux)
+      ...tvaRows,
+      // Dernière ligne: TOTAL TTC (brown background)
       new TableRow({
         height: { value: 460, rule: HeightRule.ATLEAST },
         children: [

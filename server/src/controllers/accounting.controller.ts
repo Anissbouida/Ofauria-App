@@ -297,6 +297,13 @@ export const invoiceController = {
       const n = typeof v === 'number' ? v : parseFloat(String(v));
       return Number.isFinite(n) ? n : 0;
     };
+    // tvaRate : taux TVA de la ligne en %. undefined/null/'' => pas de taux
+    // explicite (la ligne retombe sur la TVA globale d'en-tete).
+    const rate = (v: unknown): number | null => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
     const items = (body.items as Record<string, unknown>[]).map((raw) => ({
       productId: (raw.productId as string | null | undefined) || null,
       ingredientId: (raw.ingredientId as string | null | undefined) || null,
@@ -304,6 +311,7 @@ export const invoiceController = {
       quantity: num(raw.quantity),
       unitPrice: num(raw.unitPrice),
       subtotal: raw.subtotal !== undefined ? num(raw.subtotal) : num(raw.quantity) * num(raw.unitPrice),
+      tvaRate: rate(raw.tvaRate),
     }));
     try {
       const updated = await invoiceRepository.replaceItems(req.params.id, items);
@@ -368,7 +376,7 @@ export const invoiceController = {
       // colonne DESIGNATION vide sur la facture.
       const itemsResult = await db.query(
         `SELECT COALESCE(NULLIF(ii.description, ''), p.name, p2.name, '') AS description,
-                ii.quantity, ii.unit_price, ii.subtotal,
+                ii.quantity, ii.unit_price, ii.subtotal, ii.tva_rate, ii.tva_amount,
                 COALESCE(cat.name, cat2.name, '') AS category_name
          FROM invoice_items ii
          LEFT JOIN products p ON p.id = ii.product_id
@@ -454,6 +462,20 @@ export const invoiceController = {
       }
       console.log('[Invoice PDF] Logo resolution:', { projectRoot, logoPath, found: !!logoPath });
 
+      // Ventilation TVA par taux a partir des lignes (factures multi-taux).
+      // Vide si aucune ligne ne porte de taux explicite -> rendu ligne unique.
+      const tvaBreakdownMap = new Map<number, number>();
+      for (const it of items as Record<string, unknown>[]) {
+        if (it.tva_rate === null || it.tva_rate === undefined) continue;
+        const rate = parseFloat(it.tva_rate as string);
+        if (!Number.isFinite(rate)) continue;
+        const amt = it.tva_amount != null ? (parseFloat(it.tva_amount as string) || 0) : 0;
+        tvaBreakdownMap.set(rate, (tvaBreakdownMap.get(rate) || 0) + amt);
+      }
+      const tvaBreakdown = [...tvaBreakdownMap.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([rate, amt]) => ({ rate, amount: Math.round(amt * 100) / 100 }));
+
       const buffer = await generateInvoicePdf({
         invoiceNumber: inv.invoice_number as string,
         invoiceDate: dateStr,
@@ -472,6 +494,7 @@ export const invoiceController = {
         tvaRate,
         totalTVA: taxAmount,
         totalTTC: totalAmount,
+        tvaBreakdown,
         companyName: 'TRIANGLE D\'ORIENT SARL',
         companyAddress: 'NR 22 RDC LOTISSEMENT FAJR MOHAMMEDIA',
         companyPhone: '06 49 83 77 67',

@@ -3,6 +3,37 @@ import { getUserTimezone, getLocalYear } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries } from '../services/journal-generator.service.js';
 
+/* ═══ TVA par ligne ═══
+ * Helpers de calcul de la TVA au niveau ligne de facture (invoice_items).
+ * Le taux (tva_rate) est en pourcentage ; NULL = ligne sans TVA explicite,
+ * la facture retombe alors sur la TVA globale d'en-tete (cf. migration 189).
+ */
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Montant TVA d'une ligne. NULL si pas de taux explicite. */
+function lineTvaAmount(subtotal: number, tvaRate: number | null | undefined): number | null {
+  if (tvaRate === null || tvaRate === undefined || !Number.isFinite(tvaRate)) return null;
+  return round2(subtotal * (tvaRate / 100));
+}
+
+/**
+ * Recalcule les totaux d'en-tete a partir des lignes.
+ *   - amount       = somme des sous-totaux HT
+ *   - hasPerLineTva = au moins une ligne porte un taux explicite
+ *   - taxAmount    = somme des TVA lignes (si hasPerLineTva), sinon null
+ *                    (l'appelant conserve alors la TVA d'en-tete existante)
+ */
+function headerTotalsFromLines(
+  items: { subtotal: number; tvaRate?: number | null }[]
+): { amount: number; hasPerLineTva: boolean; taxAmount: number | null } {
+  const amount = round2(items.reduce((s, it) => s + (Number.isFinite(it.subtotal) ? it.subtotal : 0), 0));
+  const hasPerLineTva = items.some(it => it.tvaRate !== null && it.tvaRate !== undefined && Number.isFinite(it.tvaRate));
+  const taxAmount = hasPerLineTva
+    ? round2(items.reduce((s, it) => s + (lineTvaAmount(it.subtotal, it.tvaRate) ?? 0), 0))
+    : null;
+  return { amount, hasPerLineTva, taxAmount };
+}
+
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
   async getRegister(year: number, month: number, storeId?: string) {
@@ -480,7 +511,7 @@ export const invoiceRepository = {
     taxAmount?: number; totalAmount?: number; notes?: string; createdBy: string; storeId?: string;
     expectedPaymentMode?: string; receptionDate?: string;
     checkNumber?: string;
-    items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number }[];
+    items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -488,7 +519,20 @@ export const invoiceRepository = {
 
       const invoiceType = data.invoiceType || 'received';
       const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted');
-      const totalAmount = data.totalAmount || ((data.amount || 0) + (data.taxAmount || 0));
+
+      // Si des lignes portent un taux de TVA explicite, elles font foi :
+      // HT/TVA/TTC d'en-tete sont derives de la somme des lignes (sinon on
+      // respecte les montants d'en-tete fournis par l'appelant).
+      let headerAmount = data.amount || 0;
+      let headerTax = data.taxAmount || 0;
+      if (data.items && data.items.length > 0) {
+        const t = headerTotalsFromLines(data.items);
+        if (t.hasPerLineTva) {
+          headerAmount = t.amount;
+          headerTax = t.taxAmount as number;
+        }
+      }
+      const totalAmount = data.totalAmount || (headerAmount + headerTax);
 
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
@@ -499,7 +543,7 @@ export const invoiceRepository = {
         [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
          data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
          data.orderId || null, data.invoiceDate, data.dueDate || null,
-         data.amount, data.taxAmount || 0, totalAmount,
+         headerAmount, headerTax, totalAmount,
          data.notes || null, data.createdBy, data.storeId || null,
          data.expectedPaymentMode || null, data.receptionDate || null,
          data.checkNumber || null]
@@ -508,11 +552,13 @@ export const invoiceRepository = {
       // Insert invoice items if provided
       if (data.items && data.items.length > 0) {
         for (const item of data.items) {
+          const tvaRate = item.tvaRate ?? null;
+          const tvaAmount = lineTvaAmount(item.subtotal, tvaRate);
           await client.query(
-            `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [invResult.rows[0].id, item.productId || null, item.ingredientId || null,
-             item.description || null, item.quantity, item.unitPrice, item.subtotal]
+             item.description || null, item.quantity, item.unitPrice, item.subtotal, tvaRate, tvaAmount]
           );
         }
       }
@@ -916,7 +962,7 @@ export const invoiceRepository = {
    * Note : on prefere subtotal envoye par le client (deja arrondi a l'affichage)
    * plutot que recalculer qty * unit_price, pour eviter les drift de centimes.
    */
-  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number }[]) {
+  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[]) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -926,11 +972,16 @@ export const invoiceRepository = {
         [id]
       );
       if (!cur.rows[0]) { await client.query('ROLLBACK'); return null; }
-      const taxAmount = parseFloat(cur.rows[0].tax_amount || '0');
       const paidAmount = parseFloat(cur.rows[0].paid_amount || '0');
 
-      const newAmount = items.reduce((sum, it) => sum + (Number.isFinite(it.subtotal) ? it.subtotal : 0), 0);
-      const newTotal = newAmount + taxAmount;
+      // Si au moins une ligne porte un taux, la TVA est la somme des TVA
+      // lignes. Sinon on conserve la TVA globale d'en-tete (retrocompat).
+      const totals = headerTotalsFromLines(items);
+      const newAmount = totals.amount;
+      const taxAmount = totals.hasPerLineTva
+        ? (totals.taxAmount as number)
+        : parseFloat(cur.rows[0].tax_amount || '0');
+      const newTotal = round2(newAmount + taxAmount);
       if (newTotal < paidAmount - 0.001) {
         await client.query('ROLLBACK');
         throw new Error(
@@ -942,17 +993,19 @@ export const invoiceRepository = {
       await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [id]);
       for (const it of items) {
         if (!Number.isFinite(it.quantity) || !Number.isFinite(it.unitPrice)) continue;
+        const tvaRate = it.tvaRate ?? null;
+        const tvaAmount = lineTvaAmount(it.subtotal, tvaRate);
         await client.query(
-          `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [id, it.productId || null, it.ingredientId || null, it.description || null,
-           it.quantity, it.unitPrice, it.subtotal]
+           it.quantity, it.unitPrice, it.subtotal, tvaRate, tvaAmount]
         );
       }
 
       await client.query(
-        `UPDATE invoices SET amount = $1, total_amount = $2 WHERE id = $3`,
-        [newAmount, newTotal, id]
+        `UPDATE invoices SET amount = $1, tax_amount = $2, total_amount = $3 WHERE id = $4`,
+        [newAmount, taxAmount, newTotal, id]
       );
 
       // Le montant a change -> reverser + regenerer l'ecriture de la facture

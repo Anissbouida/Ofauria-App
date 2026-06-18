@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
@@ -49,6 +49,24 @@ const STATUS_ICONS: Record<string, typeof Clock> = {
   non_livre: PackageX,
   annule: Ban,
   en_attente_facturation: FileText,
+};
+
+// Styles partagés pour les formulaires en style Odoo (cf. .odoo-scope dans index.css)
+const odooLabelStyle: CSSProperties = {
+  display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
+  letterSpacing: '0.03em', color: 'var(--odoo-text-muted)', marginBottom: 4,
+};
+const odooFieldStyle: CSSProperties = {
+  width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
+  borderRadius: 4, fontSize: '0.8125rem', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+};
+const odooNumFieldStyle: CSSProperties = { ...odooFieldStyle, textAlign: 'right' };
+const odooModalPanelStyle: CSSProperties = {
+  backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
+  borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+};
+const odooModalHeaderStyle: CSSProperties = {
+  backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem',
 };
 
 type POItem = {
@@ -738,29 +756,27 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
+        style={odooModalPanelStyle}>
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 flex items-center justify-between rounded-t-2xl z-10">
+        <div className="sticky top-0 flex items-center justify-between z-10" style={odooModalHeaderStyle}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <ShoppingBag size={18} className="text-white" />
-            </div>
+            <ShoppingBag size={16} style={{ color: '#fff' }} />
             <div>
-              <h2 className="text-lg font-bold text-white">Nouveau bon de commande</h2>
-              <p className="text-sm text-white/70">Créez une commande fournisseur avec les articles souhaités</p>
+              <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Nouveau bon de commande</h2>
+              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>Commande fournisseur avec les articles souhaités</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
+          <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div style={{ padding: '1.25rem' }} className="space-y-5">
           {/* Supplier + Date */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur *</label>
-              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500">
+              <label style={odooLabelStyle}>Fournisseur *</label>
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={odooFieldStyle}>
                 <option value="">Choisir un fournisseur</option>
                 {(suppliers as Record<string, any>[]).filter((s) => s.is_active !== false).map((s) => (
                   <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
@@ -768,91 +784,87 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Livraison prévue</label>
-              <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+              <label style={odooLabelStyle}>Livraison prévue</label>
+              <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={odooFieldStyle} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" placeholder="Optionnel..." />
+              <label style={odooLabelStyle}>Notes</label>
+              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} style={odooFieldStyle} placeholder="Optionnel..." />
             </div>
           </div>
 
           {/* Add ingredient search */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des articles</label>
+            <label style={odooLabelStyle}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
                 <input type="text" placeholder="Chercher un ingrédient..."
                   value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                  style={{ ...odooFieldStyle, paddingLeft: 30 }} />
               </div>
               <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', category: 'autre', unitCost: '' }); }}
-                className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-medium rounded-xl transition-colors flex items-center gap-1.5 border border-emerald-200 whitespace-nowrap shrink-0">
+                className="odoo-btn-secondary whitespace-nowrap shrink-0" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={14} /> Nouvel ingrédient
               </button>
             </div>
             {searchIngredient && filteredIngredients.length > 0 && (
-              <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+              <div style={{ marginTop: 4, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 192, overflowY: 'auto' }}>
                 {filteredIngredients.slice(0, 10).map(ing => (
                   <button key={ing.id as string} onClick={() => addIngredient(ing)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm flex items-center justify-between transition-colors first:rounded-t-xl last:rounded-b-xl">
-                    <span className="font-medium">{ing.name as string} <span className="text-gray-400">({ing.unit as string})</span></span>
-                    <span className="text-xs text-gray-400">{n(parseFloat(ing.unit_cost as string) || 0)} DH/{ing.unit as string}</span>
+                    className="w-full text-left text-sm flex items-center justify-between hover:bg-gray-50"
+                    style={{ padding: '0.5rem 0.75rem' }}>
+                    <span className="font-medium">{ing.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({ing.unit as string})</span></span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(ing.unit_cost as string) || 0)} DH/{ing.unit as string}</span>
                   </button>
                 ))}
               </div>
             )}
             {searchIngredient && filteredIngredients.length === 0 && !showNewIngredient && (
-              <p className="text-sm text-gray-400 mt-2">Aucun ingrédient trouvé</p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>Aucun ingrédient trouvé</p>
             )}
             {showNewIngredient && (
-              <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+              <div style={{ marginTop: 12, backgroundColor: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '1rem' }} className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-emerald-800 flex items-center gap-1.5">
+                  <h4 className="text-sm font-bold flex items-center gap-1.5" style={{ color: 'var(--odoo-text)' }}>
                     <Plus size={14} /> Nouvel ingrédient
                   </h4>
-                  <button onClick={() => setShowNewIngredient(false)} className="p-1 hover:bg-emerald-100 rounded-lg transition-colors">
-                    <X size={14} className="text-emerald-600" />
+                  <button onClick={() => setShowNewIngredient(false)} className="hover:bg-gray-100" style={{ padding: 4, borderRadius: 4, color: 'var(--odoo-text-muted)' }}>
+                    <X size={14} />
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-emerald-700 mb-1">Nom *</label>
+                    <label style={odooLabelStyle}>Nom *</label>
                     <input type="text" value={newIng.name} onChange={e => setNewIng({ ...newIng, name: e.target.value })}
-                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" placeholder="Ex: Farine T55" />
+                      style={odooFieldStyle} placeholder="Ex: Farine T55" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-emerald-700 mb-1">Unité *</label>
-                    <select value={newIng.unit} onChange={e => setNewIng({ ...newIng, unit: e.target.value })}
-                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                    <label style={odooLabelStyle}>Unité *</label>
+                    <select value={newIng.unit} onChange={e => setNewIng({ ...newIng, unit: e.target.value })} style={odooFieldStyle}>
                       {unitEntries.map(u => (
                         <option key={u.code} value={u.code}>{u.label}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-emerald-700 mb-1">Catégorie</label>
-                    <select value={newIng.category} onChange={e => setNewIng({ ...newIng, category: e.target.value })}
-                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                    <label style={odooLabelStyle}>Catégorie</label>
+                    <select value={newIng.category} onChange={e => setNewIng({ ...newIng, category: e.target.value })} style={odooFieldStyle}>
                       {ingredientCats.map(c => (
                         <option key={c.code} value={c.code}>{c.label}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-emerald-700 mb-1">Coût unitaire (DH)</label>
+                    <label style={odooLabelStyle}>Coût unitaire (DH)</label>
                     <input type="number" step="0.01" min="0" value={newIng.unitCost} onChange={e => setNewIng({ ...newIng, unitCost: e.target.value })}
-                      className="w-full px-2.5 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" placeholder="Optionnel" />
+                      style={odooFieldStyle} placeholder="Optionnel" />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowNewIngredient(false)}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Annuler</button>
+                  <button onClick={() => setShowNewIngredient(false)} className="odoo-btn-secondary">Annuler</button>
                   <button onClick={handleCreateIngredient} disabled={createIngredientMutation.isPending}
-                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">
+                    className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {createIngredientMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
                     {createIngredientMutation.isPending ? 'Création...' : 'Créer et ajouter'}
                   </button>
@@ -863,80 +875,79 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
           {/* Items list */}
           {items.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
+              <table className="odoo-table">
                 <thead>
-                  <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingrédient</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Quantité</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Prix unit. (DH)</th>
-                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-28">Sous-total</th>
-                    <th className="w-10"></th>
+                  <tr>
+                    <th>Ingrédient</th>
+                    <th style={{ textAlign: 'right', width: 128 }}>Quantité</th>
+                    <th style={{ textAlign: 'right', width: 128 }}>Prix unit. (DH)</th>
+                    <th style={{ textAlign: 'right', width: 112 }}>Sous-total</th>
+                    <th style={{ width: 40 }}></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {items.map((item, idx) => (
-                    <tr key={item.ingredientId} className="group hover:bg-gray-50/50">
-                      <td className="px-4 py-2.5">
-                        <span className="font-medium text-gray-700">{item.ingredientName}</span>
-                        <span className="text-gray-400 text-xs ml-1">({item.unit})</span>
+                    <tr key={item.ingredientId}>
+                      <td>
+                        <span className="font-medium">{item.ingredientName}</span>
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
                           onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                          style={odooNumFieldStyle} />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         <input type="number" min={0} step="0.01" value={item.unitPrice ?? ''}
                           onChange={(e) => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
                           placeholder="Optionnel"
-                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-500" />
+                          style={odooNumFieldStyle} />
                       </td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-gray-700">
-                        {item.unitPrice ? n(item.quantityOrdered * item.unitPrice) : <span className="text-gray-400 text-xs">À définir</span>}
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {item.unitPrice ? n(item.quantityOrdered * item.unitPrice) : <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>À définir</span>}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <button onClick={() => removeItem(idx)}
-                          className="p-1.5 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
-                          <X size={14} className="text-red-400" />
+                      <td style={{ textAlign: 'center' }}>
+                        <button onClick={() => removeItem(idx)} className="odoo-btn-danger" title="Retirer" style={{ padding: '0.25rem 0.4rem' }}>
+                          <X size={14} />
                         </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-4 py-3 flex items-center justify-between text-white rounded-b-2xl">
-                <span className="text-sm">
+              <div className="flex items-center justify-between"
+                style={{ backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', borderTop: '1px solid var(--odoo-border)', padding: '0.625rem 0.875rem' }}>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
                   {items.length} article{items.length > 1 ? 's' : ''}
-                  {hasMissingPrices && <span className="ml-2 text-amber-300 text-xs">(prix à définir par le fournisseur)</span>}
+                  {hasMissingPrices && <span style={{ marginLeft: 8, color: '#b85d1a', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
                 </span>
-                <span className="text-lg font-bold">{totalAmount > 0 ? `Total: ${n(totalAmount)} DH` : 'Prix à définir'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} DH` : 'Prix à définir'}</span>
               </div>
             </div>
           )}
 
           {items.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
-              <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
-                <ShoppingBag size={24} className="text-gray-300" />
-              </div>
-              <p className="text-gray-400 text-sm">Recherchez et ajoutez des ingrédients ci-dessus</p>
+            <div className="flex flex-col items-center justify-center"
+              style={{ padding: '2.5rem 0', backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, border: '1px dashed var(--odoo-border)' }}>
+              <ShoppingBag size={24} style={{ color: 'var(--odoo-text-light)', marginBottom: 8 }} />
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Recherchez et ajoutez des ingrédients ci-dessus</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-between items-center rounded-b-2xl">
+        <div className="sticky bottom-0 flex justify-between items-center"
+          style={{ backgroundColor: 'var(--odoo-bg)', borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
           <div>
             {items.length > 0 && (
-              <p className="text-sm text-gray-500">{items.length} article{items.length > 1 ? 's' : ''} — <span className="font-bold text-gray-800">{n(totalAmount)} DH</span></p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} DH</span></p>
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose}
-              className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+            <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0}
-              className="px-5 py-2.5 bg-gradient-to-r from-slate-600 to-gray-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50">
+              className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
               {createMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
             </button>
@@ -955,10 +966,10 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <Loader2 className="animate-spin text-slate-400 mx-auto mb-3" size={28} />
-        <p className="text-sm text-gray-400">Chargement...</p>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="odoo-scope text-center" style={{ ...odooModalPanelStyle, padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
+        <Loader2 className="animate-spin mx-auto mb-3" size={28} style={{ color: 'var(--odoo-text-muted)' }} />
+        <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement...</p>
       </div>
     </ModalBackdrop>
   );
@@ -971,60 +982,53 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   const StatusIcon = STATUS_ICONS[po.status] || Clock;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope w-full max-w-2xl max-h-[90vh] overflow-y-auto" style={odooModalPanelStyle} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-600 to-gray-700 px-6 py-5 rounded-t-2xl">
+        <div style={odooModalHeaderStyle}>
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-white">{po.order_number}</h2>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[po.status] || ''}`}>
+                <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', margin: 0 }}>{po.order_number}</h2>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold ${STATUS_COLORS[po.status] || ''}`}>
                   <StatusIcon size={12} />
                   {STATUS_LABELS[po.status] || po.status}
                 </span>
               </div>
-              <p className="text-sm text-white/70 mt-1">
+              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', marginTop: 2 }}>
                 {po.supplier_name} — Créé par {po.created_by_name}
               </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
+            <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div style={{ padding: '1.25rem' }} className="space-y-4">
           {/* Info cards */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Commande</p>
-              <p className="font-medium text-sm mt-1">{format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr })}</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Livraison prévue</p>
-              <p className="font-medium text-sm mt-1">
-                {po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'dd MMM yyyy', { locale: fr }) : '—'}
-              </p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Date livraison</p>
-              <p className="font-medium text-sm mt-1">
-                {po.delivery_date ? format(new Date(po.delivery_date), 'dd MMM yyyy', { locale: fr }) : '—'}
-              </p>
-            </div>
+            {[
+              { label: 'Commande', value: format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr }) },
+              { label: 'Livraison prévue', value: po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'dd MMM yyyy', { locale: fr }) : '—' },
+              { label: 'Date livraison', value: po.delivery_date ? format(new Date(po.delivery_date), 'dd MMM yyyy', { locale: fr }) : '—' },
+            ].map(card => (
+              <div key={card.label} style={{ backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, padding: '0.625rem 0.75rem', border: '1px solid var(--odoo-border)' }}>
+                <p style={{ ...odooLabelStyle, marginBottom: 2 }}>{card.label}</p>
+                <p style={{ fontWeight: 500, fontSize: '0.8125rem' }}>{card.value}</p>
+              </div>
+            ))}
           </div>
 
           {/* Global progress */}
           {(po.status === 'livre_partiel' || po.status === 'livre_complet') && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-600">Progression globale</span>
-                <span className="text-sm font-bold">{globalPct.toFixed(0)}%</span>
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.875rem' }}>
+              <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>Progression globale</span>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 700 }}>{globalPct.toFixed(0)}%</span>
               </div>
-              <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${globalPct >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`}
-                  style={{ width: `${Math.min(100, globalPct)}%` }} />
+              <div style={{ width: '100%', height: 8, backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 999, width: `${Math.min(100, globalPct)}%`, backgroundColor: globalPct >= 100 ? '#28a745' : '#e6892b' }} />
               </div>
-              <div className="flex justify-between mt-2 text-xs text-gray-400">
+              <div className="flex justify-between" style={{ marginTop: 8, fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
                 <span>Commande: {n(totalOrdered)} DH</span>
                 <span>Livré: {n(totalDelivered)} DH</span>
               </div>
@@ -1032,47 +1036,46 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
           )}
 
           {po.notes && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
-              <FileText size={14} className="inline mr-1.5" /> {po.notes}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.8125rem', backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
+              <FileText size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {po.notes}
             </div>
           )}
 
           {/* Items table */}
-          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
+            <table className="odoo-table">
+              <thead>
                 <tr>
-                  <th className="text-left px-4 py-2.5">Ingrédient</th>
-                  <th className="text-right px-4 py-2.5">Commandé</th>
-                  <th className="text-right px-4 py-2.5">Livré</th>
-                  <th className="text-right px-4 py-2.5">Prix unit.</th>
-                  <th className="text-right px-4 py-2.5">Total</th>
-                  <th className="text-right px-4 py-2.5 w-28">État</th>
+                  <th>Ingrédient</th>
+                  <th style={{ textAlign: 'right' }}>Commandé</th>
+                  <th style={{ textAlign: 'right' }}>Livré</th>
+                  <th style={{ textAlign: 'right' }}>Prix unit.</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                  <th style={{ textAlign: 'right', width: 112 }}>État</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {items.map((item) => {
                   const ordered = parseFloat(item.quantity_ordered);
                   const delivered = parseFloat(item.quantity_delivered);
                   const pct = ordered > 0 ? Math.min(100, (delivered / ordered) * 100) : 0;
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50/50">
-                      <td className="px-4 py-2.5 font-medium">{item.ingredient_name}
-                        <span className="text-gray-400 text-xs ml-1">({item.ingredient_unit})</span>
+                    <tr key={item.id}>
+                      <td className="font-medium">{item.ingredient_name}
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">{ordered}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{delivered}</span>
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{ordered}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: delivered > 0 ? '#28a745' : 'var(--odoo-text-muted)', fontWeight: delivered > 0 ? 500 : 400 }}>{delivered}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">{item.unit_price != null ? `${n(parseFloat(item.unit_price))} DH` : <span className="text-amber-500 text-xs">À définir</span>}</td>
-                      <td className="px-4 py-2.5 text-right font-medium">{item.unit_price != null ? `${n(ordered * parseFloat(item.unit_price))} DH` : <span className="text-gray-400">—</span>}</td>
-                      <td className="px-4 py-2.5">
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{item.unit_price != null ? `${n(parseFloat(item.unit_price))} DH` : <span style={{ color: '#e6892b', fontSize: '0.6875rem' }}>À définir</span>}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 500 }}>{item.unit_price != null ? `${n(ordered * parseFloat(item.unit_price))} DH` : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}</td>
+                      <td>
                         <div className="flex items-center gap-2 justify-end">
-                          <div className="w-14 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-orange-400' : 'bg-gray-300'}`}
-                              style={{ width: `${pct}%` }} />
+                          <div style={{ width: 56, height: 8, backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: 999, width: `${pct}%`, backgroundColor: pct >= 100 ? '#28a745' : pct > 0 ? '#e6892b' : 'var(--odoo-border)' }} />
                           </div>
-                          <span className="text-xs text-gray-500 w-8 text-right">{pct.toFixed(0)}%</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', width: 32, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
                         </div>
                       </td>
                     </tr>
@@ -1083,9 +1086,9 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
           </div>
 
           {/* Totals */}
-          <div className="flex justify-between pt-2 border-t text-sm">
-            <span className="font-semibold text-gray-700">Total commande: <span className="text-lg">{n(totalOrdered)} DH</span></span>
-            <span className="font-semibold text-green-700">Total livré: <span className="text-lg">{n(totalDelivered)} DH</span></span>
+          <div className="flex justify-between" style={{ paddingTop: 8, borderTop: '1px solid var(--odoo-border)', fontSize: '0.8125rem' }}>
+            <span style={{ fontWeight: 600 }}>Total commande: <span style={{ fontSize: '1.05rem' }}>{n(totalOrdered)} DH</span></span>
+            <span style={{ fontWeight: 600, color: '#28a745' }}>Total livré: <span style={{ fontSize: '1.05rem' }}>{n(totalDelivered)} DH</span></span>
           </div>
         </div>
       </div>
@@ -1131,10 +1134,10 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   if (isLoading) return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-2xl text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <Loader2 className="animate-spin text-emerald-400 mx-auto mb-3" size={28} />
-        <p className="text-sm text-gray-400">Chargement...</p>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="odoo-scope text-center" style={{ ...odooModalPanelStyle, padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
+        <Loader2 className="animate-spin mx-auto mb-3" size={28} style={{ color: 'var(--odoo-text-muted)' }} />
+        <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement...</p>
       </div>
     </ModalBackdrop>
   );
@@ -1203,55 +1206,52 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   }, 0);
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50">
-      <div className="bg-white w-full h-full flex flex-col">
+    <div className="fixed inset-0 bg-black/40 z-50">
+      <div className="odoo-scope w-full h-full flex flex-col" style={{ backgroundColor: 'var(--odoo-bg)' }}>
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-5 shrink-0">
+        <div className="shrink-0" style={odooModalHeaderStyle}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                <PackageCheck size={20} className="text-white" />
-              </div>
+              <PackageCheck size={18} style={{ color: '#fff' }} />
               <div>
-                <h2 className="text-lg font-bold text-white">Confirmer la réception</h2>
-                <p className="text-sm text-white/70">{po.order_number} — {po.supplier_name}</p>
+                <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Confirmer la réception</h2>
+                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{po.order_number} — {po.supplier_name}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors"><X size={18} className="text-white" /></button>
+            <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
           </div>
         </div>
 
-        <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+        <div style={{ padding: '1.25rem' }} className="space-y-4 flex-1 overflow-y-auto">
           {/* Force-complete : le fournisseur ne livrera pas le reste, on
               cloture le BC sur ce qui est recu et la facture est emise sur ce
               perimetre. */}
           {!naturallyComplete && (
-            <label className={`flex items-start gap-3 rounded-xl p-3 border cursor-pointer transition-colors ${
-              forceComplete ? 'bg-orange-50 border-orange-300' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-            }`}>
+            <label className="flex items-start gap-3 cursor-pointer"
+              style={{ borderRadius: 4, padding: '0.75rem', border: `1px solid ${forceComplete ? '#f0b27a' : 'var(--odoo-border)'}`, backgroundColor: forceComplete ? '#fff3e6' : 'var(--odoo-bg-alt)' }}>
               <input type="checkbox" checked={forceComplete}
                 onChange={e => setForceComplete(e.target.checked)}
-                className="mt-0.5 accent-orange-500" />
+                style={{ marginTop: 2, accentColor: '#e6892b' }} />
               <div className="flex-1">
-                <div className={`text-sm font-semibold ${forceComplete ? 'text-orange-800' : 'text-gray-700'}`}>
-                  Cloturer le BC : le fournisseur ne livrera pas le reste
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: forceComplete ? '#b85d1a' : 'var(--odoo-text)' }}>
+                  Clôturer le BC : le fournisseur ne livrera pas le reste
                 </div>
-                <div className={`text-xs mt-0.5 ${forceComplete ? 'text-orange-700' : 'text-gray-500'}`}>
-                  Les lignes non livrees sont supprimees du BC, les lignes partielles sont alignees sur la quantite recue. La facture est creee sur ce perimetre.
+                <div style={{ fontSize: '0.6875rem', marginTop: 2, color: forceComplete ? '#b85d1a' : 'var(--odoo-text-muted)' }}>
+                  Les lignes non livrées sont supprimées du BC, les lignes partielles sont alignées sur la quantité reçue. La facture est créée sur ce périmètre.
                 </div>
               </div>
             </label>
           )}
 
           {/* Facture fournisseur — N° et date imprimes sur le document papier */}
-          <div className={`rounded-xl p-4 border ${willCompletePO ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
-            <div className="flex items-start gap-2 mb-3">
-              <FileText size={16} className={willCompletePO ? 'text-amber-600 mt-0.5' : 'text-gray-500 mt-0.5'} />
+          <div style={{ borderRadius: 4, padding: '1rem', border: `1px solid ${willCompletePO ? '#ffeeba' : 'var(--odoo-border)'}`, backgroundColor: willCompletePO ? '#fff8e8' : 'var(--odoo-bg-alt)' }}>
+            <div className="flex items-start gap-2" style={{ marginBottom: 12 }}>
+              <FileText size={16} style={{ marginTop: 2, color: willCompletePO ? '#b8860b' : 'var(--odoo-text-muted)' }} />
               <div className="flex-1">
-                <h3 className={`text-sm font-semibold ${willCompletePO ? 'text-amber-800' : 'text-gray-700'}`}>
+                <h3 style={{ fontSize: '0.8125rem', fontWeight: 600, color: willCompletePO ? '#856404' : 'var(--odoo-text)' }}>
                   Facture fournisseur
                 </h3>
-                <p className={`text-xs mt-0.5 ${willCompletePO ? 'text-amber-700' : 'text-gray-500'}`}>
+                <p style={{ fontSize: '0.6875rem', marginTop: 2, color: willCompletePO ? '#856404' : 'var(--odoo-text-muted)' }}>
                   {willCompletePO
                     ? 'Cette réception va clôturer le BC. Saisis le N° imprimé sur la facture papier du fournisseur (il sera utilisé tel quel, pas auto-généré).'
                     : 'Optionnel pour une livraison partielle. Tu pourras le saisir lors de la livraison finale.'}
@@ -1260,121 +1260,118 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  N° facture fournisseur {willCompletePO && <span className="text-amber-600">*</span>}
+                <label style={odooLabelStyle}>
+                  N° facture fournisseur {willCompletePO && <span style={{ color: '#b8860b' }}>*</span>}
                 </label>
                 <input type="text" value={supplierInvoiceNumber}
                   onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                  placeholder="Ex: FAC-2026-12345"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" />
+                  placeholder="Ex: FAC-2026-12345" style={odooFieldStyle} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Date de la facture</label>
+                <label style={odooLabelStyle}>Date de la facture</label>
                 <input type="date" value={supplierInvoiceDate}
-                  onChange={(e) => setSupplierInvoiceDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" />
+                  onChange={(e) => setSupplierInvoiceDate(e.target.value)} style={odooFieldStyle} />
               </div>
             </div>
           </div>
 
           {/* Fill all button */}
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">Saisissez les quantités reçues pour chaque article</p>
-            <button onClick={fillAll}
-              className="text-sm text-emerald-700 font-medium flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors">
+            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Saisissez les quantités reçues pour chaque article</p>
+            <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <CheckCircle2 size={14} /> Tout reçu
             </button>
           </div>
 
           {/* Items */}
-          <div className="border border-gray-100 rounded-2xl shadow-sm overflow-x-auto">
-            <table className="w-full text-sm min-w-[1050px]">
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
+            <table className="odoo-table" style={{ minWidth: 1050 }}>
               <thead>
-                <tr className="bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingrédient</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Commandé</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Déjà reçu</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Restant</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Qté reçue</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Prix U.</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Total</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-24">Ref. lot</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">DLC</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide w-32">Date prod.</th>
+                <tr>
+                  <th>Ingrédient</th>
+                  <th style={{ textAlign: 'right' }}>Commandé</th>
+                  <th style={{ textAlign: 'right' }}>Déjà reçu</th>
+                  <th style={{ textAlign: 'right' }}>Restant</th>
+                  <th style={{ textAlign: 'right', width: 96 }}>Qté reçue</th>
+                  <th style={{ textAlign: 'right', width: 96 }}>Prix U.</th>
+                  <th style={{ textAlign: 'right', width: 96 }}>Total</th>
+                  <th style={{ textAlign: 'center', width: 96 }}>Ref. lot</th>
+                  <th style={{ textAlign: 'center', width: 128 }}>DLC</th>
+                  <th style={{ textAlign: 'center', width: 128 }}>Date prod.</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {items.map((item) => {
                   const ordered = parseFloat(item.quantity_ordered);
                   const alreadyDelivered = parseFloat(item.quantity_delivered);
                   const remaining = ordered - alreadyDelivered;
                   const isComplete = remaining <= 0;
                   return (
-                    <tr key={item.id} className={isComplete ? 'bg-green-50/50' : ''}>
-                      <td className="px-4 py-2.5">
-                        <span className={`font-medium ${isComplete ? 'text-green-600' : 'text-gray-700'}`}>
+                    <tr key={item.id} style={isComplete ? { backgroundColor: '#f0fbf3' } : undefined}>
+                      <td>
+                        <span style={{ fontWeight: 500, color: isComplete ? '#28a745' : 'var(--odoo-text)' }}>
                           {item.ingredient_name}
                         </span>
-                        <span className="text-gray-400 text-xs ml-1">({item.ingredient_unit})</span>
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-gray-600">{ordered}</td>
-                      <td className="px-4 py-2.5 text-right">
-                        <span className={alreadyDelivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{alreadyDelivered}</span>
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{ordered}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ color: alreadyDelivered > 0 ? '#28a745' : 'var(--odoo-text-muted)', fontWeight: alreadyDelivered > 0 ? 500 : 400 }}>{alreadyDelivered}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         {isComplete
-                          ? <span className="text-green-600 font-medium flex items-center justify-end gap-1"><CheckCircle2 size={14} /> Complet</span>
-                          : <span className="font-semibold text-gray-700">{remaining}</span>}
+                          ? <span style={{ color: '#28a745', fontWeight: 500 }} className="flex items-center justify-end gap-1"><CheckCircle2 size={14} /> Complet</span>
+                          : <span style={{ fontWeight: 600 }}>{remaining}</span>}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         {!isComplete ? (
                           <input type="number" min={0} max={remaining} step="0.01"
                             value={deliveries[item.id] ?? ''}
                             onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0" />
-                        ) : <span className="text-sm text-gray-400 text-right block">—</span>}
+                            style={{ ...odooNumFieldStyle, backgroundColor: '#fff8e8' }} placeholder="0" />
+                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         {!isComplete ? (
                           <input type="number" min={0} step="0.01"
                             value={prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : '')}
                             onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) || 0 })}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Prix" />
-                        ) : <span className="text-sm text-gray-400 text-right block">—</span>}
+                            style={odooNumFieldStyle} placeholder="Prix" />
+                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td style={{ textAlign: 'right' }}>
                         {(() => {
                           const qty = deliveries[item.id] || 0;
                           const price = prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : 0);
                           const lineTotal = qty * price;
                           return lineTotal > 0
-                            ? <span className="text-sm font-semibold text-gray-700">{n(lineTotal)}</span>
-                            : <span className="text-sm text-gray-400">—</span>;
+                            ? <span style={{ fontWeight: 600 }}>{n(lineTotal)}</span>
+                            : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>;
                         })()}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         {!isComplete ? (
                           <input type="text"
                             value={lotInfo[item.id]?.supplierLotNumber ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Lot" />
-                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} placeholder="Lot" />
+                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         {!isComplete ? (
                           <input type="date"
                             value={lotInfo[item.id]?.expirationDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} />
+                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         {!isComplete ? (
                           <input type="date"
                             value={lotInfo[item.id]?.manufacturedDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })}
-                            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                        ) : <span className="text-sm text-gray-400 text-center block">—</span>}
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} />
+                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                     </tr>
                   );
@@ -1385,22 +1382,23 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
           {/* Summary of what's being received */}
           {totalDelivering > 0 && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm text-emerald-700 flex items-center gap-1.5">
+            <div className="flex items-center justify-between"
+              style={{ backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.625rem 0.875rem' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--theme-accent)', fontWeight: 600 }} className="flex items-center gap-1.5">
                 <ArrowRight size={14} />
                 Valeur de cette réception
               </span>
-              <span className="font-bold text-emerald-800">{n(totalDelivering)} DH</span>
+              <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{n(totalDelivering)} DH</span>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="border-t px-6 py-4 flex justify-end gap-2 shrink-0 bg-white">
-          <button onClick={onClose}
-            className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+        <div className="flex justify-end gap-2 shrink-0"
+          style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button onClick={handleSubmit} disabled={confirmMutation.isPending}
-            className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {confirmMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={16} />}
             {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
           </button>
@@ -1529,33 +1527,37 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   const isPending = headerMutation.isPending || itemsMutation.isPending;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 1100, maxHeight: '92vh' }}>
-        <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-4 rounded-t-2xl flex items-center justify-between shrink-0">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="odoo-scope flex flex-col" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 1100, maxHeight: '92vh', backgroundColor: 'var(--odoo-bg)',
+          border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between shrink-0"
+          style={{ backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem' }}>
           <div className="flex items-center gap-3">
-            <Pencil size={18} className="text-white" />
+            <Pencil size={16} style={{ color: '#fff' }} />
             <div>
-              <h2 className="text-white font-bold text-lg">Modifier le BC</h2>
-              <p className="text-white/80 text-xs">{po?.order_number as string || '...'}</p>
+              <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Modifier le bon de commande</h2>
+              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{po?.order_number as string || '...'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white hover:bg-white/20 p-2 rounded-xl"><X size={16} /></button>
+          <button onClick={onClose} className="hover:bg-white/20"
+            style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto" style={{ padding: '1.25rem' }}>
           {isLoading ? (
-            <div className="flex items-center justify-center py-10 text-gray-500">
-              <Loader2 size={20} className="animate-spin mr-2" /> Chargement...
+            <div className="flex items-center justify-center" style={{ padding: '2.5rem 0', color: 'var(--odoo-text-muted)' }}>
+              <Loader2 size={20} className="animate-spin" style={{ marginRight: 8 }} /> Chargement...
             </div>
           ) : (
             <>
               {/* En-tete */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Fournisseur</label>
-                  <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm">
+                  <label style={odooLabelStyle}>Fournisseur</label>
+                  <select value={supplierId} onChange={e => setSupplierId(e.target.value)} style={odooFieldStyle}>
                     <option value="">—</option>
                     {(suppliers as Record<string, any>[]).filter(s => s.is_active || s.id === supplierId).map(s => (
                       <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
@@ -1563,13 +1565,12 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date livraison prevue</label>
-                  <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  <label style={odooLabelStyle}>Date livraison prévue</label>
+                  <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} style={odooFieldStyle} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Statut actuel</label>
-                  <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 flex items-center min-h-[38px]">
+                  <label style={odooLabelStyle}>Statut actuel</label>
+                  <div style={{ ...odooFieldStyle, display: 'flex', alignItems: 'center', minHeight: 34 }}>
                     {po?.status ? (() => {
                       const Icon = STATUS_ICONS[po.status as string];
                       return (
@@ -1578,48 +1579,50 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                           {STATUS_LABELS[po.status as string] || (po.status as string)}
                         </span>
                       );
-                    })() : <span className="text-gray-400">—</span>}
+                    })() : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
                   </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+              <div style={{ marginTop: 12 }}>
+                <label style={odooLabelStyle}>Notes</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  style={{ ...odooFieldStyle, resize: 'vertical' }} />
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.75rem',
+                backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  Modifier la <strong>qty livree</strong> ajuste automatiquement le stock (mouvement
-                  d'inventaire trace). Supprimer une ligne deja referencee par un bon de reception
-                  sera refuse — annule la reception d'abord.
+                  Modifier la <strong>qté livrée</strong> ajuste automatiquement le stock (mouvement
+                  d'inventaire tracé). Supprimer une ligne déjà référencée par un bon de réception
+                  sera refusé — annule la réception d'abord.
                 </span>
               </div>
 
               {/* Lignes */}
-              <div className="border border-gray-200 rounded-lg overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: 900 }}>
+              <div style={{ marginTop: 12, border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
+                <table className="odoo-table" style={{ minWidth: 900 }}>
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-600 uppercase tracking-wide">
-                      <th className="text-left px-3 py-2 font-semibold" style={{ width: '28%' }}>Ingredient</th>
-                      <th className="text-right px-3 py-2 font-semibold">Qty commandee</th>
-                      <th className="text-right px-3 py-2 font-semibold">Qty livree</th>
-                      <th className="text-right px-3 py-2 font-semibold">Prix U.</th>
-                      <th className="text-right px-3 py-2 font-semibold">Sous-total</th>
+                    <tr>
+                      <th style={{ width: '28%' }}>Ingrédient</th>
+                      <th style={{ textAlign: 'right' }}>Qté commandée</th>
+                      <th style={{ textAlign: 'right' }}>Qté livrée</th>
+                      <th style={{ textAlign: 'right' }}>Prix U.</th>
+                      <th style={{ textAlign: 'right' }}>Sous-total</th>
                       <th style={{ width: 36 }}></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody>
                     {lines.map((line, idx) => {
                       const q = parseFloat(line.quantityOrdered) || 0;
                       const p = parseFloat(line.unitPrice) || 0;
                       const isExisting = !!line.id;
                       return (
                         <tr key={idx}>
-                          <td className="px-3 py-2">
+                          <td>
                             {isExisting ? (
-                              <span className="text-sm text-gray-800">{line.ingredientName} <span className="text-xs text-gray-400">({line.ingredientUnit})</span></span>
+                              <span style={{ fontWeight: 500 }}>{line.ingredientName} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>({line.ingredientUnit})</span></span>
                             ) : (
                               <select value={line.ingredientId}
                                 onChange={e => {
@@ -1630,7 +1633,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                                     ingredientUnit: ing ? (ing.unit as string) : '',
                                   });
                                 }}
-                                className="w-full px-2 py-1 border border-gray-200 rounded text-sm">
+                                style={odooFieldStyle}>
                                 <option value="">— Choisir —</option>
                                 {(ingredients as Record<string, any>[]).map(i => (
                                   <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
@@ -1638,28 +1641,29 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                               </select>
                             )}
                           </td>
-                          <td className="px-3 py-2">
+                          <td>
                             <input type="number" step="0.01" min={0} value={line.quantityOrdered}
                               onChange={e => updateLine(idx, { quantityOrdered: e.target.value })}
-                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right" />
+                              style={odooNumFieldStyle} />
                           </td>
-                          <td className="px-3 py-2">
+                          <td>
                             <input type="number" step="0.01" min={0} value={line.quantityDelivered}
                               onChange={e => updateLine(idx, { quantityDelivered: e.target.value })}
-                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right bg-amber-50" />
+                              style={{ ...odooNumFieldStyle, backgroundColor: '#fff8e8' }} />
                           </td>
-                          <td className="px-3 py-2">
+                          <td>
                             <input type="number" step="0.01" min={0} value={line.unitPrice}
                               onChange={e => updateLine(idx, { unitPrice: e.target.value })}
                               placeholder="—"
-                              className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-right" />
+                              style={odooNumFieldStyle} />
                           </td>
-                          <td className="px-3 py-2 text-right font-mono font-medium text-gray-700">
+                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>
                             {n(q * p)}
                           </td>
-                          <td className="px-3 py-2 text-center">
+                          <td style={{ textAlign: 'center' }}>
                             <button type="button" onClick={() => removeLine(idx)}
-                              className="text-red-600 hover:bg-red-50 p-1 rounded" title="Supprimer">
+                              className="odoo-btn-danger" title="Supprimer"
+                              style={{ padding: '0.25rem 0.4rem' }}>
                               <Trash2 size={14} />
                             </button>
                           </td>
@@ -1670,24 +1674,27 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                 </table>
               </div>
 
-              <button type="button" onClick={addLine}
-                className="text-sm text-blue-600 inline-flex items-center gap-1 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:bg-blue-50">
+              <button type="button" onClick={addLine} className="odoo-btn-secondary"
+                style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={14} /> Ajouter une ligne
               </button>
 
               {/* Total */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-                <span className="text-sm font-semibold text-blue-800">Nouveau total BC (qty commandee x prix)</span>
-                <span className="font-bold text-blue-900 font-mono text-lg">{n(newTotalOrdered)} DH</span>
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '0.625rem 0.875rem', borderRadius: 4,
+                backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', border: '1px solid var(--odoo-border)' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-accent)' }}>Nouveau total BC (qté commandée × prix)</span>
+                <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '1.0625rem', color: 'var(--theme-accent)' }}>{n(newTotalOrdered)} DH</span>
               </div>
             </>
           )}
         </div>
 
-        <div className="border-t px-6 py-3 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-50">Annuler</button>
+        <div className="flex justify-end gap-2 shrink-0"
+          style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button onClick={handleSave} disabled={isPending || isLoading}
-            className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl text-sm font-medium shadow flex items-center gap-2">
+            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {isPending && <Loader2 size={14} className="animate-spin" />}
             <CheckCircle2 size={14} /> Enregistrer
           </button>
@@ -1715,41 +1722,41 @@ function MergeInvoicesModal({
   const supplierName = selectedPOs[0]?.supplier_name as string || '';
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b flex items-center justify-between">
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope w-full max-w-lg flex flex-col" style={odooModalPanelStyle} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between" style={odooModalHeaderStyle}>
           <div className="flex items-center gap-2">
-            <Combine size={18} className="text-indigo-600" />
-            <h2 className="text-base font-bold text-gray-800">Fusionner les factures</h2>
+            <Combine size={16} style={{ color: '#fff' }} />
+            <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Fusionner les factures</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+          <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 flex gap-2">
-            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+        <div style={{ padding: '1.25rem' }} className="space-y-4">
+          <div style={{ display: 'flex', gap: 8, padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.75rem', backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
+            <AlertTriangle size={14} className="shrink-0" style={{ marginTop: 2 }} />
             <div>
               Cette action remplace plusieurs factures par une seule, en additionnant les lignes et les montants.
-              Refus si l'une des factures a deja un paiement enregistre.
+              Refus si l'une des factures a déjà un paiement enregistré.
             </div>
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Fournisseur</div>
-            <div className="text-sm font-medium text-gray-800">{supplierName}</div>
+            <div style={odooLabelStyle}>Fournisseur</div>
+            <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{supplierName}</div>
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">BCs a fusionner ({selectedPOs.length})</div>
-            <div className="bg-gray-50 rounded-lg p-3 space-y-1 max-h-48 overflow-auto">
+            <div style={odooLabelStyle}>BCs à fusionner ({selectedPOs.length})</div>
+            <div style={{ backgroundColor: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.75rem', maxHeight: 192, overflow: 'auto' }} className="space-y-1">
               {selectedPOs.map(po => (
-                <div key={po.id as string} className="flex justify-between text-xs">
-                  <span className="font-mono">{po.order_number as string}</span>
-                  <span className="font-semibold">{n(parseFloat(po.total_amount as string))} DH</span>
+                <div key={po.id as string} className="flex justify-between" style={{ fontSize: '0.75rem' }}>
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{po.order_number as string}</span>
+                  <span style={{ fontWeight: 600 }}>{n(parseFloat(po.total_amount as string))} DH</span>
                 </div>
               ))}
-              <div className="flex justify-between text-sm font-bold pt-2 mt-2 border-t border-gray-200">
-                <span>Total fusionne</span>
+              <div className="flex justify-between" style={{ fontSize: '0.8125rem', fontWeight: 700, paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
+                <span>Total fusionné</span>
                 <span>{n(totalAmount)} DH</span>
               </div>
             </div>
@@ -1757,26 +1764,24 @@ function MergeInvoicesModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">N° facture fournisseur</label>
+              <label style={odooLabelStyle}>N° facture fournisseur</label>
               <input type="text" value={supplierInvoiceNumber}
                 onChange={e => setSupplierInvoiceNumber(e.target.value)}
-                placeholder="Optionnel"
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                placeholder="Optionnel" style={odooFieldStyle} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Date facture</label>
+              <label style={odooLabelStyle}>Date facture</label>
               <input type="date" value={invoiceDate}
-                onChange={e => setInvoiceDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                onChange={e => setInvoiceDate(e.target.value)} style={odooFieldStyle} />
             </div>
           </div>
         </div>
 
-        <div className="border-t px-5 py-3 flex justify-end gap-2 bg-white rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm hover:bg-gray-50">Annuler</button>
+        <div className="flex justify-end gap-2" style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button onClick={() => onConfirm({ supplierInvoiceNumber, invoiceDate })}
             disabled={isPending}
-            className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow flex items-center gap-2 disabled:opacity-50">
+            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {isPending && <Loader2 size={14} className="animate-spin" />}
             <Combine size={14} /> Confirmer la fusion
           </button>

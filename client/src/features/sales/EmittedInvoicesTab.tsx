@@ -97,8 +97,9 @@ export default function EmittedInvoicesTab() {
   const [payMethod, setPayMethod] = useState('cash');
   const [manualCustomerId, setManualCustomerId] = useState('');
   const [manualNotes, setManualNotes] = useState('');
-  const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number }[]>([
-    { productId: '', description: '', quantity: 1, unitPrice: 0 },
+  // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
+  const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
+    { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null },
   ]);
 
   const { data: invoices = [], isLoading } = useQuery({
@@ -164,18 +165,24 @@ export default function EmittedInvoicesTab() {
   const resetManualForm = () => {
     setManualCustomerId('');
     setManualNotes('');
-    setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0 }]);
+    setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
   };
 
-  const addManualItem = () => setManualItems([...manualItems, { productId: '', description: '', quantity: 1, unitPrice: 0 }]);
+  const addManualItem = () => setManualItems([...manualItems, { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
   const removeManualItem = (idx: number) => setManualItems(manualItems.filter((_, i) => i !== idx));
-  const updateManualItem = (idx: number, field: string, value: string | number) => {
+  const updateManualItem = (idx: number, field: string, value: string | number | null) => {
     const updated = [...manualItems];
     (updated[idx] as Record<string, any>)[field] = value;
     setManualItems(updated);
   };
 
   const manualTotal = manualItems.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
+  // TVA ventilee par ligne : somme des (sous-total x taux). Lignes sans taux = 0.
+  const manualTva = Math.round(manualItems.reduce((s, it) => {
+    if (it.tvaRate === null) return s;
+    return s + it.quantity * it.unitPrice * (it.tvaRate / 100);
+  }, 0) * 100) / 100;
+  const manualTtc = Math.round((manualTotal + manualTva) * 100) / 100;
 
   const handleCreateManual = () => {
     if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
@@ -184,9 +191,10 @@ export default function EmittedInvoicesTab() {
       invoiceType: 'emitted',
       customerId: manualCustomerId,
       invoiceDate: format(new Date(), 'yyyy-MM-dd'),
+      // Le backend redrive HT/TVA/TTC depuis les lignes quand un taux est saisi.
       amount: manualTotal,
-      taxAmount: 0,
-      totalAmount: manualTotal,
+      taxAmount: manualTva,
+      totalAmount: manualTtc,
       notes: manualNotes,
       items: manualItems.map(it => ({
         productId: it.productId || undefined,
@@ -194,6 +202,7 @@ export default function EmittedInvoicesTab() {
         quantity: it.quantity,
         unitPrice: it.unitPrice,
         subtotal: it.quantity * it.unitPrice,
+        tvaRate: it.tvaRate,
       })),
     });
   };
@@ -522,6 +531,12 @@ export default function EmittedInvoicesTab() {
                               className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="1" />
                             <input type="number" placeholder="Prix" value={item.unitPrice || ''} onChange={e => updateManualItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
                               className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="0" step="0.01" />
+                            <select title="Taux TVA" value={item.tvaRate === null ? '' : String(item.tvaRate)}
+                              onChange={e => updateManualItem(idx, 'tvaRate', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                              className="w-20 px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                              <option value="">TVA —</option>
+                              {['0', '7', '10', '14', '20'].map(r => (<option key={r} value={r}>{r} %</option>))}
+                            </select>
                             <span className="text-xs text-gray-700 w-20 text-right font-bold">{n(item.quantity * item.unitPrice)}</span>
                           </div>
                         </div>
@@ -533,9 +548,17 @@ export default function EmittedInvoicesTab() {
                     <input type="text" value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Notes ou référence..."
                       className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                   </div>
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/50 rounded-xl p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium text-blue-700">Total</span>
-                    <span className="text-xl font-bold text-blue-800">{n(manualTotal)} <span className="text-xs font-normal">DH</span></span>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/50 rounded-xl p-4 space-y-1">
+                    <div className="flex items-center justify-between text-sm text-blue-700">
+                      <span>Total HT</span><span className="font-semibold">{n(manualTotal)} DH</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-blue-700">
+                      <span>TVA</span><span className="font-semibold">{n(manualTva)} DH</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-blue-200/60 pt-1">
+                      <span className="text-sm font-medium text-blue-700">Total TTC</span>
+                      <span className="text-xl font-bold text-blue-800">{n(manualTtc)} <span className="text-xs font-normal">DH</span></span>
+                    </div>
                   </div>
                   <button onClick={handleCreateManual} disabled={createManualMutation.isPending}
                     className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
