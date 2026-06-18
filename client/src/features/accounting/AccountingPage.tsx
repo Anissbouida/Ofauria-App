@@ -194,49 +194,87 @@ function buildDailyData(
   return days;
 }
 
+type AccSection = 'exploitation' | 'comptabilite';
+
+const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccSection }[] = [
+  // ─── Exploitation (vue métier, tous rôles) ───
+  { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, section: 'exploitation' },
+  { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'exploitation' },
+  { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'exploitation' },
+  { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'exploitation' },
+  { key: 'dettes', label: 'Dettes', icon: Scale, section: 'exploitation' },
+  { key: 'resume', label: 'Résumé', icon: BarChart3, section: 'exploitation' },
+  { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'exploitation' },
+  // ─── Comptabilité (vue normée, admin) ───
+  { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'comptabilite' },
+  { key: 'ecritures', label: 'Écritures', icon: Notebook, section: 'comptabilite' },
+  { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
+  { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
+  { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
+  { key: 'tva', label: 'TVA', icon: Receipt, section: 'comptabilite' },
+  { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'comptabilite' },
+  { key: 'banque', label: 'Banque', icon: Landmark, section: 'comptabilite' },
+  { key: 'cloture', label: 'Clôture', icon: Lock, section: 'comptabilite' },
+];
+
 export default function AccountingPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<AccTab>('pilotage');
+  const [section, setSection] = useState<AccSection>('exploitation');
 
-  // Les onglets comptables normes (plan + ecritures) sont reserves a l'admin
-  // pour la Phase 1. L'admin pourra etendre l'acces via la gestion des utilisateurs.
+  // La section Comptabilité (états normés CGNC) est réservée à l'admin.
+  // L'admin pourra étendre l'accès via la gestion des utilisateurs.
   const isAdmin = user?.role === 'admin';
 
-  const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
-    { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard },
-    { key: 'caisse', label: 'Caisse', icon: Wallet },
-    { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
-    { key: 'cheques', label: 'Chèques et Traites', icon: Receipt },
-    { key: 'dettes', label: 'Dettes', icon: Scale },
-    { key: 'resume', label: 'Résumé', icon: BarChart3 },
-    { key: 'losses', label: 'Pertes', icon: AlertTriangle },
-    ...(isAdmin ? [
-      { key: 'plan_comptable' as const, label: 'Plan comptable', icon: ListTree },
-      { key: 'ecritures' as const, label: 'Écritures', icon: Notebook },
-      { key: 'grand_livre' as const, label: 'Grand livre', icon: BookOpen },
-      { key: 'balance' as const, label: 'Balance', icon: Scale },
-      { key: 'cpc' as const, label: 'CPC', icon: FileBarChart },
-      { key: 'tva' as const, label: 'TVA', icon: Receipt },
-      { key: 'immobilisations' as const, label: 'Immobilisations', icon: Building2 },
-      { key: 'banque' as const, label: 'Banque', icon: Landmark },
-      { key: 'cloture' as const, label: 'Clôture', icon: Lock },
-    ] : []),
+  const sections: { key: AccSection; label: string; icon: typeof Wallet }[] = [
+    { key: 'exploitation', label: 'Exploitation', icon: LayoutDashboard },
+    ...(isAdmin ? [{ key: 'comptabilite' as const, label: 'Comptabilité', icon: BookOpen }] : []),
   ];
+
+  const visibleTabs = TAB_META.filter(t => t.section === section && (t.section === 'exploitation' || isAdmin));
+  const currentLabel = TAB_META.find(t => t.key === tab)?.label;
+
+  const switchSection = (s: AccSection) => {
+    setSection(s);
+    const first = TAB_META.find(t => t.section === s);
+    if (first) setTab(first.key);
+  };
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar */}
-      <div className="odoo-control-bar">
+      {/* Control bar + sélecteur de section */}
+      <div className="odoo-control-bar" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div className="odoo-breadcrumb">
           <span>Comptabilité</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{allTabs.find(t => t.key === tab)?.label}</span>
+          <span className="odoo-breadcrumb-current">{currentLabel}</span>
         </div>
+        {sections.length > 1 && (
+          <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, marginLeft: 'auto' }}>
+            {sections.map(s => {
+              const SIcon = s.icon;
+              const active = section === s.key;
+              return (
+                <button key={s.key} onClick={() => switchSection(s.key)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
+                    background: active ? 'var(--theme-bg-card)' : 'transparent',
+                    color: active ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+                    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                  }}>
+                  <SIcon size={14} /> {s.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs de la section active */}
       <div className="odoo-tabs">
-        {allTabs.map(t => {
+        {visibleTabs.map(t => {
           const Icon = t.icon;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
