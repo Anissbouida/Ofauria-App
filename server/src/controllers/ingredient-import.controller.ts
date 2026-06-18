@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
+import { capitalizeFirst } from '../utils/text.js';
 import {
   parseIngredientWorkbook,
   generateIngredientWorkbook,
@@ -228,7 +229,7 @@ export const ingredientImportController = {
           const ins = await client.query(
             `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category)
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [row.name, row.unit, row.unitCost, row.supplier, row.allergens, row.category]
+            [capitalizeFirst(row.name), row.unit, row.unitCost, row.supplier, row.allergens, row.category]
           );
           await client.query(
             `INSERT INTO inventory (ingredient_id, store_id) VALUES ($1, $2)`,

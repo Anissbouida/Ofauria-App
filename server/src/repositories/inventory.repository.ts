@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { recipeRepository } from './recipe.repository.js';
+import { capitalizeFirst } from '../utils/text.js';
 
 export const inventoryRepository = {
   async findAll(storeId?: string) {
@@ -298,7 +299,7 @@ export const ingredientRepository = {
       // maintient la colonne texte 'category' (code) automatiquement.
       const result = await client.query(
         `INSERT INTO ingredients (name, unit, unit_cost, supplier, allergens, category, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [data.name, data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre', data.categoryId || null]
+        [capitalizeFirst(data.name), data.unit, data.unitCost, data.supplier || null, data.allergens || [], data.category || 'autre', data.categoryId || null]
       );
       // Create inventory entry, scoped to the current store (multi-store).
       // Sans store_id, le listing (WHERE inv.store_id = $1) ne montre pas
@@ -327,7 +328,11 @@ export const ingredientRepository = {
     const values: unknown[] = [];
     let i = 1;
     for (const [key, col] of Object.entries(mapping)) {
-      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
+      if (data[key] !== undefined) {
+        // Nom toujours capitalise (1re lettre en majuscule) cote Economat.
+        const val = key === 'name' ? capitalizeFirst(data[key] as string) : data[key];
+        fields.push(`${col} = $${i++}`); values.push(val);
+      }
     }
     if (fields.length === 0) return this.findById(id);
     values.push(id);

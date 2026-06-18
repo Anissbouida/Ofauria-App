@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
+import { capitalizeFirst } from '../utils/text.js';
 
 /**
  * Packaging items — emballages : caissettes, boites, sachets, etiquettes, films...
@@ -88,7 +89,7 @@ export const packagingItemRepository = {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
-        data.name, data.format ?? null,
+        capitalizeFirst(data.name), data.format ?? null,
         data.unit ?? 'piece', data.unit_cost ?? 0,
         data.supplier ?? null, data.category ?? 'autre',
         data.is_recyclable ?? false, data.is_compostable ?? false,
@@ -105,7 +106,11 @@ export const packagingItemRepository = {
     const values: unknown[] = [];
     let i = 1;
     for (const k of allowed) {
-      if (data[k] !== undefined) { fields.push(`${k} = $${i++}`); values.push(data[k]); }
+      if (data[k] !== undefined) {
+        // Nom toujours capitalise (1re lettre en majuscule) cote Economat.
+        const val = k === 'name' ? capitalizeFirst(data[k] as string) : data[k];
+        fields.push(`${k} = $${i++}`); values.push(val);
+      }
     }
     if (fields.length === 0) return this.findById(id);
     fields.push(`updated_at = NOW()`);
