@@ -33,6 +33,8 @@ export const invoicesApi = {
   list: (params?: Record<string, string>) => api.get('/invoices', { params }).then(r => r.data.data),
   lineExpenses: (params?: Record<string, string>) => api.get('/invoices/line-expenses', { params }).then(r => r.data.data),
   updateCategory: (id: string, categoryId: string | null) => api.put(`/invoices/${id}/category`, { categoryId }).then(r => r.data.data),
+  updateLineCategory: (lineId: string, source: string, categoryId: string | null) =>
+    api.put(`/invoices/line/${lineId}/category`, { categoryId, source }).then(r => r.data.data),
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
   createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
