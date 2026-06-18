@@ -12,6 +12,17 @@ export const STOCKABLE_ROOT_IDS = [
   '10000000-0000-0000-0000-000000000008', // Equipements & Materiel
 ];
 
+/**
+ * Racines proposees pour la categorie des CONSOMMABLES non-alimentaires
+ * (onglet Economat > Consommables) : Emballages, Entretien & Maintenance
+ * (produits/materiel de nettoyage), Equipements & Materiel (petit materiel).
+ */
+export const CONSUMABLE_ROOT_IDS = [
+  '20000000-0000-0000-0000-000000000005', // Emballages
+  '10000000-0000-0000-0000-000000000005', // Entretien & Maintenance
+  '10000000-0000-0000-0000-000000000008', // Equipements & Materiel
+];
+
 interface CascadeSelectorProps {
   /** Currently selected category ID (leaf-level) */
   value: string;

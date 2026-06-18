@@ -6,10 +6,11 @@ import { db } from '../config/database.js';
 
 export const packagingController = {
   async list(req: AuthRequest, res: Response) {
-    const { search, category, activeOnly } = req.query as Record<string, string>;
+    const { search, category, categoryId, activeOnly } = req.query as Record<string, string>;
     const items = await packagingItemRepository.findAll({
       search,
       category,
+      categoryId,
       storeId: req.user!.storeId,
       activeOnly: activeOnly !== 'false',
     });

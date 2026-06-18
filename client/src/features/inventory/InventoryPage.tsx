@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
+import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -34,7 +35,7 @@ const STATE_LABELS: Record<ViewFilter, string> = {
   all: 'Tous les états', low: 'Stock bas', ok: 'Stock OK', expiring: 'DLC critique',
   rupture: 'En rupture (0)', expired: 'Périmés à retirer', stale: 'Sans mouvement (30j)',
 };
-type EconomatTab = 'stock' | 'transfers' | 'ruptures' | 'consumption';
+type EconomatTab = 'stock' | 'consumables' | 'transfers' | 'ruptures' | 'consumption';
 type ViewMode = 'list' | 'kanban';
 
 interface InventoryItem {
@@ -76,7 +77,7 @@ export default function InventoryPage() {
   // Onglets : "Stock economat" (defaut) + "Transferts demandes" (BSI a transferer)
   // + "Ingredients a commander" (BSI en rupture totale, cross-plans).
   // Persiste l'onglet en URL pour permettre les deep-links (badge sidebar, lien BSI panel).
-  const validTabs: EconomatTab[] = ['stock', 'transfers', 'ruptures', 'consumption'];
+  const validTabs: EconomatTab[] = ['stock', 'consumables', 'transfers', 'ruptures', 'consumption'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as EconomatTab | null;
   const [econoTab, setEconoTab] = useState<EconomatTab>(
@@ -251,7 +252,7 @@ export default function InventoryPage() {
           <span>Économat</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
-            {econoTab === 'transfers' ? 'Transferts demandés' : 'Stock principal'}
+            {econoTab === 'transfers' ? 'Transferts demandés' : econoTab === 'consumables' ? 'Consommables' : 'Stock principal'}
           </span>
         </div>
         {econoTab === 'stock' && (
@@ -313,7 +314,14 @@ export default function InventoryPage() {
             onClick={() => changeEconoTab('stock')}
             className={`odoo-tab ${econoTab === 'stock' ? 'active' : ''}`}>
             <Warehouse size={13} />
-            <span>Stock économat</span>
+            <span>Ingrédients</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeEconoTab('consumables')}
+            className={`odoo-tab ${econoTab === 'consumables' ? 'active' : ''}`}>
+            <Boxes size={13} />
+            <span>Consommables</span>
           </button>
           <button
             type="button"
@@ -349,7 +357,11 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {econoTab === 'transfers' ? (
+      {econoTab === 'consumables' ? (
+        <div style={{ padding: '1rem' }}>
+          <PackagingPage embedded />
+        </div>
+      ) : econoTab === 'transfers' ? (
         <div style={{ padding: '1rem' }}>
           <TransferRequestsList />
         </div>

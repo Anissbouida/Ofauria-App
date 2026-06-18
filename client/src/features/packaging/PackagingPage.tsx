@@ -1,30 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Box, Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, Package, Recycle } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
+import { expenseCategoriesApi } from '../../api/accounting.api';
+import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { notify } from '../../components/ui/InlineNotification';
-
-const PACKAGING_CATEGORIES = [
-  { value: 'caissettes', label: 'Caissettes', icon: '🥧' },
-  { value: 'boites', label: 'Boites', icon: '📦' },
-  { value: 'sachets', label: 'Sachets', icon: '🛍️' },
-  { value: 'films', label: 'Films / Papiers', icon: '🎁' },
-  { value: 'etiquettes', label: 'Etiquettes', icon: '🏷️' },
-  { value: 'rubans', label: 'Rubans', icon: '🎀' },
-  { value: 'supports', label: 'Supports', icon: '⏤' },
-  { value: 'autre', label: 'Autre', icon: '📌' },
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  caissettes: 'bg-amber-50 text-amber-700 border-amber-200',
-  boites: 'bg-blue-50 text-blue-700 border-blue-200',
-  sachets: 'bg-green-50 text-green-700 border-green-200',
-  films: 'bg-purple-50 text-purple-700 border-purple-200',
-  etiquettes: 'bg-pink-50 text-pink-700 border-pink-200',
-  rubans: 'bg-red-50 text-red-700 border-red-200',
-  supports: 'bg-gray-50 text-gray-700 border-gray-200',
-  autre: 'bg-slate-50 text-slate-700 border-slate-200',
-};
 
 interface PackagingItem {
   id: string;
@@ -34,6 +14,8 @@ interface PackagingItem {
   unit_cost: string | number;
   supplier: string | null;
   category: string;
+  category_id: string | null;
+  category_name?: string | null;
   is_recyclable: boolean;
   is_compostable: boolean;
   is_food_safe: boolean;
@@ -43,19 +25,48 @@ interface PackagingItem {
   stock_min_threshold?: string | number;
 }
 
-export default function PackagingPage() {
+/** Construit les options de filtre (feuilles du référentiel) groupées par racine
+ *  consommable. Une feuille = catégorie sans enfant. */
+function useConsumableLeafOptions() {
+  const { data: cats = [] } = useQuery({
+    queryKey: ['expense-categories'],
+    queryFn: () => expenseCategoriesApi.list(),
+  });
+  return useMemo(() => {
+    const all = cats as Record<string, any>[];
+    const hasChild = new Set(all.map(c => String(c.parent_id)).filter(Boolean));
+    const rootOf = (c: Record<string, any>): string | null => {
+      let cur: Record<string, any> | undefined = c;
+      while (cur && cur.parent_id) cur = all.find(x => String(x.id) === String(cur!.parent_id));
+      return cur ? String(cur.id) : null;
+    };
+    const rootName = (id: string) => all.find(c => String(c.id) === id)?.name as string | undefined;
+    const groups = CONSUMABLE_ROOT_IDS.map(rid => ({
+      rootId: rid,
+      label: rootName(rid) || '',
+      leaves: all
+        .filter(c => !hasChild.has(String(c.id)) && rootOf(c) === rid)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    })).filter(g => g.leaves.length > 0);
+    return groups;
+  }, [cats]);
+}
+
+export default function PackagingPage({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categoryIdFilter, setCategoryIdFilter] = useState<string>('');
   const [editingItem, setEditingItem] = useState<PackagingItem | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [stockDialog, setStockDialog] = useState<PackagingItem | null>(null);
 
+  const leafGroups = useConsumableLeafOptions();
+
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['packaging-items', search, categoryFilter],
+    queryKey: ['packaging-items', search, categoryIdFilter],
     queryFn: () => packagingApi.list({
       search: search || undefined,
-      category: categoryFilter || undefined,
+      categoryId: categoryIdFilter || undefined,
     }),
   });
 
@@ -63,7 +74,7 @@ export default function PackagingPage() {
     mutationFn: (id: string) => packagingApi.remove(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['packaging-items'] });
-      notify.success('Emballage supprime');
+      notify.success('Consommable supprimé');
     },
     onError: () => notify.error('Erreur lors de la suppression'),
   });
@@ -80,24 +91,26 @@ export default function PackagingPage() {
   return (
     <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Package size={24} className="text-blue-600" /> Emballages
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Catalogue des emballages utilises en production : caissettes, boites, etiquettes, films...
-          </p>
-        </div>
+        {!embedded ? (
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <Package size={24} className="text-blue-600" /> Consommables
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Emballages, produits & matériel de nettoyage, petit matériel jetable...
+            </p>
+          </div>
+        ) : <div />}
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
-          <Plus size={16} /> Nouvel emballage
+          <Plus size={16} /> Nouveau consommable
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500 mb-1">Total emballages</div>
+          <div className="text-xs text-gray-500 mb-1">Total consommables</div>
           <div className="text-2xl font-bold text-gray-800">{totalItems}</div>
         </div>
         <div className="bg-white rounded-xl border border-orange-100 p-4">
@@ -119,14 +132,18 @@ export default function PackagingPage() {
         <div className="flex-1 min-w-[200px] relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un emballage..."
+            placeholder="Rechercher un consommable..."
             className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
         </div>
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+        <select value={categoryIdFilter} onChange={(e) => setCategoryIdFilter(e.target.value)}
           className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-          <option value="">Toutes categories</option>
-          {PACKAGING_CATEGORIES.map(c => (
-            <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
+          <option value="">Toutes les catégories</option>
+          {leafGroups.map(g => (
+            <optgroup key={g.rootId} label={g.label}>
+              {g.leaves.map(leaf => (
+                <option key={String(leaf.id)} value={String(leaf.id)}>{String(leaf.name)}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
@@ -137,9 +154,9 @@ export default function PackagingPage() {
       ) : items.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
           <Box size={48} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">Aucun emballage trouve</p>
+          <p className="text-sm text-gray-500">Aucun consommable trouvé</p>
           <button onClick={() => setShowCreate(true)} className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium">
-            Ajouter un premier emballage
+            Ajouter un premier consommable
           </button>
         </div>
       ) : (
@@ -147,7 +164,7 @@ export default function PackagingPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               <tr>
-                <th className="text-left px-4 py-3">Emballage</th>
+                <th className="text-left px-4 py-3">Article</th>
                 <th className="text-left px-4 py-3">Categorie</th>
                 <th className="text-left px-4 py-3">Format</th>
                 <th className="text-right px-4 py-3">Cout unitaire</th>
@@ -162,7 +179,6 @@ export default function PackagingPage() {
                 const threshold = parseFloat(String(it.stock_min_threshold || 0));
                 const isRupture = stock <= 0;
                 const isLow = !isRupture && threshold > 0 && stock <= threshold;
-                const catConf = PACKAGING_CATEGORIES.find(c => c.value === it.category);
                 return (
                   <tr key={it.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
@@ -173,9 +189,11 @@ export default function PackagingPage() {
                       {it.notes && <div className="text-xs text-gray-400 truncate max-w-xs">{it.notes}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${CATEGORY_COLORS[it.category] || CATEGORY_COLORS.autre}`}>
-                        {catConf?.icon} {catConf?.label || it.category}
-                      </span>
+                      {it.category_name ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
+                          {it.category_name}
+                        </span>
+                      ) : <span className="text-xs text-gray-300">Non catégorisé</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{it.format || '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-700">
@@ -251,7 +269,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
     unit: item?.unit || 'piece',
     unit_cost: String(item?.unit_cost || ''),
     supplier: item?.supplier || '',
-    category: item?.category || 'autre',
+    category_id: item?.category_id || '',
     is_recyclable: item?.is_recyclable ?? false,
     is_compostable: item?.is_compostable ?? false,
     is_food_safe: item?.is_food_safe ?? true,
@@ -263,7 +281,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
       ? packagingApi.update(item!.id, data)
       : packagingApi.create(data),
     onSuccess: () => {
-      notify.success(isEdit ? 'Emballage mis a jour' : 'Emballage cree');
+      notify.success(isEdit ? 'Consommable mis à jour' : 'Consommable créé');
       onSaved();
     },
     onError: () => notify.error('Erreur lors de la sauvegarde'),
@@ -281,7 +299,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">{isEdit ? 'Modifier emballage' : 'Nouvel emballage'}</h2>
+          <h2 className="text-lg font-bold text-gray-800">{isEdit ? 'Modifier consommable' : 'Nouveau consommable'}</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
         </div>
         <form onSubmit={onSubmit} className="p-5 space-y-4">
@@ -293,24 +311,25 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
               className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Categorie</label>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500">
-                {PACKAGING_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Catégorie</label>
+            <CategoryCascadeSelector
+              value={form.category_id}
+              onChange={(cid) => setForm({ ...form, category_id: cid })}
+              rootIds={CONSUMABLE_ROOT_IDS}
+              type="expense"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Format</label>
               <input type="text" value={form.format}
                 onChange={(e) => setForm({ ...form, format: e.target.value })}
-                placeholder="24cm rond, 37x57cm..."
+                placeholder="24cm rond..."
                 className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Unite</label>
               <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}

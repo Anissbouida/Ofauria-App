@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import InlineNotification from './components/ui/InlineNotification';
 import { SettingsProvider } from './context/SettingsContext';
@@ -14,7 +14,6 @@ import OrdersPage from './features/orders/OrdersPage';
 import POSPage from './features/pos/POSPage';
 import CustomersPage from './features/customers/CustomersPage';
 import InventoryPage from './features/inventory/InventoryPage';
-import PackagingPage from './features/packaging/PackagingPage';
 import IngredientDetailPage from './features/inventory/IngredientDetailPage';
 import RecipesPage from './features/recipes/RecipesPage';
 import EmployeesPage from './features/employees/EmployeesPage';
@@ -60,7 +59,9 @@ export default function App() {
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/inventory" element={<InventoryPage />} />
               <Route path="/inventory/:id" element={<IngredientDetailPage />} />
-              <Route path="/packaging" element={<PackagingPage />} />
+              {/* Emballages repliés dans l'Économat (onglet Consommables). Route
+                  conservée pour compat bookmarks → redirige. */}
+              <Route path="/packaging" element={<Navigate to="/inventory?tab=consumables" replace />} />
               <Route path="/recipes" element={<RecipesPage />} />
               <Route path="/production" element={<ProductionPage />} />
               <Route path="/production/dashboard" element={<ProductionDashboardPage />} />

@@ -220,7 +220,7 @@ export const inventoryRepository = {
            pst.packaging_id                                    AS item_id,
            pi.name                                             AS item_name,
            pi.unit                                             AS item_unit,
-           'Emballages: ' || COALESCE(NULLIF(pi.category, ''), 'autre') AS category_label,
+           'Consommables: ' || COALESCE(NULLIF(pi.category, ''), 'autre') AS category_label,
            'packaging'                                         AS kind,
            CASE WHEN pst.reference_type = 'purchase_order'
                 THEN 'bon_commande' ELSE 'achat_direct' END    AS source,

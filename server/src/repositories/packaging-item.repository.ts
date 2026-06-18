@@ -31,13 +31,15 @@ export interface PackagingItem {
 export const packagingItemRepository = {
 
   // ─── CRUD ─────────────────────────────────────────────────────────────
-  async findAll(params: { search?: string; category?: string; storeId?: string; activeOnly?: boolean }) {
+  async findAll(params: { search?: string; category?: string; categoryId?: string; storeId?: string; activeOnly?: boolean }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
     if (params.activeOnly !== false) conditions.push(`pi.is_active = true`);
     if (params.search) { conditions.push(`pi.name ILIKE $${i++}`); values.push(`%${params.search}%`); }
     if (params.category) { conditions.push(`pi.category = $${i++}`); values.push(params.category); }
+    // Categorie referentiel (expense_categories) : filtre sur la feuille choisie.
+    if (params.categoryId) { conditions.push(`pi.category_id = $${i++}`); values.push(params.categoryId); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const storeJoin = params.storeId
       ? `LEFT JOIN packaging_store_stock pss ON pss.packaging_id = pi.id AND pss.store_id = $${i++}`
@@ -47,11 +49,12 @@ export const packagingItemRepository = {
       ? `COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
       : '';
     const result = await db.query(
-      `SELECT pi.*, ${stockCols} pi.id as id
+      `SELECT pi.*, ${stockCols} ec.name as category_name
        FROM packaging_items pi
+       LEFT JOIN expense_categories ec ON ec.id = pi.category_id
        ${storeJoin}
        ${where}
-       ORDER BY pi.category, pi.name`,
+       ORDER BY ec.name NULLS LAST, pi.name`,
       values
     );
     return result.rows;
@@ -67,8 +70,9 @@ export const packagingItemRepository = {
       stockCols = `, COALESCE(pss.stock_quantity, 0) as stock_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold`;
     }
     const result = await db.query(
-      `SELECT pi.* ${stockCols}
+      `SELECT pi.* ${stockCols}, ec.name as category_name
        FROM packaging_items pi
+       LEFT JOIN expense_categories ec ON ec.id = pi.category_id
        ${storeJoin}
        WHERE pi.id = $1`,
       params
@@ -78,20 +82,20 @@ export const packagingItemRepository = {
 
   async create(data: {
     name: string; format?: string | null; unit?: string; unit_cost?: number;
-    supplier?: string | null; category?: string;
+    supplier?: string | null; category?: string; category_id?: string | null;
     is_recyclable?: boolean; is_compostable?: boolean; is_food_safe?: boolean;
     notes?: string | null;
   }) {
     const result = await db.query(
       `INSERT INTO packaging_items
-         (name, format, unit, unit_cost, supplier, category,
+         (name, format, unit, unit_cost, supplier, category, category_id,
           is_recyclable, is_compostable, is_food_safe, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         capitalizeFirst(data.name), data.format ?? null,
         data.unit ?? 'piece', data.unit_cost ?? 0,
-        data.supplier ?? null, data.category ?? 'autre',
+        data.supplier ?? null, data.category ?? 'autre', data.category_id ?? null,
         data.is_recyclable ?? false, data.is_compostable ?? false,
         data.is_food_safe ?? true, data.notes ?? null,
       ]
@@ -100,7 +104,7 @@ export const packagingItemRepository = {
   },
 
   async update(id: string, data: Record<string, unknown>) {
-    const allowed = ['name','format','unit','unit_cost','supplier','category',
+    const allowed = ['name','format','unit','unit_cost','supplier','category','category_id',
                       'is_recyclable','is_compostable','is_food_safe','is_active','notes'];
     const fields: string[] = [];
     const values: unknown[] = [];

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ShoppingBag, Package, ClipboardList,
-  Users, ChefHat, Warehouse, UserCog, BarChart3, Monitor, Factory, Receipt, Lock, Calculator, Truck, Box, ClipboardCheck
+  Users, ChefHat, Warehouse, UserCog, BarChart3, Monitor, Factory, Receipt, Lock, Calculator, Truck, ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -19,7 +19,6 @@ const navigation: { name: string; href: string; icon: typeof LayoutDashboard; mo
   { name: 'Clients', href: '/customers', icon: Users, module: 'customers' },
   { name: 'Économat', href: '/inventory', icon: Warehouse, module: 'economat' },
   { name: 'Pesage', href: '/warehouse', icon: Truck, module: 'pesage' },
-  { name: 'Emballages', href: '/packaging', icon: Box, module: 'packaging' },
   { name: 'Recettes', href: '/recipes', icon: ChefHat, module: 'recipes' },
   { name: 'Production', href: '/production', icon: Factory, module: 'production' },
   { name: 'Approvisionnement', href: '/replenishment', icon: Package, module: 'replenishment' },

@@ -1,7 +1,7 @@
 import api from './client';
 
 export const packagingApi = {
-  list: (params?: { search?: string; category?: string; activeOnly?: boolean }) =>
+  list: (params?: { search?: string; category?: string; categoryId?: string; activeOnly?: boolean }) =>
     api.get('/packaging-items', { params }).then(r => r.data.data),
 
   getById: (id: string) =>
