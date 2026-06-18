@@ -38,7 +38,7 @@ function MasseLines({ lines }: { lines: BilanLine[] }) {
 
 export default function BilanTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const now = new Date();
   const [endDate, setEndDate] = useState(now.toISOString().slice(0, 10));
 
@@ -52,7 +52,7 @@ export default function BilanTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le bilan est réservé à l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>Le bilan est réservé à l'administrateur ou au gérant.</p>
       </div>
     );
   }

@@ -66,7 +66,7 @@ export default function EcrituresTab() {
   const [page, setPage] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   // Tous les hooks DOIVENT etre appeles avant tout return conditionnel
   // (regle des hooks React : meme ordre a chaque render).
@@ -146,7 +146,7 @@ export default function EcrituresTab() {
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
         <p style={{ fontSize: '0.875rem' }}>
-          Le journal des ecritures est reserve a l'administrateur.
+          Le journal des ecritures est reserve a l'administrateur ou au gerant.
         </p>
       </div>
     );

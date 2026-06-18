@@ -33,7 +33,7 @@ function fmtDate(raw: string | null): string {
 
 export default function GrandLivreTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const now = new Date();
   const [accountCode, setAccountCode] = useState('4411');
   const [startDate, setStartDate] = useState(`${now.getFullYear()}-01-01`);
@@ -72,7 +72,7 @@ export default function GrandLivreTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le grand livre est reserve a l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>Le grand livre est reserve a l'administrateur ou au gerant.</p>
       </div>
     );
   }

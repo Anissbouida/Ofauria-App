@@ -41,7 +41,7 @@ const STATUS_LABELS: Record<string, { label: string; bg: string; color: string }
 
 export default function ImmobilisationsTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const queryClient = useQueryClient();
   const now = new Date();
   const [showForm, setShowForm] = useState(false);
@@ -92,7 +92,7 @@ export default function ImmobilisationsTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Les immobilisations sont réservées à l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>Les immobilisations sont réservées à l'administrateur ou au gérant.</p>
       </div>
     );
   }

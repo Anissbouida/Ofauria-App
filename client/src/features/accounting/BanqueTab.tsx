@@ -22,7 +22,7 @@ function fmtDate(raw: string): string {
 
 export default function BanqueTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const queryClient = useQueryClient();
   const [showImport, setShowImport] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function BanqueTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le rapprochement bancaire est réservé à l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>Le rapprochement bancaire est réservé à l'administrateur ou au gérant.</p>
       </div>
     );
   }

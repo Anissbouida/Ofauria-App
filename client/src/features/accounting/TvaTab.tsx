@@ -25,7 +25,7 @@ const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Jui
 
 export default function TvaTab() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -44,7 +44,7 @@ export default function TvaTab() {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
         <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>La declaration TVA est reservee a l'administrateur.</p>
+        <p style={{ fontSize: '0.875rem' }}>La declaration TVA est reservee a l'administrateur ou au gerant.</p>
       </div>
     );
   }
