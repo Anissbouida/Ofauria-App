@@ -12,7 +12,7 @@ import {
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search,
-  Check, RotateCcw, Calendar,
+  Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -20,8 +20,19 @@ import CaisseImportModal from './CaisseImportModal';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { useAuth } from '../../context/AuthContext';
+import PlanComptableTab from './PlanComptableTab';
+import EcrituresTab from './EcrituresTab';
+import GrandLivreTab from './GrandLivreTab';
+import BalanceTab from './BalanceTab';
+import CpcTab from './CpcTab';
+import TvaTab from './TvaTab';
+import ClotureTab from './ClotureTab';
+import ImmobilisationsTab from './ImmobilisationsTab';
+import BanqueTab from './BanqueTab';
+import BilanTab from './BilanTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'cloture' | 'immobilisations' | 'banque';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -184,33 +195,88 @@ function buildDailyData(
   return days;
 }
 
-export default function AccountingPage() {
-  const [tab, setTab] = useState<AccTab>('pilotage');
+type AccSection = 'exploitation' | 'comptabilite';
 
-  const allTabs: { key: AccTab; label: string; icon: typeof Wallet }[] = [
-    { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard },
-    { key: 'caisse', label: 'Caisse', icon: Wallet },
-    { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown },
-    { key: 'cheques', label: 'Chèques et Traites', icon: Receipt },
-    { key: 'dettes', label: 'Dettes', icon: Scale },
-    { key: 'resume', label: 'Résumé', icon: BarChart3 },
-    { key: 'losses', label: 'Pertes', icon: AlertTriangle },
+const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccSection }[] = [
+  // ─── Exploitation (vue métier, tous rôles) ───
+  { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, section: 'exploitation' },
+  { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'exploitation' },
+  { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'exploitation' },
+  { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'exploitation' },
+  { key: 'dettes', label: 'Dettes', icon: Scale, section: 'exploitation' },
+  { key: 'resume', label: 'Résumé', icon: BarChart3, section: 'exploitation' },
+  { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'exploitation' },
+  // ─── Comptabilité (vue normée, admin) ───
+  { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'comptabilite' },
+  { key: 'ecritures', label: 'Écritures', icon: Notebook, section: 'comptabilite' },
+  { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
+  { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
+  { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
+  { key: 'bilan', label: 'Bilan', icon: Scale, section: 'comptabilite' },
+  { key: 'tva', label: 'TVA', icon: Receipt, section: 'comptabilite' },
+  { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'comptabilite' },
+  { key: 'banque', label: 'Banque', icon: Landmark, section: 'comptabilite' },
+  { key: 'cloture', label: 'Clôture', icon: Lock, section: 'comptabilite' },
+];
+
+export default function AccountingPage() {
+  const { user } = useAuth();
+  const [tab, setTab] = useState<AccTab>('pilotage');
+  const [section, setSection] = useState<AccSection>('exploitation');
+
+  // La section Comptabilité (états normés CGNC) est réservée à l'admin.
+  // L'admin pourra étendre l'accès via la gestion des utilisateurs.
+  const isAdmin = user?.role === 'admin';
+
+  const sections: { key: AccSection; label: string; icon: typeof Wallet }[] = [
+    { key: 'exploitation', label: 'Exploitation', icon: LayoutDashboard },
+    ...(isAdmin ? [{ key: 'comptabilite' as const, label: 'Comptabilité', icon: BookOpen }] : []),
   ];
+
+  const visibleTabs = TAB_META.filter(t => t.section === section && (t.section === 'exploitation' || isAdmin));
+  const currentLabel = TAB_META.find(t => t.key === tab)?.label;
+
+  const switchSection = (s: AccSection) => {
+    setSection(s);
+    const first = TAB_META.find(t => t.section === s);
+    if (first) setTab(first.key);
+  };
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar */}
-      <div className="odoo-control-bar">
+      {/* Control bar + sélecteur de section */}
+      <div className="odoo-control-bar" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div className="odoo-breadcrumb">
           <span>Comptabilité</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{allTabs.find(t => t.key === tab)?.label}</span>
+          <span className="odoo-breadcrumb-current">{currentLabel}</span>
         </div>
+        {sections.length > 1 && (
+          <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, marginLeft: 'auto' }}>
+            {sections.map(s => {
+              const SIcon = s.icon;
+              const active = section === s.key;
+              return (
+                <button key={s.key} onClick={() => switchSection(s.key)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
+                    background: active ? 'var(--theme-bg-card)' : 'transparent',
+                    color: active ? 'var(--theme-text)' : 'var(--theme-text-muted)',
+                    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                  }}>
+                  <SIcon size={14} /> {s.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs de la section active */}
       <div className="odoo-tabs">
-        {allTabs.map(t => {
+        {visibleTabs.map(t => {
           const Icon = t.icon;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -231,6 +297,16 @@ export default function AccountingPage() {
         {tab === 'dettes' && <DettesTab />}
         {tab === 'resume' && <ResumeTab />}
         {tab === 'losses' && <LossesTab />}
+        {tab === 'plan_comptable' && <PlanComptableTab />}
+        {tab === 'ecritures' && <EcrituresTab />}
+        {tab === 'grand_livre' && <GrandLivreTab />}
+        {tab === 'balance' && <BalanceTab />}
+        {tab === 'cpc' && <CpcTab />}
+        {tab === 'bilan' && <BilanTab />}
+        {tab === 'tva' && <TvaTab />}
+        {tab === 'immobilisations' && <ImmobilisationsTab />}
+        {tab === 'banque' && <BanqueTab />}
+        {tab === 'cloture' && <ClotureTab />}
       </div>
     </div>
   );
@@ -2191,6 +2267,7 @@ type CheckRow = {
   cashed_note: string | null;
   cashed_by_name: string | null;
   payment_type: string;
+  payment_method: 'check' | 'traite';
   supplier_name: string | null;
   employee_name: string | null;
   category_name: string | null;
@@ -2202,7 +2279,6 @@ type CheckRow = {
   description: string | null;
   reference: string | null;
   status: 'pending' | 'cashed' | 'overdue';
-  payment_method: 'check' | 'traite';
 };
 
 function ChequesTab() {
@@ -2623,12 +2699,14 @@ function ChequesTab() {
           {(hasActiveFilters || searchTerm) ? (
             <>
               Aucun cheque ne correspond aux filtres actuels.
-              <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
-                  className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
-                  Reinitialiser les filtres
-                </button>
-              </div>
+              {(hasActiveFilters || searchTerm) && (
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
+                    className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
+                    Reinitialiser les filtres
+                  </button>
+                </div>
+              )}
             </>
           ) : statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
              statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :

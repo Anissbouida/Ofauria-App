@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalYear } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries } from '../services/journal-generator.service.js';
 
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
@@ -515,6 +517,25 @@ export const invoiceRepository = {
         }
       }
 
+      // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
+      // SAVEPOINT pour isoler : si la generation echoue, la facture reste
+      // creee, l'ecriture sera regeneree par le job de reconciliation.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await client.query('SAVEPOINT ledger_gen');
+        try {
+          const entry = await fromInvoice(client, invResult.rows[0]);
+          if (entry) {
+            await persistEntry(client, entry, { userId: data.createdBy });
+          }
+          await client.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec pour facture', invResult.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+      }
+
       await client.query('COMMIT');
       return invResult.rows[0];
     } catch (err) {
@@ -563,6 +584,21 @@ export const invoiceRepository = {
           [invResult.rows[0].id, item.product_id, item.product_name,
            item.quantity, parseFloat(item.unit_price), parseFloat(item.subtotal)]
         );
+      }
+
+      // Generation de l'ecriture de facture client (pattern B : 3421 / 7111 + TVA).
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await client.query('SAVEPOINT ledger_gen');
+        try {
+          const entry = await fromInvoice(client, invResult.rows[0]);
+          if (entry) await persistEntry(client, entry, { userId: createdBy });
+          await client.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec pour facture commande', invResult.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
       }
 
       await client.query('COMMIT');
@@ -802,8 +838,28 @@ export const invoiceRepository = {
   },
 
   async updateStatus(id: string, status: string) {
-    const result = await db.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
-    return result.rows[0];
+    if (!FLAGS.LEDGER_AUTOGEN) {
+      const result = await db.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
+      return result.rows[0];
+    }
+    // Transactionnel : la maj de statut + la resync de l'ecriture sont atomiques.
+    // regenerateInvoiceEntry gere l'annulation (reverse seul) ET la reactivation
+    // (reverse + regenerate). Si la periode est close, l'erreur remonte et
+    // annule toute la transaction (on ne peut pas annuler une facture comptee
+    // dans une periode cloturee).
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
+      await regenerateInvoiceEntry(client, id, result.rows[0].created_by);
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async updateCategory(id: string, categoryId: string | null) {
@@ -898,6 +954,12 @@ export const invoiceRepository = {
         `UPDATE invoices SET amount = $1, total_amount = $2 WHERE id = $3`,
         [newAmount, newTotal, id]
       );
+
+      // Le montant a change -> reverser + regenerer l'ecriture de la facture
+      // depuis l'etat courant, et re-lettrer si des paiements la soldent.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await regenerateInvoiceEntry(client, id, null);
+      }
 
       await client.query('COMMIT');
       return await this.updatePaidAmount(id);
@@ -995,6 +1057,12 @@ export const invoiceRepository = {
         values
       );
 
+      // Champs impactant l'ecriture (montant, tiers, categorie, date) ont pu
+      // changer -> reverser + regenerer l'ecriture depuis l'etat courant.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await regenerateInvoiceEntry(client, id, null);
+      }
+
       await client.query('COMMIT');
       // Resync statut derive (pending/partial/paid) au cas ou totalAmount a change
       if (nextTotal !== undefined) {
@@ -1041,10 +1109,24 @@ export const invoiceRepository = {
         throw new Error(`Cette facture a ${nPayments} paiement(s) lie(s). Utilisez force=true pour supprimer aussi les paiements, ou annulez la facture a la place.`);
       }
 
+      // Reverser les ecritures comptables des paiements lies AVANT de les
+      // supprimer (sinon ecritures orphelines + lettrage fantome).
+      if (FLAGS.LEDGER_AUTOGEN && nPayments > 0 && opts.force) {
+        const payIds = await client.query(`SELECT id FROM payments WHERE invoice_id = $1`, [id]);
+        for (const row of payIds.rows) {
+          await reverseEntriesForSource(client, { sourceId: row.id, sourceKinds: ['payment', 'backfill'] });
+        }
+      }
+
       let deletedPayments = 0;
       if (nPayments > 0 && opts.force) {
         const delPay = await client.query(`DELETE FROM payments WHERE invoice_id = $1`, [id]);
         deletedPayments = delPay.rowCount || 0;
+      }
+
+      // Reverser l'ecriture de la facture elle-meme avant suppression.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['invoice', 'backfill'] });
       }
 
       await client.query(`DELETE FROM invoices WHERE id = $1`, [id]);
@@ -1442,16 +1524,32 @@ export const paymentRepository = {
     if (cur.rows[0].cashed_at) {
       throw new Error('Ce moyen de paiement est deja marque encaisse');
     }
-    const result = await db.query(
-      `UPDATE payments
-       SET cashed_at = COALESCE($1::date, CURRENT_DATE),
-           cashed_by = $2,
-           cashed_note = $3
-       WHERE id = $4
-       RETURNING *`,
-      [data.cashedAt || null, data.cashedBy, data.note || null, id]
-    );
-    return result.rows[0];
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE payments
+         SET cashed_at = COALESCE($1::date, CURRENT_DATE),
+             cashed_by = $2,
+             cashed_note = $3
+         WHERE id = $4
+         RETURNING *`,
+        [data.cashedAt || null, data.cashedBy, data.note || null, id]
+      );
+      // L'encaissement genere l'ecriture de tresorerie (5111->5141 pour cheque,
+      // 4415->5141 pour traite). regeneratePaymentEntries reconstruit emission
+      // + cashing depuis l'etat courant (idempotent via source_detail).
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await regeneratePaymentEntries(client, id, data.cashedBy);
+      }
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /**
@@ -1459,15 +1557,30 @@ export const paymentRepository = {
    * Sert pour corriger une erreur de saisie. Re-bascule le cheque en attente.
    */
   async unmarkCashed(id: string) {
-    const result = await db.query(
-      `UPDATE payments
-       SET cashed_at = NULL, cashed_by = NULL, cashed_note = NULL
-       WHERE id = $1 AND payment_method IN ('check', 'traite')
-       RETURNING *`,
-      [id]
-    );
-    if (!result.rows[0]) throw new Error('Cheque introuvable ou non eligible');
-    return result.rows[0];
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE payments
+         SET cashed_at = NULL, cashed_by = NULL, cashed_note = NULL
+         WHERE id = $1 AND payment_method IN ('check', 'traite')
+         RETURNING *`,
+        [id]
+      );
+      if (!result.rows[0]) { await client.query('ROLLBACK'); throw new Error('Cheque introuvable ou non eligible'); }
+      // Plus de cashed_at -> l'ecriture d'encaissement doit disparaitre.
+      // regeneratePaymentEntries reconstruit emission seule (cashing = null).
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await regeneratePaymentEntries(client, id, result.rows[0].cashed_by ?? result.rows[0].created_by);
+      }
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
   async create(data: {
     reference?: string; type: string; categoryId?: string; invoiceId?: string;
@@ -1475,20 +1588,58 @@ export const paymentRepository = {
     paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
     purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
   }) {
-    // ─── Cas simple : pas de facture liee, INSERT direct ──────────────────
+    // ─── Cas simple : pas de facture liee ───────────────────────────────
     if (!data.invoiceId) {
-      const result = await db.query(
-        `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
-          amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-          check_number, check_date, check_attachment_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-        [data.reference || null, data.type, data.categoryId || null, null,
-         data.supplierId || null, data.employeeId || null, data.amount,
-         data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
-         data.storeId || null, data.purchaseOrderId || null,
-         data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
-      );
-      return result.rows[0];
+      // Si LEDGER_AUTOGEN, on passe en transaction pour generer l'ecriture
+      // dans le meme acte. Sinon INSERT direct (legacy).
+      if (!FLAGS.LEDGER_AUTOGEN) {
+        const result = await db.query(
+          `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
+            amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
+            check_number, check_date, check_attachment_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          [data.reference || null, data.type, data.categoryId || null, null,
+           data.supplierId || null, data.employeeId || null, data.amount,
+           data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+           data.storeId || null, data.purchaseOrderId || null,
+           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+        );
+        return result.rows[0];
+      }
+
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query(
+          `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
+            amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
+            check_number, check_date, check_attachment_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          [data.reference || null, data.type, data.categoryId || null, null,
+           data.supplierId || null, data.employeeId || null, data.amount,
+           data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+           data.storeId || null, data.purchaseOrderId || null,
+           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+        );
+        await client.query('SAVEPOINT ledger_gen');
+        try {
+          const emission = await fromPaymentEmission(client, result.rows[0]);
+          if (emission) await persistEntry(client, emission, { userId: data.createdBy });
+          await client.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec pour paiement', result.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+        await client.query('COMMIT');
+        return result.rows[0];
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     }
 
     // ─── Cas facture liee : transaction + FOR UPDATE pour eviter ──────────
@@ -1561,6 +1712,23 @@ export const paymentRepository = {
         );
       }
 
+      // Generation auto de l'ecriture comptable + auto-lettrage (LEDGER_AUTOGEN)
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await client.query('SAVEPOINT ledger_gen');
+        try {
+          const emission = await fromPaymentEmission(client, result.rows[0]);
+          if (emission) await persistEntry(client, emission, { userId: data.createdBy });
+          // Auto-lettrage : si la somme paiement+facture s'equilibre sur le tiers
+          await autoLettrer(client, data.invoiceId);
+          await client.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec pour paiement', result.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+      }
+
       await client.query('COMMIT');
 
       // Resync paid_amount + status (sa propre transaction, hors lock)
@@ -1582,17 +1750,66 @@ export const paymentRepository = {
     if (data.paymentMethod !== undefined) { sets.push(`payment_method = $${i++}`); values.push(data.paymentMethod); }
     if (data.paymentDate !== undefined) { sets.push(`payment_date = $${i++}`); values.push(data.paymentDate); }
     if (sets.length === 0) return null;
-    values.push(id);
-    const result = await db.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
-    return result.rows[0];
+
+    if (!FLAGS.LEDGER_AUTOGEN) {
+      values.push(id);
+      const r = await db.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
+      return r.rows[0];
+    }
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      values.push(id);
+      const result = await client.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
+      // Montant/methode/date ont pu changer -> reverser + regenerer les ecritures
+      // du paiement (emission + cashing) et re-lettrer la facture liee.
+      await regeneratePaymentEntries(client, id, result.rows[0].created_by);
+      await client.query('COMMIT');
+
+      // Resync paid_amount de la facture liee, hors transaction.
+      if (result.rows[0].invoice_id) {
+        await invoiceRepository.updatePaidAmount(result.rows[0].invoice_id);
+      }
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
   async delete(id: string) {
-    // Get payment to check if linked to invoice
-    const payment = await db.query('SELECT invoice_id FROM payments WHERE id = $1', [id]);
-    const invoiceId = payment.rows[0]?.invoice_id;
-    await db.query('DELETE FROM payments WHERE id = $1', [id]);
-    if (invoiceId) {
-      await invoiceRepository.updatePaidAmount(invoiceId);
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Recuperer la facture liee avant suppression.
+      const payment = await client.query('SELECT invoice_id FROM payments WHERE id = $1', [id]);
+      const invoiceId = payment.rows[0]?.invoice_id;
+
+      // Reverser les ecritures comptables auto-generees pour ce paiement, et
+      // delettrer la facture associee (qui redevient ouverte). Si la periode
+      // est cloturee, reverseEntriesForSource leve une erreur -> rollback ->
+      // la suppression du paiement est bloquee (comportement attendu : on ne
+      // touche pas a une periode close).
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['payment', 'backfill'] });
+      }
+
+      await client.query('DELETE FROM payments WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+
+      // Resync paid_amount hors transaction (lecture/ecriture simple existante).
+      if (invoiceId) {
+        await invoiceRepository.updatePaidAmount(invoiceId);
+      }
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   },
   async summary(params: { dateFrom: string; dateTo: string; storeId?: string }) {
