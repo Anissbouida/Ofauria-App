@@ -12,7 +12,7 @@ import {
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search,
-  Check, RotateCcw, Calendar, ListTree, Notebook,
+  Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -23,8 +23,11 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import PlanComptableTab from './PlanComptableTab';
 import EcrituresTab from './EcrituresTab';
+import GrandLivreTab from './GrandLivreTab';
+import BalanceTab from './BalanceTab';
+import CpcTab from './CpcTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -206,6 +209,9 @@ export default function AccountingPage() {
     ...(isAdmin ? [
       { key: 'plan_comptable' as const, label: 'Plan comptable', icon: ListTree },
       { key: 'ecritures' as const, label: 'Écritures', icon: Notebook },
+      { key: 'grand_livre' as const, label: 'Grand livre', icon: BookOpen },
+      { key: 'balance' as const, label: 'Balance', icon: Scale },
+      { key: 'cpc' as const, label: 'CPC', icon: FileBarChart },
     ] : []),
   ];
 
@@ -245,6 +251,9 @@ export default function AccountingPage() {
         {tab === 'losses' && <LossesTab />}
         {tab === 'plan_comptable' && <PlanComptableTab />}
         {tab === 'ecritures' && <EcrituresTab />}
+        {tab === 'grand_livre' && <GrandLivreTab />}
+        {tab === 'balance' && <BalanceTab />}
+        {tab === 'cpc' && <CpcTab />}
       </div>
     </div>
   );

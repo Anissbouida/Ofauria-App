@@ -7,6 +7,7 @@ import {
   fiscalPeriodRepository,
   journalEntryRepository,
   reconciliationRepository,
+  financialStatementsRepository,
 } from '../repositories/ledger.repository.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -140,5 +141,54 @@ export const journalEntryController = {
       return;
     }
     res.json({ success: true, data: entry });
+  },
+};
+
+/* ═══ Etats comptables ═══ */
+export const financialStatementsController = {
+  /**
+   * GET /api/v1/ledger/general-ledger?account=4411&startDate=...&endDate=...
+   */
+  async generalLedger(req: AuthRequest, res: Response) {
+    const accountCode = req.query.account as string | undefined;
+    if (!accountCode) {
+      res.status(400).json({ success: false, error: { message: 'parametre account requis' } });
+      return;
+    }
+    const data = await financialStatementsRepository.generalLedger({
+      accountCode,
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      storeId: req.user!.storeId,
+    });
+    if (!data) {
+      res.status(404).json({ success: false, error: { message: 'Compte introuvable' } });
+      return;
+    }
+    res.json({ success: true, data });
+  },
+
+  /**
+   * GET /api/v1/ledger/balance?startDate=...&endDate=...
+   */
+  async balance(req: AuthRequest, res: Response) {
+    const rows = await financialStatementsRepository.balance({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: rows });
+  },
+
+  /**
+   * GET /api/v1/ledger/income-statement?startDate=...&endDate=...  (CPC)
+   */
+  async incomeStatement(req: AuthRequest, res: Response) {
+    const data = await financialStatementsRepository.incomeStatement({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data });
   },
 };

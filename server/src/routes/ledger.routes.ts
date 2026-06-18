@@ -6,6 +6,7 @@ import {
   fiscalPeriodController,
   journalEntryController,
   reconciliationController,
+  financialStatementsController,
 } from '../controllers/ledger.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -36,3 +37,8 @@ ledgerRouter.get('/entries/:id',      authenticate, authorize(ROLES.ADMIN), jour
 
 // Reconciliation legacy <-> ledger
 ledgerRouter.get('/reconciliation',   authenticate, authorize(ROLES.ADMIN), reconciliationController.check);
+
+// Etats comptables (grand livre, balance, CPC)
+ledgerRouter.get('/general-ledger',   authenticate, authorize(ROLES.ADMIN), financialStatementsController.generalLedger);
+ledgerRouter.get('/balance',          authenticate, authorize(ROLES.ADMIN), financialStatementsController.balance);
+ledgerRouter.get('/income-statement', authenticate, authorize(ROLES.ADMIN), financialStatementsController.incomeStatement);

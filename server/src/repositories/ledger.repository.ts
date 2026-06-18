@@ -301,3 +301,142 @@ export const journalEntryRepository = {
     return { ...head, lines: linesResult.rows };
   },
 };
+
+/* ═══ Etats comptables (grand livre, balance, CPC) ═══ */
+export const financialStatementsRepository = {
+  /**
+   * Grand livre d'un compte : tous les mouvements (lignes posted) d'un compte
+   * sur une periode, tries chronologiquement, avec solde progressif.
+   * Filtres : accountCode (obligatoire), startDate, endDate, storeId.
+   */
+  async generalLedger(params: {
+    accountCode: string;
+    startDate?: string;
+    endDate?: string;
+    storeId?: string;
+  }) {
+    const where: string[] = [`a.code = $1`, `je.status = 'posted'`];
+    const values: unknown[] = [params.accountCode];
+    let p = 2;
+    if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+
+    const account = await db.query(
+      `SELECT code, label, normal_side, account_type FROM accounts WHERE code = $1`,
+      [params.accountCode]
+    );
+    if (!account.rows[0]) return null;
+
+    const rows = await db.query(
+      `SELECT
+         je.entry_date, je.entry_number, j.code AS journal_code,
+         je.description AS entry_description,
+         jel.label AS line_label, jel.debit, jel.credit, jel.lettrage_id,
+         aa.code AS auxiliary_code, aa.label AS auxiliary_label
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN journals j ON j.id = je.journal_id
+       JOIN accounts a ON a.id = jel.account_id
+       LEFT JOIN account_auxiliaries aa ON aa.id = jel.auxiliary_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY je.entry_date, je.entry_number, jel.line_order`,
+      values
+    );
+
+    // Solde d'ouverture : mouvements anterieurs a startDate (si fourni).
+    let opening = 0;
+    if (params.startDate) {
+      const openWhere: string[] = [`a.code = $1`, `je.status = 'posted'`, `je.entry_date < $2`];
+      const openValues: unknown[] = [params.accountCode, params.startDate];
+      let op = 3;
+      if (params.storeId) { openValues.push(params.storeId); openWhere.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
+      const openRes = await db.query(
+        `SELECT COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
+         FROM journal_entry_lines jel
+         JOIN journal_entries je ON je.id = jel.journal_entry_id
+         JOIN accounts a ON a.id = jel.account_id
+         WHERE ${openWhere.join(' AND ')}`,
+        openValues
+      );
+      opening = parseFloat(openRes.rows[0].bal) || 0;
+    }
+
+    return { account: account.rows[0], opening, movements: rows.rows };
+  },
+
+  /**
+   * Balance : pour chaque compte ayant au moins un mouvement sur la periode,
+   * total debit, total credit et solde. Triee par code.
+   */
+  async balance(params: { startDate?: string; endDate?: string; storeId?: string }) {
+    const where: string[] = [`je.status = 'posted'`];
+    const values: unknown[] = [];
+    let p = 1;
+    if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+
+    const rows = await db.query(
+      `SELECT
+         a.code, a.label, a.account_class, a.account_type, a.normal_side,
+         COALESCE(SUM(jel.debit), 0)  AS total_debit,
+         COALESCE(SUM(jel.credit), 0) AS total_credit,
+         COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS balance
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+       WHERE ${where.join(' AND ')}
+       GROUP BY a.code, a.label, a.account_class, a.account_type, a.normal_side
+       HAVING COALESCE(SUM(jel.debit), 0) <> 0 OR COALESCE(SUM(jel.credit), 0) <> 0
+       ORDER BY a.code`,
+      values
+    );
+    return rows.rows;
+  },
+
+  /**
+   * CPC (Compte de Produits et Charges) : agregats classe 6 (charges) et
+   * classe 7 (produits) par compte, et resultat net = produits - charges.
+   */
+  async incomeStatement(params: { startDate?: string; endDate?: string; storeId?: string }) {
+    const where: string[] = [`je.status = 'posted'`, `a.account_class IN (6, 7)`];
+    const values: unknown[] = [];
+    let p = 1;
+    if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+
+    const rows = await db.query(
+      `SELECT
+         a.code, a.label, a.account_class,
+         -- Charges (classe 6) : solde debiteur = debit - credit
+         -- Produits (classe 7) : solde crediteur = credit - debit
+         CASE WHEN a.account_class = 6
+              THEN COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0)
+              ELSE COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0)
+         END AS amount
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+       WHERE ${where.join(' AND ')}
+       GROUP BY a.code, a.label, a.account_class
+       HAVING COALESCE(SUM(jel.debit), 0) <> 0 OR COALESCE(SUM(jel.credit), 0) <> 0
+       ORDER BY a.code`,
+      values
+    );
+
+    const charges = rows.rows.filter((r: { account_class: number }) => r.account_class === 6);
+    const produits = rows.rows.filter((r: { account_class: number }) => r.account_class === 7);
+    const totalCharges = charges.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
+    const totalProduits = produits.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
+
+    return {
+      charges,
+      produits,
+      total_charges: totalCharges,
+      total_produits: totalProduits,
+      resultat_net: totalProduits - totalCharges,
+    };
+  },
+};

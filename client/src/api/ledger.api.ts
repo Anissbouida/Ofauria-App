@@ -76,3 +76,50 @@ export const journalEntriesApi = {
   getById: (id: string): Promise<JournalEntryDetail> =>
     api.get(`/ledger/entries/${id}`).then(r => r.data.data),
 };
+
+/* ═══ Etats comptables ═══ */
+export interface LedgerMovement {
+  entry_date: string;
+  entry_number: string;
+  journal_code: string;
+  entry_description: string | null;
+  line_label: string | null;
+  debit: string;
+  credit: string;
+  lettrage_id: string | null;
+  auxiliary_code: string | null;
+  auxiliary_label: string | null;
+}
+export interface GeneralLedgerResult {
+  account: { code: string; label: string; normal_side: string; account_type: string };
+  opening: number;
+  movements: LedgerMovement[];
+}
+export interface BalanceRow {
+  code: string;
+  label: string;
+  account_class: number;
+  account_type: string;
+  normal_side: string;
+  total_debit: string;
+  total_credit: string;
+  balance: string;
+}
+export interface IncomeStatementResult {
+  charges: { code: string; label: string; account_class: number; amount: string }[];
+  produits: { code: string; label: string; account_class: number; amount: string }[];
+  total_charges: number;
+  total_produits: number;
+  resultat_net: number;
+}
+
+interface PeriodParams { startDate?: string; endDate?: string }
+
+export const financialStatementsApi = {
+  generalLedger: (account: string, params: PeriodParams = {}): Promise<GeneralLedgerResult> =>
+    api.get('/ledger/general-ledger', { params: { account, ...params } }).then(r => r.data.data),
+  balance: (params: PeriodParams = {}): Promise<BalanceRow[]> =>
+    api.get('/ledger/balance', { params }).then(r => r.data.data),
+  incomeStatement: (params: PeriodParams = {}): Promise<IncomeStatementResult> =>
+    api.get('/ledger/income-statement', { params }).then(r => r.data.data),
+};
