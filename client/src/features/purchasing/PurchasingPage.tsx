@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { suppliersApi, expenseCategoriesApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
+import { suppliersApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -337,7 +338,6 @@ function ReceivedInvoicesSection() {
     queryFn: () => invoicesApi.list({ invoiceType: 'received' }),
   });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-  const { data: categories = [] } = useQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoriesApi.list() });
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, any>) => invoicesApi.create({ ...data, invoiceType: 'received' }),
@@ -900,7 +900,6 @@ function ReceivedInvoicesSection() {
         <ReceivedInvoiceFormModal
           invoice={editInvoice}
           suppliers={suppliers as Record<string, any>[]}
-          categories={categories as Record<string, any>[]}
           onClose={() => { setShowForm(false); setEditInvoice(null); }}
           onSubmit={(data) => {
             if (editInvoice) {
@@ -1024,11 +1023,10 @@ function ReceivedInvoicesSection() {
  *   2. La facture n'affiche que le TTC (cas frequent au Maroc pour les PME)
  */
 function ReceivedInvoiceFormModal({
-  invoice, suppliers, categories, onClose, onSubmit, isPending,
+  invoice, suppliers, onClose, onSubmit, isPending,
 }: {
   invoice: Record<string, any> | null;
   suppliers: Record<string, any>[];
-  categories: Record<string, any>[];
   onClose: () => void;
   onSubmit: (data: Record<string, any>) => void;
   isPending: boolean;
@@ -1179,13 +1177,7 @@ function ReceivedInvoiceFormModal({
                   ))}
                 </select></div>
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-                <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-                  <option value="">Choisir...</option>
-                  {categories.filter(c => c.type === 'expense').map(c => (
-                    <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
-                  ))}
-                </select></div>
+                <CategoryCascadeSelector value={categoryId} onChange={setCategoryId} type="expense" /></div>
             </div>
             {/* HT / TVA / TTC : ligne dediee avec live sync */}
             <div className="grid grid-cols-3 gap-3" style={{ padding: '8px 10px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, border: '1px solid var(--theme-bg-separator)' }}>

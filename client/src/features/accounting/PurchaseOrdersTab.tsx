@@ -14,6 +14,7 @@ import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 // Normalise les valeurs du backend a 2 decimales (ex: "48.0000" -> "48.00", "25.8300" -> "25.83")
@@ -105,7 +106,6 @@ export default function PurchaseOrdersTab() {
   });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-  const { entries: ingredientCats } = useReferentiel('ingredient_categories');
   const { entries: unitEntries } = useReferentiel('units');
 
   const sendMutation = useMutation({
@@ -663,11 +663,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [searchIngredient, setSearchIngredient] = useState('');
   const [items, setItems] = useState<{ ingredientId: string; ingredientName: string; unit: string; quantityOrdered: number; unitPrice: number | null }[]>([]);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
-  const [newIng, setNewIng] = useState({ name: '', unit: 'kg', category: 'autre', unitCost: '' });
+  const [newIng, setNewIng] = useState({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
-  const { entries: ingredientCats } = useReferentiel('ingredient_categories');
   const { entries: unitEntries } = useReferentiel('units');
 
   const createMutation = useMutation({
@@ -694,7 +693,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
         unitPrice: cost > 0 ? cost : null,
       }]);
       setShowNewIngredient(false);
-      setNewIng({ name: '', unit: 'kg', category: 'autre', unitCost: '' });
+      setNewIng({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
       setSearchIngredient('');
       notify.success(`Ingrédient "${created.name}" créé et ajouté`);
     },
@@ -706,7 +705,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     createIngredientMutation.mutate({
       name: newIng.name.trim(),
       unit: newIng.unit,
-      category: newIng.category,
+      categoryId: newIng.categoryId || null,
       unitCost: newIng.unitCost ? parseFloat(newIng.unitCost) : 0,
     });
   };
@@ -803,7 +802,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
                   style={{ ...odooFieldStyle, paddingLeft: 30 }} />
               </div>
-              <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', category: 'autre', unitCost: '' }); }}
+              <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', categoryId: '', unitCost: '' }); }}
                 className="odoo-btn-secondary whitespace-nowrap shrink-0" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={14} /> Nouvel ingrédient
               </button>
@@ -833,7 +832,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     <X size={14} />
                   </button>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <label style={odooLabelStyle}>Nom *</label>
                     <input type="text" value={newIng.name} onChange={e => setNewIng({ ...newIng, name: e.target.value })}
@@ -848,18 +847,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     </select>
                   </div>
                   <div>
-                    <label style={odooLabelStyle}>Catégorie</label>
-                    <select value={newIng.category} onChange={e => setNewIng({ ...newIng, category: e.target.value })} style={odooFieldStyle}>
-                      {ingredientCats.map(c => (
-                        <option key={c.code} value={c.code}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
                     <label style={odooLabelStyle}>Coût unitaire (DH)</label>
                     <input type="number" step="0.01" min="0" value={newIng.unitCost} onChange={e => setNewIng({ ...newIng, unitCost: e.target.value })}
                       style={odooFieldStyle} placeholder="Optionnel" />
                   </div>
+                </div>
+                <div>
+                  <label style={odooLabelStyle}>Catégorie</label>
+                  <CategoryCascadeSelector
+                    value={newIng.categoryId}
+                    onChange={id => setNewIng({ ...newIng, categoryId: id })}
+                    rootIds={STOCKABLE_ROOT_IDS}
+                  />
                 </div>
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setShowNewIngredient(false)} className="odoo-btn-secondary">Annuler</button>

@@ -13,36 +13,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
-
-const INGREDIENT_CATEGORIES = [
-  { value: 'farines', label: 'Farines & Céréales' },
-  { value: 'sucres', label: 'Sucres & Édulcorants' },
-  { value: 'lait', label: 'Lait & Boissons lactées' },
-  { value: 'cremes', label: 'Crèmes (fraîche, liquide, épaisse)' },
-  { value: 'beurre', label: 'Beurre & Margarines' },
-  { value: 'fromages', label: 'Fromages & Fromages frais' },
-  { value: 'produits_laitiers', label: 'Produits laitiers (divers)' },
-  { value: 'oeufs', label: 'Oeufs & Ovoproduits' },
-  { value: 'matieres_grasses', label: 'Matières grasses & Huiles' },
-  { value: 'chocolat', label: 'Chocolat & Cacao' },
-  { value: 'fruits', label: 'Fruits & Purées' },
-  { value: 'fruits_secs', label: 'Fruits secs & Oléagineux' },
-  { value: 'viandes', label: 'Viandes & Volailles' },
-  { value: 'poissons_fruits_de_mer', label: 'Poissons & Fruits de mer' },
-  { value: 'legumes', label: 'Légumes' },
-  { value: 'epices', label: 'Épices & Arômes' },
-  { value: 'sel_vinaigre', label: 'Sel & Vinaigre' },
-  { value: 'levures', label: 'Levures & Agents levants' },
-  { value: 'gelifiants', label: 'Gélifiants' },
-  { value: 'colorants', label: 'Colorants' },
-  { value: 'decors', label: 'Décors & Garnitures' },
-  { value: 'sauces', label: 'Sauces & Condiments' },
-  { value: 'conserves', label: 'Conserves' },
-  { value: 'preparations', label: 'Préparations' },
-  { value: 'pates_riz', label: 'Pâtes & Riz' },
-  { value: 'emballages', label: 'Emballages' },
-  { value: 'autre', label: 'Autre' },
-];
+import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
+import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -84,6 +56,7 @@ interface InventoryItem {
   unit_cost: string;
   supplier: string;
   category: string;
+  category_id: string | null;
   last_restocked_at: string | null;
   active_lots_count: string;
   nearest_dlc: string | null;
@@ -315,7 +288,8 @@ export default function IngredientDetailPage() {
   const expiredCount = parseInt(item?.expired_lots_count || '0') || 0;
   const expiringSoonCount = parseInt(item?.expiring_soon_count || '0') || 0;
   const ingredientName = item?.ingredient_name || ingredient?.name || '';
-  const category = item?.category || ingredient?.category || 'autre';
+  const categoryId = (item?.category_id || ingredient?.category_id || null) as string | null;
+  const { resolve: resolveCategory, tagClass: categoryTagClass } = useStockCategories();
   const unit = item?.unit || ingredient?.unit || '';
   const supplier = item?.supplier || ingredient?.supplier || '';
 
@@ -398,16 +372,8 @@ export default function IngredientDetailPage() {
       <div className="odoo-form-header">
         <h1 className="odoo-form-title">{ingredientName}</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6 }}>
-          <span className={`odoo-tag ${
-            ['farines','pates_riz'].includes(category) ? 'odoo-tag-yellow' :
-            ['sucres','decors'].includes(category) ? 'odoo-tag-purple' :
-            ['produits_laitiers','gelifiants'].includes(category) ? 'odoo-tag-blue' :
-            ['fruits','legumes','preparations'].includes(category) ? 'odoo-tag-green' :
-            ['chocolat','viandes','epices','sauces','colorants'].includes(category) ? 'odoo-tag-red' :
-            ['matieres_grasses','levures','conserves'].includes(category) ? 'odoo-tag-orange' :
-            'odoo-tag-grey'
-          }`}>
-            {INGREDIENT_CATEGORIES.find(c => c.value === category)?.label || 'Autre'}
+          <span className={`odoo-tag ${categoryTagClass(categoryId)}`}>
+            {resolveCategory(categoryId)?.typeName || 'Non classé'}
           </span>
           {supplier && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{supplier}</span>}
           {isLow && <span className="odoo-tag odoo-tag-orange">STOCK BAS</span>}
@@ -1048,7 +1014,7 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
     unit: (ingredient.unit as string) || 'kg',
     unitCost: String(ingredient.unit_cost || ''),
     supplier: (ingredient.supplier as string) || '',
-    category: (ingredient.category as string) || 'autre',
+    categoryId: (ingredient.category_id as string) || '',
     threshold: String(threshold),
   });
 
@@ -1069,7 +1035,7 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
           e.preventDefault();
           onSave({
             name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0,
-            supplier: form.supplier || undefined, category: form.category,
+            supplier: form.supplier || undefined, categoryId: form.categoryId || null,
             threshold: parseFloat(form.threshold) || 0,
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
@@ -1091,9 +1057,7 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-            <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-              {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            <CategoryCascadeSelector value={form.categoryId} onChange={id => setForm({ ...form, categoryId: id })} rootIds={STOCKABLE_ROOT_IDS} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
