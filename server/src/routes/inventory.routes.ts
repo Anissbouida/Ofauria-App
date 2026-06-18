@@ -17,6 +17,8 @@ router.put('/threshold', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
 router.get('/transactions', authenticate, inventoryController.transactions);
 // Consommation matieres par periode (admin/gerant, utilise par Comptabilite)
 router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.consumption);
+// Achats / approvisionnement matieres par periode (entrees de stock, BC + achat direct)
+router.get('/purchases', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.purchases);
 
 export default router;
 

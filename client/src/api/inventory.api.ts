@@ -10,6 +10,9 @@ export const inventoryApi = {
   /** Consommation matieres par periode (sorties de stock x cout unitaire). */
   consumption: (params: { dateFrom: string; dateTo: string }) =>
     api.get('/inventory/consumption', { params }).then(r => r.data.data),
+  /** Achats matieres par periode (entrees de stock : BC + achat direct, prix de reception). */
+  purchases: (params: { dateFrom: string; dateTo: string }) =>
+    api.get('/inventory/purchases', { params }).then(r => r.data.data),
 };
 
 export const ingredientLotsApi = {

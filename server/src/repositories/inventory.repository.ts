@@ -157,6 +157,104 @@ export const inventoryRepository = {
     return result.rows;
   },
 
+  /**
+   * Achats / approvisionnement matieres par periode (admin/gerant).
+   *
+   * Vue ENTREE de stock (l'inverse de findMaterialConsumption) : combien a-t-on
+   * DEPENSE en matiere premiere sur la periode, valorise au prix de RECEPTION.
+   * Couvre les deux origines demandees par le metier :
+   *   - 'bon_commande' : reception d'un BC (ingredient_lots.reception_voucher_item_id renseigne,
+   *                      ou packaging_stock_transactions lie a un purchase_order).
+   *   - 'achat_direct' : restockage manuel sans BC (lot sans reception_voucher_item_id ;
+   *                      packaging restock).
+   *
+   * Sources :
+   *   - Ingredients : ingredient_lots (chaque reception/achat cree exactement un lot
+   *     avec quantity_received + unit_cost + received_at). On EXCLUT les lots
+   *     d'ajustement positif (lot_number 'ADJ-%') qui ne sont pas des achats.
+   *   - Emballages : packaging_stock_transactions (entrees type reception/restock).
+   *
+   * La table `ingredients` ne contient que des matieres premieres alimentaires
+   * (emballages et equipements sont des tables distinctes) : aucun filtre de
+   * categorie n'est donc necessaire cote ingredients — tout lot est un achat
+   * de matiere premiere. Les emballages forment la branche "Emballages".
+   *
+   * Montant = quantity_received x COALESCE(prix de reception, prix catalogue, 0).
+   * Retourne des lignes (item, source) — le frontend agrege/groupe.
+   */
+  async findMaterialPurchases(params: { dateFrom?: string; dateTo?: string; storeId?: string }) {
+    const values: unknown[] = [];
+    let i = 1;
+    const from = params.dateFrom ? `$${i++}::date` : 'NULL::date';
+    if (params.dateFrom) values.push(params.dateFrom);
+    const to = params.dateTo ? `$${i++}::date` : 'NULL::date';
+    if (params.dateTo) values.push(params.dateTo);
+    let storeRef: string | null = null;
+    if (params.storeId) { storeRef = `$${i++}`; values.push(params.storeId); }
+
+    const ingStore = storeRef ? `AND il.store_id = ${storeRef}` : '';
+    const packStore = storeRef ? `AND pst.store_id = ${storeRef}` : '';
+
+    const result = await db.query(
+      `WITH ing AS (
+         SELECT
+           il.ingredient_id                                    AS item_id,
+           i.name                                              AS item_name,
+           i.unit                                              AS item_unit,
+           COALESCE(NULLIF(i.category, ''), 'autre')           AS category_label,
+           'ingredient'                                        AS kind,
+           CASE WHEN il.reception_voucher_item_id IS NOT NULL
+                THEN 'bon_commande' ELSE 'achat_direct' END    AS source,
+           il.quantity_received                                AS qty,
+           il.quantity_received * COALESCE(il.unit_cost, i.unit_cost, 0) AS amount
+         FROM ingredient_lots il
+         JOIN ingredients i ON i.id = il.ingredient_id
+         WHERE (${from} IS NULL OR il.received_at >= ${from})
+           AND (${to}   IS NULL OR il.received_at <= ${to})
+           AND (il.lot_number IS NULL OR il.lot_number NOT LIKE 'ADJ-%')
+           ${ingStore}
+       ),
+       pack AS (
+         SELECT
+           pst.packaging_id                                    AS item_id,
+           pi.name                                             AS item_name,
+           pi.unit                                             AS item_unit,
+           'Emballages: ' || COALESCE(NULLIF(pi.category, ''), 'autre') AS category_label,
+           'packaging'                                         AS kind,
+           CASE WHEN pst.reference_type = 'purchase_order'
+                THEN 'bon_commande' ELSE 'achat_direct' END    AS source,
+           pst.quantity_change                                 AS qty,
+           pst.quantity_change * COALESCE(pst.unit_cost, pi.unit_cost, 0) AS amount
+         FROM packaging_stock_transactions pst
+         JOIN packaging_items pi ON pi.id = pst.packaging_id
+         WHERE (${from} IS NULL OR pst.created_at::date >= ${from})
+           AND (${to}   IS NULL OR pst.created_at::date <= ${to})
+           AND pst.quantity_change > 0
+           AND pst.type IN ('reception', 'restock')
+           ${packStore}
+       ),
+       u AS (SELECT * FROM ing UNION ALL SELECT * FROM pack)
+       SELECT
+         item_id,
+         item_name,
+         item_unit,
+         category_label,
+         kind,
+         source,
+         COUNT(*)::int                                         AS lot_count,
+         COALESCE(SUM(qty), 0)                                 AS qty_received,
+         CASE WHEN SUM(qty) > 0
+              THEN ROUND((SUM(amount) / SUM(qty))::numeric, 4)
+              ELSE 0 END                                       AS unit_cost,
+         ROUND(COALESCE(SUM(amount), 0)::numeric, 2)           AS amount
+       FROM u
+       GROUP BY item_id, item_name, item_unit, category_label, kind, source
+       ORDER BY amount DESC, item_name`,
+      values
+    );
+    return result.rows;
+  },
+
   async getTransactions(ingredientId?: string, limit = 50, storeId?: string) {
     const conditions: string[] = [];
     const values: unknown[] = [];
