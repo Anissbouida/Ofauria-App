@@ -9,6 +9,7 @@ import {
   reconciliationRepository,
   financialStatementsRepository,
   tvaDeclarationRepository,
+  balanceSheetRepository,
 } from '../repositories/ledger.repository.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -227,6 +228,22 @@ export const tvaDeclarationController = {
       return;
     }
     const data = await tvaDeclarationRepository.declaration({ startDate, endDate, storeId: req.user!.storeId });
+    res.json({ success: true, data });
+  },
+};
+
+/* ═══ Bilan (actif / passif) ═══ */
+export const balanceSheetController = {
+  /**
+   * GET /api/v1/ledger/balance-sheet?endDate=YYYY-MM-DD
+   */
+  async balanceSheet(req: AuthRequest, res: Response) {
+    const endDate = req.query.endDate as string | undefined;
+    if (!endDate) {
+      res.status(400).json({ success: false, error: { message: 'endDate requis' } });
+      return;
+    }
+    const data = await balanceSheetRepository.balanceSheet({ endDate, storeId: req.user!.storeId });
     res.json({ success: true, data });
   },
 };

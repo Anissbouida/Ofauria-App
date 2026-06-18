@@ -529,3 +529,117 @@ export const tvaDeclarationRepository = {
     };
   },
 };
+
+/* ═══ Bilan (actif / passif CGNC) ═══ */
+export const balanceSheetRepository = {
+  /**
+   * Bilan a une date d'arrete : soldes cumules (depuis l'origine) des comptes
+   * de classes 1 a 5, avec le resultat net (classes 6-7) bascule au passif.
+   *
+   * Identite fondamentale : TOTAL ACTIF = TOTAL PASSIF, garantie par le fait
+   * que chaque ecriture est equilibree (somme de tous les soldes = 0).
+   *
+   * Presentation (positifs des deux cotes) :
+   *   ACTIF  : immobilise (classe 2, net = brut - amort), circulant (classe 3),
+   *            tresorerie-actif (classe 5 a solde debiteur).
+   *   PASSIF : financement permanent (classe 1) + resultat net, passif circulant
+   *            (classe 4), tresorerie-passif (classe 5 a solde crediteur).
+   */
+  async balanceSheet(params: { endDate: string; storeId?: string }) {
+    const storeFilter = params.storeId ? 'AND (je.store_id IS NULL OR je.store_id = $2)' : '';
+    const values: unknown[] = [params.endDate];
+    if (params.storeId) values.push(params.storeId);
+
+    // Soldes cumules (debit - credit) des comptes 1-5 jusqu'a endDate.
+    const accRows = await db.query(
+      `SELECT a.code, a.label, a.account_class,
+              COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS solde
+       FROM accounts a
+       JOIN journal_entry_lines jel ON jel.account_id = a.id
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       WHERE je.status = 'posted'
+         AND je.entry_date <= $1::date
+         AND a.account_class BETWEEN 1 AND 5
+         ${storeFilter}
+       GROUP BY a.code, a.label, a.account_class
+       HAVING COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) <> 0
+       ORDER BY a.code`,
+      values
+    );
+
+    // Resultat net cumule (produits classe 7 - charges classe 6) jusqu'a endDate.
+    const resRows = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN a.account_class = 7 THEN jel.credit - jel.debit ELSE 0 END), 0) AS produits,
+         COALESCE(SUM(CASE WHEN a.account_class = 6 THEN jel.debit - jel.credit ELSE 0 END), 0) AS charges
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+       WHERE je.status = 'posted'
+         AND je.entry_date <= $1::date
+         AND a.account_class IN (6, 7)
+         ${storeFilter}`,
+      values
+    );
+    const produits = parseFloat(resRows.rows[0]?.produits) || 0;
+    const charges = parseFloat(resRows.rows[0]?.charges) || 0;
+    const resultatNet = Math.round((produits - charges) * 100) / 100;
+
+    type Line = { code: string; label: string; amount: number };
+    const immobilise: Line[] = [];
+    const circulantActif: Line[] = [];
+    const tresorerieActif: Line[] = [];
+    const financementPermanent: Line[] = [];
+    const circulantPassif: Line[] = [];
+    const tresoreriePassif: Line[] = [];
+
+    for (const r of accRows.rows as { code: string; label: string; account_class: number; solde: string }[]) {
+      const solde = parseFloat(r.solde) || 0;
+      const line = { code: r.code, label: r.label, amount: Math.round(Math.abs(solde) * 100) / 100 };
+      if (r.account_class === 2) {
+        // Immobilise : on garde le signe (28xx amort = negatif, reduit le net)
+        immobilise.push({ code: r.code, label: r.label, amount: Math.round(solde * 100) / 100 });
+      } else if (r.account_class === 3) {
+        circulantActif.push(line);
+      } else if (r.account_class === 1) {
+        financementPermanent.push(line);
+      } else if (r.account_class === 4) {
+        circulantPassif.push(line);
+      } else if (r.account_class === 5) {
+        if (solde >= 0) tresorerieActif.push(line);
+        else tresoreriePassif.push(line);
+      }
+    }
+
+    const sum = (arr: Line[]) => Math.round(arr.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+
+    const totalImmobilise = sum(immobilise);
+    const totalCirculantActif = sum(circulantActif);
+    const totalTresorerieActif = sum(tresorerieActif);
+    const totalActif = Math.round((totalImmobilise + totalCirculantActif + totalTresorerieActif) * 100) / 100;
+
+    const totalFinancementBase = sum(financementPermanent);
+    const totalFinancement = Math.round((totalFinancementBase + resultatNet) * 100) / 100;
+    const totalCirculantPassif = sum(circulantPassif);
+    const totalTresoreriePassif = sum(tresoreriePassif);
+    const totalPassif = Math.round((totalFinancement + totalCirculantPassif + totalTresoreriePassif) * 100) / 100;
+
+    return {
+      end_date: params.endDate,
+      actif: {
+        immobilise, total_immobilise: totalImmobilise,
+        circulant: circulantActif, total_circulant: totalCirculantActif,
+        tresorerie: tresorerieActif, total_tresorerie: totalTresorerieActif,
+        total: totalActif,
+      },
+      passif: {
+        financement_permanent: financementPermanent, resultat_net: resultatNet,
+        total_financement: totalFinancement,
+        circulant: circulantPassif, total_circulant: totalCirculantPassif,
+        tresorerie: tresoreriePassif, total_tresorerie: totalTresoreriePassif,
+        total: totalPassif,
+      },
+      ecart: Math.round((totalActif - totalPassif) * 100) / 100,
+    };
+  },
+};

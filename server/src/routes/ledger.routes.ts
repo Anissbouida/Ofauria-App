@@ -8,6 +8,7 @@ import {
   reconciliationController,
   financialStatementsController,
   tvaDeclarationController,
+  balanceSheetController,
 } from '../controllers/ledger.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -47,3 +48,6 @@ ledgerRouter.get('/income-statement', authenticate, authorize(ROLES.ADMIN), fina
 
 // Declaration TVA (CA20 Maroc)
 ledgerRouter.get('/tva-declaration',  authenticate, authorize(ROLES.ADMIN), tvaDeclarationController.declaration);
+
+// Bilan (actif / passif)
+ledgerRouter.get('/balance-sheet',    authenticate, authorize(ROLES.ADMIN), balanceSheetController.balanceSheet);

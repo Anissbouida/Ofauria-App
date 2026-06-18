@@ -117,6 +117,24 @@ export interface IncomeStatementResult {
 
 interface PeriodParams { startDate?: string; endDate?: string }
 
+export interface BilanLine { code: string; label: string; amount: number }
+export interface BalanceSheet {
+  end_date: string;
+  actif: {
+    immobilise: BilanLine[]; total_immobilise: number;
+    circulant: BilanLine[]; total_circulant: number;
+    tresorerie: BilanLine[]; total_tresorerie: number;
+    total: number;
+  };
+  passif: {
+    financement_permanent: BilanLine[]; resultat_net: number; total_financement: number;
+    circulant: BilanLine[]; total_circulant: number;
+    tresorerie: BilanLine[]; total_tresorerie: number;
+    total: number;
+  };
+  ecart: number;
+}
+
 export const financialStatementsApi = {
   generalLedger: (account: string, params: PeriodParams = {}): Promise<GeneralLedgerResult> =>
     api.get('/ledger/general-ledger', { params: { account, ...params } }).then(r => r.data.data),
@@ -124,6 +142,8 @@ export const financialStatementsApi = {
     api.get('/ledger/balance', { params }).then(r => r.data.data),
   incomeStatement: (params: PeriodParams = {}): Promise<IncomeStatementResult> =>
     api.get('/ledger/income-statement', { params }).then(r => r.data.data),
+  balanceSheet: (endDate: string): Promise<BalanceSheet> =>
+    api.get('/ledger/balance-sheet', { params: { endDate } }).then(r => r.data.data),
 };
 
 /* ═══ Declaration TVA (CA20) ═══ */

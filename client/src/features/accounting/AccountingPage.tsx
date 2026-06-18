@@ -30,8 +30,9 @@ import TvaTab from './TvaTab';
 import ClotureTab from './ClotureTab';
 import ImmobilisationsTab from './ImmobilisationsTab';
 import BanqueTab from './BanqueTab';
+import BilanTab from './BilanTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'tva' | 'cloture' | 'immobilisations' | 'banque';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'cloture' | 'immobilisations' | 'banque';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -211,6 +212,7 @@ const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccS
   { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
   { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
   { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
+  { key: 'bilan', label: 'Bilan', icon: Scale, section: 'comptabilite' },
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'comptabilite' },
   { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'comptabilite' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'comptabilite' },
@@ -300,6 +302,7 @@ export default function AccountingPage() {
         {tab === 'grand_livre' && <GrandLivreTab />}
         {tab === 'balance' && <BalanceTab />}
         {tab === 'cpc' && <CpcTab />}
+        {tab === 'bilan' && <BilanTab />}
         {tab === 'tva' && <TvaTab />}
         {tab === 'immobilisations' && <ImmobilisationsTab />}
         {tab === 'banque' && <BanqueTab />}
