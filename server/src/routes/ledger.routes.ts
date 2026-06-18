@@ -31,6 +31,7 @@ ledgerRouter.get('/journals',         authenticate, authorize(ROLES.ADMIN), jour
 
 // Periodes fiscales
 ledgerRouter.get('/fiscal-periods',   authenticate, authorize(ROLES.ADMIN), fiscalPeriodController.list);
+ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(ROLES.ADMIN), fiscalPeriodController.updateStatus);
 
 // Ecritures comptables
 ledgerRouter.get('/entries',          authenticate, authorize(ROLES.ADMIN), journalEntryController.list);

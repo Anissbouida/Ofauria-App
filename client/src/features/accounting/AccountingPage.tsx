@@ -12,7 +12,7 @@ import {
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search,
-  Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart,
+  Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import LossesTab from './LossesTab';
@@ -27,8 +27,9 @@ import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
 import TvaTab from './TvaTab';
+import ClotureTab from './ClotureTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'tva';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'tva' | 'cloture';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -214,6 +215,7 @@ export default function AccountingPage() {
       { key: 'balance' as const, label: 'Balance', icon: Scale },
       { key: 'cpc' as const, label: 'CPC', icon: FileBarChart },
       { key: 'tva' as const, label: 'TVA', icon: Receipt },
+      { key: 'cloture' as const, label: 'Clôture', icon: Lock },
     ] : []),
   ];
 
@@ -257,6 +259,7 @@ export default function AccountingPage() {
         {tab === 'balance' && <BalanceTab />}
         {tab === 'cpc' && <CpcTab />}
         {tab === 'tva' && <TvaTab />}
+        {tab === 'cloture' && <ClotureTab />}
       </div>
     </div>
   );

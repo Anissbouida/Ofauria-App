@@ -616,12 +616,13 @@ export async function autoLettrer(
 export async function reverseEntriesForSource(
   client: PoolClient,
   opts: { sourceId: string; sourceKinds?: string[] }
-): Promise<{ removed: number; unlettered: number }> {
+): Promise<{ removed: number; reversed: number; unlettered: number }> {
   const kinds = opts.sourceKinds ?? ['payment', 'invoice', 'sale', 'backfill'];
 
   // 1. Recuperer les ecritures de cette source + statut de leur periode.
   const entriesRes = await client.query(
-    `SELECT je.id, je.entry_number, fp.status AS period_status
+    `SELECT je.id, je.entry_number, je.entry_date, je.store_id, je.description,
+            je.source_id, je.source_detail, fp.status AS period_status
      FROM journal_entries je
      JOIN fiscal_periods fp ON fp.id = je.fiscal_period_id
      WHERE je.source_id = $1
@@ -630,36 +631,49 @@ export async function reverseEntriesForSource(
     [opts.sourceId, kinds]
   );
 
-  if (entriesRes.rows.length === 0) return { removed: 0, unlettered: 0 };
+  if (entriesRes.rows.length === 0) return { removed: 0, reversed: 0, unlettered: 0 };
 
-  // 2. Bloquer si une periode est verrouillee/close.
-  const locked = entriesRes.rows.find(
-    (r: { period_status: string }) => r.period_status === 'locked' || r.period_status === 'closed'
-  );
+  // 2. Periode 'locked' : verrou dur, aucune correction possible meme par extourne.
+  const locked = entriesRes.rows.find((r: { period_status: string }) => r.period_status === 'locked');
   if (locked) {
     throw new Error(
-      `Impossible de supprimer : l'ecriture ${(locked as { entry_number: string }).entry_number} ` +
-      `appartient a une periode comptable cloturee. Passez par une extourne manuelle.`
+      `Impossible : l'ecriture ${(locked as { entry_number: string }).entry_number} ` +
+      `appartient a une periode VERROUILLEE (locked). Aucune correction possible.`
     );
   }
 
-  const entryIds = entriesRes.rows.map((r: { id: string }) => r.id);
+  // 3. Separer les ecritures a SUPPRIMER (periode ouverte) de celles a EXTOURNER
+  //    (periode close : immuable, on passe une ecriture inverse en periode ouverte).
+  const toDelete = entriesRes.rows.filter((r: { period_status: string }) => r.period_status === 'open');
+  const toReverse = entriesRes.rows.filter((r: { period_status: string }) => r.period_status === 'closed');
 
-  // 3. Collecter les lettrage_id portes par les lignes a supprimer.
+  const allEntryIds = entriesRes.rows.map((r: { id: string }) => r.id);
+
+  // 4. Collecter les lettrage_id (avant toute modification) pour delettrer.
   const lettrageRes = await client.query(
-    `SELECT DISTINCT lettrage_id
-     FROM journal_entry_lines
-     WHERE journal_entry_id = ANY($1::uuid[])
-       AND lettrage_id IS NOT NULL`,
-    [entryIds]
+    `SELECT DISTINCT lettrage_id FROM journal_entry_lines
+     WHERE journal_entry_id = ANY($1::uuid[]) AND lettrage_id IS NOT NULL`,
+    [allEntryIds]
   );
   const lettrageIds = lettrageRes.rows.map((r: { lettrage_id: string }) => r.lettrage_id);
 
-  // 4. Supprimer les ecritures (lignes supprimees en cascade via FK ON DELETE CASCADE).
-  await client.query(`DELETE FROM journal_entries WHERE id = ANY($1::uuid[])`, [entryIds]);
+  // 5a. Periode ouverte : suppression dure (lignes en cascade).
+  let removed = 0;
+  if (toDelete.length > 0) {
+    const ids = toDelete.map((r: { id: string }) => r.id);
+    await client.query(`DELETE FROM journal_entries WHERE id = ANY($1::uuid[])`, [ids]);
+    removed = ids.length;
+  }
 
-  // 5. Delettrer les lignes restantes qui partageaient ces lettrage_id
-  //    (la facture redevient "ouverte" / non lettree).
+  // 5b. Periode close : extourne. On passe une ecriture inverse datee dans la
+  //     periode ouverte courante, et on marque l'originale 'reversed'.
+  let reversed = 0;
+  for (const orig of toReverse) {
+    await extourneEntry(client, orig);
+    reversed++;
+  }
+
+  // 6. Delettrer les lignes restantes (la facture redevient ouverte).
   let unlettered = 0;
   if (lettrageIds.length > 0) {
     const upd = await client.query(
@@ -669,7 +683,77 @@ export async function reverseEntriesForSource(
     unlettered = upd.rowCount ?? 0;
   }
 
-  return { removed: entryIds.length, unlettered };
+  return { removed, reversed, unlettered };
+}
+
+/**
+ * Extourne une ecriture d'une periode close : cree une ecriture inverse
+ * (debit<->credit) datee dans la periode ouverte la plus recente, marque
+ * l'originale 'reversed' et les relie (reversed_by_entry_id). Conserve la
+ * tracabilite DGI sans trou de numerotation (l'originale reste, l'inverse
+ * s'ajoute).
+ */
+async function extourneEntry(
+  client: PoolClient,
+  orig: { id: string; entry_number: string; store_id: string | null; description: string | null; source_id: string | null; source_detail: string | null }
+): Promise<void> {
+  // Periode ouverte cible : la plus recente.
+  const openPeriod = await client.query(
+    `SELECT id, year FROM fiscal_periods WHERE status = 'open' ORDER BY year DESC, month DESC LIMIT 1`
+  );
+  if (!openPeriod.rows[0]) {
+    throw new Error('Aucune periode ouverte pour passer l\'extourne. Reouvrez une periode.');
+  }
+  const periodId = openPeriod.rows[0].id;
+  const periodInfo = await client.query(
+    `SELECT start_date FROM fiscal_periods WHERE id = $1`, [periodId]
+  );
+  const extDate = toIsoDate(periodInfo.rows[0].start_date);
+
+  // Journal OD (operations diverses) pour les extournes.
+  const odJournal = await client.query(`SELECT id FROM journals WHERE code = 'OD'`);
+  const journalId = odJournal.rows[0].id;
+
+  const year = parseInt(extDate.slice(0, 4), 10);
+  const numRes = await client.query('SELECT next_entry_number($1, $2) AS num', [journalId, year]);
+  const entryNumber = numRes.rows[0].num;
+
+  const sysUser = await resolveUserId(client, null);
+
+  // Cree l'ecriture d'extourne (en draft puis posted).
+  // source_id = celui de l'originale (traçabilite metier), source_detail = 'reversal'
+  // pour ne pas entrer en conflit avec l'index d'unicite de la source d'origine.
+  const insRes = await client.query(
+    `INSERT INTO journal_entries (
+       entry_number, journal_id, entry_date, fiscal_period_id, description,
+       source_kind, source_id, source_detail, status, store_id, created_by, reversed_by_entry_id
+     ) VALUES ($1,$2,$3,$4,$5,'reversal',$6,$7,'draft',$8,$9,NULL)
+     RETURNING id`,
+    [entryNumber, journalId, extDate, periodId,
+     `Extourne de ${orig.entry_number}${orig.description ? ' — ' + orig.description : ''}`,
+     orig.source_id, `rev:${orig.source_detail || 'main'}`, orig.store_id, sysUser]
+  );
+  const extId = insRes.rows[0].id;
+
+  // Copie les lignes de l'originale avec debit/credit INVERSES.
+  await client.query(
+    `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label)
+     SELECT $1, line_order, account_id, auxiliary_id, credit, debit, 'Extourne: ' || COALESCE(label, '')
+     FROM journal_entry_lines WHERE journal_entry_id = $2`,
+    [extId, orig.id]
+  );
+
+  // Poste l'extourne (declenche le trigger d'equilibre).
+  await client.query(
+    `UPDATE journal_entries SET status = 'posted', posted_at = NOW(), posted_by = $2 WHERE id = $1`,
+    [extId, sysUser]
+  );
+
+  // Marque l'originale 'reversed' et relie a l'extourne.
+  await client.query(
+    `UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`,
+    [orig.id, extId]
+  );
 }
 
 /* ═══ Helpers haut-niveau : (re)synchronisation d'une source ═══ */

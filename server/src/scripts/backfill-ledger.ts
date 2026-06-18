@@ -95,7 +95,7 @@ async function getSystemUserId(): Promise<string> {
 
 async function backfillInvoices(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
-  const rows = (await db.query<InvoiceRow>(
+  const rows = (await db.query(
     `SELECT id, invoice_number, invoice_type, supplier_id, customer_id, category_id,
             invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status
      FROM invoices
@@ -141,7 +141,7 @@ async function backfillInvoices(stats: Stats, userId: string, args: Args) {
 
 async function backfillPayments(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
-  const rows = (await db.query<PaymentRow>(
+  const rows = (await db.query(
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
             cashed_at::TEXT AS cashed_at, description, store_id
@@ -213,7 +213,7 @@ async function backfillPayments(stats: Stats, userId: string, args: Args) {
 
 async function backfillSales(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
-  const rows = (await db.query<SaleRow>(
+  const rows = (await db.query(
     `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount, total,
             payment_method, payment_status,
             paid_at::TEXT AS paid_at, created_at::TEXT AS created_at, store_id

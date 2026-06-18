@@ -174,10 +174,13 @@ export async function createInvoiceFromPo(
   // Generation auto de l'ecriture comptable pour les factures crees via BC
   // (meme logique que invoiceRepository.create, SAVEPOINT pour isoler).
   if (FLAGS.LEDGER_AUTOGEN) {
+    // client est un vrai PoolClient au runtime (transaction du caller) ; le
+    // type local TxClient est volontairement minimal -> cast pour le generateur.
+    const pgClient = client as unknown as import('pg').PoolClient;
     await client.query('SAVEPOINT ledger_gen');
     try {
-      const entry = await fromInvoice(client, invoice);
-      if (entry) await persistEntry(client, entry, { userId: createdBy });
+      const entry = await fromInvoice(pgClient, invoice as unknown as Parameters<typeof fromInvoice>[1]);
+      if (entry) await persistEntry(pgClient, entry, { userId: createdBy });
       await client.query('RELEASE SAVEPOINT ledger_gen');
     } catch (genErr) {
       await client.query('ROLLBACK TO SAVEPOINT ledger_gen');

@@ -127,6 +127,40 @@ export const fiscalPeriodRepository = {
     );
     return result.rows[0] || null;
   },
+
+  /**
+   * Change le statut d'une periode (cloture / reouverture).
+   * Transitions autorisees :
+   *   open    -> closed  (cloture mensuelle : plus de nouvelle ecriture)
+   *   closed  -> open    (reouverture, si pas encore verrouillee)
+   *   closed  -> locked  (verrou definitif post-validation expert-comptable)
+   * Refuse : toute transition depuis 'locked' (verrou dur, irreversible ici).
+   */
+  async updateStatus(id: string, status: 'open' | 'closed' | 'locked', userId: string, note?: string) {
+    const cur = await db.query(`SELECT status FROM fiscal_periods WHERE id = $1`, [id]);
+    if (!cur.rows[0]) throw new Error('Periode introuvable');
+    if (cur.rows[0].status === 'locked') {
+      throw new Error('Periode verrouillee : transition impossible');
+    }
+    const valid: Record<string, string[]> = {
+      open: ['closed'],
+      closed: ['open', 'locked'],
+    };
+    if (!valid[cur.rows[0].status]?.includes(status)) {
+      throw new Error(`Transition ${cur.rows[0].status} -> ${status} non autorisee`);
+    }
+    const result = await db.query(
+      `UPDATE fiscal_periods
+       SET status = $1::varchar,
+           closed_at = CASE WHEN $1::varchar IN ('closed','locked') THEN NOW() ELSE NULL END,
+           closed_by = CASE WHEN $1::varchar IN ('closed','locked') THEN $2::uuid ELSE NULL END,
+           closed_note = CASE WHEN $1::varchar IN ('closed','locked') THEN $3::text ELSE NULL END
+       WHERE id = $4::uuid
+       RETURNING *`,
+      [status, userId, note || null, id]
+    );
+    return result.rows[0];
+  },
 };
 
 /* ═══ Reconciliation legacy <-> ledger ═══ */

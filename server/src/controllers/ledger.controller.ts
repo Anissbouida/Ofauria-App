@@ -78,6 +78,26 @@ export const fiscalPeriodController = {
     const periods = await fiscalPeriodRepository.findAll({ year });
     res.json({ success: true, data: periods });
   },
+
+  /**
+   * PATCH /api/v1/ledger/fiscal-periods/:id/status — cloture / reouverture / verrou.
+   * Body : { status: 'open'|'closed'|'locked', note?: string }
+   */
+  async updateStatus(req: AuthRequest, res: Response) {
+    const { status, note } = req.body as { status?: string; note?: string };
+    if (!status || !['open', 'closed', 'locked'].includes(status)) {
+      res.status(400).json({ success: false, error: { message: 'status doit valoir open, closed ou locked' } });
+      return;
+    }
+    try {
+      const period = await fiscalPeriodRepository.updateStatus(
+        req.params.id, status as 'open' | 'closed' | 'locked', req.user!.userId, note
+      );
+      res.json({ success: true, data: period });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
 };
 
 /* ═══ Reconciliation ═══ */

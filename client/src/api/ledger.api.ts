@@ -36,6 +36,8 @@ export const fiscalPeriodsApi = {
   list: (year?: number): Promise<FiscalPeriod[]> =>
     api.get('/ledger/fiscal-periods', { params: year ? { year } : {} })
        .then(r => r.data.data),
+  updateStatus: (id: string, status: 'open' | 'closed' | 'locked', note?: string): Promise<FiscalPeriod> =>
+    api.patch(`/ledger/fiscal-periods/${id}/status`, { status, note }).then(r => r.data.data),
 };
 
 /* ═══ Reconciliation legacy <-> ledger ═══ */
