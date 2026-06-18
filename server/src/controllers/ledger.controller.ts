@@ -8,6 +8,7 @@ import {
   journalEntryRepository,
   reconciliationRepository,
   financialStatementsRepository,
+  tvaDeclarationRepository,
 } from '../repositories/ledger.repository.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -189,6 +190,23 @@ export const financialStatementsController = {
       endDate: req.query.endDate as string | undefined,
       storeId: req.user!.storeId,
     });
+    res.json({ success: true, data });
+  },
+};
+
+/* ═══ Declaration TVA (CA20) ═══ */
+export const tvaDeclarationController = {
+  /**
+   * GET /api/v1/ledger/tva-declaration?startDate=...&endDate=...
+   */
+  async declaration(req: AuthRequest, res: Response) {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    if (!startDate || !endDate) {
+      res.status(400).json({ success: false, error: { message: 'startDate et endDate requis' } });
+      return;
+    }
+    const data = await tvaDeclarationRepository.declaration({ startDate, endDate, storeId: req.user!.storeId });
     res.json({ success: true, data });
   },
 };

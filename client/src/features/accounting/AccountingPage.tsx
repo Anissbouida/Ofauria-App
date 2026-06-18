@@ -26,8 +26,9 @@ import EcrituresTab from './EcrituresTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
+import TvaTab from './TvaTab';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc';
+type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'tva';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -212,6 +213,7 @@ export default function AccountingPage() {
       { key: 'grand_livre' as const, label: 'Grand livre', icon: BookOpen },
       { key: 'balance' as const, label: 'Balance', icon: Scale },
       { key: 'cpc' as const, label: 'CPC', icon: FileBarChart },
+      { key: 'tva' as const, label: 'TVA', icon: Receipt },
     ] : []),
   ];
 
@@ -254,6 +256,7 @@ export default function AccountingPage() {
         {tab === 'grand_livre' && <GrandLivreTab />}
         {tab === 'balance' && <BalanceTab />}
         {tab === 'cpc' && <CpcTab />}
+        {tab === 'tva' && <TvaTab />}
       </div>
     </div>
   );

@@ -123,3 +123,25 @@ export const financialStatementsApi = {
   incomeStatement: (params: PeriodParams = {}): Promise<IncomeStatementResult> =>
     api.get('/ledger/income-statement', { params }).then(r => r.data.data),
 };
+
+/* ═══ Declaration TVA (CA20) ═══ */
+export interface TvaLine {
+  code: string;
+  label: string;
+  tva_rate: string;
+  tva_direction: 'collected' | 'deductible';
+  amount: string;
+}
+export interface TvaDeclaration {
+  period: { startDate: string; endDate: string };
+  collected: TvaLine[];
+  deductible: TvaLine[];
+  total_collected: number;
+  total_deductible: number;
+  tva_due: number;
+}
+
+export const tvaDeclarationApi = {
+  declaration: (startDate: string, endDate: string): Promise<TvaDeclaration> =>
+    api.get('/ledger/tva-declaration', { params: { startDate, endDate } }).then(r => r.data.data),
+};

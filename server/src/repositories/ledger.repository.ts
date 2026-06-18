@@ -440,3 +440,58 @@ export const financialStatementsRepository = {
     };
   },
 };
+
+/* ═══ Declaration TVA (CA20 Maroc) ═══ */
+export const tvaDeclarationRepository = {
+  /**
+   * Synthese TVA pour une periode (mensuelle par defaut) :
+   *   - TVA collectee : comptes 445x (sur ventes)
+   *   - TVA deductible : comptes 345x (sur achats)
+   *   - TVA due = collectee - deductible
+   * Detaillee par taux (20/14/10/7) via le champ tva_rate du plan comptable.
+   */
+  async declaration(params: { startDate: string; endDate: string; storeId?: string }) {
+    const where: string[] = [
+      `je.status = 'posted'`,
+      `je.entry_date >= $1`,
+      `je.entry_date <= $2`,
+      `a.tva_direction IS NOT NULL`,
+    ];
+    const values: unknown[] = [params.startDate, params.endDate];
+    let p = 3;
+    if (params.storeId) { values.push(params.storeId); where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+
+    const rows = await db.query(
+      `SELECT
+         a.code, a.label, a.tva_rate, a.tva_direction,
+         -- TVA collectee : solde crediteur ; deductible : solde debiteur
+         CASE WHEN a.tva_direction = 'collected'
+              THEN COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0)
+              ELSE COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0)
+         END AS amount
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+       WHERE ${where.join(' AND ')}
+       GROUP BY a.code, a.label, a.tva_rate, a.tva_direction
+       HAVING COALESCE(SUM(jel.debit), 0) <> 0 OR COALESCE(SUM(jel.credit), 0) <> 0
+       ORDER BY a.tva_direction, a.tva_rate`,
+      values
+    );
+
+    const collected = rows.rows.filter((r: { tva_direction: string }) => r.tva_direction === 'collected');
+    const deductible = rows.rows.filter((r: { tva_direction: string }) => r.tva_direction === 'deductible');
+    const totalCollected = collected.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
+    const totalDeductible = deductible.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
+
+    return {
+      period: { startDate: params.startDate, endDate: params.endDate },
+      collected,
+      deductible,
+      total_collected: totalCollected,
+      total_deductible: totalDeductible,
+      // TVA due (a payer si positif, credit de TVA a reporter si negatif)
+      tva_due: totalCollected - totalDeductible,
+    };
+  },
+};

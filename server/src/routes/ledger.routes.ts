@@ -7,6 +7,7 @@ import {
   journalEntryController,
   reconciliationController,
   financialStatementsController,
+  tvaDeclarationController,
 } from '../controllers/ledger.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -42,3 +43,6 @@ ledgerRouter.get('/reconciliation',   authenticate, authorize(ROLES.ADMIN), reco
 ledgerRouter.get('/general-ledger',   authenticate, authorize(ROLES.ADMIN), financialStatementsController.generalLedger);
 ledgerRouter.get('/balance',          authenticate, authorize(ROLES.ADMIN), financialStatementsController.balance);
 ledgerRouter.get('/income-statement', authenticate, authorize(ROLES.ADMIN), financialStatementsController.incomeStatement);
+
+// Declaration TVA (CA20 Maroc)
+ledgerRouter.get('/tva-declaration',  authenticate, authorize(ROLES.ADMIN), tvaDeclarationController.declaration);
