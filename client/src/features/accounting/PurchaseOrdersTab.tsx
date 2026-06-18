@@ -1569,8 +1569,16 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Statut actuel</label>
-                  <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600">
-                    {(po?.status as string) || '—'}
+                  <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 flex items-center min-h-[38px]">
+                    {po?.status ? (() => {
+                      const Icon = STATUS_ICONS[po.status as string];
+                      return (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${STATUS_COLORS[po.status as string] || 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+                          {Icon && <Icon size={12} />}
+                          {STATUS_LABELS[po.status as string] || (po.status as string)}
+                        </span>
+                      );
+                    })() : <span className="text-gray-400">—</span>}
                   </div>
                 </div>
               </div>
