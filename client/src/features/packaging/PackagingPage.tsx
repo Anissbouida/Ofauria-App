@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Box, Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, Package, Recycle } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, Package, Recycle } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
@@ -56,6 +56,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryIdFilter, setCategoryIdFilter] = useState<string>('');
+  const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'ok' | 'rupture'>('all');
   const [editingItem, setEditingItem] = useState<PackagingItem | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [stockDialog, setStockDialog] = useState<PackagingItem | null>(null);
@@ -79,65 +80,109 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
     onError: () => notify.error('Erreur lors de la suppression'),
   });
 
+  const stockState = (it: PackagingItem) => {
+    const stock = parseFloat(String(it.stock_quantity || 0));
+    const threshold = parseFloat(String(it.stock_min_threshold || 0));
+    const isRupture = stock <= 0;
+    const isLow = !isRupture && threshold > 0 && stock <= threshold;
+    return { stock, isRupture, isLow };
+  };
   const totalItems = items.length;
-  const totalLowStock = items.filter((it: PackagingItem) =>
-    parseFloat(String(it.stock_quantity || 0)) <= parseFloat(String(it.stock_min_threshold || 0))
-    && parseFloat(String(it.stock_min_threshold || 0)) > 0
-  ).length;
-  const totalRupture = items.filter((it: PackagingItem) =>
-    parseFloat(String(it.stock_quantity || 0)) <= 0
-  ).length;
+  const lowCount = items.filter((it: PackagingItem) => stockState(it).isLow).length;
+  const ruptureCount = items.filter((it: PackagingItem) => stockState(it).isRupture).length;
+
+  const filtered = items.filter((it: PackagingItem) => {
+    const { isRupture, isLow } = stockState(it);
+    if (stockFilter === 'low') return isLow;
+    if (stockFilter === 'rupture') return isRupture;
+    if (stockFilter === 'ok') return !isRupture && !isLow;
+    return true;
+  });
+
+  const selectedLeafName = (() => {
+    for (const g of leafGroups) {
+      const leaf = g.leaves.find(l => String(l.id) === categoryIdFilter);
+      if (leaf) return String(leaf.name);
+    }
+    return '';
+  })();
+  const hasActiveFilters = !!search || !!categoryIdFilter || stockFilter !== 'all';
+  const resetFilters = () => { setSearch(''); setCategoryIdFilter(''); setStockFilter('all'); };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex items-center justify-between">
-        {!embedded ? (
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Package size={24} className="text-blue-600" /> Consommables
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Emballages, produits & matériel de nettoyage, petit matériel jetable...
-            </p>
+    <div className={embedded ? '' : 'odoo-scope'} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Barre d'action */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {!embedded && (
+          <div className="odoo-breadcrumb">
+            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Consommables</span>
           </div>
-        ) : <div />}
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
-          <Plus size={16} /> Nouveau consommable
+        )}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500 mb-1">Total consommables</div>
-          <div className="text-2xl font-bold text-gray-800">{totalItems}</div>
-        </div>
-        <div className="bg-white rounded-xl border border-orange-100 p-4">
-          <div className="text-xs text-orange-600 mb-1 flex items-center gap-1">
-            <AlertTriangle size={12} /> Stock bas
+      {/* ══════ STAT TILES ══════ */}
+      <div className="odoo-stat-grid">
+        <button onClick={() => setStockFilter('all')}
+          className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Total consommables
           </div>
-          <div className="text-2xl font-bold text-orange-700">{totalLowStock}</div>
-        </div>
-        <div className="bg-white rounded-xl border border-red-100 p-4">
-          <div className="text-xs text-red-600 mb-1 flex items-center gap-1">
-            <AlertTriangle size={12} /> Rupture
+          <div className="odoo-stat-card-value">{totalItems}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
+          className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas
           </div>
-          <div className="text-2xl font-bold text-red-700">{totalRupture}</div>
-        </div>
+          <div className="odoo-stat-card-value" style={{ color: lowCount > 0 ? '#b85d1a' : undefined }}>{lowCount}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'ok' ? 'all' : 'ok')}
+          className={`odoo-stat-card ${stockFilter === 'ok' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Stock OK
+          </div>
+          <div className="odoo-stat-card-value">{totalItems - lowCount - ruptureCount}</div>
+        </button>
+        <button onClick={() => setStockFilter(stockFilter === 'rupture' ? 'all' : 'rupture')}
+          className={`odoo-stat-card ${stockFilter === 'rupture' ? 'active' : ''}`}>
+          <div className="odoo-stat-card-label">
+            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture
+          </div>
+          <div className="odoo-stat-card-value" style={{ color: ruptureCount > 0 ? '#dc3545' : undefined }}>{ruptureCount}</div>
+        </button>
       </div>
 
-      {/* Filtres */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[200px] relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un consommable..."
-            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-        </div>
+      {/* ══════ BARRE DE FILTRES ══════ */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher un consommable..." className="odoo-search-input" />
+
+        {search && (
+          <span className="odoo-filter-chip">Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
+        {categoryIdFilter && (
+          <span className="odoo-filter-chip">{selectedLeafName || 'Catégorie'}
+            <span className="odoo-filter-chip-remove" onClick={() => setCategoryIdFilter('')}>×</span>
+          </span>
+        )}
+        {stockFilter !== 'all' && (
+          <span className="odoo-filter-chip">
+            {stockFilter === 'low' ? 'Stock bas' : stockFilter === 'rupture' ? 'Rupture' : 'Stock OK'}
+            <span className="odoo-filter-chip-remove" onClick={() => setStockFilter('all')}>×</span>
+          </span>
+        )}
+
         <select value={categoryIdFilter} onChange={(e) => setCategoryIdFilter(e.target.value)}
-          className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-          <option value="">Toutes les catégories</option>
+          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
+          <option value="">▾ Catégorie</option>
           {leafGroups.map(g => (
             <optgroup key={g.rootId} label={g.label}>
               {g.leaves.map(leaf => (
@@ -146,93 +191,87 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             </optgroup>
           ))}
         </select>
+
+        <span style={{ flex: 1 }} />
+
+        {hasActiveFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={13} /> Réinitialiser
+          </button>
+        )}
       </div>
 
-      {/* Liste */}
-      {isLoading ? (
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
-          <Box size={48} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">Aucun consommable trouvé</p>
-          <button onClick={() => setShowCreate(true)} className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium">
-            Ajouter un premier consommable
-          </button>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              <tr>
-                <th className="text-left px-4 py-3">Article</th>
-                <th className="text-left px-4 py-3">Categorie</th>
-                <th className="text-left px-4 py-3">Format</th>
-                <th className="text-right px-4 py-3">Cout unitaire</th>
-                <th className="text-right px-4 py-3">Stock</th>
-                <th className="text-left px-4 py-3">Fournisseur</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map((it: PackagingItem) => {
-                const stock = parseFloat(String(it.stock_quantity || 0));
-                const threshold = parseFloat(String(it.stock_min_threshold || 0));
-                const isRupture = stock <= 0;
-                const isLow = !isRupture && threshold > 0 && stock <= threshold;
-                return (
-                  <tr key={it.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800 flex items-center gap-2">
-                        {it.name}
-                        {it.is_recyclable && <Recycle size={12} className="text-green-600" />}
-                      </div>
-                      {it.notes && <div className="text-xs text-gray-400 truncate max-w-xs">{it.notes}</div>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {it.category_name ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                          {it.category_name}
-                        </span>
-                      ) : <span className="text-xs text-gray-300">Non catégorisé</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{it.format || '—'}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-700">
-                      {parseFloat(String(it.unit_cost)).toFixed(2)} DH<span className="text-xs text-gray-400 ml-1">/ {it.unit}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => setStockDialog(it)}
-                        className={`font-bold ${isRupture ? 'text-red-600' : isLow ? 'text-orange-600' : 'text-gray-700'} hover:underline`}>
-                        {stock.toFixed(0)} {it.unit}
+      {/* ══════ TABLE Odoo (dense) ══════ */}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead>
+            <tr>
+              <th>Article</th>
+              <th className="hidden sm:table-cell">Catégorie</th>
+              <th className="hidden md:table-cell">Format</th>
+              <th style={{ textAlign: 'right' }} className="hidden md:table-cell">Dernier prix</th>
+              <th style={{ textAlign: 'right' }}>Stock</th>
+              <th className="hidden lg:table-cell">Fournisseur</th>
+              <th style={{ textAlign: 'center', width: 96 }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun consommable trouvé</td></tr>
+            ) : filtered.map((it: PackagingItem) => {
+              const { stock, isRupture, isLow } = stockState(it);
+              return (
+                <tr key={it.id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                      {it.name}
+                      {it.is_recyclable && <Recycle size={12} style={{ color: '#28a745' }} />}
+                    </div>
+                    {it.notes && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.notes}</div>}
+                  </td>
+                  <td className="hidden sm:table-cell">
+                    {it.category_name
+                      ? <span className="odoo-tag odoo-tag-grey">{it.category_name}</span>
+                      : <span style={{ color: 'var(--theme-bg-separator)', fontSize: '0.75rem' }}>—</span>}
+                  </td>
+                  <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.format || '—'}</td>
+                  <td className="hidden md:table-cell" style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                    {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>DH/{it.unit}</span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button onClick={() => setStockDialog(it)}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'ui-monospace, monospace', fontWeight: 700,
+                        color: isRupture ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text)' }}>
+                      {stock.toFixed(0)} {it.unit}
+                    </button>
+                    {isRupture && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>RUPTURE</span>}
+                    {isLow && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>BAS</span>}
+                  </td>
+                  <td className="hidden lg:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.supplier || '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', gap: 4 }}>
+                      <button onClick={() => setStockDialog(it)} title="Mouvement de stock"
+                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-accent)' }}>
+                        <TrendingUp size={14} />
                       </button>
-                      {isRupture && <span className="block text-[10px] text-red-500 font-semibold">Rupture</span>}
-                      {isLow && <span className="block text-[10px] text-orange-500 font-semibold">Stock bas</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{it.supplier || '—'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center gap-1 justify-end">
-                        <button onClick={() => setStockDialog(it)} title="Mouvement de stock"
-                          className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600">
-                          <TrendingUp size={14} />
-                        </button>
-                        <button onClick={() => setEditingItem(it)} title="Modifier"
-                          className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => {
-                          if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id);
-                        }} title="Supprimer"
-                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-400">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      <button onClick={() => setEditingItem(it)} title="Modifier"
+                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => { if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id); }} title="Supprimer"
+                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {/* Modal create/edit */}
       {(showCreate || editingItem) && (

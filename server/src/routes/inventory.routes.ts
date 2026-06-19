@@ -57,5 +57,7 @@ ingredientsRouter.get('/', authenticate, ingredientController.list);
 ingredientsRouter.get('/:id', authenticate, ingredientController.getById);
 ingredientsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.create);
 ingredientsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.update);
+// Convertit un ingredient mal range en consommable (packaging_items)
+ingredientsRouter.post('/:id/convert-to-consumable', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.convertToConsumable);
 // Suppression : admin + gerant (cf demande utilisateur — flexibilite mise en place)
 ingredientsRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.remove);
