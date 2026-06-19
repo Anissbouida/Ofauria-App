@@ -23,6 +23,27 @@ export const reportsController = {
     res.json({ success: true, data });
   },
 
+  /**
+   * GET /reports/finance-overview/detail?kind=&dateFrom=&dateTo=
+   * Liste detaillee derriere une carte du Pilotage (drill-down au clic).
+   * `kind` ∈ engagement | treasury | remainingToPay | receivedNotInvoiced
+   *         | unpaidInvoices | uncashedChecks
+   */
+  async financeOverviewDetail(req: AuthRequest, res: Response) {
+    const { kind, dateFrom, dateTo } = req.query as Record<string, string>;
+    if (!kind) {
+      res.status(400).json({ success: false, error: { message: 'kind requis' } });
+      return;
+    }
+    const items = await dashboardRepository.getFinanceOverviewDetail({
+      kind,
+      dateFrom: dateFrom || '',
+      dateTo: dateTo || '',
+      storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: items });
+  },
+
   async dashboard(req: AuthRequest, res: Response) {
     const storeId = req.user!.storeId;
     const storeFilter = storeId ? ' AND store_id = $1' : '';

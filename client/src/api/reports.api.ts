@@ -106,11 +106,40 @@ export type FinanceOverview = {
   }>;
 };
 
+/** Une carte du Pilotage qui ouvre un detail au clic */
+export type FinanceDetailKind =
+  | 'engagement'
+  | 'treasury'
+  | 'remainingToPay'
+  | 'receivedNotInvoiced'
+  | 'unpaidInvoices'
+  | 'uncashedChecks';
+
+/** Ligne de detail derriere une carte (champs optionnels selon le kind) */
+export type FinanceDetailRow = {
+  id: string;
+  ref?: string | null;
+  supplierRef?: string | null;
+  supplierName?: string | null;
+  date?: string | null;
+  dueDate?: string | null;
+  method?: string | null;
+  type?: string | null;
+  label?: string | null;
+  status?: string | null;
+  total?: number;
+  paid?: number;
+  amount: number;
+};
+
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard').then(r => r.data.data),
   /** Vue Pilotage : engagement, tresorerie, pipeline, fournisseurs crediteurs */
   financeOverview: (dateFrom: string, dateTo: string): Promise<FinanceOverview> =>
     api.get('/reports/finance-overview', { params: { dateFrom, dateTo } }).then(r => r.data.data),
+  /** Liste detaillee derriere une carte du Pilotage (drill-down au clic) */
+  financeOverviewDetail: (kind: FinanceDetailKind, dateFrom: string, dateTo: string): Promise<FinanceDetailRow[]> =>
+    api.get('/reports/finance-overview/detail', { params: { kind, dateFrom, dateTo } }).then(r => r.data.data),
   sales: (startDate: string, endDate: string) => api.get('/reports/sales', { params: { startDate, endDate } }).then(r => r.data.data),
   products: (startDate: string, endDate: string) => api.get('/reports/products', { params: { startDate, endDate } }).then(r => r.data.data),
   costSummary: (startDate: string, endDate: string): Promise<CostSummary> =>

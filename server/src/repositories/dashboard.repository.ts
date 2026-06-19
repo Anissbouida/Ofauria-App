@@ -267,4 +267,206 @@ export const dashboardRepository = {
       })),
     };
   },
+
+  /**
+   * Detail "drill-down" derriere chaque carte du Pilotage. Le `kind` correspond
+   * a une carte ; chaque requete REPREND EXACTEMENT les memes filtres que
+   * l'agregat de getFinanceOverview pour que la somme des lignes = le chiffre
+   * affiche sur la carte. Les cartes "pipeline" (vue a date) ignorent la periode.
+   */
+  async getFinanceOverviewDetail(params: {
+    kind: string;
+    dateFrom: string;
+    dateTo: string;
+    storeId?: string;
+  }) {
+    const { kind, dateFrom, dateTo, storeId } = params;
+
+    // Cartes filtrees sur la periode : params = [dateFrom, dateTo, storeId?]
+    const periodFilter = (alias: string) =>
+      storeId ? `AND ${alias}.store_id = $3` : '';
+    const periodParams: unknown[] = storeId ? [dateFrom, dateTo, storeId] : [dateFrom, dateTo];
+
+    // Cartes "vue a date" (pipeline) : params = [storeId?]
+    const nowFilter = (alias: string) => (storeId ? `AND ${alias}.store_id = $1` : '');
+    const nowParams: unknown[] = storeId ? [storeId] : [];
+
+    switch (kind) {
+      // ── ENGAGEMENT : factures recues de la periode ──────────────────
+      case 'engagement': {
+        const res = await db.query(
+          `SELECT inv.id, inv.invoice_number,
+                  s.name AS supplier_name, inv.invoice_date::text,
+                  inv.total_amount::text, inv.status
+           FROM invoices inv
+           LEFT JOIN suppliers s ON s.id = inv.supplier_id
+           WHERE inv.invoice_type = 'received'
+             AND inv.status != 'cancelled'
+             AND inv.invoice_date BETWEEN $1 AND $2
+             ${periodFilter('inv')}
+           ORDER BY inv.invoice_date DESC, inv.invoice_number DESC`,
+          periodParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          ref: r.invoice_number,
+          supplierName: r.supplier_name,
+          date: r.invoice_date,
+          amount: parseFloat(r.total_amount),
+          status: r.status,
+        }));
+      }
+
+      // ── TRESORERIE SORTIE : paiements effectifs de la periode ───────
+      case 'treasury': {
+        const res = await db.query(
+          `WITH effective AS (
+             SELECT p.id, p.payment_method, p.amount, p.type,
+                    p.description, p.reference, p.supplier_id, p.invoice_id,
+                    CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
+                         ELSE p.payment_date END AS effective_date
+             FROM payments p
+             WHERE p.type IN ('invoice', 'salary', 'expense')
+               AND (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
+               ${storeId ? 'AND p.store_id = $3' : ''}
+           )
+           SELECT e.id, e.effective_date::text AS date, e.payment_method,
+                  e.amount::text, e.type, e.description, e.reference,
+                  s.name AS supplier_name, inv.invoice_number
+           FROM effective e
+           LEFT JOIN suppliers s ON s.id = e.supplier_id
+           LEFT JOIN invoices inv ON inv.id = e.invoice_id
+           WHERE e.effective_date BETWEEN $1 AND $2
+           ORDER BY e.effective_date DESC`,
+          periodParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          date: r.date,
+          method: r.payment_method,
+          type: r.type,
+          supplierName: r.supplier_name,
+          ref: r.invoice_number || r.reference,
+          label: r.description,
+          amount: parseFloat(r.amount),
+        }));
+      }
+
+      // ── RESTE A PAYER : factures de la periode non soldees ──────────
+      case 'remainingToPay': {
+        const res = await db.query(
+          `SELECT inv.id, inv.invoice_number, s.name AS supplier_name,
+                  inv.invoice_date::text, inv.due_date::text,
+                  inv.total_amount::text, inv.paid_amount::text,
+                  (inv.total_amount - inv.paid_amount)::text AS remaining, inv.status
+           FROM invoices inv
+           LEFT JOIN suppliers s ON s.id = inv.supplier_id
+           WHERE inv.invoice_type = 'received'
+             AND inv.status NOT IN ('cancelled', 'paid')
+             AND inv.invoice_date BETWEEN $1 AND $2
+             ${periodFilter('inv')}
+           ORDER BY inv.due_date ASC NULLS LAST`,
+          periodParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          ref: r.invoice_number,
+          supplierName: r.supplier_name,
+          date: r.invoice_date,
+          dueDate: r.due_date,
+          total: parseFloat(r.total_amount),
+          paid: parseFloat(r.paid_amount),
+          amount: parseFloat(r.remaining),
+          status: r.status,
+        }));
+      }
+
+      // ── RECU NON FACTURE (periode) : BC livres sans facture ─────────
+      case 'receivedNotInvoiced': {
+        const res = await db.query(
+          `SELECT po.id, po.order_number, s.name AS supplier_name,
+                  po.delivery_date::text,
+                  (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0)
+                   FROM purchase_order_items WHERE purchase_order_id = po.id)::text AS total
+           FROM purchase_orders po
+           JOIN suppliers s ON s.id = po.supplier_id
+           WHERE po.status IN ('livre_complet', 'livre_partiel')
+             AND po.delivery_date BETWEEN $1 AND $2
+             AND NOT EXISTS (
+               SELECT 1 FROM invoices i
+               WHERE i.purchase_order_id = po.id
+                 AND i.invoice_type = 'received'
+                 AND i.status != 'cancelled'
+             )
+             ${periodFilter('po')}
+           ORDER BY po.delivery_date DESC NULLS LAST`,
+          periodParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          ref: r.order_number,
+          supplierName: r.supplier_name,
+          date: r.delivery_date,
+          amount: parseFloat(r.total),
+        }));
+      }
+
+      // ── FACTURES IMPAYEES (vue a date, hors periode) ────────────────
+      case 'unpaidInvoices': {
+        const res = await db.query(
+          `SELECT inv.id, inv.invoice_number, s.name AS supplier_name,
+                  inv.invoice_date::text, inv.due_date::text,
+                  inv.total_amount::text, inv.paid_amount::text,
+                  (inv.total_amount - inv.paid_amount)::text AS remaining, inv.status
+           FROM invoices inv
+           LEFT JOIN suppliers s ON s.id = inv.supplier_id
+           WHERE inv.invoice_type = 'received'
+             AND inv.status IN ('pending', 'partial')
+             ${nowFilter('inv')}
+           ORDER BY inv.due_date ASC NULLS LAST`,
+          nowParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          ref: r.invoice_number,
+          supplierName: r.supplier_name,
+          date: r.invoice_date,
+          dueDate: r.due_date,
+          total: parseFloat(r.total_amount),
+          paid: parseFloat(r.paid_amount),
+          amount: parseFloat(r.remaining),
+          status: r.status,
+        }));
+      }
+
+      // ── CHEQUES NON ENCAISSES (vue a date) ──────────────────────────
+      case 'uncashedChecks': {
+        const res = await db.query(
+          `SELECT p.id, s.name AS supplier_name, p.amount::text,
+                  p.reference, p.payment_method, p.payment_date::text AS emitted_date,
+                  inv.invoice_number, inv.due_date::text
+           FROM payments p
+           LEFT JOIN invoices inv ON inv.id = p.invoice_id
+           LEFT JOIN suppliers s ON s.id = p.supplier_id
+           WHERE p.payment_method IN ('check', 'traite')
+             AND p.cashed_at IS NULL
+             ${nowFilter('p')}
+           ORDER BY inv.due_date ASC NULLS LAST`,
+          nowParams
+        );
+        return res.rows.map(r => ({
+          id: r.id,
+          supplierName: r.supplier_name,
+          ref: r.reference || r.invoice_number,
+          method: r.payment_method,
+          date: r.emitted_date,
+          dueDate: r.due_date,
+          amount: parseFloat(r.amount),
+        }));
+      }
+
+      default:
+        return [];
+    }
+  },
 };

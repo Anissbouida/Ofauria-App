@@ -444,6 +444,17 @@
 .odoo-alert.warning{ background-color: #fff8e8; color: #856404; border-bottom-color: #ffeeba; }
 .odoo-alert-title { font-weight: 600; }
 
+/* ── Carte KPI cliquable (Pilotage : drill-down au clic) ── */
+.kpi-clickable {
+  cursor: pointer;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+.kpi-clickable:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+.kpi-clickable:active { transform: translateY(0); }
+
 /* ── Section card (form view) ── */
 .odoo-section {
   background-color: var(--odoo-bg);

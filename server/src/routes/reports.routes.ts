@@ -8,6 +8,8 @@ const router = Router();
 router.get('/dashboard', authenticate, authorize('admin', 'manager'), reportsController.dashboard);
 // Vue Pilotage : engagement / tresorerie / pipeline / top fournisseurs
 router.get('/finance-overview', authenticate, authorize('admin', 'manager'), reportsController.financeOverview);
+// Drill-down : liste detaillee derriere une carte du Pilotage
+router.get('/finance-overview/detail', authenticate, authorize('admin', 'manager'), reportsController.financeOverviewDetail);
 router.get('/sales', authenticate, authorize('admin', 'manager'), reportsController.sales);
 router.get('/products', authenticate, authorize('admin', 'manager'), reportsController.productPerformance);
 router.get('/cost-summary', authenticate, authorize('admin', 'manager'), reportsController.costSummary);

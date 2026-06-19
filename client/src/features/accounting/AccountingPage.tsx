@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
 import { employeesApi } from '../../api/employees.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { reportsApi } from '../../api/reports.api';
+import type { FinanceDetailKind, FinanceDetailRow } from '../../api/reports.api';
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -784,6 +786,146 @@ function DettesTab() {
   );
 }
 
+/* ═══════════════════════ MODALE DETAIL PILOTAGE ═══════════════════════ */
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Espèces', check: 'Chèque', traite: 'Traite', transfer: 'Virement', bank: 'Banque',
+};
+
+/** Config d'affichage par carte : titre, couleur d'accent, colonnes du tableau */
+const DETAIL_CONFIG: Record<FinanceDetailKind, {
+  title: string;
+  accent: string;
+  bg: string;
+  /** colonnes : header + alignement + rendu d'une ligne */
+  columns: Array<{ label: string; align?: 'right'; render: (r: FinanceDetailRow) => ReactNode }>;
+}> = {
+  engagement: {
+    title: 'Engagement — factures de la période', accent: '#0d4d8c', bg: '#f0f6ff',
+    columns: [
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
+      { label: 'Fournisseur', render: r => r.supplierName || '—' },
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
+      { label: 'Statut', render: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '—' },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+    ],
+  },
+  treasury: {
+    title: 'Trésorerie sortie — paiements effectifs', accent: '#0e7c3a', bg: '#f0f9f4',
+    columns: [
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
+      { label: 'Bénéficiaire', render: r => r.supplierName || r.label || '—' },
+      { label: 'Méthode', render: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '—' },
+      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span> },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+    ],
+  },
+  remainingToPay: {
+    title: 'Reste à payer — factures non soldées', accent: '#856404', bg: '#fff9e6',
+    columns: [
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
+      { label: 'Fournisseur', render: r => r.supplierName || '—' },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
+      { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span> },
+      { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span> },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{n(r.amount)} DH</span> },
+    ],
+  },
+  receivedNotInvoiced: {
+    title: 'Reçu non facturé — BC livrés sans facture', accent: '#b71c1c', bg: '#fff5f5',
+    columns: [
+      { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
+      { label: 'Fournisseur', render: r => r.supplierName || '—' },
+      { label: 'Date livraison', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
+      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+    ],
+  },
+  unpaidInvoices: {
+    title: 'Factures impayées (toutes périodes)', accent: '#856404', bg: 'var(--theme-bg-page)',
+    columns: [
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
+      { label: 'Fournisseur', render: r => r.supplierName || '—' },
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+    ],
+  },
+  uncashedChecks: {
+    title: 'Chèques émis non encaissés', accent: '#856404', bg: '#fff9e6',
+    columns: [
+      { label: 'Bénéficiaire', render: r => r.supplierName || '—' },
+      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span> },
+      { label: 'Émis le', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+    ],
+  },
+};
+
+function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
+  kind: FinanceDetailKind;
+  dateFrom: string;
+  dateTo: string;
+  onClose: () => void;
+}) {
+  const cfg = DETAIL_CONFIG[kind];
+  const { data, isLoading } = useQuery({
+    queryKey: ['finance-detail', kind, dateFrom, dateTo],
+    queryFn: () => reportsApi.financeOverviewDetail(kind, dateFrom, dateTo),
+  });
+  const rows = data ?? [];
+  const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+
+  return (
+    <div style={{ border: `1px solid ${cfg.accent}33`, borderRadius: 4, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--theme-bg-separator)', background: cfg.bg }}>
+        <div>
+          <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: cfg.accent }}>{cfg.title}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            {rows.length} ligne{rows.length > 1 ? 's' : ''} — total <strong style={{ fontFamily: 'ui-monospace, monospace', color: cfg.accent }}>{n(total)} DH</strong>
+          </div>
+        </div>
+        <button onClick={onClose} title="Fermer le détail"
+          style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <X size={18} style={{ color: 'var(--theme-text-muted)' }} />
+        </button>
+      </div>
+      {/* Body */}
+      <div style={{ maxHeight: 420, overflow: 'auto' }}>
+        {isLoading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+            <Loader2 size={18} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} />
+            Chargement du détail...
+          </div>
+        ) : rows.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>
+            Aucune ligne à afficher.
+          </div>
+        ) : (
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                {cfg.columns.map((c, i) => (
+                  <th key={i} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>{c.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  {cfg.columns.map((c, i) => (
+                    <td key={i} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>{c.render(r)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════ PILOTAGE TAB ═══════════════════════ */
 /**
  * Vue de synthese pour l'admin : croise 3 dimensions financieres :
@@ -825,6 +967,18 @@ function PilotageTab() {
     queryKey: ['finance-overview', dateFrom, dateTo],
     queryFn: () => reportsApi.financeOverview(dateFrom, dateTo),
   });
+
+  // Carte ouverte en drill-down (null = aucune)
+  const [detailKind, setDetailKind] = useState<FinanceDetailKind | null>(null);
+
+  // Au clic sur une carte, on amene le panneau de detail dans le champ de vision
+  useEffect(() => {
+    if (!detailKind) return;
+    const t = setTimeout(() => {
+      document.getElementById('pilotage-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [detailKind]);
 
   if (isLoading || !data) {
     return (
@@ -891,7 +1045,8 @@ function PilotageTab() {
       {/* SECTION 1 : KPIs principaux */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         {/* Engagement */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
+        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'engagement' ? null : 'engagement')}
+          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0d4d8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             <ClipboardList size={11} /> Engagement
           </div>
@@ -902,7 +1057,8 @@ function PilotageTab() {
         </div>
 
         {/* Tresorerie sortie */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
+        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'treasury' ? null : 'treasury')}
+          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             <ArrowDownRight size={11} /> Tresorerie sortie
           </div>
@@ -913,7 +1069,8 @@ function PilotageTab() {
         </div>
 
         {/* Reste a payer (delta) */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'remainingToPay' ? null : 'remainingToPay')}
+          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             <Coins size={11} /> Reste a payer
           </div>
@@ -924,7 +1081,8 @@ function PilotageTab() {
         </div>
 
         {/* Recu non facture */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #f5c6cb', background: '#fff5f5' }}>
+        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'receivedNotInvoiced' ? null : 'receivedNotInvoiced')}
+          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #f5c6cb', background: '#fff5f5' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#b71c1c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             <FileWarning size={11} /> Recu non facture
           </div>
@@ -956,7 +1114,8 @@ function PilotageTab() {
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {/* Factures impayees */}
-          <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+          <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'unpaidInvoices' ? null : 'unpaidInvoices')}
+            style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
             <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Factures impayees (total)
             </div>
@@ -969,7 +1128,8 @@ function PilotageTab() {
           </div>
 
           {/* Cheques non encaisses */}
-          <div style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
+          <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'uncashedChecks' ? null : 'uncashedChecks')}
+            style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
             <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Cheques non encaisses
             </div>
@@ -1081,6 +1241,18 @@ function PilotageTab() {
         </div>
       )}
 
+      {/* DETAIL drill-down : s'affiche ici quand on clique une carte */}
+      {detailKind && (
+        <div id="pilotage-detail">
+          <FinanceDetailPanel
+            kind={detailKind}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onClose={() => setDetailKind(null)}
+          />
+        </div>
+      )}
+
       {/* SECTION 4 : Top fournisseurs crediteurs */}
       <div>
         <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
@@ -1165,6 +1337,7 @@ function PilotageTab() {
           </div>
         </div>
       )}
+
     </>
   );
 }
