@@ -267,6 +267,23 @@ export const ingredientController = {
       res.status(400).json({ success: false, error: { message: 'Erreur lors de la mise à jour' } });
     }
   },
+  async convertToConsumable(req: AuthRequest, res: Response) {
+    try {
+      const { categoryId } = req.body as { categoryId?: string | null };
+      const result = await ingredientRepository.convertToConsumable(
+        req.params.id, categoryId || null, req.user!.storeId || null, req.user!.userId,
+      );
+      if (!result.ok) {
+        res.status(409).json({ success: false, error: { message: result.reason } });
+        return;
+      }
+      res.json({ success: true, data: { packagingId: result.packagingId, transferredQty: result.transferredQty } });
+    } catch (err) {
+      console.error('Error converting ingredient to consumable:', err);
+      const msg = err instanceof Error ? err.message : 'Erreur lors de la conversion';
+      res.status(500).json({ success: false, error: { message: msg } });
+    }
+  },
   async remove(req: AuthRequest, res: Response) {
     try {
       const force = req.query.force === 'true' || req.query.force === '1';

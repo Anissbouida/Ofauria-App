@@ -445,4 +445,114 @@ export const ingredientRepository = {
       client.release();
     }
   },
+
+  /**
+   * Convertit un ingredient (mal range) en CONSOMMABLE (packaging_items).
+   *
+   * Cas d'usage : une ligne stockee dans `ingredients` est en fait un
+   * consommable non-alimentaire (nettoyage, emballage, petit materiel). On lui
+   * attribue une categorie consommable du referentiel et le systeme la bascule
+   * cote Consommables :
+   *   1. cree un packaging_items (nom/unite/cout/fournisseur + category_id),
+   *   2. transfere le stock actuel (SUM lots actifs) vers packaging_store_stock,
+   *   3. supprime l'ingredient (cascade), bloque s'il sert dans une recette
+   *      (ce serait alors un vrai ingredient).
+   *
+   * Tout en UNE transaction : si une etape echoue, rien n'est applique.
+   */
+  async convertToConsumable(
+    id: string,
+    categoryId: string | null,
+    storeId: string | null,
+    performedBy: string,
+  ): Promise<{ ok: true; packagingId: string; transferredQty: number } | { ok: false; reason: string }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const ingRes = await client.query(
+        `SELECT id, name, unit, unit_cost, supplier FROM ingredients WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      const ing = ingRes.rows[0];
+      if (!ing) { await client.query('ROLLBACK'); return { ok: false, reason: 'Ingredient introuvable' }; }
+
+      // Bloquant : utilise dans une recette => c'est un vrai ingredient.
+      const recipeUses = await client.query(
+        `SELECT COUNT(*)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
+         FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+         WHERE ri.ingredient_id = $1`,
+        [id]
+      );
+      const n = recipeUses.rows[0]?.n ?? 0;
+      if (n > 0) {
+        const names = String(recipeUses.rows[0]?.names || '').split(', ').filter(Boolean).slice(0, 3).join(', ');
+        await client.query('ROLLBACK');
+        return {
+          ok: false,
+          reason: `Utilise dans ${n} recette(s) : ${names}${n > 3 ? '…' : ''}. C'est un vrai ingredient — retire-le de ces recettes avant conversion.`,
+        };
+      }
+
+      // Stock actuel = somme des lots actifs (economat + pesage).
+      const stockRes = await client.query(
+        `SELECT COALESCE(SUM(economat_quantity + pesage_quantity), 0)::numeric AS qty
+         FROM ingredient_lots WHERE ingredient_id = $1 AND status = 'active'`,
+        [id]
+      );
+      const qty = parseFloat(stockRes.rows[0]?.qty || '0') || 0;
+      const unitCost = ing.unit_cost != null ? parseFloat(ing.unit_cost) : null;
+
+      // 1. Cree le consommable (category enum 'autre' ; category_id = source de verite).
+      const pkgRes = await client.query(
+        `INSERT INTO packaging_items (name, unit, unit_cost, supplier, category, category_id, is_food_safe)
+         VALUES ($1, $2, $3, $4, 'autre', $5, true) RETURNING id`,
+        [capitalizeFirst(ing.name), ing.unit || 'piece', unitCost ?? 0, ing.supplier || null, categoryId || null]
+      );
+      const packagingId = pkgRes.rows[0].id as string;
+
+      // 2. Transfere le stock (packaging_store_stock exige un store_id).
+      let transferred = 0;
+      if (qty > 0 && storeId) {
+        const stk = await client.query(
+          `INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity)
+           VALUES ($1, $2, GREATEST($3, 0))
+           ON CONFLICT (packaging_id, store_id)
+           DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3, 0), updated_at = NOW()
+           RETURNING stock_quantity`,
+          [packagingId, storeId, qty]
+        );
+        const newStock = parseFloat(stk.rows[0].stock_quantity);
+        await client.query(
+          `INSERT INTO packaging_stock_transactions
+             (packaging_id, store_id, type, quantity_change, stock_after, unit_cost, note, performed_by)
+           VALUES ($1, $2, 'reception', $3, $4, $5, $6, $7)`,
+          [packagingId, storeId, qty, newStock, unitCost, `Transfert depuis ingredient ${ing.name}`, performedBy || null]
+        );
+        transferred = qty;
+      }
+
+      // 3. Supprime l'ingredient (stock deja transfere). Meme ordre de cascade
+      //    que ingredientRepository.delete pour eviter la course du trigger
+      //    trg_inventory_sync_lots.
+      await client.query(`DELETE FROM inventory_transactions WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM ingredient_lots WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM inventory WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM production_ingredient_needs WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM production_bons_sortie_lignes WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM reception_voucher_items WHERE ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM purchase_order_items WHERE ingredient_id = $1`, [id]);
+      await client.query(`UPDATE invoice_items SET ingredient_id = NULL WHERE ingredient_id = $1`, [id]);
+      await client.query(`UPDATE products SET recycle_ingredient_id = NULL WHERE recycle_ingredient_id = $1`, [id]);
+      await client.query(`DELETE FROM ingredients WHERE id = $1`, [id]);
+
+      await client.query('COMMIT');
+      return { ok: true, packagingId, transferredQty: transferred };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
 };

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
-import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
+import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -122,6 +122,8 @@ export default function IngredientDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
+  const [convertCategoryId, setConvertCategoryId] = useState('');
   const [showOrderRequest, setShowOrderRequest] = useState(false);
   // Magasinier seul peut ouvrir un contenant Economat → Pesage hors BSI.
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
@@ -214,6 +216,28 @@ export default function IngredientDetailPage() {
         ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
         : null;
       notify.error(msg || 'Suppression impossible');
+    },
+  });
+
+  const convertMutation = useMutation({
+    mutationFn: () => ingredientsApi.convertToConsumable(id!, convertCategoryId),
+    onSuccess: (data: unknown) => {
+      const transferred = (data as { transferredQty?: number })?.transferredQty || 0;
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['packaging-items'] });
+      notify.success(
+        transferred > 0
+          ? `Déplacé vers Consommables (${transferred.toFixed(2)} ${unit} transféré(s))`
+          : 'Déplacé vers Consommables'
+      );
+      setShowConvert(false);
+      navigate('/inventory?tab=consumables');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Conversion impossible');
     },
   });
 
@@ -318,6 +342,10 @@ export default function IngredientDetailPage() {
         </button>
         <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
           <ShoppingCart size={13} /> Commander
+        </button>
+        <button onClick={() => { setConvertCategoryId(''); setShowConvert(true); }} className="odoo-btn-secondary"
+          title="Cet article n'est pas un ingrédient ? Le déplacer vers Consommables">
+          <Boxes size={13} /> Convertir en consommable
         </button>
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowDelete(true)} className="odoo-btn-danger" title="Supprimer">
@@ -614,6 +642,46 @@ export default function IngredientDetailPage() {
                     <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Supprimer'}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConvert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--theme-bg-page)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Boxes size={16} style={{ color: 'var(--theme-accent)' }} />
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600 }}>Convertir en consommable</h2>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setShowConvert(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
+                <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
+                {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
+                {' '}Bloqué si l'article est utilisé dans une recette.
+              </p>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: '0.375rem' }}>
+                Catégorie du consommable *
+              </label>
+              <CategoryCascadeSelector
+                value={convertCategoryId}
+                onChange={setConvertCategoryId}
+                rootIds={CONSUMABLE_ROOT_IDS}
+                type="expense"
+                required
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem', marginTop: '1rem' }}>
+                <button onClick={() => setShowConvert(false)} className="odoo-btn-secondary">Annuler</button>
+                <button
+                  onClick={() => { if (!convertCategoryId) { notify.error('Choisissez une catégorie'); return; } convertMutation.mutate(); }}
+                  disabled={convertMutation.isPending || !convertCategoryId}
+                  className="odoo-btn-primary"
+                >
+                  <Boxes size={13} /> {convertMutation.isPending ? 'Conversion…' : 'Convertir'}
+                </button>
               </div>
             </div>
           </div>

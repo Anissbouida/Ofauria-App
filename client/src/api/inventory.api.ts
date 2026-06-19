@@ -47,6 +47,9 @@ export const ingredientsApi = {
   update: (id: string, data: Record<string, any>) => api.put(`/ingredients/${id}`, data).then(r => r.data.data),
   remove: (id: string, opts: { force?: boolean } = {}) =>
     api.delete(`/ingredients/${id}`, { params: opts.force ? { force: 'true' } : undefined }),
+  /** Convertit un ingredient mal range en consommable (packaging_items). */
+  convertToConsumable: (id: string, categoryId: string) =>
+    api.post(`/ingredients/${id}/convert-to-consumable`, { categoryId }).then(r => r.data.data),
   /** Import xlsx — phase 1 : analyse + plan (creations/maj/inchanges) */
   importPreview: (file: File) => {
     const fd = new FormData();
