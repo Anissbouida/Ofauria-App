@@ -118,6 +118,7 @@ app.use('/api/v1', originCheck(allowedOrigins));
 // une limite elargie ; on les skip ici pour laisser leur parser local prendre la main.
 const ROUTES_WITH_LOCAL_JSON_PARSER = [
   '/api/v1/unsold-decisions',
+  '/api/v1/schedules/week',
 ];
 const globalJsonParser = express.json({ limit: '10kb' });
 app.use((req, res, next) => {

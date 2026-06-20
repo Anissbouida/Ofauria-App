@@ -1989,6 +1989,8 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
       if (err?.response?.status === 409) {
         const n = err.response.data?.error?.conflicts?.length ?? 0;
         notify.error(`Conflit conge : ${n} assignation(s) impossibles. Retire-les avant de sauvegarder.`);
+      } else if (err?.response?.status === 413) {
+        notify.error('Planning trop volumineux pour une seule sauvegarde. Sauvegarde par etapes.');
       } else {
         notify.error('Erreur a la sauvegarde');
       }

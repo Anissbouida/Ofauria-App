@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, json as expressJson } from 'express';
 import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -19,8 +19,13 @@ export default router;
 
 // Schedules
 export const schedulesRouter = Router();
+// Parser local pour la sauvegarde batch du planning hebdo. La limite globale
+// (10kb, OWASP A04) est trop serree : une semaine complete pour tout l'effectif
+// (50+ employes x 7 jours x ~100 octets par assignation) depasse 10 Ko et renvoie
+// un 413. 256 Ko donne une marge confortable tout en restant inexploitable en DoS.
+const bigJsonParser = expressJson({ limit: '256kb' });
 schedulesRouter.get('/week', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.week);
-schedulesRouter.post('/week', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.bulkWeek);
+schedulesRouter.post('/week', bigJsonParser, authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.bulkWeek);
 schedulesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.list);
 schedulesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.create);
 schedulesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), scheduleController.update);
