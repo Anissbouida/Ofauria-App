@@ -26,7 +26,8 @@ export const purchaseOrdersApi = {
   /** Remplace toutes les lignes (admin/gerant). Bulk save : voir backend replaceItems. */
   replaceItems: (id: string, items: Array<{
     id?: string;
-    ingredientId: string;
+    ingredientId?: string | null;
+    packagingId?: string | null;
     quantityOrdered: number;
     quantityDelivered?: number;
     unitPrice?: number | null;

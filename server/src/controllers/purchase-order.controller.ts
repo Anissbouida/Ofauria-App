@@ -201,15 +201,16 @@ export const purchaseOrderController = {
     };
     const items = (body.items as Record<string, unknown>[]).map((raw) => ({
       id: raw.id as string | undefined,
-      ingredientId: raw.ingredientId as string,
+      ingredientId: (raw.ingredientId as string | null) ?? null,
+      packagingId: (raw.packagingId as string | null) ?? null,
       quantityOrdered: num(raw.quantityOrdered),
       quantityDelivered: raw.quantityDelivered !== undefined ? num(raw.quantityDelivered) : undefined,
       unitPrice: raw.unitPrice === null || raw.unitPrice === '' || raw.unitPrice === undefined
         ? null
         : num(raw.unitPrice),
     }));
-    if (items.some(it => !it.ingredientId || it.quantityOrdered <= 0)) {
-      res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un ingredient et une quantite > 0' } });
+    if (items.some(it => !(it.ingredientId || it.packagingId) || it.quantityOrdered <= 0)) {
+      res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article et une quantite > 0' } });
       return;
     }
     try {
@@ -282,11 +283,14 @@ export const purchaseOrderController = {
 
       // Get items
       const itemsResult = await db.query(
-        `SELECT poi.*, ing.name as ingredient_name, ing.unit as ingredient_unit
+        `SELECT poi.*,
+                COALESCE(ing.name, pkg.name) as ingredient_name,
+                COALESCE(ing.unit, pkg.unit) as ingredient_unit
          FROM purchase_order_items poi
-         JOIN ingredients ing ON ing.id = poi.ingredient_id
+         LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
          WHERE poi.purchase_order_id = $1
-         ORDER BY ing.name`,
+         ORDER BY COALESCE(ing.name, pkg.name)`,
         [req.params.id]
       );
 

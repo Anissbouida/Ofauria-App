@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
+import { packagingApi } from '../../api/packaging.api';
+import { useStockCategories } from '../inventory/useStockCategories';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
@@ -14,7 +16,12 @@ import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
-import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
+import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
+
+// Racines proposees a la creation d'un article de BC : matieres premieres
+// (ingredients) ET consommables (emballages/entretien/equipements). Le routage
+// vers la bonne table est decide par la categorie choisie (kindOf).
+const PURCHASABLE_ROOT_IDS = Array.from(new Set([...STOCKABLE_ROOT_IDS, ...CONSUMABLE_ROOT_IDS]));
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 // Normalise les valeurs du backend a 2 decimales (ex: "48.0000" -> "48.00", "25.8300" -> "25.83")
@@ -661,13 +668,20 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [searchIngredient, setSearchIngredient] = useState('');
-  const [items, setItems] = useState<{ ingredientId: string; ingredientName: string; unit: string; quantityOrdered: number; unitPrice: number | null }[]>([]);
+  // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
+  // (packaging_items). kind decide la table cible cote serveur.
+  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; quantityOrdered: number; unitPrice: number | null }[]>([]);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
   const [newIng, setNewIng] = useState({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
+  const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
   const { entries: unitEntries } = useReferentiel('units');
+  const { kindOf } = useStockCategories();
+
+  // Type d'article cree a la volee, deduit de la categorie choisie.
+  const newKind = kindOf(newIng.categoryId);
 
   const createMutation = useMutation({
     mutationFn: purchaseOrdersApi.create,
@@ -679,51 +693,68 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     onError: () => notify.error('Erreur lors de la création'),
   });
 
+  const onProductCreated = (kind: 'ingredient' | 'consumable') => (created: Record<string, any>) => {
+    queryClient.invalidateQueries({ queryKey: [kind === 'consumable' ? 'packaging-items' : 'ingredients'] });
+    queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    const cost = parseFloat(created.unit_cost as string) || 0;
+    setItems(prev => [...prev, {
+      kind,
+      refId: created.id as string,
+      name: created.name as string,
+      unit: created.unit as string,
+      quantityOrdered: 1,
+      unitPrice: cost > 0 ? cost : null,
+    }]);
+    setShowNewIngredient(false);
+    setNewIng({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
+    setSearchIngredient('');
+    notify.success(`${kind === 'consumable' ? 'Consommable' : 'Ingrédient'} "${created.name}" créé et ajouté`);
+  };
+
   const createIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
-    onSuccess: (created: Record<string, any>) => {
-      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      const cost = parseFloat(created.unit_cost as string) || 0;
-      setItems([...items, {
-        ingredientId: created.id as string,
-        ingredientName: created.name as string,
-        unit: created.unit as string,
-        quantityOrdered: 1,
-        unitPrice: cost > 0 ? cost : null,
-      }]);
-      setShowNewIngredient(false);
-      setNewIng({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
-      setSearchIngredient('');
-      notify.success(`Ingrédient "${created.name}" créé et ajouté`);
-    },
+    onSuccess: onProductCreated('ingredient'),
     onError: () => notify.error('Erreur lors de la création de l\'ingrédient'),
   });
+  const createConsumableMutation = useMutation({
+    mutationFn: packagingApi.create,
+    onSuccess: onProductCreated('consumable'),
+    onError: () => notify.error('Erreur lors de la création du consommable'),
+  });
+  const isCreatingProduct = createIngredientMutation.isPending || createConsumableMutation.isPending;
 
   const handleCreateIngredient = () => {
-    if (!newIng.name.trim()) { notify.error('Saisissez le nom de l\'ingrédient'); return; }
-    createIngredientMutation.mutate({
+    if (!newIng.name.trim()) { notify.error('Saisissez le nom de l\'article'); return; }
+    const payload = {
       name: newIng.name.trim(),
       unit: newIng.unit,
       categoryId: newIng.categoryId || null,
       unitCost: newIng.unitCost ? parseFloat(newIng.unitCost) : 0,
-    });
+    };
+    // Routage par categorie : consommable -> packaging_items, sinon ingredients.
+    if (newKind === 'consumable') createConsumableMutation.mutate(payload);
+    else createIngredientMutation.mutate(payload);
   };
 
-  // Filtered ingredients (not already added)
-  const addedIds = new Set(items.map(it => it.ingredientId));
-  const filteredIngredients = (ingredients as Record<string, any>[]).filter(ing => {
-    if (addedIds.has(ing.id as string)) return false;
-    if (!searchIngredient) return true;
-    return (ing.name as string).toLowerCase().includes(searchIngredient.toLowerCase());
-  });
+  // Articles deja ajoutes (cle composite kind:id pour ne pas confondre les tables).
+  const addedKeys = new Set(items.map(it => `${it.kind}:${it.refId}`));
+  const search = searchIngredient.toLowerCase();
+  const matchesSearch = (name: string) => !search || name.toLowerCase().includes(search);
+  const filteredIngredients = (ingredients as Record<string, any>[])
+    .filter(ing => !addedKeys.has(`ingredient:${ing.id}`) && matchesSearch(ing.name as string))
+    .map(ing => ({ ...ing, _kind: 'ingredient' }) as Record<string, any>);
+  const filteredConsumables = (consumables as Record<string, any>[])
+    .filter(c => !addedKeys.has(`consumable:${c.id}`) && matchesSearch(c.name as string))
+    .map(c => ({ ...c, _kind: 'consumable' }) as Record<string, any>);
+  const filteredProducts: Record<string, any>[] = [...filteredIngredients, ...filteredConsumables];
 
-  const addIngredient = (ing: Record<string, any>) => {
-    const cost = parseFloat(ing.unit_cost as string) || 0;
+  const addProduct = (p: Record<string, any>) => {
+    const cost = parseFloat(p.unit_cost as string) || 0;
     setItems([...items, {
-      ingredientId: ing.id as string,
-      ingredientName: ing.name as string,
-      unit: ing.unit as string,
+      kind: p._kind as 'ingredient' | 'consumable',
+      refId: p.id as string,
+      name: p.name as string,
+      unit: p.unit as string,
       quantityOrdered: 1,
       unitPrice: cost > 0 ? cost : null,
     }]);
@@ -747,8 +778,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
-      items: items.map(({ ingredientId, quantityOrdered, unitPrice }) => ({
-        ingredientId, quantityOrdered,
+      items: items.map(({ kind, refId, quantityOrdered, unitPrice }) => ({
+        ingredientId: kind === 'ingredient' ? refId : null,
+        packagingId: kind === 'consumable' ? refId : null,
+        quantityOrdered,
         unitPrice: unitPrice != null && unitPrice > 0 ? unitPrice : null,
       })),
     });
@@ -792,41 +825,47 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Add ingredient search */}
+          {/* Add product search (ingredients + consommables) */}
           <div>
             <label style={odooLabelStyle}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
-                <input type="text" placeholder="Chercher un ingrédient..."
+                <input type="text" placeholder="Chercher un ingrédient ou consommable..."
                   value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
                   style={{ ...odooFieldStyle, paddingLeft: 30 }} />
               </div>
               <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', categoryId: '', unitCost: '' }); }}
                 className="odoo-btn-secondary whitespace-nowrap shrink-0" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Plus size={14} /> Nouvel ingrédient
+                <Plus size={14} /> Nouvel article
               </button>
             </div>
-            {searchIngredient && filteredIngredients.length > 0 && (
+            {searchIngredient && filteredProducts.length > 0 && (
               <div style={{ marginTop: 4, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 192, overflowY: 'auto' }}>
-                {filteredIngredients.slice(0, 10).map(ing => (
-                  <button key={ing.id as string} onClick={() => addIngredient(ing)}
+                {filteredProducts.slice(0, 10).map(p => (
+                  <button key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
                     className="w-full text-left text-sm flex items-center justify-between hover:bg-gray-50"
                     style={{ padding: '0.5rem 0.75rem' }}>
-                    <span className="font-medium">{ing.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({ing.unit as string})</span></span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(ing.unit_cost as string) || 0)} DH/{ing.unit as string}</span>
+                    <span className="font-medium">
+                      {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
+                      {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                    </span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
                   </button>
                 ))}
               </div>
             )}
-            {searchIngredient && filteredIngredients.length === 0 && !showNewIngredient && (
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>Aucun ingrédient trouvé</p>
+            {searchIngredient && filteredProducts.length === 0 && !showNewIngredient && (
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>Aucun article trouvé</p>
             )}
             {showNewIngredient && (
               <div style={{ marginTop: 12, backgroundColor: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '1rem' }} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold flex items-center gap-1.5" style={{ color: 'var(--odoo-text)' }}>
-                    <Plus size={14} /> Nouvel ingrédient
+                    <Plus size={14} /> Nouvel article
+                    <span className={`odoo-tag ${newKind === 'consumable' ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '0.625rem' }}>
+                      {newKind === 'consumable' ? 'Consommable' : 'Ingrédient'}
+                    </span>
                   </h4>
                   <button onClick={() => setShowNewIngredient(false)} className="hover:bg-gray-100" style={{ padding: 4, borderRadius: 4, color: 'var(--odoo-text-muted)' }}>
                     <X size={14} />
@@ -857,15 +896,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   <CategoryCascadeSelector
                     value={newIng.categoryId}
                     onChange={id => setNewIng({ ...newIng, categoryId: id })}
-                    rootIds={STOCKABLE_ROOT_IDS}
+                    rootIds={PURCHASABLE_ROOT_IDS}
                   />
+                  <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 4 }}>
+                    La catégorie détermine si l'article est rangé en <strong>ingrédients</strong> ou en <strong>consommables</strong>.
+                  </p>
                 </div>
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setShowNewIngredient(false)} className="odoo-btn-secondary">Annuler</button>
-                  <button onClick={handleCreateIngredient} disabled={createIngredientMutation.isPending}
+                  <button onClick={handleCreateIngredient} disabled={isCreatingProduct}
                     className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    {createIngredientMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
-                    {createIngredientMutation.isPending ? 'Création...' : 'Créer et ajouter'}
+                    {isCreatingProduct ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
+                    {isCreatingProduct ? 'Création...' : 'Créer et ajouter'}
                   </button>
                 </div>
               </div>
@@ -887,10 +929,11 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 </thead>
                 <tbody>
                   {items.map((item, idx) => (
-                    <tr key={item.ingredientId}>
+                    <tr key={`${item.kind}:${item.refId}`}>
                       <td>
-                        <span className="font-medium">{item.ingredientName}</span>
+                        <span className="font-medium">{item.name}</span>
                         <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>
+                        {item.kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
                       </td>
                       <td>
                         <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
@@ -1421,7 +1464,9 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
  */
 type POLine = {
   id?: string;
-  ingredientId: string;
+  kind: 'ingredient' | 'consumable';
+  ingredientId: string;   // rempli si kind === 'ingredient'
+  packagingId: string;    // rempli si kind === 'consumable'
   ingredientName: string;
   ingredientUnit: string;
   quantityOrdered: string;
@@ -1452,7 +1497,9 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
     const items = (po.items as Record<string, any>[]) || [];
     setLines(items.map(it => ({
       id: it.id as string,
-      ingredientId: it.ingredient_id as string,
+      kind: (it.packaging_id ? 'consumable' : 'ingredient') as 'ingredient' | 'consumable',
+      ingredientId: (it.ingredient_id as string) || '',
+      packagingId: (it.packaging_id as string) || '',
       ingredientName: (it.ingredient_name as string) || '',
       ingredientUnit: (it.ingredient_unit as string) || '',
       quantityOrdered: trimNum(it.quantity_ordered),
@@ -1467,7 +1514,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
       purchaseOrdersApi.updateHeader(poId, data),
   });
   const itemsMutation = useMutation({
-    mutationFn: (items: Array<{ id?: string; ingredientId: string; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }>) =>
+    mutationFn: (items: Array<{ id?: string; ingredientId: string | null; packagingId: string | null; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }>) =>
       purchaseOrdersApi.replaceItems(poId, items),
   });
 
@@ -1485,15 +1532,15 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   const removeLine = (idx: number) => setLines(prev => prev.filter((_, i) => i !== idx));
   const addLine = () => {
     setLines(prev => [...prev, {
-      ingredientId: '', ingredientName: '', ingredientUnit: '',
+      kind: 'ingredient', ingredientId: '', packagingId: '', ingredientName: '', ingredientUnit: '',
       quantityOrdered: '1', quantityDelivered: '0', unitPrice: '',
     }]);
   };
 
   const handleSave = async () => {
-    // Validation : toutes les lignes doivent avoir un ingredient et qty > 0
-    if (lines.some(l => !l.ingredientId || (parseFloat(l.quantityOrdered) || 0) <= 0)) {
-      notify.error('Chaque ligne doit avoir un ingredient et une quantite commandee > 0');
+    // Validation : chaque ligne doit cibler un article (ingredient OU consommable) et qty > 0
+    if (lines.some(l => !(l.ingredientId || l.packagingId) || (parseFloat(l.quantityOrdered) || 0) <= 0)) {
+      notify.error('Chaque ligne doit avoir un article et une quantité commandée > 0');
       return;
     }
     try {
@@ -1506,7 +1553,8 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
       // 2. Lignes (bulk replace). Status BC + stock recalcules cote backend.
       await itemsMutation.mutateAsync(lines.map(l => ({
         id: l.id,
-        ingredientId: l.ingredientId,
+        ingredientId: l.kind === 'ingredient' ? l.ingredientId : null,
+        packagingId: l.kind === 'consumable' ? l.packagingId : null,
         quantityOrdered: parseFloat(l.quantityOrdered) || 0,
         quantityDelivered: parseFloat(l.quantityDelivered) || 0,
         unitPrice: l.unitPrice === '' ? null : (parseFloat(l.unitPrice) || 0),
@@ -1621,7 +1669,10 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                         <tr key={idx}>
                           <td>
                             {isExisting ? (
-                              <span style={{ fontWeight: 500 }}>{line.ingredientName} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>({line.ingredientUnit})</span></span>
+                              <span style={{ fontWeight: 500 }}>
+                                {line.ingredientName} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>({line.ingredientUnit})</span>
+                                {line.kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                              </span>
                             ) : (
                               <select value={line.ingredientId}
                                 onChange={e => {

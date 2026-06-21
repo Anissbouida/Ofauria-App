@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 
 // Source unique de la liste des branches stockables (cf. CategoryCascadeSelector).
-import { STOCKABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
-export { STOCKABLE_ROOT_IDS };
+import { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
+export { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS };
 
 export interface ExpenseCat {
   id: string;
@@ -142,5 +142,18 @@ export function useStockCategories() {
 
   const tagClass = (id?: string | null) => categoryTagClass(resolve(id)?.code);
 
-  return { byId, resolve, groups, branches, leavesUnder, isUnder, tagClass, isLoading: cats.length === 0 };
+  /**
+   * Classe une categorie en 'consumable' (consommable -> packaging_items) ou
+   * 'ingredient' (matiere premiere -> ingredients), selon que sa chaine
+   * d'ancetres traverse une branche consommable (Emballages, Entretien,
+   * Equipements). Defaut = 'ingredient'. Doit rester aligne avec la fonction
+   * SQL fn_purchasable_kind cote serveur (migration 207).
+   */
+  const kindOf = (id?: string | null): 'ingredient' | 'consumable' => {
+    if (!id) return 'ingredient';
+    const chainIds = chainOf(id).map(c => String(c.id));
+    return chainIds.some(cid => CONSUMABLE_ROOT_IDS.includes(cid)) ? 'consumable' : 'ingredient';
+  };
+
+  return { byId, resolve, groups, branches, leavesUnder, isUnder, tagClass, kindOf, isLoading: cats.length === 0 };
 }
