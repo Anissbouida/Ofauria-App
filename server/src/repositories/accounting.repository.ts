@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalYear } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
@@ -813,14 +814,21 @@ export const invoiceRepository = {
     return result.rows[0] || null;
   },
 
-  async updatePaidAmount(id: string) {
-    const client = await db.getClient();
+  // existingClient : si fourni, on s'execute DANS la transaction de l'appelant
+  // (sans BEGIN/COMMIT/release) pour que la maj legacy paid_amount soit atomique
+  // avec l'ecriture comptable + le lettrage du paiement. Sinon, transaction propre
+  // (appels autonomes : recompute manuel, etc.).
+  async updatePaidAmount(id: string, existingClient?: PoolClient) {
+    const client = existingClient ?? await db.getClient();
+    const ownTxn = !existingClient;
     try {
-      await client.query('BEGIN');
+      if (ownTxn) await client.query('BEGIN');
 
-      // Lock invoice row to prevent concurrent payment race conditions
+      // Lock invoice row to prevent concurrent payment race conditions.
+      // (En transaction partagee, la facture est deja verrouillee par l'appelant
+      // — le FOR UPDATE est alors re-entrant sans cout.)
       const inv = await client.query('SELECT total_amount, status FROM invoices WHERE id = $1 FOR UPDATE', [id]);
-      if (!inv.rows[0]) { await client.query('ROLLBACK'); return null; }
+      if (!inv.rows[0]) { if (ownTxn) await client.query('ROLLBACK'); return null; }
       const totalAmount = parseFloat(inv.rows[0].total_amount);
       const currentStatus = inv.rows[0].status as string;
 
@@ -844,13 +852,13 @@ export const invoiceRepository = {
         [totalPaid, status, id]
       );
 
-      await client.query('COMMIT');
+      if (ownTxn) await client.query('COMMIT');
       return result.rows[0];
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (ownTxn) await client.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      if (ownTxn) client.release();
     }
   },
 
@@ -1780,10 +1788,11 @@ export const paymentRepository = {
         }
       }
 
-      await client.query('COMMIT');
+      // Resync paid_amount + status DANS la meme transaction : legacy et ledger
+      // sont ainsi commit/rollback ensemble (plus de derive paid_amount vs ledger).
+      await invoiceRepository.updatePaidAmount(data.invoiceId, client);
 
-      // Resync paid_amount + status (sa propre transaction, hors lock)
-      await invoiceRepository.updatePaidAmount(data.invoiceId);
+      await client.query('COMMIT');
 
       return result.rows[0];
     } catch (err) {
@@ -1816,12 +1825,12 @@ export const paymentRepository = {
       // Montant/methode/date ont pu changer -> reverser + regenerer les ecritures
       // du paiement (emission + cashing) et re-lettrer la facture liee.
       await regeneratePaymentEntries(client, id, result.rows[0].created_by);
-      await client.query('COMMIT');
 
-      // Resync paid_amount de la facture liee, hors transaction.
+      // Resync paid_amount DANS la meme transaction (atomicite legacy <-> ledger).
       if (result.rows[0].invoice_id) {
-        await invoiceRepository.updatePaidAmount(result.rows[0].invoice_id);
+        await invoiceRepository.updatePaidAmount(result.rows[0].invoice_id, client);
       }
+      await client.query('COMMIT');
       return result.rows[0];
     } catch (err) {
       await client.query('ROLLBACK');
@@ -1850,12 +1859,12 @@ export const paymentRepository = {
 
       await client.query('DELETE FROM payments WHERE id = $1', [id]);
 
-      await client.query('COMMIT');
-
-      // Resync paid_amount hors transaction (lecture/ecriture simple existante).
+      // Resync paid_amount DANS la meme transaction (atomicite legacy <-> ledger).
       if (invoiceId) {
-        await invoiceRepository.updatePaidAmount(invoiceId);
+        await invoiceRepository.updatePaidAmount(invoiceId, client);
       }
+
+      await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

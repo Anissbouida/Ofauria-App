@@ -479,18 +479,23 @@ export async function persistEntry(
   entry: GeneratedEntry,
   opts: { markAsBackfill?: boolean; userId: string }
 ): Promise<{ id: string; entry_number: string; created: boolean }> {
-  // Idempotence : verifie si l'entry existe deja. Le source_kind a checker
-  // depend du mode : en backfill on a marque 'backfill', sinon le kind d'origine.
+  // Idempotence : verifie si une ecriture existe deja pour cette source.
+  // IMPORTANT : on ne filtre PAS sur source_kind. Un meme evenement economique
+  // (facture, paiement, vente) ne doit avoir qu'une ecriture, qu'elle ait ete
+  // posee par l'AUTOGEN (source_kind='invoice'/'payment'/'sale') ou par le
+  // backfill (source_kind='backfill'). Filtrer sur le kind laissait le backfill
+  // ignorer une ecriture AUTOGEN existante et en creer une seconde -> doublon
+  // qui doublait le solde du tiers dans la reconciliation. source_id est un UUID
+  // de PK (invoices/payments/sales), aucune collision possible entre tables.
   // source_detail discrimine les sources a ecritures multiples (cheque : emission/cashing).
-  const lookupKind = opts.markAsBackfill ? 'backfill' : entry.source_kind;
   const detail = entry.source_detail ?? null;
   const existing = await client.query(
     `SELECT id, entry_number FROM journal_entries
-     WHERE source_kind = $1 AND source_id = $2
-       AND COALESCE(source_detail, '') = COALESCE($3::varchar, '')
+     WHERE source_id = $1
+       AND COALESCE(source_detail, '') = COALESCE($2::varchar, '')
        AND status != 'reversed'
      LIMIT 1`,
-    [lookupKind, entry.source_id, detail]
+    [entry.source_id, detail]
   );
   if (existing.rows.length > 0) {
     return { id: existing.rows[0].id, entry_number: existing.rows[0].entry_number, created: false };
@@ -534,10 +539,46 @@ export async function persistEntry(
   if (supplierIds.length) {
     const r = await client.query(`SELECT id, supplier_id FROM account_auxiliaries WHERE supplier_id = ANY($1::uuid[])`, [supplierIds]);
     for (const row of r.rows) auxBySupplier.set(row.supplier_id, row.id);
+    // Provision a la volee des auxiliaires manquants. Les tiers crees apres le
+    // seed (migration 179) n'avaient aucun auxiliaire : persistEntry levait
+    // "Auxiliaire manquant" et l'ecriture echouait silencieusement -> facture
+    // "sans ecriture". On cree l'auxiliaire avec la meme convention de code que
+    // le seed (4411-FOUR-<6 lettres>-<4 chars id>), idempotent via ON CONFLICT.
+    const missing = supplierIds.filter(id => !auxBySupplier.has(id));
+    if (missing.length) {
+      await client.query(
+        `INSERT INTO account_auxiliaries (account_id, supplier_id, code, label)
+         SELECT (SELECT id FROM accounts WHERE code = '4411'), s.id,
+           '4411-FOUR-' || UPPER(SUBSTR(REGEXP_REPLACE(s.name, '[^A-Za-z0-9]', '', 'g'), 1, 6))
+                        || '-' || SUBSTR(s.id::TEXT, 1, 4),
+           s.name
+         FROM suppliers s WHERE s.id = ANY($1::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [missing]
+      );
+      const r2 = await client.query(`SELECT id, supplier_id FROM account_auxiliaries WHERE supplier_id = ANY($1::uuid[])`, [missing]);
+      for (const row of r2.rows) auxBySupplier.set(row.supplier_id, row.id);
+    }
   }
   if (customerIds.length) {
     const r = await client.query(`SELECT id, customer_id FROM account_auxiliaries WHERE customer_id = ANY($1::uuid[])`, [customerIds]);
     for (const row of r.rows) auxByCustomer.set(row.customer_id, row.id);
+    const missing = customerIds.filter(id => !auxByCustomer.has(id));
+    if (missing.length) {
+      await client.query(
+        `INSERT INTO account_auxiliaries (account_id, customer_id, code, label)
+         SELECT (SELECT id FROM accounts WHERE code = '3421'), c.id,
+           '3421-CLI-' || UPPER(SUBSTR(REGEXP_REPLACE(
+             COALESCE(c.first_name, '') || COALESCE(c.last_name, ''), '[^A-Za-z0-9]', '', 'g'), 1, 6))
+                       || '-' || SUBSTR(c.id::TEXT, 1, 4),
+           TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, ''))
+         FROM customers c WHERE c.id = ANY($1::uuid[])
+         ON CONFLICT DO NOTHING`,
+        [missing]
+      );
+      const r2 = await client.query(`SELECT id, customer_id FROM account_auxiliaries WHERE customer_id = ANY($1::uuid[])`, [missing]);
+      for (const row of r2.rows) auxByCustomer.set(row.customer_id, row.id);
+    }
   }
 
   // INSERT entry en draft
