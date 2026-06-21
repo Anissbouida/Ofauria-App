@@ -2145,8 +2145,8 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
 </head>
 <body>
   <div class="toolbar no-print">
-    <button onclick="window.print()" class="primary">Imprimer</button>
-    <button onclick="window.close()">Fermer</button>
+    <button id="btn-print" class="primary">Imprimer</button>
+    <button id="btn-close">Fermer</button>
   </div>
   <h1>Planning hebdomadaire</h1>
   <div class="subtitle">${escapeHtml(subtitle)}</div>
@@ -2162,10 +2162,6 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
     </tbody>
   </table>
   <div class="footer">Imprimé le ${escapeHtml(format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr }))}${hasChanges ? ' · ⚠ contient des modifications non sauvegardées' : ''}</div>
-  <script>
-    // Auto-print apres rendu pour faciliter
-    window.addEventListener('load', () => { setTimeout(() => window.print(), 200); });
-  </script>
 </body>
 </html>`;
 
@@ -2177,6 +2173,17 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
     w.document.open();
     w.document.write(html);
     w.document.close();
+
+    // La CSP du parent (script-src 'self') s'applique au popup about:blank et
+    // bloque tout JS inline. On pilote donc l'impression et les boutons depuis
+    // la fenetre parente, hors contexte inline.
+    const wireUp = () => {
+      w.document.getElementById('btn-print')?.addEventListener('click', () => { w.focus(); w.print(); });
+      w.document.getElementById('btn-close')?.addEventListener('click', () => w.close());
+      setTimeout(() => { w.focus(); w.print(); }, 300);
+    };
+    if (w.document.readyState === 'complete') wireUp();
+    else w.addEventListener('load', wireUp);
   };
 
   return (
