@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, Eye, Wand2,
+  Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, ChevronDown, Eye, Wand2,
 } from 'lucide-react';
 import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
@@ -65,6 +65,7 @@ export default function EcrituresTab() {
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(0);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [showDivergent, setShowDivergent] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -167,7 +168,17 @@ export default function EcrituresTab() {
         }}>
           <span style={{ fontSize: '1rem' }}>{reconciliationOk ? '✓' : '⚠'}</span>
           <strong>Reconciliation legacy ↔ ledger :</strong>
-          <span>
+          <span
+            onClick={() => { if (!reconciliationOk) setShowDivergent(v => !v); }}
+            style={{
+              cursor: reconciliationOk ? 'default' : 'pointer',
+              textDecoration: reconciliationOk ? 'none' : 'underline',
+              textUnderlineOffset: 2,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}
+            title={reconciliationOk ? undefined : 'Voir le détail des factures concernées'}
+          >
+            {!reconciliationOk && (showDivergent ? <ChevronDown size={13} /> : <ChevronRight size={13} />)}
             {reconciliation.summary.aligned}/{reconciliation.summary.total_invoices} factures alignees
             {reconciliation.summary.divergent > 0 && ` · ${reconciliation.summary.divergent} divergentes`}
             {reconciliation.summary.missing_entries > 0 && ` · ${reconciliation.summary.missing_entries} sans ecriture`}
@@ -182,6 +193,44 @@ export default function EcrituresTab() {
               {backfill.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Générer
             </button>
           )}
+        </div>
+      )}
+
+      {/* Detail des factures divergentes / sans ecriture */}
+      {reconciliation && !reconciliationOk && showDivergent && reconciliation.divergent.length > 0 && (
+        <div style={{ marginBottom: 12, border: '1px solid #F09595', borderRadius: 6, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+            <thead>
+              <tr style={{ background: '#FCEBEB', color: '#791F1F', textAlign: 'left' }}>
+                <th style={{ padding: '6px 10px' }}>Facture</th>
+                <th style={{ padding: '6px 10px' }}>Type</th>
+                <th style={{ padding: '6px 10px' }}>Date</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Total</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Reste legacy</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Reste ledger</th>
+                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Delta</th>
+                <th style={{ padding: '6px 10px' }}>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reconciliation.divergent.map(d => (
+                <tr key={d.invoice_id} style={{ borderTop: '1px solid #F3D6D6' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 600 }}>{d.invoice_number}</td>
+                  <td style={{ padding: '6px 10px' }}>{d.invoice_type === 'emitted' ? 'Émise' : 'Reçue'}</td>
+                  <td style={{ padding: '6px 10px' }}>{fmtDate(d.invoice_date)}</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.total_amount)}</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.legacy_remaining)}</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.ledger_remaining)}</td>
+                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#791F1F' }}>{n(d.delta)}</td>
+                  <td style={{ padding: '6px 10px' }}>
+                    {!d.has_ledger_entries
+                      ? <span style={{ color: '#633806', background: '#FAEEDA', padding: '1px 6px', borderRadius: 4 }}>Sans écriture</span>
+                      : <span style={{ color: '#791F1F', background: '#FCEBEB', padding: '1px 6px', borderRadius: 4 }}>Divergente</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
