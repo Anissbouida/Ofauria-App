@@ -210,7 +210,7 @@ const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccS
   { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'exploitation' },
   // ─── Comptabilité (vue normée, admin) ───
   { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'comptabilite' },
-  { key: 'ecritures', label: 'Écritures', icon: Notebook, section: 'comptabilite' },
+  { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'comptabilite' },
   { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
   { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
   { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
