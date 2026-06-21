@@ -1,6 +1,8 @@
 import { db } from '../config/database.js';
 import { receptionVoucherRepository, createInvoiceFromPo } from './reception-voucher.repository.js';
+import { packagingItemRepository } from './packaging-item.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
+import type { PoolClient } from 'pg';
 
 export const purchaseOrderRepository = {
   async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
@@ -70,12 +72,19 @@ export const purchaseOrderRepository = {
     );
     if (!poResult.rows[0]) return null;
 
+    // Une ligne porte un ingredient OU un consommable (packaging_items). LEFT JOIN
+    // sur les deux + COALESCE pour exposer un nom/unite uniformes (les anciens
+    // alias ingredient_name/ingredient_unit sont conserves pour le client).
     const itemsResult = await db.query(
-      `SELECT poi.*, ing.name as ingredient_name, ing.unit as ingredient_unit
+      `SELECT poi.*,
+              COALESCE(ing.name, pkg.name) as ingredient_name,
+              COALESCE(ing.unit, pkg.unit) as ingredient_unit,
+              CASE WHEN poi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind
        FROM purchase_order_items poi
-       JOIN ingredients ing ON ing.id = poi.ingredient_id
+       LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+       LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
        WHERE poi.purchase_order_id = $1
-       ORDER BY ing.name`,
+       ORDER BY COALESCE(ing.name, pkg.name)`,
       [id]
     );
 
@@ -110,7 +119,10 @@ export const purchaseOrderRepository = {
   async create(data: {
     supplierId: string; expectedDeliveryDate?: string; notes?: string;
     createdBy: string; storeId?: string;
-    items: { ingredientId: string; quantityOrdered: number; unitPrice?: number | null }[];
+    // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
+    // (packaging_items). Le routage est decide en amont par la categorie choisie
+    // a la creation a la volee (cf. fn_purchasable_kind / CONSUMABLE_ROOT_IDS).
+    items: { ingredientId?: string | null; packagingId?: string | null; quantityOrdered: number; unitPrice?: number | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -130,9 +142,9 @@ export const purchaseOrderRepository = {
 
       for (const item of data.items) {
         await client.query(
-          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, quantity_ordered, unit_price)
-           VALUES ($1, $2, $3, $4)`,
-          [poResult.rows[0].id, item.ingredientId, item.quantityOrdered, item.unitPrice ?? null]
+          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, item.quantityOrdered, item.unitPrice ?? null]
         );
       }
 
@@ -173,7 +185,8 @@ export const purchaseOrderRepository = {
         const poItem = po.items.find((pi: Record<string, unknown>) => pi.id === it.itemId);
         return {
           poItemId: it.itemId,
-          ingredientId: poItem?.ingredient_id as string,
+          ingredientId: (poItem?.ingredient_id as string | null) ?? null,
+          packagingId: (poItem?.packaging_id as string | null) ?? null,
           quantityReceived: it.quantityDelivered,
           unitPrice: it.unitPrice ?? (poItem?.unit_price ? parseFloat(poItem.unit_price as string) : null),
           supplierLotNumber: it.supplierLotNumber,
@@ -302,7 +315,7 @@ export const purchaseOrderRepository = {
    */
   async replaceItems(
     id: string,
-    items: { id?: string; ingredientId: string; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }[],
+    items: { id?: string; ingredientId?: string | null; packagingId?: string | null; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }[],
     performedBy: string,
     storeId?: string,
   ) {
@@ -318,15 +331,39 @@ export const purchaseOrderRepository = {
       const orderNumber = po.rows[0].order_number;
 
       const current = await client.query<{
-        id: string; ingredient_id: string; quantity_ordered: string;
+        id: string; ingredient_id: string | null; packaging_id: string | null; quantity_ordered: string;
         quantity_delivered: string; unit_price: string | null;
       }>(
-        `SELECT id, ingredient_id, quantity_ordered::text, quantity_delivered::text, unit_price::text
+        `SELECT id, ingredient_id, packaging_id, quantity_ordered::text, quantity_delivered::text, unit_price::text
          FROM purchase_order_items WHERE purchase_order_id = $1 FOR UPDATE`,
         [id]
       );
       const currentById = new Map(current.rows.map(r => [r.id, r]));
       const incomingIds = new Set(items.filter(it => it.id).map(it => it.id as string));
+
+      // Store de credit pour les mouvements de stock consommable (store_id NOT NULL).
+      const needsConsumableStore = items.some(it => it.packagingId) || current.rows.some(r => r.packaging_id);
+      let consumableStoreId: string | null = storeId || null;
+      if (!consumableStoreId && needsConsumableStore) {
+        const s = await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`);
+        consumableStoreId = (s.rows[0]?.id as string | undefined) ?? null;
+      }
+      // Ajuste le stock d'une ligne selon son type (ingredient -> inventory, consommable -> packaging).
+      const adjustLineStock = async (
+        line: { ingredient_id?: string | null; packaging_id?: string | null },
+        change: number, note: string,
+      ) => {
+        if (Math.abs(change) <= 0.0001) return;
+        if (line.packaging_id) {
+          if (!consumableStoreId) return;
+          await packagingItemRepository.adjustStock(client as PoolClient, {
+            packagingId: line.packaging_id, storeId: consumableStoreId, change,
+            type: 'adjustment', referenceId: id, referenceType: 'purchase_order', note, performedBy,
+          });
+        } else if (line.ingredient_id) {
+          await this._adjustInventory(client, line.ingredient_id, change, performedBy, storeId, note);
+        }
+      };
 
       // 1. DELETE lignes retirees
       for (const old of current.rows) {
@@ -345,7 +382,7 @@ export const purchaseOrderRepository = {
         if (oldDel > 0) {
           // Stock a deja ete impacte par cette ligne — on retire ce qui avait
           // ete ajoute pour garder l'invariant SUM(transactions) = inventory.
-          await this._adjustInventory(client, old.ingredient_id, -oldDel, performedBy, storeId,
+          await adjustLineStock(old, -oldDel,
             `Admin edit BC ${orderNumber} : suppression ligne (annule +${oldDel})`);
         }
         await client.query(`DELETE FROM purchase_order_items WHERE id = $1`, [old.id]);
@@ -371,27 +408,33 @@ export const purchaseOrderRepository = {
           );
 
           if (Math.abs(delta) > 0.0001) {
-            await this._adjustInventory(client, old.ingredient_id, delta, performedBy, storeId,
+            await adjustLineStock(old, delta,
               `Admin edit BC ${orderNumber} : ajustement qty livree (${oldDel} -> ${newDel})`);
           }
         } else {
           // Nouvelle ligne — qty_delivered = 0 par defaut (admin ne touche pas le stock via add).
           const newDel = qdelRaw ?? 0;
           const inserted = await client.query<{ id: string }>(
-            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, quantity_ordered, quantity_delivered, unit_price)
-             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [id, it.ingredientId, qord, newDel, price]
+            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, quantity_delivered, unit_price)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [id, it.ingredientId ?? null, it.packagingId ?? null, qord, newDel, price]
           );
           if (newDel > 0.0001) {
             // Cas atypique : admin ajoute une ligne avec qty deja livree
             // (typiquement pour rattraper un stock arrive sans BC). On ajuste.
-            await this._adjustInventory(client, it.ingredientId, newDel, performedBy, storeId,
+            await adjustLineStock(
+              { ingredient_id: it.ingredientId ?? null, packaging_id: it.packagingId ?? null }, newDel,
               `Admin edit BC ${orderNumber} : ajout ligne avec qty livree ${newDel} (id ${inserted.rows[0].id})`);
           }
         }
 
+        // Le dernier prix saisi fait foi -> repercute sur le cout catalogue.
         if (price !== null && price > 0) {
-          await client.query(`UPDATE ingredients SET unit_cost = $1 WHERE id = $2`, [price, it.ingredientId]);
+          if (it.packagingId) {
+            await client.query(`UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`, [price, it.packagingId]);
+          } else if (it.ingredientId) {
+            await client.query(`UPDATE ingredients SET unit_cost = $1 WHERE id = $2`, [price, it.ingredientId]);
+          }
         }
       }
 

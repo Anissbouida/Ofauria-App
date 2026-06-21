@@ -443,10 +443,11 @@ export const invoiceRepository = {
 
     // Get invoice items
     const itemsResult = await db.query(
-      `SELECT ii.*, p.name as product_name, ing.name as ingredient_name
+      `SELECT ii.*, p.name as product_name, COALESCE(ing.name, pkg.name) as ingredient_name
        FROM invoice_items ii
        LEFT JOIN products p ON p.id = ii.product_id
        LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id
+       LEFT JOIN packaging_items pkg ON pkg.id = ii.packaging_id
        WHERE ii.invoice_id = $1
        ORDER BY ii.created_at`, [id]
     );
@@ -1377,7 +1378,7 @@ export const invoiceRepository = {
            'reception_item'::text                                  AS line_source,
            inv.purchase_order_id                                   AS invoice_po_id,
            rvi.ingredient_id                                       AS ingredient_id,
-           ing.name                                                AS designation,
+           COALESCE(ing.name, pkg.name)                            AS designation,
            ing.category                                            AS ingredient_category,
            rvi.quantity_received                                   AS quantity,
            ROUND((COALESCE(rvi.unit_price, 0) * COALESCE(inv.total_amount / NULLIF(inv.amount, 0), 1))::numeric, 4) AS unit_price,
@@ -1388,6 +1389,7 @@ export const invoiceRepository = {
          JOIN invoices inv ON inv.reception_voucher_id = rv.id
          JOIN paid_invoices pi ON pi.invoice_id = inv.id
          LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = rvi.packaging_id
          ${where}
            AND NOT EXISTS (SELECT 1 FROM invoice_items WHERE invoice_id = inv.id)
        ),

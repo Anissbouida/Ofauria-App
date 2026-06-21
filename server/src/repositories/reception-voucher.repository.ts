@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
+import { packagingItemRepository } from './packaging-item.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromInvoice, persistEntry } from '../services/journal-generator.service.js';
@@ -35,6 +36,12 @@ async function resolveInvoiceCategoryFromPo(
          JOIN expense_categories ec
            ON ec.code = ing.category
           AND ec.parent_id IN ($2::uuid, $3::uuid)
+        WHERE poi.purchase_order_id = $1
+       UNION
+       SELECT DISTINCT ec.id::text AS id, ec.parent_id::text AS parent_id
+         FROM purchase_order_items poi
+         JOIN packaging_items pkg ON pkg.id = poi.packaging_id
+         JOIN expense_categories ec ON ec.id = pkg.category_id
         WHERE poi.purchase_order_id = $1
      )
      SELECT
@@ -91,8 +98,8 @@ export async function createInvoiceFromPo(
   // Garantit que la facture refletera le prix reellement paye meme si le BC
   // avait un prix 0/NULL au depart.
   const poItemDetails = await client.query(
-    `SELECT poi.id, poi.ingredient_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
-            ing.name as ingredient_name,
+    `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
+            COALESCE(ing.name, pkg.name) as ingredient_name,
             COALESCE(
               (SELECT rvi.unit_price FROM reception_voucher_items rvi
                WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
@@ -100,7 +107,8 @@ export async function createInvoiceFromPo(
               poi.unit_price
             ) AS effective_unit_price
      FROM purchase_order_items poi
-     JOIN ingredients ing ON ing.id = poi.ingredient_id
+     LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+     LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
      WHERE poi.purchase_order_id = $1`,
     [purchaseOrderId]
   );
@@ -109,7 +117,8 @@ export async function createInvoiceFromPo(
     const qty = parseFloat(it.quantity_delivered as string);
     const price = parseFloat((it.effective_unit_price as string) ?? '0') || 0;
     return {
-      ingredientId: it.ingredient_id as string,
+      ingredientId: (it.ingredient_id as string | null) ?? null,
+      packagingId: (it.packaging_id as string | null) ?? null,
       description: it.ingredient_name as string,
       quantity: qty,
       unitPrice: price,
@@ -165,9 +174,9 @@ export async function createInvoiceFromPo(
 
   for (const item of invoiceItems) {
     await client.query(
-      `INSERT INTO invoice_items (invoice_id, ingredient_id, description, quantity, unit_price, subtotal)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [invoice.id, item.ingredientId, item.description, item.quantity, item.unitPrice, item.subtotal]
+      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, description, quantity, unit_price, subtotal)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [invoice.id, item.ingredientId, item.packagingId, item.description, item.quantity, item.unitPrice, item.subtotal]
     );
   }
 
@@ -233,13 +242,17 @@ export const receptionVoucherRepository = {
     if (!rvResult.rows[0]) return null;
 
     const itemsResult = await db.query(
-      `SELECT rvi.*, ing.name as ingredient_name, ing.unit as ingredient_unit,
+      `SELECT rvi.*,
+              COALESCE(ing.name, pkg.name) as ingredient_name,
+              COALESCE(ing.unit, pkg.unit) as ingredient_unit,
+              CASE WHEN rvi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind,
               poi.quantity_ordered, poi.quantity_delivered as total_delivered
        FROM reception_voucher_items rvi
-       JOIN ingredients ing ON ing.id = rvi.ingredient_id
+       LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
+       LEFT JOIN packaging_items pkg ON pkg.id = rvi.packaging_id
        JOIN purchase_order_items poi ON poi.id = rvi.purchase_order_item_id
        WHERE rvi.reception_voucher_id = $1
-       ORDER BY ing.name`,
+       ORDER BY COALESCE(ing.name, pkg.name)`,
       [id]
     );
 
@@ -272,7 +285,8 @@ export const receptionVoucherRepository = {
      * sur la base de ce qui a effectivement ete recu.
      */
     forceComplete?: boolean;
-    items: { poItemId: string; ingredientId: string; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[];
+    // Une ligne porte SOIT un ingredient SOIT un consommable (packaging_items).
+    items: { poItemId: string; ingredientId?: string | null; packagingId?: string | null; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[];
   }) {
     const client = await db.getClient();
     try {
@@ -327,15 +341,24 @@ export const receptionVoucherRepository = {
       );
       const rv = rvResult.rows[0];
 
+      // Store de credit pour les consommables (packaging_store_stock.store_id est
+      // NOT NULL). Fallback sur le 1er magasin si la reception n'en porte pas.
+      let consumableStoreId: string | null = data.storeId || null;
+      if (!consumableStoreId && data.items.some(it => it.packagingId)) {
+        const s = await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`);
+        consumableStoreId = (s.rows[0]?.id as string | undefined) ?? null;
+      }
+
       // Process each item
       for (const item of data.items) {
         if (item.quantityReceived <= 0) continue;
+        const isConsumable = !!item.packagingId;
 
-        // Insert reception voucher item (with lot/DLC fields)
+        // Insert reception voucher item (ingredient OU consommable, lot/DLC fields)
         const rviResult = await client.query(
-          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [rv.id, item.poItemId, item.ingredientId, item.quantityReceived, item.unitPrice ?? null, item.notes || null,
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [rv.id, item.poItemId, item.ingredientId ?? null, item.packagingId ?? null, item.quantityReceived, item.unitPrice ?? null, item.notes || null,
            item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null]
         );
         const rviId = rviResult.rows[0].id;
@@ -350,18 +373,7 @@ export const receptionVoucherRepository = {
           [item.quantityReceived, item.poItemId]
         );
         const poItem = itemResult.rows[0];
-
-        // Create ingredient lot for ONSSA traceability
-        const effectiveCost = item.unitPrice ?? (poItem ? parseFloat(poItem.unit_price) : null);
-        await client.query(
-          `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
-            quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
-           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9)`,
-          [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
-           item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,
-           data.storeId || null]
-        );
-        if (!poItem) continue;
+        const effectiveCost = item.unitPrice ?? (poItem && poItem.unit_price ? parseFloat(poItem.unit_price) : null);
 
         // Le prix saisi lors de la reception fait foi : il reflete ce que le
         // fournisseur a effectivement facture. On le repercute sur le BC pour
@@ -373,6 +385,48 @@ export const receptionVoucherRepository = {
             [item.unitPrice, item.poItemId]
           );
         }
+
+        if (isConsumable) {
+          // ─── Consommable : credite packaging_store_stock (stock simple, pas
+          //     de lot/DLC/FEFO). Reutilise adjustStock (transaction tracee). ───
+          if (!consumableStoreId) {
+            const e: Error & { statusCode?: number } = new Error(
+              'Aucun magasin disponible pour réceptionner le consommable.');
+            e.statusCode = 400;
+            throw e;
+          }
+          await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
+            packagingId: item.packagingId as string,
+            storeId: consumableStoreId,
+            change: item.quantityReceived,
+            type: 'reception',
+            referenceId: data.purchaseOrderId,
+            referenceType: 'purchase_order',
+            unitCost: effectiveCost,
+            note: `Reception ${voucherNumber} — BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
+            performedBy: data.receivedBy,
+          });
+          // Met a jour le cout catalogue du consommable au dernier prix paye.
+          if (effectiveCost && effectiveCost > 0) {
+            await client.query(
+              `UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`,
+              [effectiveCost, item.packagingId]
+            );
+          }
+          continue;
+        }
+
+        // ─── Ingredient : lot ONSSA + inventory + tracabilite ───
+        // Create ingredient lot for ONSSA traceability
+        await client.query(
+          `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
+            quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
+           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9)`,
+          [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
+           item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,
+           data.storeId || null]
+        );
+        if (!poItem) continue;
 
         // Lock inventory row then update
         const storeFilter = data.storeId ? ' AND store_id = $3' : '';
@@ -395,11 +449,10 @@ export const receptionVoucherRepository = {
         );
 
         // Update ingredient unit_cost if price provided
-        const effectivePrice = item.unitPrice ?? (poItem.unit_price ? parseFloat(poItem.unit_price) : null);
-        if (effectivePrice && effectivePrice > 0) {
+        if (effectiveCost && effectiveCost > 0) {
           await client.query(
             `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
-            [effectivePrice, item.ingredientId]
+            [effectiveCost, item.ingredientId]
           );
         }
 
