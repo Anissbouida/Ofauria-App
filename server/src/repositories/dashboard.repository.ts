@@ -88,7 +88,8 @@ export const dashboardRepository = {
          AND po.delivery_date BETWEEN $1 AND $2
          AND NOT EXISTS (
            SELECT 1 FROM invoices i
-           WHERE i.purchase_order_id = po.id
+           LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
+           WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
              AND i.invoice_type = 'received'
              AND i.status != 'cancelled'
          )
@@ -179,7 +180,8 @@ export const dashboardRepository = {
        WHERE po.status IN ('livre_complet', 'livre_partiel')
          AND NOT EXISTS (
            SELECT 1 FROM invoices i
-           WHERE i.purchase_order_id = po.id
+           LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
+           WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
              AND i.invoice_type = 'received'
              AND i.status != 'cancelled'
          )
@@ -394,7 +396,8 @@ export const dashboardRepository = {
              AND po.delivery_date BETWEEN $1 AND $2
              AND NOT EXISTS (
                SELECT 1 FROM invoices i
-               WHERE i.purchase_order_id = po.id
+               LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
+               WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
                  AND i.invoice_type = 'received'
                  AND i.status != 'cancelled'
              )
