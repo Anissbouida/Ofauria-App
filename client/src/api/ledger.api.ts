@@ -87,6 +87,7 @@ export interface BackfillSummary {
   sales: number;
   created: number;
   skipped: number;
+  resynced: number;
   errors: number;
   errorSamples: string[];
 }

@@ -14,6 +14,7 @@
 import { db } from '../config/database.js';
 import {
   fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, persistEntry,
+  regenerateInvoiceEntry,
   type InvoiceRow, type PaymentRow, type SaleRow,
 } from './journal-generator.service.js';
 
@@ -24,6 +25,7 @@ export interface BackfillSummary {
   sales: number;
   created: number;
   skipped: number;
+  resynced: number;
   errors: number;
   errorSamples: string[];
 }
@@ -35,7 +37,7 @@ export interface BackfillSummary {
 export async function runFullBackfill(userId: string): Promise<BackfillSummary> {
   const summary: BackfillSummary = {
     invoices: 0, payments: 0, cashings: 0, sales: 0,
-    created: 0, skipped: 0, errors: 0, errorSamples: [],
+    created: 0, skipped: 0, resynced: 0, errors: 0, errorSamples: [],
   };
 
   const persistOne = async (entry: Awaited<ReturnType<typeof fromInvoice>>, label: string) => {
@@ -108,6 +110,37 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     } catch (err) {
       summary.errors++;
       if (summary.errorSamples.length < 10) summary.errorSamples.push(`sale ${s.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // ─── Resync des ecritures de factures DIVERGENTES ───
+  // L'idempotence de persistEntry empeche de RECREER une ecriture existante :
+  // utile, mais si la facture a ete MODIFIEE apres coup (montant/TVA corriges)
+  // sans regeneration, l'ecriture reste figee sur l'ancien montant et le backfill
+  // ne la corrige jamais (skip). C'est la cause des divergences "ledger != legacy"
+  // avec ecriture presente. On regenere donc (extourne + recree depuis l'etat
+  // actuel + re-lettre) toute facture signalee divergente par la vue de
+  // reconciliation. v_reconciliation_check ne porte que les factures non annulees.
+  const divergent = (await db.query(
+    `SELECT invoice_id FROM v_reconciliation_check
+     WHERE has_ledger_entries
+       AND ABS(legacy_remaining - ledger_remaining) > 0.01`
+  )).rows as { invoice_id: string }[];
+  for (const { invoice_id } of divergent) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await regenerateInvoiceEntry(client, invoice_id, userId);
+      await client.query('COMMIT');
+      summary.resynced++;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      summary.errors++;
+      if (summary.errorSamples.length < 10) {
+        summary.errorSamples.push(`resync ${invoice_id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      client.release();
     }
   }
 
