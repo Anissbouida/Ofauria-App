@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
-import { regenerateShiftEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
+import { regenerateShiftEntry, regenerateSaleEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 export type ShiftAmounts = {
   matin_cash_reel: number | null;
@@ -119,6 +119,16 @@ export const manualShiftEntryRepository = {
         await client.query('BEGIN');
         await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['shift_entry', 'backfill'] });
         await client.query(`DELETE FROM manual_shift_entries WHERE id = $1`, [id]);
+        // La saisie manuelle n'est plus autoritaire ce jour-la : re-comptabiliser
+        // les ventes POS du jour (qui etaient supprimees au profit du manuel).
+        const posSales = await client.query(
+          `SELECT id FROM sales WHERE store_id = $1 AND payment_status = 'paid'
+             AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
+          [storeId, entryDate]
+        );
+        for (const ps of posSales.rows) {
+          await regenerateSaleEntry(client, ps.id, null);
+        }
         await client.query('COMMIT');
         return;
       } catch (err) {

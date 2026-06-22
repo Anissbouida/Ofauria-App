@@ -286,7 +286,7 @@ export interface SaleRow {
 }
 
 export async function fromSale(
-  _client: PoolClient | typeof db,
+  client: PoolClient | typeof db,
   s: SaleRow
 ): Promise<GeneratedEntry | null> {
   // Ventes impayees : pas d'encaissement -> pas d'ecriture caisse/banque.
@@ -298,6 +298,19 @@ export async function fromSale(
   const discount = parseFloat(String(s.discount_amount ?? 0)) || 0;
   const total    = parseFloat(String(s.total)) || 0;
   if (total <= 0) return null;
+
+  // GARDE-FOU : la saisie manuelle par shift est AUTORITAIRE (montant
+  // physiquement compte). Si une saisie manuelle existe pour ce jour/magasin,
+  // elle comptabilise deja le CA reel -> on n'emet PAS d'ecriture pour la vente
+  // POS (qui correspond au montant "systeme" theorique, deja couvert).
+  if (s.store_id) {
+    const day = toIsoDate(s.paid_at || s.created_at);
+    const shift = await client.query(
+      `SELECT 1 FROM manual_shift_entries WHERE store_id = $1 AND entry_date = $2::date LIMIT 1`,
+      [s.store_id, day]
+    );
+    if (shift.rows.length > 0) return null;
+  }
 
   const isCash = s.payment_method === 'cash';
   const treasuryCode = isCash ? '5161' : '5141';
@@ -341,18 +354,17 @@ export interface ShiftEntryRow {
 
 /**
  * Genere l'ecriture des ventes journalieres saisies manuellement (matin/soir).
- * On comptabilise les montants REELS (physiquement comptes) :
+ * La saisie manuelle est AUTORITAIRE : c'est le montant physiquement compte
+ * (montant "reel"), qui prime sur le POS. On comptabilise les montants reels :
  *   especes (matin+soir) -> 5161 Caisse D
  *   carte   (matin+soir) -> 5141 Banque D
  *   total                -> 7111 Ventes C
  *
- * GARDE-FOU ANTI-DOUBLE-COMPTAGE : si des ventes POS (table sales, payees)
- * existent pour le meme magasin et le meme jour, elles comptabilisent deja le
- * CA -> on n'emet PAS d'ecriture pour la saisie manuelle (qui n'est alors qu'un
- * controle de caisse). La saisie manuelle ne genere du CA que les jours SANS POS.
+ * L'anti-double-comptage est gere cote POS (fromSale ignore les jours ayant une
+ * saisie manuelle), donc ici on genere toujours des qu'il y a un montant.
  */
 export async function fromManualShiftEntry(
-  client: PoolClient | typeof db,
+  _client: PoolClient | typeof db,
   e: ShiftEntryRow
 ): Promise<GeneratedEntry | null> {
   const cash = (parseFloat(String(e.matin_cash_reel ?? 0)) || 0) + (parseFloat(String(e.soir_cash_reel ?? 0)) || 0);
@@ -361,18 +373,6 @@ export async function fromManualShiftEntry(
   if (total <= 0) return null;
 
   const date = toIsoDate(e.entry_date);
-
-  // Garde-fou : ventes POS payees le meme jour/magasin ?
-  const pos = await client.query(
-    `SELECT COALESCE(SUM(total), 0) AS t FROM sales
-     WHERE store_id = $1 AND payment_status = 'paid'
-       AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
-    [e.store_id, date]
-  );
-  if ((parseFloat(pos.rows[0]?.t) || 0) > 0.01) {
-    // Le POS comptabilise deja ce jour -> pas de double ecriture.
-    return null;
-  }
 
   const lines: GeneratedLine[] = [];
   if (cash > 0)  lines.push({ account_code: '5161', debit: round2(cash),  credit: 0, label: 'Especes (matin+soir)' });
@@ -1009,6 +1009,19 @@ export async function regenerateShiftEntry(
   const res = await client.query(SHIFT_ENTRY_SELECT, [shiftEntryId]);
   const row = res.rows[0];
   if (!row) return;
+
+  // La saisie manuelle est autoritaire : reverser les ecritures POS de ce
+  // jour/magasin (elles seraient un double comptage du CA).
+  const day = toIsoDate(row.entry_date);
+  const posSales = await client.query(
+    `SELECT id FROM sales
+     WHERE store_id = $1 AND payment_status = 'paid'
+       AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
+    [row.store_id, day]
+  );
+  for (const ps of posSales.rows) {
+    await reverseEntriesForSource(client, { sourceId: ps.id, sourceKinds: ['sale', 'backfill'] });
+  }
 
   const entry = await fromManualShiftEntry(client, row);
   if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
