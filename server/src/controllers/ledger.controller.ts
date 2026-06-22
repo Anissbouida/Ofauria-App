@@ -192,6 +192,22 @@ export const financialStatementsController = {
   },
 
   /**
+   * GET /api/v1/ledger/general-ledger-full?startDate=&endDate=&account=&class=
+   * Grand livre complet : tous les comptes (ou filtres) par periode.
+   */
+  async generalLedgerFull(req: AuthRequest, res: Response) {
+    const cls = req.query.class ? parseInt(req.query.class as string, 10) : undefined;
+    const data = await financialStatementsRepository.generalLedgerByPeriod({
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      accountCode: req.query.account as string | undefined,
+      accountClass: cls && !Number.isNaN(cls) ? cls : undefined,
+      storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data });
+  },
+
+  /**
    * GET /api/v1/ledger/balance?startDate=...&endDate=...
    */
   async balance(req: AuthRequest, res: Response) {
