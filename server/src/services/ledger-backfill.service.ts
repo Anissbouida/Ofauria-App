@@ -13,9 +13,9 @@
 
 import { db } from '../config/database.js';
 import {
-  fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, persistEntry,
+  fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
   regenerateInvoiceEntry,
-  type InvoiceRow, type PaymentRow, type SaleRow,
+  type InvoiceRow, type PaymentRow, type SaleRow, type ShiftEntryRow,
 } from './journal-generator.service.js';
 
 export interface BackfillSummary {
@@ -23,6 +23,7 @@ export interface BackfillSummary {
   payments: number;
   cashings: number;
   sales: number;
+  shiftEntries: number;
   created: number;
   skipped: number;
   resynced: number;
@@ -36,7 +37,7 @@ export interface BackfillSummary {
  */
 export async function runFullBackfill(userId: string): Promise<BackfillSummary> {
   const summary: BackfillSummary = {
-    invoices: 0, payments: 0, cashings: 0, sales: 0,
+    invoices: 0, payments: 0, cashings: 0, sales: 0, shiftEntries: 0,
     created: 0, skipped: 0, resynced: 0, errors: 0, errorSamples: [],
   };
 
@@ -110,6 +111,23 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     } catch (err) {
       summary.errors++;
       if (summary.errorSamples.length < 10) summary.errorSamples.push(`sale ${s.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // ─── Ventes saisies manuellement par shift (matin/soir) ───
+  const shifts = (await db.query(
+    `SELECT id, entry_date::TEXT AS entry_date, store_id,
+            matin_cash_reel, matin_carte_reel, soir_cash_reel, soir_carte_reel
+     FROM manual_shift_entries
+     ORDER BY entry_date`
+  )).rows as unknown as ShiftEntryRow[];
+  for (const e of shifts) {
+    try {
+      const entry = await fromManualShiftEntry(db, e);
+      if (entry) { summary.shiftEntries++; await persistOne(entry, `shift ${e.entry_date}`); }
+    } catch (err) {
+      summary.errors++;
+      if (summary.errorSamples.length < 10) summary.errorSamples.push(`shift ${e.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
 

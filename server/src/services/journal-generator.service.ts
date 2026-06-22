@@ -52,7 +52,7 @@ export interface GeneratedEntry {
   journal_code: 'AC' | 'VE' | 'BQ' | 'CA' | 'OD';
   entry_date: string;
   description: string;
-  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual';
+  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
@@ -324,6 +324,68 @@ export async function fromSale(
     source_kind: 'sale',
     source_id: s.id,
     store_id: s.store_id,
+    lines,
+  };
+}
+
+/* ═══ Generateur — pattern G : ventes saisies manuellement par shift ═══ */
+export interface ShiftEntryRow {
+  id: string;
+  entry_date: string;
+  store_id: string;
+  matin_cash_reel: string | number | null;
+  matin_carte_reel: string | number | null;
+  soir_cash_reel: string | number | null;
+  soir_carte_reel: string | number | null;
+}
+
+/**
+ * Genere l'ecriture des ventes journalieres saisies manuellement (matin/soir).
+ * On comptabilise les montants REELS (physiquement comptes) :
+ *   especes (matin+soir) -> 5161 Caisse D
+ *   carte   (matin+soir) -> 5141 Banque D
+ *   total                -> 7111 Ventes C
+ *
+ * GARDE-FOU ANTI-DOUBLE-COMPTAGE : si des ventes POS (table sales, payees)
+ * existent pour le meme magasin et le meme jour, elles comptabilisent deja le
+ * CA -> on n'emet PAS d'ecriture pour la saisie manuelle (qui n'est alors qu'un
+ * controle de caisse). La saisie manuelle ne genere du CA que les jours SANS POS.
+ */
+export async function fromManualShiftEntry(
+  client: PoolClient | typeof db,
+  e: ShiftEntryRow
+): Promise<GeneratedEntry | null> {
+  const cash = (parseFloat(String(e.matin_cash_reel ?? 0)) || 0) + (parseFloat(String(e.soir_cash_reel ?? 0)) || 0);
+  const carte = (parseFloat(String(e.matin_carte_reel ?? 0)) || 0) + (parseFloat(String(e.soir_carte_reel ?? 0)) || 0);
+  const total = round2(cash + carte);
+  if (total <= 0) return null;
+
+  const date = toIsoDate(e.entry_date);
+
+  // Garde-fou : ventes POS payees le meme jour/magasin ?
+  const pos = await client.query(
+    `SELECT COALESCE(SUM(total), 0) AS t FROM sales
+     WHERE store_id = $1 AND payment_status = 'paid'
+       AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
+    [e.store_id, date]
+  );
+  if ((parseFloat(pos.rows[0]?.t) || 0) > 0.01) {
+    // Le POS comptabilise deja ce jour -> pas de double ecriture.
+    return null;
+  }
+
+  const lines: GeneratedLine[] = [];
+  if (cash > 0)  lines.push({ account_code: '5161', debit: round2(cash),  credit: 0, label: 'Especes (matin+soir)' });
+  if (carte > 0) lines.push({ account_code: '5141', debit: round2(carte), credit: 0, label: 'Carte (matin+soir)' });
+  lines.push({ account_code: '7111', debit: 0, credit: total, label: `Ventes du jour ${date}` });
+
+  return {
+    journal_code: 'CA',
+    entry_date: date,
+    description: `Ventes journalieres (saisie manuelle) ${date}`,
+    source_kind: 'shift_entry',
+    source_id: e.id,
+    store_id: e.store_id,
     lines,
   };
 }
@@ -924,6 +986,31 @@ export async function regenerateSaleEntry(
   if (!s) return;
 
   const entry = await fromSale(client, s);
+  if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
+}
+
+const SHIFT_ENTRY_SELECT = `SELECT id, entry_date, store_id,
+  matin_cash_reel, matin_carte_reel, soir_cash_reel, soir_carte_reel
+  FROM manual_shift_entries WHERE id = $1`;
+
+/**
+ * Resynchronise l'ecriture d'une saisie manuelle de ventes (matin/soir).
+ * A appeler apres upsert/delete d'une manual_shift_entry. Reverse l'ancienne
+ * puis regenere depuis l'etat courant (ou rien si supprimee / montants nuls /
+ * jour deja couvert par le POS).
+ */
+export async function regenerateShiftEntry(
+  client: PoolClient,
+  shiftEntryId: string,
+  userId: string | null | undefined
+): Promise<void> {
+  await reverseEntriesForSource(client, { sourceId: shiftEntryId, sourceKinds: ['shift_entry', 'backfill'] });
+
+  const res = await client.query(SHIFT_ENTRY_SELECT, [shiftEntryId]);
+  const row = res.rows[0];
+  if (!row) return;
+
+  const entry = await fromManualShiftEntry(client, row);
   if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
 }
 

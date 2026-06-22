@@ -85,6 +85,7 @@ export interface BackfillSummary {
   payments: number;
   cashings: number;
   sales: number;
+  shiftEntries: number;
   created: number;
   skipped: number;
   resynced: number;
