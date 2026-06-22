@@ -1646,6 +1646,7 @@ export const paymentRepository = {
     supplierId?: string; employeeId?: string; amount: number;
     paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
     purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
+    withholdingTypeId?: string | null; withholdingAmount?: number | null;
   }) {
     // ─── Cas simple : pas de facture liee ───────────────────────────────
     if (!data.invoiceId) {
@@ -1655,13 +1656,14 @@ export const paymentRepository = {
         const result = await db.query(
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-            check_number, check_date, check_attachment_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
           [data.reference || null, data.type, data.categoryId || null, null,
            data.supplierId || null, data.employeeId || null, data.amount,
            data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
            data.storeId || null, data.purchaseOrderId || null,
-           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
+           data.withholdingTypeId || null, data.withholdingAmount ?? null]
         );
         return result.rows[0];
       }
@@ -1672,13 +1674,14 @@ export const paymentRepository = {
         const result = await client.query(
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-            check_number, check_date, check_attachment_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
           [data.reference || null, data.type, data.categoryId || null, null,
            data.supplierId || null, data.employeeId || null, data.amount,
            data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
            data.storeId || null, data.purchaseOrderId || null,
-           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
+           data.withholdingTypeId || null, data.withholdingAmount ?? null]
         );
         await client.query('SAVEPOINT ledger_gen');
         try {
@@ -1752,13 +1755,14 @@ export const paymentRepository = {
       const result = await client.query(
         `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
           amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-          check_number, check_date, check_attachment_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+          check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [data.reference || null, data.type, data.categoryId || null, data.invoiceId,
          data.supplierId || null, data.employeeId || null, data.amount,
          data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
          data.storeId || null, data.purchaseOrderId || null,
-         data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null]
+         data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
+         data.withholdingTypeId || null, data.withholdingAmount ?? null]
       );
 
       // Sync invoice.check_number avec le N° reellement utilise au paiement.
