@@ -14,7 +14,7 @@
 import { db } from '../config/database.js';
 import {
   fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
-  regenerateInvoiceEntry,
+  regenerateInvoiceEntry, reverseEntriesForSource,
   type InvoiceRow, type PaymentRow, type SaleRow, type ShiftEntryRow,
 } from './journal-generator.service.js';
 
@@ -111,6 +111,36 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     } catch (err) {
       summary.errors++;
       if (summary.errorSamples.length < 10) summary.errorSamples.push(`sale ${s.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // ─── Nettoyage : reverser les ecritures POS des jours ayant une saisie
+  //     manuelle (la saisie manuelle est autoritaire, le POS ne doit pas
+  //     comptabiliser le CA ces jours-la). Couvre les ecritures POS creees
+  //     avant l'inversion du garde-fou. ───
+  const posOnManualDays = (await db.query(
+    `SELECT DISTINCT s.id
+     FROM sales s
+     JOIN manual_shift_entries m
+       ON m.store_id = s.store_id
+      AND m.entry_date = DATE(COALESCE(s.paid_at, s.created_at))
+     WHERE s.payment_status = 'paid'
+       AND EXISTS (SELECT 1 FROM journal_entries je
+                   WHERE je.source_id = s.id AND je.source_kind IN ('sale','backfill') AND je.status != 'reversed')`
+  )).rows as { id: string }[];
+  for (const { id } of posOnManualDays) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['sale', 'backfill'] });
+      await client.query('COMMIT');
+      summary.resynced++;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      summary.errors++;
+      if (summary.errorSamples.length < 10) summary.errorSamples.push(`pos-cleanup ${id}: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      client.release();
     }
   }
 
