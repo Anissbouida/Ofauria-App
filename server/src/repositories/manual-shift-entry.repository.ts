@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { regenerateShiftEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 export type ShiftAmounts = {
   matin_cash_reel: number | null;
@@ -82,10 +84,51 @@ export const manualShiftEntryRepository = {
        RETURNING *`,
       values
     );
-    return result.rows[0];
+    const entry = result.rows[0];
+
+    // Comptabilisation : (re)genere l'ecriture des ventes du jour. SAVEPOINT-like
+    // isolation via try/catch propre — la saisie reste enregistree si la compta
+    // echoue (regenerable via le backfill). Hors transaction db simple.
+    if (FLAGS.LEDGER_AUTOGEN && entry?.id) {
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        await regenerateShiftEntry(client, entry.id, params.userId);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        // eslint-disable-next-line no-console
+        console.error('[ledger] generation echec saisie shift', entry.id, err instanceof Error ? err.message : err);
+      } finally {
+        client.release();
+      }
+    }
+    return entry;
   },
 
   async delete(storeId: string, entryDate: string) {
+    const existing = await db.query(
+      `SELECT id FROM manual_shift_entries WHERE store_id = $1 AND entry_date = $2`,
+      [storeId, entryDate]
+    );
+    const id = existing.rows[0]?.id;
+
+    if (FLAGS.LEDGER_AUTOGEN && id) {
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['shift_entry', 'backfill'] });
+        await client.query(`DELETE FROM manual_shift_entries WHERE id = $1`, [id]);
+        await client.query('COMMIT');
+        return;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
     await db.query(
       `DELETE FROM manual_shift_entries WHERE store_id = $1 AND entry_date = $2`,
       [storeId, entryDate]
