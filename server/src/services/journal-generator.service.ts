@@ -405,6 +405,8 @@ export interface PaymentRow {
   cashed_at: string | null;
   description: string | null;
   store_id: string | null;
+  withholding_type_id?: string | null;
+  withholding_amount?: string | number | null;
 }
 
 /**
@@ -485,6 +487,26 @@ export async function fromPaymentEmission(
     ? `Traite emise ${p.reference || ''}`.trim()
     : 'Sortie tresorerie';
 
+  // Retenue a la source : amount = BRUT (l'obligation, cote debit). On verse le
+  // NET au beneficiaire (brut - retenue) et on credite le compte RAS 4452x du
+  // montant retenu (dette envers l'Etat). L'ecriture reste equilibree :
+  //   debit brut = credit (net + retenue).
+  const withholding = round2(parseFloat(String(p.withholding_amount ?? 0)) || 0);
+  const lines: GeneratedLine[] = [debitLine];
+  if (withholding > 0 && p.withholding_type_id) {
+    const ras = await client.query(
+      `SELECT a.code FROM withholding_tax_types w JOIN accounts a ON a.id = w.account_id WHERE w.id = $1`,
+      [p.withholding_type_id]
+    );
+    const rasCode = ras.rows[0]?.code;
+    if (!rasCode) throw new Error(`Type de RAS ${p.withholding_type_id} introuvable`);
+    const net = round2(amount - withholding);
+    lines.push({ account_code: creditCode, debit: 0, credit: net, label: `${creditLabel} (net)` });
+    lines.push({ account_code: rasCode, debit: 0, credit: withholding, label: 'Retenue a la source' });
+  } else {
+    lines.push({ account_code: creditCode, debit: 0, credit: round2(amount), label: creditLabel });
+  }
+
   return {
     journal_code: journal,
     entry_date: toIsoDate(p.payment_date),
@@ -492,10 +514,7 @@ export async function fromPaymentEmission(
     source_kind: 'payment',
     source_id: p.id,
     store_id: p.store_id,
-    lines: [
-      debitLine,
-      { account_code: creditCode, debit: 0, credit: round2(amount), label: creditLabel },
-    ],
+    lines,
   };
 }
 
@@ -914,7 +933,8 @@ const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, cu
   FROM invoices WHERE id = $1`;
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
-  employee_id, amount, payment_method, payment_date, cashed_at, description, store_id
+  employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
+  withholding_type_id, withholding_amount
   FROM payments WHERE id = $1`;
 
 const SALE_SELECT = `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount,

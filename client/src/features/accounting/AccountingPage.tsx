@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, Fragment } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
+import { withholdingApi } from '../../api/withholding.api';
+import type { WithholdingType } from '../../api/withholding.api';
 import { employeesApi } from '../../api/employees.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { reportsApi } from '../../api/reports.api';
@@ -367,10 +369,20 @@ function DettesTab() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [payingInvoice, setPayingInvoice] = useState<DebtInvoice | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
+  // Retenue a la source (RAS) — paiements sortants uniquement.
+  const [payAmount, setPayAmount] = useState('');
+  const [rasTypeId, setRasTypeId] = useState('');
+  const [rasAmount, setRasAmount] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice-debts'],
     queryFn: () => invoicesApi.debts() as Promise<{ receivables: DebtInvoice[]; payables: DebtInvoice[] }>,
+  });
+
+  const { data: rasTypes = [] } = useQuery({
+    queryKey: ['withholding-types'],
+    queryFn: () => withholdingApi.listTypes() as Promise<WithholdingType[]>,
+    enabled: side === 'payables',
   });
 
   const createPayment = useMutation({
@@ -394,6 +406,15 @@ function DettesTab() {
   });
 
   const isReceivable = side === 'receivables';
+
+  // A l'ouverture du modal : initialise le montant brut et reinitialise la RAS.
+  useEffect(() => {
+    if (payingInvoice) {
+      setPayAmount((parseFloat(payingInvoice.remaining_amount) || 0).toFixed(2));
+      setRasTypeId('');
+      setRasAmount('');
+    }
+  }, [payingInvoice]);
 
   const rawInvoices: DebtInvoice[] = useMemo(() => {
     if (!data) return [];
@@ -705,9 +726,13 @@ function DettesTab() {
               <form onSubmit={e => {
                 e.preventDefault();
                 const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
-                const amount = parseFloat(fd.amount as string);
+                const amount = parseFloat(payAmount);
                 if (!Number.isFinite(amount) || amount <= 0) { notify.error('Montant invalide'); return; }
                 if (amount > remaining + 0.01) { notify.error(`Le montant dépasse le reste à payer (${n(remaining)} DH)`); return; }
+                const retenue = parseFloat(rasAmount) || 0;
+                if (!isReceivable && rasTypeId && retenue >= amount) {
+                  notify.error('La retenue doit être inférieure au montant brut'); return;
+                }
                 const payload: Record<string, any> = {
                   invoiceId: payingInvoice.id,
                   type: isReceivable ? 'income' : 'invoice',
@@ -717,6 +742,10 @@ function DettesTab() {
                   description: fd.description || undefined,
                 };
                 if (!isReceivable && payingInvoice.supplier_id) payload.supplierId = payingInvoice.supplier_id;
+                if (!isReceivable && rasTypeId && retenue > 0) {
+                  payload.withholdingTypeId = rasTypeId;
+                  payload.withholdingAmount = Math.round(retenue * 100) / 100;
+                }
                 if (fd.paymentMethod === 'check' || fd.paymentMethod === 'traite') {
                   payload.checkNumber = fd.checkNumber || undefined;
                   payload.checkDate = fd.checkDate || undefined;
@@ -729,9 +758,19 @@ function DettesTab() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{!isReceivable && rasTypeId ? 'Montant brut *' : 'Montant *'}</label>
                     <input name="amount" type="number" step="0.01" min="0" max={remaining}
-                      defaultValue={remaining.toFixed(2)}
+                      value={payAmount}
+                      onChange={e => {
+                        setPayAmount(e.target.value);
+                        // Recalcule la retenue suggeree si un type RAS est selectionne.
+                        if (rasTypeId) {
+                          const t = rasTypes.find(x => x.id === rasTypeId);
+                          const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
+                          const br = parseFloat(e.target.value) || 0;
+                          if (rate > 0) setRasAmount(((br * rate) / 100).toFixed(2));
+                        }
+                      }}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
                   </div>
                   <div>
@@ -747,6 +786,48 @@ function DettesTab() {
                     {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select>
                 </div>
+                {!isReceivable && (() => {
+                  const brut = parseFloat(payAmount) || 0;
+                  const retenue = parseFloat(rasAmount) || 0;
+                  const net = Math.max(0, brut - retenue);
+                  const selRas = rasTypes.find(x => x.id === rasTypeId);
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Retenue à la source (RAS)</label>
+                      <select value={rasTypeId} onChange={e => {
+                        const id = e.target.value;
+                        setRasTypeId(id);
+                        const t = rasTypes.find(x => x.id === id);
+                        const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
+                        setRasAmount(id && rate > 0 ? ((brut * rate) / 100).toFixed(2) : '');
+                      }} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="">Aucune retenue</option>
+                        {rasTypes.map(t => (
+                          <option key={t.id} value={t.id}>{t.label}{t.rate ? ` — ${t.rate}%` : ''}</option>
+                        ))}
+                      </select>
+                      {rasTypeId && (
+                        <>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Montant retenu (DH)</label>
+                              <input type="number" step="0.01" min="0" value={rasAmount}
+                                onChange={e => setRasAmount(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Net versé</label>
+                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{n(net)} DH</div>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            La retenue de <strong>{n(retenue)} DH</strong> sera déclarée à l'État (compte <strong>{selRas?.account_code}</strong>) et apparaîtra dans <strong>Retenues source → À reverser</strong>. Le bénéficiaire reçoit le net.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
                 {(payMethod === 'check' || payMethod === 'traite') && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
