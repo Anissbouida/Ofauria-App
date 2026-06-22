@@ -114,6 +114,22 @@ export interface GeneralLedgerResult {
   opening: number;
   movements: LedgerMovement[];
 }
+export interface LedgerAccountBlock {
+  code: string;
+  label: string;
+  normal_side: string;
+  opening: number;
+  total_debit: number;
+  total_credit: number;
+  closing: number;
+  movements: LedgerMovement[];
+}
+export interface GeneralLedgerFullResult {
+  accounts: LedgerAccountBlock[];
+  total_debit: number;
+  total_credit: number;
+  account_count: number;
+}
 export interface BalanceRow {
   code: string;
   label: string;
@@ -155,6 +171,8 @@ export interface BalanceSheet {
 export const financialStatementsApi = {
   generalLedger: (account: string, params: PeriodParams = {}): Promise<GeneralLedgerResult> =>
     api.get('/ledger/general-ledger', { params: { account, ...params } }).then(r => r.data.data),
+  generalLedgerFull: (params: PeriodParams & { account?: string; class?: number } = {}): Promise<GeneralLedgerFullResult> =>
+    api.get('/ledger/general-ledger-full', { params }).then(r => r.data.data),
   balance: (params: PeriodParams = {}): Promise<BalanceRow[]> =>
     api.get('/ledger/balance', { params }).then(r => r.data.data),
   incomeStatement: (params: PeriodParams = {}): Promise<IncomeStatementResult> =>

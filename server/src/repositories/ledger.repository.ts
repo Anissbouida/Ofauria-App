@@ -400,6 +400,113 @@ export const financialStatementsRepository = {
   },
 
   /**
+   * Grand livre complet : TOUS les comptes ayant des mouvements sur la periode,
+   * chacun avec son solde d'ouverture, ses mouvements et son solde de cloture.
+   * C'est la presentation classique du grand livre (par compte, sur une periode).
+   * Filtres optionnels : accountCode (un seul compte) ou accountClass (une classe).
+   */
+  async generalLedgerByPeriod(params: {
+    startDate?: string; endDate?: string; storeId?: string;
+    accountCode?: string; accountClass?: number;
+  }) {
+    const where: string[] = [`je.status = 'posted'`];
+    const values: unknown[] = [];
+    let p = 1;
+    if (params.startDate)   { values.push(params.startDate);   where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)     { values.push(params.endDate);     where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)     { values.push(params.storeId);     where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
+    if (params.accountCode) { values.push(params.accountCode); where.push(`a.code = $${p++}`); }
+    if (params.accountClass){ values.push(params.accountClass);where.push(`a.account_class = $${p++}`); }
+
+    const movements = await db.query(
+      `SELECT a.code AS account_code, a.label AS account_label, a.normal_side,
+              je.entry_date, je.entry_number, j.code AS journal_code,
+              je.description AS entry_description, jel.label AS line_label,
+              jel.debit, jel.credit, jel.lettrage_id,
+              aa.code AS auxiliary_code, aa.label AS auxiliary_label
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN journals j ON j.id = je.journal_id
+       JOIN accounts a ON a.id = jel.account_id
+       LEFT JOIN account_auxiliaries aa ON aa.id = jel.auxiliary_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY a.code, je.entry_date, je.entry_number, jel.line_order`,
+      values
+    );
+
+    // Soldes d'ouverture par compte (mouvements anterieurs a startDate).
+    const openingByCode = new Map<string, number>();
+    if (params.startDate) {
+      const ow: string[] = [`je.status = 'posted'`, `je.entry_date < $1`];
+      const ov: unknown[] = [params.startDate];
+      let op = 2;
+      if (params.storeId)     { ov.push(params.storeId);     ow.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
+      if (params.accountCode) { ov.push(params.accountCode); ow.push(`a.code = $${op++}`); }
+      if (params.accountClass){ ov.push(params.accountClass);ow.push(`a.account_class = $${op++}`); }
+      const ores = await db.query(
+        `SELECT a.code, COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
+         FROM journal_entry_lines jel
+         JOIN journal_entries je ON je.id = jel.journal_entry_id
+         JOIN accounts a ON a.id = jel.account_id
+         WHERE ${ow.join(' AND ')}
+         GROUP BY a.code`,
+        ov
+      );
+      for (const r of ores.rows) openingByCode.set(r.code, parseFloat(r.bal) || 0);
+    }
+
+    // Regroupement par compte.
+    interface AcctBlock {
+      code: string; label: string; normal_side: string;
+      opening: number; total_debit: number; total_credit: number;
+      movements: Record<string, unknown>[];
+    }
+    const map = new Map<string, AcctBlock>();
+    for (const m of movements.rows as Record<string, unknown>[]) {
+      const code = m.account_code as string;
+      if (!map.has(code)) {
+        map.set(code, {
+          code, label: m.account_label as string, normal_side: m.normal_side as string,
+          opening: openingByCode.get(code) || 0,
+          total_debit: 0, total_credit: 0, movements: [],
+        });
+      }
+      const blk = map.get(code)!;
+      blk.movements.push({
+        entry_date: m.entry_date, entry_number: m.entry_number, journal_code: m.journal_code,
+        entry_description: m.entry_description, line_label: m.line_label,
+        debit: m.debit, credit: m.credit, lettrage_id: m.lettrage_id,
+        auxiliary_code: m.auxiliary_code, auxiliary_label: m.auxiliary_label,
+      });
+      blk.total_debit += parseFloat(m.debit as string) || 0;
+      blk.total_credit += parseFloat(m.credit as string) || 0;
+    }
+
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const accounts = Array.from(map.values())
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(a => ({
+        ...a,
+        opening: r2(a.opening),
+        total_debit: r2(a.total_debit),
+        total_credit: r2(a.total_credit),
+        closing: r2(a.opening + a.total_debit - a.total_credit),
+      }));
+
+    const grand = accounts.reduce(
+      (acc, a) => ({ debit: acc.debit + a.total_debit, credit: acc.credit + a.total_credit }),
+      { debit: 0, credit: 0 }
+    );
+
+    return {
+      accounts,
+      total_debit: r2(grand.debit),
+      total_credit: r2(grand.credit),
+      account_count: accounts.length,
+    };
+  },
+
+  /**
    * Balance : pour chaque compte ayant au moins un mouvement sur la periode,
    * total debit, total credit et solde. Triee par code.
    */
