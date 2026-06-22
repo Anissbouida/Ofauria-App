@@ -323,12 +323,13 @@ export const purchaseOrderRepository = {
     try {
       await client.query('BEGIN');
 
-      const po = await client.query<{ id: string; order_number: string }>(
-        `SELECT id, order_number FROM purchase_orders WHERE id = $1 FOR UPDATE`,
+      const po = await client.query<{ id: string; order_number: string; status: string }>(
+        `SELECT id, order_number, status FROM purchase_orders WHERE id = $1 FOR UPDATE`,
         [id]
       );
       if (!po.rows[0]) { await client.query('ROLLBACK'); return null; }
       const orderNumber = po.rows[0].order_number;
+      const currentStatus = po.rows[0].status;
 
       const current = await client.query<{
         id: string; ingredient_id: string | null; packaging_id: string | null; quantity_ordered: string;
@@ -455,6 +456,13 @@ export const purchaseOrderRepository = {
       if (allDelivered && missingPrices) newStatus = 'en_attente_facturation';
       else if (allDelivered) newStatus = 'livre_complet';
       else if (someDelivered) newStatus = 'livre_partiel';
+      // Aucune ligne livree : on NE retombe PAS sur 'non_livre'. Un BC simplement
+      // edite alors qu'il n'a encore rien recu doit garder son statut amont
+      // (en_attente / envoye / annule). 'non_livre' reste une declaration manuelle
+      // (bouton dedie), jamais une consequence d'une edition.
+      else if (currentStatus === 'en_attente' || currentStatus === 'envoye' || currentStatus === 'annule') {
+        newStatus = currentStatus;
+      }
       else newStatus = 'non_livre';
 
       await client.query(
