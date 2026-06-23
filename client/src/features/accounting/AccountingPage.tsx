@@ -153,11 +153,12 @@ function buildDailyData(
     const cashSysteme = daySales.cashSales;
     // Carte = ventes carte reelles
     const cardReceipt = daySales.cardSales;
-    // Cash caissière = total des ventes (cash + carte) = ce que la caissiere a encaisse
+    // Cash réellement entré dans le tiroir (hors carte) → alimente le solde cash.
+    // Session : le cash physiquement compté (actual_amount). Fallback : la part cash des ventes.
     const hasSession = sessionMap.has(dateStr);
-    const cashCaissiere = hasSession
-      ? (session.cashCaissiere) // actual_amount saisi par la caissiere
-      : (cashSysteme + cardReceipt); // fallback: total ventes
+    const cashIn = hasSession ? session.cashCaissiere : cashSysteme;
+    // Total encaissé = cash + carte (cohérent dans les deux branches) — sert à l'affichage et à l'écart.
+    const cashCaissiere = cashIn + cardReceipt;
 
     let entries = 0, exits = 0;
     let cashEntries = 0, bankEntries = 0, cashExits = 0, bankExits = 0;
@@ -173,7 +174,7 @@ function buildDailyData(
       }
     }
 
-    cashNet = cashNet + cashEntries + cashCaissiere - cashExits;
+    cashNet = cashNet + cashEntries + cashIn - cashExits;
     cardCumul = cardCumul + cardReceipt + bankEntries - bankExits;
 
     if (dayPayments.length > 0 || cashCaissiere > 0 || cardReceipt > 0 || daySales.count > 0) {
@@ -187,7 +188,7 @@ function buildDailyData(
         cashSysteme,
         cardReceipt,
         ecart: cashCaissiere - (cashSysteme + cardReceipt),
-        totalRecettes: cashCaissiere + cardReceipt,
+        totalRecettes: cashCaissiere,
         totalSales: daySales.total,
         saleCount: daySales.count,
         cashNetCumul: cashNet,
@@ -1460,7 +1461,7 @@ function CaisseTab() {
     return {
       entries, exits, cashCaissiere, cashSysteme, cardReceipts, totalSales, saleCount,
       ecart: cashCaissiere - (cashSysteme + cardReceipts),
-      totalRecettes: cashCaissiere + cardReceipts + entries,
+      totalRecettes: cashCaissiere + entries,
       cashNet: lastDay?.cashNetCumul || data?.previousBalance?.cashNet || 0,
       cardCumul: lastDay?.cardCumul || data?.previousBalance?.cardCumul || 0,
       solde: lastDay?.solde || ((data?.previousBalance?.cashNet || 0) + (data?.previousBalance?.cardCumul || 0)),
@@ -1481,7 +1482,7 @@ function CaisseTab() {
       const dateStr = format(parseLocalDate(d.date), 'dd/MM/yyyy');
       rows.push([`LE ${dateStr}`, '', '', '']);
       rows.push(['', 'VENTES', `${d.saleCount} ventes`, n(d.totalSales)]);
-      rows.push(['', 'CASH CAISSIERE', '', n(d.cashCaissiere)]);
+      rows.push(['', 'TOTAL ENCAISSE', '', n(d.cashCaissiere)]);
       rows.push(['', 'CASH SYSTEME', '', n(d.cashSysteme)]);
       rows.push(['', 'CARTE', '', n(d.cardReceipt)]);
       if (d.entries > 0) rows.push(['', 'AUTRES ENTREES', '', n(d.entries)]);
@@ -1541,7 +1542,7 @@ function CaisseTab() {
           <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
           <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
+            Cash {n(monthTotals.cashCaissiere - monthTotals.cardReceipts)} · Carte {n(monthTotals.cardReceipts)}
             {monthTotals.entries > 0 && ` · Autres ${n(monthTotals.entries)}`}
           </div>
         </div>
@@ -1565,7 +1566,7 @@ function CaisseTab() {
       {monthTotals.ecart !== 0 && (
         <div className={`odoo-alert ${monthTotals.ecart > 0 ? 'warning' : 'danger'}`}>
           <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
-          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Cash caissière vs Cash système)
+          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Total encaissé vs ventes système)
         </div>
       )}
 
@@ -1612,7 +1613,7 @@ function CaisseTab() {
                 <th style={{ width: 20 }}></th>
                 <th>Date</th>
                 <th style={{ textAlign: 'right' }}>Ventes</th>
-                <th style={{ textAlign: 'right' }}>Cash caissière</th>
+                <th style={{ textAlign: 'right' }}>Total encaissé</th>
                 <th style={{ textAlign: 'right' }}>Carte</th>
                 <th style={{ textAlign: 'right' }}>Écart</th>
                 <th style={{ textAlign: 'right' }}>Solde cumulé</th>
@@ -1648,7 +1649,7 @@ function CaisseTab() {
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashSysteme)} DH</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash caissière</div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Total encaissé</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashCaissiere)} DH</div>
                             </div>
                             <div>
@@ -1703,7 +1704,7 @@ function CaisseTab() {
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.totalSales)} DH</td>
               </tr>
               <tr>
-                <td style={{ color: 'var(--theme-text-muted)' }}>Cash Caissière</td>
+                <td style={{ color: 'var(--theme-text-muted)' }}>Total encaissé</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cashCaissiere)} DH</td>
               </tr>
               <tr>
@@ -3260,9 +3261,9 @@ function ResumeTab() {
       sales += d.totalSales; salesCount += d.saleCount;
     }
     const last = allDays[allDays.length - 1];
-    const totalEntrees = cashR + cardR + entries;
+    const totalEntrees = cashR + entries; // cashR = total encaissé (cash + carte) ; ne pas réajouter cardR
     const resultat = totalEntrees - exits;
-    return { entries, exits, cashR, cardR, sales, salesCount, recettes: cashR + cardR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
+    return { entries, exits, cashR, cardR, sales, salesCount, recettes: cashR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
   }, [days, allDays]);
 
   const handleExport = () => {
@@ -3270,7 +3271,7 @@ function ResumeTab() {
       ['DATE', 'VENTES', 'ENTREES', 'SORTIES', 'CASH', 'CARTE', 'SOLDE'],
       allDays.filter(d => d !== null).map(d => [
         format(parseLocalDate(d!.date), 'dd/MM/yyyy'),
-        n(d!.totalSales), n(d!.cashCaissiere + d!.cardReceipt + d!.entries), n(d!.exits),
+        n(d!.totalSales), n(d!.cashCaissiere + d!.entries), n(d!.exits),
         n(d!.cashNetCumul), n(d!.cardCumul), n(d!.solde),
       ])
     );
@@ -3298,7 +3299,7 @@ function ResumeTab() {
           <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
           <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(totals.cashR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
+            Cash {n(totals.cashR - totals.cardR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
           </div>
         </div>
         <div className="odoo-stat-card">
@@ -3345,7 +3346,7 @@ function ResumeTab() {
             <tbody>
               {allDays.map(d => {
                 if (!d) return null;
-                const dayEntrees = d.cashCaissiere + d.cardReceipt + d.entries;
+                const dayEntrees = d.cashCaissiere + d.entries;
                 const hasActivity = dayEntrees > 0 || d.exits > 0;
                 return (
                   <tr key={d.dayNum} style={{ opacity: hasActivity ? 1 : 0.4 }}>
