@@ -149,17 +149,15 @@ function buildDailyData(
     const session = sessionMap.get(dateStr) || { cashCaissiere: 0, cashSysteme: 0, card: 0 };
     const daySales = salesMap.get(dateStr) || { total: 0, count: 0, cashSales: 0, cardSales: 0 };
 
-    // Cash réel = total des cash réel des 2 shifts (manual_shift_entries) ou ventes cash POS.
-    // (la variable garde le nom cashSysteme pour limiter le diff ; valeur = cash réellement encaissé)
+    // Cash système = ventes cash reelles (source de verite = table sales)
     const cashSysteme = daySales.cashSales;
     // Carte = ventes carte reelles
     const cardReceipt = daySales.cardSales;
-    // Cash réellement entré dans le tiroir (hors carte) → alimente le solde cash.
-    // Session : le cash physiquement compté (actual_amount). Fallback : la part cash des ventes.
+    // Cash caissière = total des ventes (cash + carte) = ce que la caissiere a encaisse
     const hasSession = sessionMap.has(dateStr);
-    const cashIn = hasSession ? session.cashCaissiere : cashSysteme;
-    // Total encaissé = cash + carte (cohérent dans les deux branches) — sert à l'affichage et à l'écart.
-    const cashCaissiere = cashIn + cardReceipt;
+    const cashCaissiere = hasSession
+      ? (session.cashCaissiere) // actual_amount saisi par la caissiere
+      : (cashSysteme + cardReceipt); // fallback: total ventes
 
     let entries = 0, exits = 0;
     let cashEntries = 0, bankEntries = 0, cashExits = 0, bankExits = 0;
@@ -175,7 +173,7 @@ function buildDailyData(
       }
     }
 
-    cashNet = cashNet + cashEntries + cashIn - cashExits;
+    cashNet = cashNet + cashEntries + cashCaissiere - cashExits;
     cardCumul = cardCumul + cardReceipt + bankEntries - bankExits;
 
     if (dayPayments.length > 0 || cashCaissiere > 0 || cardReceipt > 0 || daySales.count > 0) {
@@ -189,7 +187,7 @@ function buildDailyData(
         cashSysteme,
         cardReceipt,
         ecart: cashCaissiere - (cashSysteme + cardReceipt),
-        totalRecettes: cashCaissiere,
+        totalRecettes: cashCaissiere + cardReceipt,
         totalSales: daySales.total,
         saleCount: daySales.count,
         cashNetCumul: cashNet,
@@ -1462,7 +1460,7 @@ function CaisseTab() {
     return {
       entries, exits, cashCaissiere, cashSysteme, cardReceipts, totalSales, saleCount,
       ecart: cashCaissiere - (cashSysteme + cardReceipts),
-      totalRecettes: cashCaissiere + entries,
+      totalRecettes: cashCaissiere + cardReceipts + entries,
       cashNet: lastDay?.cashNetCumul || data?.previousBalance?.cashNet || 0,
       cardCumul: lastDay?.cardCumul || data?.previousBalance?.cardCumul || 0,
       solde: lastDay?.solde || ((data?.previousBalance?.cashNet || 0) + (data?.previousBalance?.cardCumul || 0)),
@@ -1543,7 +1541,7 @@ function CaisseTab() {
           <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
           <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(monthTotals.cashCaissiere - monthTotals.cardReceipts)} · Carte {n(monthTotals.cardReceipts)}
+            Cash {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
             {monthTotals.entries > 0 && ` · Autres ${n(monthTotals.entries)}`}
           </div>
         </div>
@@ -1567,7 +1565,7 @@ function CaisseTab() {
       {monthTotals.ecart !== 0 && (
         <div className={`odoo-alert ${monthTotals.ecart > 0 ? 'warning' : 'danger'}`}>
           <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
-          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Total encaissé vs ventes système)
+          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Total encaissé vs Cash réel + Carte)
         </div>
       )}
 
@@ -3262,9 +3260,9 @@ function ResumeTab() {
       sales += d.totalSales; salesCount += d.saleCount;
     }
     const last = allDays[allDays.length - 1];
-    const totalEntrees = cashR + entries; // cashR = total encaissé (cash + carte) ; ne pas réajouter cardR
+    const totalEntrees = cashR + cardR + entries;
     const resultat = totalEntrees - exits;
-    return { entries, exits, cashR, cardR, sales, salesCount, recettes: cashR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
+    return { entries, exits, cashR, cardR, sales, salesCount, recettes: cashR + cardR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
   }, [days, allDays]);
 
   const handleExport = () => {
@@ -3272,7 +3270,7 @@ function ResumeTab() {
       ['DATE', 'VENTES', 'ENTREES', 'SORTIES', 'CASH', 'CARTE', 'SOLDE'],
       allDays.filter(d => d !== null).map(d => [
         format(parseLocalDate(d!.date), 'dd/MM/yyyy'),
-        n(d!.totalSales), n(d!.cashCaissiere + d!.entries), n(d!.exits),
+        n(d!.totalSales), n(d!.cashCaissiere + d!.cardReceipt + d!.entries), n(d!.exits),
         n(d!.cashNetCumul), n(d!.cardCumul), n(d!.solde),
       ])
     );
@@ -3300,7 +3298,7 @@ function ResumeTab() {
           <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
           <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(totals.cashR - totals.cardR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
+            Cash {n(totals.cashR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
           </div>
         </div>
         <div className="odoo-stat-card">
@@ -3347,7 +3345,7 @@ function ResumeTab() {
             <tbody>
               {allDays.map(d => {
                 if (!d) return null;
-                const dayEntrees = d.cashCaissiere + d.entries;
+                const dayEntrees = d.cashCaissiere + d.cardReceipt + d.entries;
                 const hasActivity = dayEntrees > 0 || d.exits > 0;
                 return (
                   <tr key={d.dayNum} style={{ opacity: hasActivity ? 1 : 0.4 }}>
