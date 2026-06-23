@@ -143,7 +143,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   });
 
   const reactivateMutation = useMutation({
-    mutationFn: (id: string) => employeesApi.update(id, { is_active: true }),
+    mutationFn: (id: string) => employeesApi.update(id, { isActive: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       notify.success('Employé réactivé');
