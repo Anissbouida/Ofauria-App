@@ -149,7 +149,8 @@ function buildDailyData(
     const session = sessionMap.get(dateStr) || { cashCaissiere: 0, cashSysteme: 0, card: 0 };
     const daySales = salesMap.get(dateStr) || { total: 0, count: 0, cashSales: 0, cardSales: 0 };
 
-    // Cash système = ventes cash reelles (source de verite = table sales)
+    // Cash réel = total des cash réel des 2 shifts (manual_shift_entries) ou ventes cash POS.
+    // (la variable garde le nom cashSysteme pour limiter le diff ; valeur = cash réellement encaissé)
     const cashSysteme = daySales.cashSales;
     // Carte = ventes carte reelles
     const cardReceipt = daySales.cardSales;
@@ -1483,7 +1484,7 @@ function CaisseTab() {
       rows.push([`LE ${dateStr}`, '', '', '']);
       rows.push(['', 'VENTES', `${d.saleCount} ventes`, n(d.totalSales)]);
       rows.push(['', 'TOTAL ENCAISSE', '', n(d.cashCaissiere)]);
-      rows.push(['', 'CASH SYSTEME', '', n(d.cashSysteme)]);
+      rows.push(['', 'CASH REEL', '', n(d.cashSysteme)]);
       rows.push(['', 'CARTE', '', n(d.cardReceipt)]);
       if (d.entries > 0) rows.push(['', 'AUTRES ENTREES', '', n(d.entries)]);
       rows.push(['', 'ECART CAISSE', '', n(d.ecart)]);
@@ -1645,7 +1646,7 @@ function CaisseTab() {
                         <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash système</div>
+                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash réel</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashSysteme)} DH</div>
                             </div>
                             <div>
