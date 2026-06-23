@@ -153,11 +153,13 @@ function buildDailyData(
     const cashSysteme = daySales.cashSales;
     // Carte = ventes carte reelles
     const cardReceipt = daySales.cardSales;
-    // Cash caissière = total des ventes (cash + carte) = ce que la caissiere a encaisse
+    // Total encaissé = ce que la caissière a encaissé (cash + carte). Sert à l'affichage et à l'écart.
     const hasSession = sessionMap.has(dateStr);
     const cashCaissiere = hasSession
       ? (session.cashCaissiere) // actual_amount saisi par la caissiere
       : (cashSysteme + cardReceipt); // fallback: total ventes
+    // Cash réel entrant dans le tiroir (HORS carte, qui part en banque) → alimente le solde cash.
+    const cashIn = hasSession ? session.cashCaissiere : cashSysteme;
 
     let entries = 0, exits = 0;
     let cashEntries = 0, bankEntries = 0, cashExits = 0, bankExits = 0;
@@ -173,7 +175,7 @@ function buildDailyData(
       }
     }
 
-    cashNet = cashNet + cashEntries + cashCaissiere - cashExits;
+    cashNet = cashNet + cashEntries + cashIn - cashExits;
     cardCumul = cardCumul + cardReceipt + bankEntries - bankExits;
 
     if (dayPayments.length > 0 || cashCaissiere > 0 || cardReceipt > 0 || daySales.count > 0) {
