@@ -15,7 +15,7 @@ import {
   X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
   TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
-  ArrowUpRight, ArrowDownRight, Upload, Search,
+  ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
@@ -882,70 +882,90 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
   title: string;
   accent: string;
   bg: string;
-  /** colonnes : header + alignement + rendu d'une ligne */
-  columns: Array<{ label: string; align?: 'right'; render: (r: FinanceDetailRow) => ReactNode }>;
+  /** filtre déroulant contextuel (statut, méthode…) ; options dérivées des lignes présentes */
+  filter?: {
+    placeholder: string;
+    value: (r: FinanceDetailRow) => string | null | undefined;
+    display: (v: string) => string;
+  };
+  /** colonnes : header + alignement + rendu d'une ligne + clé de tri */
+  columns: Array<{ label: string; align?: 'right'; render: (r: FinanceDetailRow) => ReactNode; sortValue: (r: FinanceDetailRow) => string | number }>;
 }> = {
   engagement: {
     title: 'Engagement — factures de la période', accent: '#0d4d8c', bg: '#f0f6ff',
+    filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
-      { label: 'Fournisseur', render: r => r.supplierName || '—' },
-      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
-      { label: 'Statut', render: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '—' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
+      { label: 'Statut', render: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '—', sortValue: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '' },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
   treasury: {
     title: 'Trésorerie sortie — paiements effectifs', accent: '#0e7c3a', bg: '#f0f9f4',
+    filter: { placeholder: 'Toutes les méthodes', value: r => r.method, display: v => PAYMENT_METHOD_LABELS[v] || v },
     columns: [
-      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
-      { label: 'Bénéficiaire', render: r => r.supplierName || r.label || '—' },
-      { label: 'Méthode', render: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '—' },
-      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span> },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
+      { label: 'Bénéficiaire', render: r => r.supplierName || r.label || '—', sortValue: r => r.supplierName || r.label || '' },
+      { label: 'Méthode', render: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '—', sortValue: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '' },
+      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
   remainingToPay: {
     title: 'Reste à payer — factures non soldées', accent: '#856404', bg: '#fff9e6',
+    filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
-      { label: 'Fournisseur', render: r => r.supplierName || '—' },
-      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
-      { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span> },
-      { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span> },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{n(r.amount)} DH</span> },
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
+      { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span>, sortValue: r => r.total ?? 0 },
+      { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span>, sortValue: r => r.paid ?? 0 },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
   receivedNotInvoiced: {
     title: 'Reçu non facturé — BC livrés sans facture', accent: '#b71c1c', bg: '#fff5f5',
     columns: [
-      { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
-      { label: 'Fournisseur', render: r => r.supplierName || '—' },
-      { label: 'Date livraison', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
-      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+      { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
+      { label: 'Date livraison', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
+      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
   unpaidInvoices: {
     title: 'Factures impayées (toutes périodes)', accent: '#856404', bg: 'var(--theme-bg-page)',
+    filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span> },
-      { label: 'Fournisseur', render: r => r.supplierName || '—' },
-      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
-      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
+      { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
   uncashedChecks: {
     title: 'Chèques émis non encaissés', accent: '#856404', bg: '#fff9e6',
     columns: [
-      { label: 'Bénéficiaire', render: r => r.supplierName || '—' },
-      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span> },
-      { label: 'Émis le', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—') },
-      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—') },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span> },
+      { label: 'Bénéficiaire', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
+      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Émis le', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
+      { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
     ],
   },
 };
+
+/** Texte agrégé d'une ligne pour la recherche plein-texte (insensible à la casse) */
+function financeRowSearchText(r: FinanceDetailRow): string {
+  return [
+    r.ref, r.supplierRef, r.supplierName, r.label,
+    INVOICE_STATUS_LABELS[r.status || ''] || r.status,
+    PAYMENT_METHOD_LABELS[r.method || ''] || r.method,
+    r.date, r.dueDate,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
 
 function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   kind: FinanceDetailKind;
@@ -958,8 +978,53 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
     queryKey: ['finance-detail', kind, dateFrom, dateTo],
     queryFn: () => reportsApi.financeOverviewDetail(kind, dateFrom, dateTo),
   });
-  const rows = data ?? [];
+  const allRows = useMemo(() => data ?? [], [data]);
+
+  // Contrôles recherche / filtre / tri
+  const [search, setSearch] = useState('');
+  const [filterValue, setFilterValue] = useState('');
+  const [sortCol, setSortCol] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // On réinitialise les contrôles quand on change de carte
+  useEffect(() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }, [kind]);
+
+  // Options du filtre déroulant : valeurs distinctes effectivement présentes
+  const filterOptions = useMemo(() => {
+    if (!cfg.filter) return [];
+    const seen = new Set<string>();
+    for (const r of allRows) {
+      const v = cfg.filter.value(r);
+      if (v) seen.add(v);
+    }
+    return [...seen].sort();
+  }, [allRows, cfg]);
+
+  const rows = useMemo(() => {
+    let out = allRows;
+    const q = search.trim().toLowerCase();
+    if (q) out = out.filter(r => financeRowSearchText(r).includes(q));
+    if (cfg.filter && filterValue) out = out.filter(r => cfg.filter!.value(r) === filterValue);
+    if (sortCol != null) {
+      const acc = cfg.columns[sortCol].sortValue;
+      out = [...out].sort((a, b) => {
+        const va = acc(a), vb = acc(b);
+        const cmp = (typeof va === 'number' && typeof vb === 'number')
+          ? va - vb
+          : String(va).localeCompare(String(vb), 'fr', { numeric: true });
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return out;
+  }, [allRows, search, filterValue, sortCol, sortDir, cfg]);
+
   const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+  const hasControls = search !== '' || filterValue !== '' || sortCol != null;
+
+  const toggleSort = (i: number) => {
+    if (sortCol === i) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(i); setSortDir('asc'); }
+  };
 
   return (
     <div style={{ border: `1px solid ${cfg.accent}33`, borderRadius: 4, overflow: 'hidden' }}>
@@ -968,7 +1033,9 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
         <div>
           <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: cfg.accent }}>{cfg.title}</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {rows.length} ligne{rows.length > 1 ? 's' : ''} — total <strong style={{ fontFamily: 'ui-monospace, monospace', color: cfg.accent }}>{n(total)} DH</strong>
+            {rows.length} ligne{rows.length > 1 ? 's' : ''}
+            {rows.length !== allRows.length && <> sur {allRows.length}</>}
+            {' '}— total <strong style={{ fontFamily: 'ui-monospace, monospace', color: cfg.accent }}>{n(total)} DH</strong>
           </div>
         </div>
         <button onClick={onClose} title="Fermer le détail"
@@ -976,6 +1043,27 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
           <X size={18} style={{ color: 'var(--theme-text-muted)' }} />
         </button>
       </div>
+      {/* Barre de recherche / filtre / tri */}
+      {!isLoading && allRows.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 16px', borderBottom: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--theme-text-muted)', pointerEvents: 'none' }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="odoo-input" style={{ paddingLeft: 26, width: 200 }} />
+          </div>
+          {cfg.filter && filterOptions.length > 0 && (
+            <select value={filterValue} onChange={e => setFilterValue(e.target.value)} className="odoo-input" style={{ width: 180 }}>
+              <option value="">{cfg.filter.placeholder}</option>
+              {filterOptions.map(v => <option key={v} value={v}>{cfg.filter!.display(v)}</option>)}
+            </select>
+          )}
+          {hasControls && (
+            <button onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              <RotateCcw size={12} /> Réinitialiser
+            </button>
+          )}
+        </div>
+      )}
       {/* Body */}
       <div style={{ maxHeight: 420, overflow: 'auto' }}>
         {isLoading ? (
@@ -985,14 +1073,20 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
           </div>
         ) : rows.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>
-            Aucune ligne à afficher.
+            {allRows.length === 0 ? 'Aucune ligne à afficher.' : 'Aucune ligne ne correspond à la recherche.'}
           </div>
         ) : (
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
                 {cfg.columns.map((c, i) => (
-                  <th key={i} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>{c.label}</th>
+                  <th key={i} onClick={() => toggleSort(i)}
+                    style={{ textAlign: c.align === 'right' ? 'right' : undefined, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                    {c.label}
+                    {sortCol === i && (sortDir === 'asc'
+                      ? <ArrowUp size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
+                      : <ArrowDown size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />)}
+                  </th>
                 ))}
               </tr>
             </thead>
