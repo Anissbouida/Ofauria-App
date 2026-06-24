@@ -156,9 +156,9 @@ export const packagingItemRepository = {
     // Upsert + decrement avec lock implicite (ON CONFLICT pour atomique)
     const result = await client.query(
       `INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity)
-       VALUES ($1, $2, GREATEST(0 + $3, 0))
+       VALUES ($1, $2, GREATEST($3::numeric, 0))
        ON CONFLICT (packaging_id, store_id)
-       DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3, 0),
+       DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3::numeric, 0),
                      updated_at = NOW()
        RETURNING stock_quantity`,
       [data.packagingId, data.storeId, data.change]
