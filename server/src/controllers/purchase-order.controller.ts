@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
+import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
 import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service.js';
 import { db } from '../config/database.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
@@ -116,6 +117,25 @@ export const purchaseOrderController = {
     }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'annule');
     res.json({ success: true, data: updated });
+  },
+
+  /**
+   * POST /purchase-orders/:id/cancel-reception — Annule toutes les receptions
+   * d'un BC (admin uniquement, garde-fou cote route via authorize(ROLES.ADMIN)).
+   * Reverse stock + facture + ecriture comptable et repasse le BC en "envoye".
+   */
+  async cancelReception(req: AuthRequest, res: Response) {
+    try {
+      const result = await receptionVoucherRepository.cancelForPurchaseOrder(
+        req.params.id, req.user!.userId
+      );
+      res.json({ success: true, data: result });
+    } catch (err) {
+      console.error('[cancelReception] Error:', err);
+      const message = err instanceof Error ? err.message : 'Erreur lors de l\'annulation de la reception';
+      const statusCode = (err as { statusCode?: number })?.statusCode ?? 500;
+      res.status(statusCode).json({ success: false, error: { message } });
+    }
   },
 
   async remove(req: AuthRequest, res: Response) {

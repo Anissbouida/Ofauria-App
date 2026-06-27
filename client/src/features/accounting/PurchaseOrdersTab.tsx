@@ -16,6 +16,7 @@ import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { useAuth } from '../../context/AuthContext';
 import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 
 // Racines proposees a la creation d'un article de BC : matieres premieres
@@ -89,6 +90,9 @@ type POItem = {
 
 export default function PurchaseOrdersTab() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Annulation de reception reservee a l'admin (reverse stock + facture + compta).
+  const isAdmin = user?.role === 'admin';
   const [statusFilter, setStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
@@ -126,6 +130,20 @@ export default function PurchaseOrdersTab() {
   const deleteMutation = useMutation({
     mutationFn: purchaseOrdersApi.remove,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC supprimé'); },
+  });
+  // Annulation de reception (admin) : reverse stock, lots, facture et ecriture comptable.
+  const cancelReceptionMutation = useMutation({
+    mutationFn: purchaseOrdersApi.cancelReception,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-pos'] });
+      notify.success('Réception annulée — stock et facture extournés');
+    },
+    onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
+      notify.error(err?.response?.data?.error?.message ?? 'Erreur lors de l\'annulation de la réception');
+    },
   });
   const notDeliveredMutation = useMutation({
     mutationFn: purchaseOrdersApi.markNotDelivered,
@@ -491,6 +509,23 @@ export default function PurchaseOrdersTab() {
                               style={{ color: '#7c3aed' }}
                             >
                               <Receipt size={13} />
+                            </button>
+                          )}
+                          {/* Annuler la reception (ADMIN) : reverse stock + facture + compta,
+                              repasse le BC en "envoye". Visible seulement sur BC receptionnes. */}
+                          {isAdmin && ['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(status) && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Annuler la réception du BC ${po.order_number} ?\n\nLe stock reçu, la facture et l'écriture comptable seront extournés, et le BC repassera en "Envoyé".`)) {
+                                  cancelReceptionMutation.mutate(po.id as string);
+                                }
+                              }}
+                              title="Annuler la réception (admin)"
+                              className="odoo-pager-btn"
+                              disabled={cancelReceptionMutation.isPending}
+                              style={{ color: '#b85d1a' }}
+                            >
+                              <PackageX size={13} />
                             </button>
                           )}
                           {/* Edition complete (admin/gerant) : qty/prix/lignes. Dispo sur tous statuts. */}

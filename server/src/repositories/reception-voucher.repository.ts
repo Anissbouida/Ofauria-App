@@ -3,7 +3,7 @@ import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { getLocalYear } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
-import { fromInvoice, persistEntry } from '../services/journal-generator.service.js';
+import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).
 const CAT_MATIERES_PREMIERES = '10000000-0000-0000-0000-000000000003'; // racine niveau 1
@@ -531,6 +531,216 @@ export const receptionVoucherRepository = {
 
       await client.query('COMMIT');
       return { ...rv, status: newStatus, autoInvoice };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Annule TOUTES les receptions d'un bon de commande (admin uniquement).
+   *
+   * Operation inverse de `create` : une seule transaction qui extourne tous les
+   * effets de la/les reception(s) puis remet le BC en statut "envoye" (en
+   * attente de livraison), comme s'il n'avait jamais ete receptionne.
+   *
+   * Garde-fous (bloquants, statusCode 409) :
+   *   - Lot ingredient deja entame (quantity_remaining < quantity_received) :
+   *     du stock a ete consomme (production/sortie) -> reverser creerait du
+   *     stock negatif. L'admin doit d'abord defaire ces mouvements.
+   *   - Facture liee avec un paiement enregistre (paid_amount > 0) : on ne
+   *     supprime pas une facture deja (partiellement) payee.
+   *
+   * Effets reverses :
+   *   - Facture(s) auto-creee(s) : extourne comptable (reverseEntriesForSource)
+   *     + suppression physique (invoice_items en CASCADE).
+   *   - Stock ingredients : -qty sur inventory, suppression des ingredient_lots
+   *     et des inventory_transactions de la reception.
+   *   - Stock consommables : adjustStock(-qty) (laisse une ligne d'extourne
+   *     dans packaging_stock_transactions pour la tracabilite).
+   *   - purchase_order_items.quantity_delivered remis a 0.
+   *   - reception_voucher_items + reception_vouchers supprimes.
+   *   - BC repasse en 'envoye', delivery_date = NULL.
+   *
+   * Limite connue : si une reception anterieure a utilise forceComplete, les
+   * lignes du BC livrees a 0 ont ete supprimees et les quantites commandees
+   * alignees sur le livre. Ces donnees d'origine ne sont pas restaurables ici.
+   */
+  async cancelForPurchaseOrder(purchaseOrderId: string, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const poRes = await client.query(
+        `SELECT po.*, s.name AS supplier_name FROM purchase_orders po
+         JOIN suppliers s ON s.id = po.supplier_id
+         WHERE po.id = $1 FOR UPDATE`,
+        [purchaseOrderId]
+      );
+      const po = poRes.rows[0];
+      if (!po) {
+        const e: Error & { statusCode?: number } = new Error('Bon de commande non trouve');
+        e.statusCode = 404; throw e;
+      }
+      if (!['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(po.status as string)) {
+        const e: Error & { statusCode?: number } = new Error(
+          'Ce bon de commande n\'est pas en etat receptionne — rien a annuler.');
+        e.statusCode = 409; throw e;
+      }
+
+      const rvs = await client.query(
+        `SELECT id, voucher_number FROM reception_vouchers
+         WHERE purchase_order_id = $1 FOR UPDATE`,
+        [purchaseOrderId]
+      );
+      if (rvs.rows.length === 0) {
+        const e: Error & { statusCode?: number } = new Error(
+          'Aucune reception a annuler pour ce bon de commande.');
+        e.statusCode = 409; throw e;
+      }
+      const rvIds = rvs.rows.map((r: Record<string, unknown>) => r.id as string);
+
+      // ── Garde-fou 1 : facture deja (partiellement) payee ──
+      const paidInv = await client.query(
+        `SELECT invoice_number FROM invoices
+         WHERE purchase_order_id = $1 AND status != 'cancelled' AND COALESCE(paid_amount, 0) > 0
+         LIMIT 1`,
+        [purchaseOrderId]
+      );
+      if (paidInv.rows.length > 0) {
+        const e: Error & { statusCode?: number } = new Error(
+          `Annulation impossible : la facture ${paidInv.rows[0].invoice_number} a deja un paiement enregistre. ` +
+          `Supprime d'abord le paiement.`);
+        e.statusCode = 409; throw e;
+      }
+
+      // ── Garde-fou 2 : lot ingredient deja entame (stock consomme) ──
+      const consumed = await client.query(
+        `SELECT COALESCE(ing.name, '?') AS ingredient_name
+         FROM ingredient_lots il
+         JOIN reception_voucher_items rvi ON rvi.id = il.reception_voucher_item_id
+         LEFT JOIN ingredients ing ON ing.id = il.ingredient_id
+         WHERE rvi.reception_voucher_id = ANY($1::uuid[])
+           AND il.quantity_remaining < il.quantity_received
+         LIMIT 1`,
+        [rvIds]
+      );
+      if (consumed.rows.length > 0) {
+        const e: Error & { statusCode?: number } = new Error(
+          `Annulation impossible : le lot de "${consumed.rows[0].ingredient_name}" a deja ete ` +
+          `partiellement consomme (production/sortie). Annule d'abord ces mouvements.`);
+        e.statusCode = 409; throw e;
+      }
+
+      // ── Extourne + suppression de la/les facture(s) auto du BC ──
+      // Pas de paiement (garde-fou 1) -> seul le chemin "facture" du ledger
+      // est a reverser, exactement comme deleteById sans paiements.
+      const invs = await client.query(
+        `SELECT id FROM invoices WHERE purchase_order_id = $1 AND status != 'cancelled'`,
+        [purchaseOrderId]
+      );
+      for (const inv of invs.rows) {
+        if (FLAGS.LEDGER_AUTOGEN) {
+          await reverseEntriesForSource(
+            client as unknown as import('pg').PoolClient,
+            { sourceId: inv.id as string, sourceKinds: ['invoice', 'backfill'] }
+          );
+        }
+        await client.query(`DELETE FROM invoices WHERE id = $1`, [inv.id]);
+      }
+
+      // ── Reversal du stock, ligne de reception par ligne ──
+      const rviRes = await client.query(
+        `SELECT rvi.ingredient_id, rvi.packaging_id, rvi.quantity_received,
+                rv.store_id, rv.voucher_number
+         FROM reception_voucher_items rvi
+         JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+         WHERE rvi.reception_voucher_id = ANY($1::uuid[])`,
+        [rvIds]
+      );
+
+      // Store de fallback pour les consommables sans store (cf. create : le
+      // credit packaging tombe sur le 1er magasin quand la reception n'en porte pas).
+      let fallbackStoreId: string | null = null;
+      if (rviRes.rows.some((it: Record<string, unknown>) => it.packaging_id && !it.store_id)) {
+        const s = await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`);
+        fallbackStoreId = (s.rows[0]?.id as string | undefined) ?? null;
+      }
+
+      for (const it of rviRes.rows) {
+        const qty = parseFloat(it.quantity_received as string);
+        if (!(qty > 0)) continue;
+
+        if (it.packaging_id) {
+          const storeId = (it.store_id as string | null) ?? fallbackStoreId;
+          if (!storeId) {
+            const e: Error & { statusCode?: number } = new Error(
+              'Aucun magasin disponible pour reverser le stock consommable.');
+            e.statusCode = 400; throw e;
+          }
+          await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
+            packagingId: it.packaging_id as string,
+            storeId,
+            change: -qty,
+            type: 'adjustment',
+            referenceId: purchaseOrderId,
+            referenceType: 'purchase_order',
+            note: `Annulation reception ${it.voucher_number} — BC ${po.order_number}`,
+            performedBy: userId,
+          });
+        } else if (it.ingredient_id) {
+          const storeFilter = it.store_id ? ' AND store_id = $3' : '';
+          const params: unknown[] = it.store_id
+            ? [qty, it.ingredient_id, it.store_id]
+            : [qty, it.ingredient_id];
+          await client.query(
+            `UPDATE inventory SET current_quantity = GREATEST(current_quantity - $1, 0), updated_at = NOW()
+             WHERE ingredient_id = $2${storeFilter}`,
+            params
+          );
+        }
+      }
+
+      // ── Suppression des lots + transactions inventaire de la reception ──
+      await client.query(
+        `DELETE FROM ingredient_lots WHERE reception_voucher_item_id IN (
+           SELECT id FROM reception_voucher_items WHERE reception_voucher_id = ANY($1::uuid[])
+         )`,
+        [rvIds]
+      );
+      await client.query(
+        `DELETE FROM inventory_transactions WHERE reception_voucher_id = ANY($1::uuid[])`,
+        [rvIds]
+      );
+
+      // ── Remise a zero des quantites livrees + suppression des bons ──
+      await client.query(
+        `UPDATE purchase_order_items SET quantity_delivered = 0 WHERE purchase_order_id = $1`,
+        [purchaseOrderId]
+      );
+      await client.query(
+        `DELETE FROM reception_voucher_items WHERE reception_voucher_id = ANY($1::uuid[])`,
+        [rvIds]
+      );
+      await client.query(
+        `DELETE FROM reception_vouchers WHERE id = ANY($1::uuid[])`,
+        [rvIds]
+      );
+
+      // ── BC repasse "envoye" (en attente de livraison) ──
+      await client.query(
+        `UPDATE purchase_orders SET status = 'envoye', delivery_date = NULL, updated_at = NOW() WHERE id = $1`,
+        [purchaseOrderId]
+      );
+
+      await client.query('COMMIT');
+      return {
+        purchaseOrderId,
+        status: 'envoye',
+        cancelledVouchers: rvs.rows.map((r: Record<string, unknown>) => r.voucher_number as string),
+      };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

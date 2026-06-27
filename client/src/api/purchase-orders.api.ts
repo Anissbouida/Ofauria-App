@@ -15,6 +15,9 @@ export const purchaseOrdersApi = {
     api.post(`/purchase-orders/${id}/not-delivered`).then(r => r.data.data),
   cancel: (id: string) =>
     api.post(`/purchase-orders/${id}/cancel`).then(r => r.data.data),
+  /** Annule la reception d'un BC (reverse stock + facture + compta). Admin uniquement. */
+  cancelReception: (id: string) =>
+    api.post(`/purchase-orders/${id}/cancel-reception`).then(r => r.data.data),
   updatePrices: (id: string, data: { items: { itemId: string; unitPrice: number }[] }) =>
     api.post(`/purchase-orders/${id}/update-prices`, data).then(r => r.data.data),
   /** Genere manuellement la facture d'un BC livre dont la facture auto n'a pas ete creee. */
