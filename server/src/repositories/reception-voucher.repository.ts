@@ -263,11 +263,16 @@ export const receptionVoucherRepository = {
     const runner = client ?? db;
     await runner.query(`SELECT pg_advisory_xact_lock(hashtext('voucher_number'))`);
     const year = getLocalYear();
+    // Basé sur le MAX du suffixe numerique existant (pas COUNT(*)) : robuste aux
+    // suppressions de bons (ex: annulation de reception), sinon COUNT+1 retombe
+    // sur un numero deja attribue -> duplicate key sur voucher_number.
     const result = await runner.query(
-      `SELECT COUNT(*) FROM reception_vouchers WHERE EXTRACT(YEAR FROM reception_date) = $1`,
-      [year]
+      `SELECT COALESCE(MAX(substring(voucher_number from '([0-9]+)$')::int), 0) AS maxseq
+       FROM reception_vouchers
+       WHERE voucher_number LIKE $1`,
+      [`BR-${year}-%`]
     );
-    const seq = parseInt(result.rows[0].count) + 1;
+    const seq = parseInt(result.rows[0].maxseq) + 1;
     return `BR-${year}-${String(seq).padStart(4, '0')}`;
   },
 
