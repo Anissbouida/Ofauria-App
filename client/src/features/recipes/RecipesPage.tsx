@@ -15,7 +15,6 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
-import NomenclatureEditor from './NomenclatureEditor';
 import { yieldInSellingUnit, requiresPieceWeight, type SellingUnit } from '../../utils/units';
 import type { RecipeCategory } from '../../api/recipes.api';
 
@@ -1894,30 +1893,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const liveCost = ingredientCost + subRecipeCost + packagingCost;
 
-  // Édition unifiée : pour un PRODUIT existant, la composition/formats/finance sont
-  // gérés par l'éditeur embarqué (onglet Composition). Le formulaire ne sauve alors
-  // que les métadonnées (n'envoie ni formats, ni marge, ni frais → l'éditeur reste maître).
-  const useNewEditor = isEdit && !isBase;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (useNewEditor) {
-      const etapesNew = formEtapes.filter((et) => et.nom.trim()).map((et) => ({
-        ordre: et.ordre, nom: et.nom.trim(),
-        duree_estimee_min: et.duree_estimee_min ? parseFloat(et.duree_estimee_min) : null,
-        est_bloquante: et.est_bloquante, timer_auto: et.timer_auto, controle_qualite: et.controle_qualite,
-        checklist_items: et.checklist_items.filter((c) => c.trim()),
-        est_repetable: et.est_repetable, nb_repetitions: parseInt(et.nb_repetitions) || 1,
-        responsable_role: et.responsable_role || null,
-      }));
-      // N'envoie QUE les métadonnées : ni ingredients, ni subRecipes, ni formats, ni
-      // marge/frais → le backend laisse la composition de l'éditeur intacte (COALESCE/guards).
-      updateMutation.mutate({
-        name, productId: productId || null, categoryId: categoryId || null,
-        isBase: false, yieldUnit, instructions, etapes: etapesNew,
-      });
-      return;
-    }
     const validIngredients = formIngredients
       .filter(row => row.ingredientId && row.quantity && parseFloat(row.quantity) > 0)
       .map(row => ({ ingredientId: row.ingredientId, quantity: parseFloat(row.quantity), unit: row.unit || null }));
@@ -2004,7 +1981,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: useNewEditor ? 1320 : 880, maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: 880, maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar */}
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
@@ -2124,9 +2101,6 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 )}
 
-                {/* Sections produit (formats, coûts, frais, tarif) — masquées en édition unifiée :
-                    gérées par l'éditeur de l'onglet Composition. Conservées pour la création et les bases. */}
-                {!useNewEditor && (<>
                 {/* Formats de production (multi-formats par recette) */}
                 {(() => {
                   // Synthese live cote client : compare poids ingredients (approx) vs poids alloue aux formats
@@ -2518,16 +2492,11 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                     </div>
                   );
                 })()}
-              </>)}
               </>
             )}
 
             {/* ═══ Tab: Composition ═══ */}
-            {activeTab === 'composition' && (useNewEditor ? (
-              <div style={{ padding: '0.25rem 0' }}>
-                <NomenclatureEditor recipeId={recipeId!} />
-              </div>
-            ) : (
+            {activeTab === 'composition' && (
               <>
                 {/* Sub-recipes */}
                 {!isBase && availableBaseRecipes.length > 0 && (
@@ -2765,7 +2734,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 </div>
               </>
-            ))}
+            )}
 
             {/* ═══ Tab: Etapes ═══ */}
             {activeTab === 'etapes' && (
