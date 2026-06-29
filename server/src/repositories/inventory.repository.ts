@@ -515,10 +515,14 @@ export const ingredientRepository = {
       let transferred = 0;
       if (qty > 0 && storeId) {
         const stk = await client.query(
+          // $3::numeric explicite : sans cast, le litteral 0 de GREATEST force
+          // Postgres a inferer le parametre en integer (node-pg envoie "35.2"
+          // sous forme texte non typee) -> « invalid input syntax for type
+          // integer: "35.2" » sur les stocks decimaux.
           `INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity)
-           VALUES ($1, $2, GREATEST($3, 0))
+           VALUES ($1, $2, GREATEST($3::numeric, 0))
            ON CONFLICT (packaging_id, store_id)
-           DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3, 0), updated_at = NOW()
+           DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3::numeric, 0), updated_at = NOW()
            RETURNING stock_quantity`,
           [packagingId, storeId, qty]
         );
