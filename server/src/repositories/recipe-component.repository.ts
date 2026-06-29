@@ -422,57 +422,6 @@ export const recipeComponentRepository = {
     return res.rows.map((r: { name: string }) => r.name);
   },
 
-  async replaceComposition(recipeId: string, data: { components: ComponentInput[]; nbPieces?: number | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-      const exists = await client.query(`SELECT 1 FROM recipes WHERE id = $1`, [recipeId]);
-      if (exists.rows.length === 0) { await client.query('ROLLBACK'); return null; }
-
-      // Anti-cycle : refuse si un composant (sous-)recette boucle vers cette recette.
-      const childIds = data.components
-        .filter((c) => c.sourceRecipeId)
-        .map((c) => c.sourceRecipeId as string);
-      const cyclic = await this.detectComponentCycle(recipeId, childIds, client);
-      if (cyclic.length > 0) {
-        const err = new Error(
-          `Cycle détecté : « ${cyclic.join(' », « ')} » contient (directement ou indirectement) cette recette. Composition refusée.`
-        );
-        (err as { code?: string }).code = 'RECIPE_CYCLE';
-        throw err;
-      }
-
-      await client.query(`DELETE FROM recipe_components WHERE recipe_id = $1`, [recipeId]);
-      for (const c of data.components) {
-        await client.query(
-          `INSERT INTO recipe_components
-             (recipe_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [recipeId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-           c.quantite, c.unite, c.ordre]
-        );
-      }
-      // Modèle PAR PIÈCE : la compo = 1 pièce → yield_quantity=1.
-      // nbPieces = pièces produites par une fournée (info production).
-      await client.query(
-        `UPDATE recipes
-         SET mode_cout          = CASE WHEN $2 > 0 THEN 'compose' ELSE mode_cout END,
-             yield_quantity     = CASE WHEN $2 > 0 THEN 1 ELSE yield_quantity END,
-             yield_unit         = CASE WHEN $2 > 0 THEN 'unit' ELSE yield_unit END,
-             pieces_par_fournee = COALESCE($3, pieces_par_fournee),
-             updated_at = NOW()
-         WHERE id = $1`,
-        [recipeId, data.components.length, data.nbPieces ?? null]
-      );
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-    return this.findComposition(recipeId);
-  },
 
   // --- CRUD des formats d'une recette ---
   async listFormats(recipeId: string) {

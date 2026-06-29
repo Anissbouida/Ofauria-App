@@ -155,11 +155,7 @@ export const recipesApi = {
   saveFormatComponents: (recipeId: string, formatId: string, payload: Record<string, any>) =>
     api.put(`/recipes/${recipeId}/formats/${formatId}/components`, payload).then(r => r.data.data as FormatComponentsData),
 
-  // --- Composition au niveau recette (indépendante du format/contenant) ---
-  getComposition: (recipeId: string) =>
-    api.get(`/recipes/${recipeId}/composition`).then(r => r.data.data as CompositionData),
-  saveComposition: (recipeId: string, payload: Record<string, any>) =>
-    api.put(`/recipes/${recipeId}/composition`, payload).then(r => r.data.data as CompositionData),
+  // Leviers financiers (frais indirects + multiplicateur) au niveau recette.
   saveFinance: (recipeId: string, payload: Record<string, any>) =>
     api.patch(`/recipes/${recipeId}/finance`, payload).then(r => r.data.data as CompositionData),
   recipeChildren: (recipeId: string) =>

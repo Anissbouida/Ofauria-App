@@ -43,27 +43,6 @@ export const recipeComponentController = {
     }
   },
 
-  // --- Composition niveau recette ---
-  async getComposition(req: AuthRequest, res: Response) {
-    const data = await recipeComponentRepository.findComposition(req.params.recipeId);
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
-    res.json({ success: true, data });
-  },
-
-  async saveComposition(req: AuthRequest, res: Response) {
-    try {
-      const data = await recipeComponentRepository.replaceComposition(req.params.recipeId, req.body);
-      if (!data) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
-      res.json({ success: true, data });
-    } catch (err: unknown) {
-      if ((err as { code?: string })?.code === 'RECIPE_CYCLE') {
-        res.status(409).json({ success: false, error: { message: (err as Error).message } });
-        return;
-      }
-      throw err;
-    }
-  },
-
   async saveFinance(req: AuthRequest, res: Response) {
     const data = await recipeComponentRepository.updateFinance(req.params.recipeId, req.body);
     if (!data) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }

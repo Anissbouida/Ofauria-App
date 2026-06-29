@@ -24,12 +24,6 @@ export const replaceComponentsSchema = z.object({
   poidsCuitG: z.number().nonnegative().nullable().optional(),
 });
 
-// PUT composition au niveau recette (remplace toute la compo + rendement pièces optionnel).
-export const replaceCompositionSchema = z.object({
-  components: z.array(componentSchema).default([]),
-  nbPieces: z.number().int().positive().nullable().optional(),
-});
-
 // PATCH leviers financiers saisissables (frais indirects + multiplicateur de vente).
 export const financeSchema = z.object({
   marginMultiplier: z.number().positive().nullable().optional(),

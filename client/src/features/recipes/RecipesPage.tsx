@@ -15,7 +15,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
-import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
+import NomenclatureEditor from './NomenclatureEditor';
 import { yieldInSellingUnit, requiresPieceWeight, type SellingUnit } from '../../utils/units';
 import type { RecipeCategory } from '../../api/recipes.api';
 
@@ -658,7 +658,6 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   const [showVersions, setShowVersions] = useState(false);
   const [portions, setPortions] = useState<number | null>(null);
   // KPI du format actif remontés par l'éditeur (Lot 4) — l'en-tête suit l'onglet.
-  const [fmtKpi, setFmtKpi] = useState<FormatKpi | null>(null);
 
   const yieldQty = recipe?.yield_quantity || 1;
   // Rendement effectif : si la recette a des formats, le rendement est la somme
@@ -741,10 +740,10 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
             : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0)));
   const margin = sellingPrice > 0 ? ((sellingPrice - effectiveCostPerUnit) / sellingPrice * 100) : 0;
   // KPI affichés dans l'en-tête : suivent le format actif de l'éditeur si dispo (Lot 4).
-  const kpiRendement = isCompose && fmtKpi ? fmtKpi.rendement : rendementPieces;
-  const kpiCoutPiece = isCompose && fmtKpi ? fmtKpi.coutPiece : effectiveCostPerUnit;
-  const kpiPrix = isCompose && fmtKpi ? fmtKpi.prix : sellingPrice;
-  const kpiMarge = isCompose && fmtKpi ? fmtKpi.margePct : margin;
+  const kpiRendement = rendementPieces;
+  const kpiCoutPiece = effectiveCostPerUnit;
+  const kpiPrix = sellingPrice;
+  const kpiMarge = margin;
 
   const steps = (() => {
     if (!recipe?.instructions) return [];
@@ -770,11 +769,6 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
           <button onClick={onEdit} className="odoo-btn-secondary">
             <Pencil size={13} /> Modifier
           </button>
-          {recipe?.mode_cout === 'compose' && !recipe?.is_base && (
-            <button onClick={() => navigate(`/recipes/${recipeId}/nomenclature`)} className="odoo-btn-secondary" title="Ouvrir l'éditeur en plein écran">
-              <Layers size={13} /> Plein écran
-            </button>
-          )}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
@@ -785,7 +779,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
             <div className="odoo-smart-button">
               <div className="odoo-smart-button-value">{isCompose ? kpiRendement : (hasFormats ? formatsTotalUnits : yieldQty)}</div>
               <div className="odoo-smart-button-label">
-                <Scale size={11} /> Rendement {isCompose ? (fmtKpi?.contenantNom ? `(${fmtKpi.contenantNom})` : '(pièces/fournée)') : (hasFormats ? `(${recipe.formats!.length} formats)` : `(${recipe.yield_unit || 'u.'})`)}
+                <Scale size={11} /> Rendement {isCompose ? '(pièces/fournée)' : (hasFormats ? `(${recipe.formats!.length} formats)` : `(${recipe.yield_unit || 'u.'})`)}
               </div>
             </div>
             <div className="odoo-smart-button">
@@ -904,12 +898,6 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   )}
                 </div>
               </div>
-              )}
-
-              {/* Composition éditable (arbre + frais indirects + multiplicateur) — produits composés.
-                  Remplace l'ancien tableau lecture seule : édition directe dans le modal. */}
-              {recipe.mode_cout === 'compose' && !recipe.is_base && (
-                <NomenclatureEditor recipeId={recipeId} onFinance={setFmtKpi} />
               )}
 
               {/* Préparations de base (vue legacy) — masquée pour les produits composés */}

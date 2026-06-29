@@ -8,7 +8,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { createRecipeSchema, updateRecipeSchema } from '../validators/recipe.validator.js';
-import { replaceComponentsSchema, replaceCompositionSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
+import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
@@ -48,8 +48,6 @@ router.get('/categories', authenticate, recipeController.listCategories);
 // Nomenclature par format (composants) — chemins génériques déclarés AVANT /:id.
 router.get('/component-roles', authenticate, recipeComponentController.listRoles);
 router.get('/component-sources', authenticate, recipeComponentController.listSources);
-router.get('/:recipeId/composition', authenticate, recipeComponentController.getComposition);
-router.put('/:recipeId/composition', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(replaceCompositionSchema), recipeComponentController.saveComposition);
 router.patch('/:recipeId/finance', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(financeSchema), recipeComponentController.saveFinance);
 router.get('/:recipeId/children', authenticate, recipeComponentController.children);
 router.get('/:recipeId/formats', authenticate, recipeComponentController.listFormats);
