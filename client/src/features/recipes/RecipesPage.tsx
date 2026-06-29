@@ -10,10 +10,12 @@ import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pe
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
+import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
 import { yieldInSellingUnit, requiresPieceWeight, type SellingUnit } from '../../utils/units';
 import type { RecipeCategory } from '../../api/recipes.api';
 
@@ -93,6 +95,7 @@ interface RecipeDetail {
   total_cost: string;
   total_weight_kg: string | null;
   is_base: boolean;
+  mode_cout?: string;
   contenant_id: string | null;
   contenant_nom: string | null;
   contenant_type: number | null;
@@ -105,10 +108,13 @@ interface RecipeDetail {
   taux_main_oeuvre_dh_h?: string | number | null;
   cout_energie_fournee?: string | number | null;
   taux_frais_structure_pct?: string | number | null;
+  pieces_par_fournee?: number | null;
+  compo_par_piece?: boolean | null;
   packaging?: Record<string, unknown>[];
   etapes: RecipeEtape[];
   ingredients: RecipeIngredient[];
   sub_recipes: SubRecipeRef[];
+  composition?: { id: string; role: string | null; name: string; type: string; quantite: string; unite: string; cout_dh: string | null }[];
   formats?: RecipeFormat[];
   // Synthese multi-formats (vue v_recipe_format_summary)
   formats_poids_utilise_kg?: string | null;
@@ -177,6 +183,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 export default function RecipesPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const { data: recipes = [], isLoading } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
@@ -185,12 +192,28 @@ export default function RecipesPage() {
     queryFn: recipesApi.listCategories,
   });
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>(''); // '' = toutes
   const [showForm, setShowForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('contenants');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // Retour depuis la page plein écran : ?tab=<onglet> (liste) et/ou ?open=<id> (rouvre la fiche).
+  useEffect(() => {
+    const open = searchParams.get('open');
+    const tab = searchParams.get('tab');
+    if (!open && !tab) return;
+    if (tab === 'product' || tab === 'base' || tab === 'contenants') setActiveTab(tab as ActiveTab);
+    if (open) {
+      const r = (recipes as Record<string, any>[]).find((x) => x.id === open);
+      setActiveTab(r?.is_base ? 'base' : 'product');
+      setSelectedRecipeId(open);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('open'); next.delete('tab');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, recipes]);
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showImport, setShowImport] = useState(false);
@@ -251,6 +274,17 @@ export default function RecipesPage() {
     setEditingRecipeId(id);
     setShowForm(true);
     setSelectedRecipeId(null);
+  };
+
+  // Produit composé → ouverture directe en plein écran (page composition).
+  // Préparation de base → modal de consultation (pas de format/composition par contenant).
+  const openRecipe = (r: Record<string, any>) => {
+    if (r.is_base) setSelectedRecipeId(r.id as string);
+    else navigate(`/recipes/${r.id}/nomenclature`);
+  };
+  const editRecipe = (r: Record<string, any>) => {
+    if (r.is_base) openEdit(r.id as string);
+    else navigate(`/recipes/${r.id}/nomenclature`);
   };
 
   const openCreate = () => {
@@ -402,7 +436,7 @@ export default function RecipesPage() {
               return (
                 <div key={r.id as string}
                   className={`odoo-kanban-card ${cardStatus}`}
-                  onClick={() => setSelectedRecipeId(r.id as string)}>
+                  onClick={() => openRecipe(r)}>
                   <div className="odoo-kanban-card-title">
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
                       {r.is_base ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
@@ -476,21 +510,33 @@ export default function RecipesPage() {
                   Aucune recette trouvée
                 </td></tr>
               ) : sortedFiltered.map((r: Record<string, any>) => {
+                const isComposeRow = r.mode_cout === 'compose';
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
-                const costPerUnit = totalCost / yieldQty;
-                // Fallback : pas de produit lie → prix attendu via margin_multiplier
+                // Composé : coût/pièce = coût total ÷ rendement (format) ; sinon legacy ÷ yield.
+                const rendement = parseInt(String(r.rendement ?? '')) || (isComposeRow ? Math.round(yieldQty) : yieldQty) || 1;
+                const costPerUnit = isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty;
                 const productPrice = parseFloat(r.product_price as string || '0');
                 const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
-                const price = productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0);
+                // Composé : prix conseillé théorique = coût/pièce × multiplicateur.
+                const price = isComposeRow
+                  ? (rMargin > 0 ? costPerUnit * rMargin : 0)
+                  : (productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0));
                 const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
-                const dotClass = !r.is_base && price > 0
-                  ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger')
-                  : 'neutral';
+                // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
+                const dotClass = r.is_base ? 'neutral'
+                  : r.compo_vide ? 'danger'
+                  : r.rendement_a_definir ? 'warning'
+                  : 'ok';
+                const dotTitle = r.is_base ? 'Préparation de base'
+                  : r.compo_vide ? 'À corriger : composition vide'
+                  : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
+                  : 'OK';
+                const formatNom = (r.default_contenant_nom as string) || (r.contenant_nom as string) || '';
 
                 return (
-                  <tr key={r.id as string} onClick={() => setSelectedRecipeId(r.id as string)}>
-                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                  <tr key={r.id as string} onClick={() => openRecipe(r)}>
+                    <td><span className={`odoo-status-dot ${dotClass}`} title={dotTitle} /></td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                         {r.is_base ? <Layers size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={13} style={{ color: 'var(--theme-accent)' }} />}
@@ -508,15 +554,15 @@ export default function RecipesPage() {
                       </span>
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>
-                      {r.contenant_nom ? (
+                      {formatNom ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Box size={11} /> {r.contenant_nom as string}
+                          <Box size={11} /> {formatNom}
                         </span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 500 }}>{yieldQty}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{r.yield_unit as string || 'u.'}</span>
+                      <span style={{ fontWeight: 500 }}>{isComposeRow ? rendement : yieldQty}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isComposeRow ? 'p.' : (r.yield_unit as string || 'u.')}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{totalCost.toFixed(2)}</span>
@@ -535,11 +581,11 @@ export default function RecipesPage() {
                     </td>
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={() => setSelectedRecipeId(r.id as string)}
+                        <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
                           className="odoo-pager-btn" title="Voir">
                           <Eye size={13} />
                         </button>
-                        <button onClick={() => openEdit(r.id as string)}
+                        <button onClick={(e) => { e.stopPropagation(); editRecipe(r); }}
                           className="odoo-pager-btn" title="Modifier">
                           <Pencil size={13} />
                         </button>
@@ -592,6 +638,7 @@ export default function RecipesPage() {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; onClose: () => void; onEdit: () => void }) {
+  const navigate = useNavigate();
   const { data: recipe, isLoading, error } = useQuery<RecipeDetail>({
     queryKey: ['recipe', recipeId],
     queryFn: () => recipesApi.getById(recipeId),
@@ -610,6 +657,8 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
   const [showVersions, setShowVersions] = useState(false);
   const [portions, setPortions] = useState<number | null>(null);
+  // KPI du format actif remontés par l'éditeur (Lot 4) — l'en-tête suit l'onglet.
+  const [fmtKpi, setFmtKpi] = useState<FormatKpi | null>(null);
 
   const yieldQty = recipe?.yield_quantity || 1;
   // Rendement effectif : si la recette a des formats, le rendement est la somme
@@ -637,7 +686,12 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
     return sum + costPerUnit * sr.quantity * multiplier;
   }, 0) || 0;
 
-  const totalCost = ingredientCost + subRecipeCost;
+  const legacyTotalCost = ingredientCost + subRecipeCost;
+  // Produits composés : le coût vient de la nomenclature recette (v_recipe_total_cost),
+  // pas du calcul client legacy sur sub_recipes (qui n'est plus la source de vérité).
+  const isCompose = recipe?.mode_cout === 'compose';
+  const composeTotal = parseFloat(recipe?.total_cost || '0');
+  const totalCost = isCompose ? composeTotal : legacyTotalCost;
   const costPerUnit = targetPortions > 0 ? totalCost / targetPortions : 0;
 
   // Poids des ingredients DIRECTS (sans les sous-recettes). Sert pour la ligne
@@ -653,22 +707,44 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   // En mode multi-formats : PV pondere = somme(PV_par_format × nb) / total_units.
   const productPrice = parseFloat(recipe?.product_price || '0');
   const recipeMargin = parseFloat(String(recipe?.margin_multiplier ?? '0'));
-  // Cout / unite effectif : moyenne ponderee si multi-format, sinon legacy.
-  const effectiveCostPerUnit = hasFormats && formatsTotalUnits > 0
-    ? totalCost / formatsTotalUnits
-    : costPerUnit;
+  // Rendement unique (pièces/fournée) : pieces_par_fournee saisi, sinon rendement
+  // du format. Source partagée header / résumé / éditeur (modèle PAR PIÈCE).
+  const rendementPieces = isCompose
+    ? (recipe?.pieces_par_fournee || formatsTotalUnits || Math.round(yieldQty) || 1)
+    : (hasFormats ? formatsTotalUnits : yieldQty);
+  // Convention de saisie de la composition (mig 216) : par pièce ou par fournée.
+  const compoParPiece = recipe?.compo_par_piece === true;
+  // Cout / piece effectif :
+  // - composé PAR PIÈCE  : total_cost EST déjà le coût d'1 pièce.
+  // - composé PAR FOURNÉE : total_cost = coût du lot ⇒ ÷ rendement.
+  // - multi-format legacy : moyenne pondérée ; sinon legacy.
+  const effectiveCostPerUnit = isCompose
+    ? (compoParPiece ? totalCost : (rendementPieces > 0 ? totalCost / rendementPieces : totalCost))
+    : (hasFormats && formatsTotalUnits > 0 ? totalCost / formatsTotalUnits : costPerUnit);
   // PV de reference :
   // - multi-format : moyenne ponderee des PV par format (vue v_recipe_format_cost)
   // - sinon : product.price si renseigne, sinon costPerUnit × margin_multiplier
   const formatsPvWeightedAvg = hasFormats && formatsTotalUnits > 0
     ? recipe!.formats!.reduce((sum, f) => sum + parseFloat(f.prix_vente_unitaire || '0') * f.nb_par_defaut, 0) / formatsTotalUnits
     : 0;
-  const sellingPrice = hasFormats
-    ? formatsPvWeightedAvg
-    : (productPrice > 0
-        ? productPrice
-        : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0));
+  // Produit composé : prix de vente au niveau recette (prix produit, sinon coût×marge),
+  // pas la vue format legacy. Les autres recettes gardent le comportement existant.
+  const composeMargin = recipeMargin > 0 ? recipeMargin : 3;
+  // Composé (PAR PIÈCE) : prix conseillé = coût d'1 pièce × multiplicateur (théorique,
+  // cohérent avec l'éditeur). Le prix catalogue du produit reste géré côté Produits.
+  const sellingPrice = isCompose
+    ? effectiveCostPerUnit * composeMargin
+    : (hasFormats
+        ? formatsPvWeightedAvg
+        : (productPrice > 0
+            ? productPrice
+            : (recipeMargin > 0 ? costPerUnit * recipeMargin : 0)));
   const margin = sellingPrice > 0 ? ((sellingPrice - effectiveCostPerUnit) / sellingPrice * 100) : 0;
+  // KPI affichés dans l'en-tête : suivent le format actif de l'éditeur si dispo (Lot 4).
+  const kpiRendement = isCompose && fmtKpi ? fmtKpi.rendement : rendementPieces;
+  const kpiCoutPiece = isCompose && fmtKpi ? fmtKpi.coutPiece : effectiveCostPerUnit;
+  const kpiPrix = isCompose && fmtKpi ? fmtKpi.prix : sellingPrice;
+  const kpiMarge = isCompose && fmtKpi ? fmtKpi.margePct : margin;
 
   const steps = (() => {
     if (!recipe?.instructions) return [];
@@ -682,7 +758,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: (recipe?.mode_cout === 'compose' && !recipe?.is_base) ? 1320 : 960, maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar (header with breadcrumb + actions) */}
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
@@ -694,6 +770,11 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
           <button onClick={onEdit} className="odoo-btn-secondary">
             <Pencil size={13} /> Modifier
           </button>
+          {recipe?.mode_cout === 'compose' && !recipe?.is_base && (
+            <button onClick={() => navigate(`/recipes/${recipeId}/nomenclature`)} className="odoo-btn-secondary" title="Ouvrir l'éditeur en plein écran">
+              <Layers size={13} /> Plein écran
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
@@ -702,29 +783,29 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
         {recipe && (
           <div className="odoo-smart-button-row">
             <div className="odoo-smart-button">
-              <div className="odoo-smart-button-value">{hasFormats ? formatsTotalUnits : yieldQty}</div>
+              <div className="odoo-smart-button-value">{isCompose ? kpiRendement : (hasFormats ? formatsTotalUnits : yieldQty)}</div>
               <div className="odoo-smart-button-label">
-                <Scale size={11} /> Rendement {hasFormats ? `(${recipe.formats!.length} formats)` : `(${recipe.yield_unit || 'u.'})`}
+                <Scale size={11} /> Rendement {isCompose ? (fmtKpi?.contenantNom ? `(${fmtKpi.contenantNom})` : '(pièces/fournée)') : (hasFormats ? `(${recipe.formats!.length} formats)` : `(${recipe.yield_unit || 'u.'})`)}
               </div>
             </div>
             <div className="odoo-smart-button">
-              <div className="odoo-smart-button-value">{totalCost.toFixed(2)}</div>
-              <div className="odoo-smart-button-label"><DollarSign size={11} /> Coût total (DH)</div>
+              <div className="odoo-smart-button-value">{(isCompose ? kpiCoutPiece : totalCost).toFixed(2)}</div>
+              <div className="odoo-smart-button-label"><DollarSign size={11} /> {isCompose ? 'Coût/pièce (DH)' : 'Coût total (DH)'}</div>
             </div>
             <div className="odoo-smart-button">
               <div className="odoo-smart-button-value">
-                {hasFormats ? (totalCost / formatsTotalUnits).toFixed(2) : costPerUnit.toFixed(2)}
+                {isCompose ? kpiPrix.toFixed(2) : (hasFormats ? (totalCost / formatsTotalUnits).toFixed(2) : costPerUnit.toFixed(2))}
               </div>
               <div className="odoo-smart-button-label">
-                <DollarSign size={11} /> {hasFormats ? 'Coût/unité (moyen)' : (recipe.contenant_unite_lancement ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire : 'Coût/unité')}
+                <DollarSign size={11} /> {isCompose ? 'Prix/pièce (DH)' : (hasFormats ? 'Coût/unité (moyen)' : (recipe.contenant_unite_lancement ? MODE_LABELS[getModeCalcul(recipe.contenant_unite_lancement)].coutUnitaire : 'Coût/unité'))}
               </div>
             </div>
             {!recipe.is_base && (
               <div className="odoo-smart-button">
                 <div className="odoo-smart-button-value" style={{
-                  color: margin >= 50 ? '#28a745' : margin >= 30 ? '#b85d1a' : '#dc3545',
+                  color: kpiMarge >= 50 ? '#28a745' : kpiMarge >= 30 ? '#b85d1a' : '#dc3545',
                 }}>
-                  {margin.toFixed(1)}%
+                  {kpiMarge.toFixed(1)}%
                 </div>
                 <div className="odoo-smart-button-label"><TrendingUp size={11} /> Marge</div>
               </div>
@@ -800,7 +881,10 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
             </div>
           ) : recipe ? (
             <>
-              {/* Portions calculator */}
+              {/* Portions calculator — legacy : utile uniquement pour les recettes
+                  non composées (mise à l'échelle des quantités/coûts par rendement).
+                  Sans effet en mode composé (coût déjà par pièce) → masqué. */}
+              {!isCompose && (
               <div className="odoo-section">
                 <div className="odoo-section-header"><Scale size={12} /> Calculateur de portions</div>
                 <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', backgroundColor: 'var(--theme-bg-card)' }}>
@@ -820,9 +904,16 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   )}
                 </div>
               </div>
+              )}
 
-              {/* Sub-recipes */}
-              {recipe.sub_recipes && recipe.sub_recipes.length > 0 && (
+              {/* Composition éditable (arbre + frais indirects + multiplicateur) — produits composés.
+                  Remplace l'ancien tableau lecture seule : édition directe dans le modal. */}
+              {recipe.mode_cout === 'compose' && !recipe.is_base && (
+                <NomenclatureEditor recipeId={recipeId} onFinance={setFmtKpi} />
+              )}
+
+              {/* Préparations de base (vue legacy) — masquée pour les produits composés */}
+              {recipe.mode_cout !== 'compose' && recipe.sub_recipes && recipe.sub_recipes.length > 0 && (
                 <div className="odoo-section">
                   <div className="odoo-section-header">
                     <Layers size={12} /> Préparations de base ({recipe.sub_recipes.length})
@@ -957,8 +1048,8 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 </div>
               )}
 
-              {/* Formats de production (multi-formats par recette) */}
-              {recipe.formats && recipe.formats.length > 0 && (() => {
+              {/* Formats de production (vue legacy — masquée pour les produits composés) */}
+              {recipe.mode_cout !== 'compose' && recipe.formats && recipe.formats.length > 0 && (() => {
                 const pertePct = parseFloat(recipe.formats_perte_pct || '0');
                 const perteKg = parseFloat(recipe.formats_perte_kg || '0');
                 const poidsUtiliseKg = parseFloat(recipe.formats_poids_utilise_kg || '0');
@@ -1073,6 +1164,25 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 );
               })()}
 
+              {/* Pour les produits NON composés : lien vers l'éditeur pleine page pour
+                  démarrer une composition (les composés sont édités inline ci-dessus). */}
+              {recipe.mode_cout !== 'compose' && !recipe.is_base && (
+                <div className="odoo-section">
+                  <div className="odoo-section-header"><Layers size={12} /> Composition de la recette</div>
+                  <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      Composer ce produit à partir de recettes de base (arbre, frais indirects, marge).
+                    </span>
+                    <button
+                      onClick={() => navigate(`/recipes/${recipeId}/nomenclature`)}
+                      className="odoo-btn-primary inline-flex items-center gap-1"
+                    >
+                      <Layers size={13} /> Ouvrir l'éditeur
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Instructions */}
               {recipe.instructions && (
                 <div className="odoo-section">
@@ -1149,22 +1259,22 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Quantité à produire</div>
                     <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>
-                      {hasFormats ? `${formatsTotalUnits} unités (${recipe.formats!.length} formats)` : `${targetPortions} ${recipe.yield_unit || 'u.'}`}
+                      {isCompose ? `${rendementPieces} pièces/fournée` : (hasFormats ? `${formatsTotalUnits} unités (${recipe.formats!.length} formats)` : `${targetPortions} ${recipe.yield_unit || 'u.'}`)}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Coût total matières</div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{totalCost.toFixed(2)} DH</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>{isCompose ? 'Coût matière / pièce' : 'Coût total matières'}</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{(isCompose ? effectiveCostPerUnit : totalCost).toFixed(2)} DH</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>
-                      {hasFormats ? 'Coût/unité (moyen)' : 'Coût par unité'}
+                      {isCompose ? 'Coût / fournée' : (hasFormats ? 'Coût/unité (moyen)' : 'Coût par unité')}
                     </div>
-                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{effectiveCostPerUnit.toFixed(2)} DH</div>
+                    <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{(isCompose ? effectiveCostPerUnit * rendementPieces : effectiveCostPerUnit).toFixed(2)} DH</div>
                   </div>
                   {!recipe.is_base && (
                     <div>
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>Prix de vente</div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>{isCompose ? 'Prix conseillé / pièce' : 'Prix de vente'}</div>
                       <div style={{ fontSize: '1.125rem', fontWeight: 600, marginTop: 2 }}>{sellingPrice.toFixed(2)} DH</div>
                     </div>
                   )}
@@ -1796,8 +1906,30 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
 
   const liveCost = ingredientCost + subRecipeCost + packagingCost;
 
+  // Édition unifiée : pour un PRODUIT existant, la composition/formats/finance sont
+  // gérés par l'éditeur embarqué (onglet Composition). Le formulaire ne sauve alors
+  // que les métadonnées (n'envoie ni formats, ni marge, ni frais → l'éditeur reste maître).
+  const useNewEditor = isEdit && !isBase;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (useNewEditor) {
+      const etapesNew = formEtapes.filter((et) => et.nom.trim()).map((et) => ({
+        ordre: et.ordre, nom: et.nom.trim(),
+        duree_estimee_min: et.duree_estimee_min ? parseFloat(et.duree_estimee_min) : null,
+        est_bloquante: et.est_bloquante, timer_auto: et.timer_auto, controle_qualite: et.controle_qualite,
+        checklist_items: et.checklist_items.filter((c) => c.trim()),
+        est_repetable: et.est_repetable, nb_repetitions: parseInt(et.nb_repetitions) || 1,
+        responsable_role: et.responsable_role || null,
+      }));
+      // N'envoie QUE les métadonnées : ni ingredients, ni subRecipes, ni formats, ni
+      // marge/frais → le backend laisse la composition de l'éditeur intacte (COALESCE/guards).
+      updateMutation.mutate({
+        name, productId: productId || null, categoryId: categoryId || null,
+        isBase: false, yieldUnit, instructions, etapes: etapesNew,
+      });
+      return;
+    }
     const validIngredients = formIngredients
       .filter(row => row.ingredientId && row.quantity && parseFloat(row.quantity) > 0)
       .map(row => ({ ingredientId: row.ingredientId, quantity: parseFloat(row.quantity), unit: row.unit || null }));
@@ -1884,7 +2016,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 880, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: useNewEditor ? 1320 : 880, maxHeight: '94vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar */}
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
@@ -2004,6 +2136,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 )}
 
+                {/* Sections produit (formats, coûts, frais, tarif) — masquées en édition unifiée :
+                    gérées par l'éditeur de l'onglet Composition. Conservées pour la création et les bases. */}
+                {!useNewEditor && (<>
                 {/* Formats de production (multi-formats par recette) */}
                 {(() => {
                   // Synthese live cote client : compare poids ingredients (approx) vs poids alloue aux formats
@@ -2395,11 +2530,16 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                     </div>
                   );
                 })()}
+              </>)}
               </>
             )}
 
             {/* ═══ Tab: Composition ═══ */}
-            {activeTab === 'composition' && (
+            {activeTab === 'composition' && (useNewEditor ? (
+              <div style={{ padding: '0.25rem 0' }}>
+                <NomenclatureEditor recipeId={recipeId!} />
+              </div>
+            ) : (
               <>
                 {/* Sub-recipes */}
                 {!isBase && availableBaseRecipes.length > 0 && (
@@ -2637,7 +2777,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 </div>
               </>
-            )}
+            ))}
 
             {/* ═══ Tab: Etapes ═══ */}
             {activeTab === 'etapes' && (

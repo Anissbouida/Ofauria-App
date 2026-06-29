@@ -16,6 +16,7 @@ import CustomersPage from './features/customers/CustomersPage';
 import InventoryPage from './features/inventory/InventoryPage';
 import IngredientDetailPage from './features/inventory/IngredientDetailPage';
 import RecipesPage from './features/recipes/RecipesPage';
+import NomenclaturePage from './features/recipes/NomenclaturePage';
 import EmployeesPage from './features/employees/EmployeesPage';
 import ReportsPage from './features/reports/ReportsPage';
 import SalesPage from './features/sales/SalesPage';
@@ -63,6 +64,7 @@ export default function App() {
                   conservée pour compat bookmarks → redirige. */}
               <Route path="/packaging" element={<Navigate to="/inventory?tab=consumables" replace />} />
               <Route path="/recipes" element={<RecipesPage />} />
+              <Route path="/recipes/:id/nomenclature" element={<NomenclaturePage />} />
               <Route path="/production" element={<ProductionPage />} />
               <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />

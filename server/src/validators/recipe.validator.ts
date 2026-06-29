@@ -63,4 +63,6 @@ export const createRecipeSchema = z.object({
   })).default([]),
 });
 
-export const updateRecipeSchema = createRecipeSchema;
+// En édition unifiée, le formulaire n'envoie que les métadonnées (la composition/les
+// formats sont gérés par l'éditeur) → ingredients devient optionnel à la mise à jour.
+export const updateRecipeSchema = createRecipeSchema.partial({ ingredients: true });

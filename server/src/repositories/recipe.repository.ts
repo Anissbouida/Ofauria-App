@@ -39,12 +39,16 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
-              r.category_id,
+              r.category_id, r.mode_cout, r.compo_par_piece,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.created_at, r.updated_at,
               vtc.total_cost,
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
+              df.nb_par_defaut AS rendement,
+              dfc.nom AS default_contenant_nom,
+              dfc.id IS NOT NULL AND dfc.nom ILIKE '%assemblage%' AS rendement_a_definir,
+              (vtc.total_cost IS NULL OR vtc.total_cost = 0) AS compo_vide,
               COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                   'id', rf.id,
@@ -70,6 +74,13 @@ export const recipeRepository = {
        LEFT JOIN recipe_categories rc ON rc.id = r.category_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
+       LEFT JOIN LATERAL (
+         SELECT rf.nb_par_defaut, rf.contenant_id
+         FROM recipe_formats rf
+         WHERE rf.recipe_id = r.id AND rf.is_active = true
+         ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
+       ) df ON true
+       LEFT JOIN production_contenants dfc ON dfc.id = df.contenant_id
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
@@ -85,6 +96,7 @@ export const recipeRepository = {
               r.category_id,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.taux_main_oeuvre_dh_h, r.cout_energie_fournee, r.taux_frais_structure_pct,
+              r.mode_cout, r.perte_standard_pct, r.pieces_par_fournee, r.compo_par_piece,
               r.created_at, r.updated_at,
               vtc.total_cost,
               vtw.total_weight_kg,
@@ -149,6 +161,7 @@ export const recipeRepository = {
       `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
               rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
               rf.prix_vente_unitaire_override, rf.margin_multiplier_override,
+              rf.is_default, rf.nb_parts,
               pc.nom as contenant_nom, pc.unite_lancement as contenant_unite_lancement,
               pc.type_production as contenant_type,
               vfc.poids_format_g, vfc.poids_utilise_g,
@@ -163,10 +176,27 @@ export const recipeRepository = {
       [id]
     );
 
+    // Composition au niveau recette (recipe_components) — source de vérité pour
+    // les produits composés (remplace la vue legacy sub_recipes à l'affichage).
+    const compositionResult = await db.query(
+      `SELECT c.id, c.role,
+              COALESCE(br.name, ing.name) AS name,
+              CASE WHEN c.source_recipe_id IS NOT NULL THEN 'recipe' ELSE 'ingredient' END AS type,
+              c.quantite, c.unite, cc.cout_dh
+       FROM recipe_components c
+       LEFT JOIN recipes br ON br.id = c.source_recipe_id
+       LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
+       LEFT JOIN v_rcomp_cost cc ON cc.component_id = c.id
+       WHERE c.recipe_id = $1
+       ORDER BY c.ordre`,
+      [id]
+    );
+
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
       sub_recipes: subRecipesResult.rows,
+      composition: compositionResult.rows,
       packaging: packagingResult.rows,
       formats: formatsResult.rows,
     };
@@ -294,7 +324,7 @@ export const recipeRepository = {
       // Calcul du cout JS pour syncProductPrice uniquement (le champ recipes.total_cost
       // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
       let totalCost = 0;
-      for (const ing of data.ingredients) {
+      for (const ing of (data.ingredients ?? [])) {
         const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
@@ -534,7 +564,7 @@ export const recipeRepository = {
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
-    ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
+    ingredients?: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
     formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
@@ -584,7 +614,7 @@ export const recipeRepository = {
       }
 
       let totalCost = 0;
-      for (const ing of data.ingredients) {
+      for (const ing of (data.ingredients ?? [])) {
         const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
@@ -636,30 +666,27 @@ export const recipeRepository = {
          data.categoryId ?? null, id]
       );
 
-      // Re-insert ingredients
-      await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [id]);
-      for (const ing of data.ingredients) {
-        await client.query(
-          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-          [id, ing.ingredientId, ing.quantity, ing.unit || null]
-        );
+      // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire
+      // ne les envoie pas pour un produit composé → la composition de l'éditeur reste intacte).
+      if (data.ingredients !== undefined) {
+        await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [id]);
+        for (const ing of data.ingredients) {
+          await client.query(
+            `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
+            [id, ing.ingredientId, ing.quantity, ing.unit || null]
+          );
+        }
       }
 
-      // Re-insert sub-recipes
-      await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
-
-      // Cycle detection for sub-recipes — pass the transaction client so the check
-      // sees the DELETE above (old sub-recipe edges must not count against the new ones).
-      if (data.subRecipes && data.subRecipes.length > 0) {
+      // Re-insert sub-recipes — idem, uniquement si fournies.
+      if (data.subRecipes !== undefined) {
+        await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
         for (const sr of data.subRecipes) {
           const hasCycle = await this.detectCycle(sr.subRecipeId, id, client);
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
         }
-      }
-
-      if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           await client.query(
             `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, $3)`,
@@ -692,23 +719,18 @@ export const recipeRepository = {
       // data.formats sont marques is_active=false (preserve l'historique).
       // Les formats presents sont upsertes (ON CONFLICT reactive si etait
       // inactif). Si data.formats est undefined, on ne touche a rien.
-      if (data.formats !== undefined) {
+      // IMPORTANT : on ne gère les formats QUE si une liste NON VIDE est fournie.
+      // Une liste vide (ou absente) ne désactive RIEN — sinon une sauvegarde de
+      // métadonnées (édition unifiée) effaçait tous les formats gérés par l'éditeur.
+      if (data.formats !== undefined && data.formats.length > 0) {
         const keptContenants = data.formats.map((f) => f.contenantId);
         // 1. Soft-delete des formats qui ne sont plus dans data.formats
-        if (keptContenants.length > 0) {
-          await client.query(
-            `UPDATE recipe_formats
-             SET is_active = false, updated_at = NOW()
-             WHERE recipe_id = $1 AND contenant_id <> ALL($2::uuid[])`,
-            [id, keptContenants],
-          );
-        } else {
-          // data.formats vide : tout desactiver
-          await client.query(
-            `UPDATE recipe_formats SET is_active = false, updated_at = NOW() WHERE recipe_id = $1`,
-            [id],
-          );
-        }
+        await client.query(
+          `UPDATE recipe_formats
+           SET is_active = false, updated_at = NOW()
+           WHERE recipe_id = $1 AND contenant_id <> ALL($2::uuid[])`,
+          [id, keptContenants],
+        );
         // 2. Upsert (insert ou reactive + maj des valeurs)
         for (const fmt of data.formats) {
           await client.query(
