@@ -138,6 +138,11 @@ export interface FormatKpi { contenantNom: string | null; rendement: number; cou
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
   const qc = useQueryClient();
   const [formatId, setFormatId] = useState<string | null>(null);
+  // Id d'un format tout juste créé/dupliqué : protège sa sélection tant que la
+  // liste des formats ne l'a pas encore intégré (sinon l'effet ci-dessous le voit
+  // « absent » et rebascule sur le format par défaut → la sauvegarde repartirait
+  // sur l'ancien cadre, qui se retrouverait écrasé).
+  const justAddedRef = useRef<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [rendement, setRendement] = useState('');
   const [parts, setParts] = useState('');
@@ -174,10 +179,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Sélectionne le format par défaut au chargement (ou le premier).
   useEffect(() => {
     if (formats.length === 0) { setFormatId(null); return; }
-    if (!formatId || !formats.some((f) => f.id === formatId)) {
-      const def = formats.find((f) => f.is_default) ?? formats[0];
-      setFormatId(def.id);
-    }
+    if (formats.some((f) => f.id === formatId)) { justAddedRef.current = null; return; }
+    // formatId absent de la liste : ne JAMAIS rebasculer sur le défaut si c'est un
+    // format qu'on vient de créer (la liste va le rafraîchir d'un instant à l'autre).
+    if (formatId && formatId === justAddedRef.current) return;
+    const def = formats.find((f) => f.is_default) ?? formats[0];
+    setFormatId(def.id);
   }, [formats, formatId]);
 
   const { data, isLoading } = useQuery<FormatComponentsData>({
@@ -373,8 +380,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       // Attendre le rafraîchissement de la liste AVANT de sélectionner le nouveau format,
       // sinon l'effet de sélection le voit absent et rebascule sur le format par défaut
       // (→ les sauvegardes repartaient à tort sur l'ancien cadre).
+      if (res?.format?.id) { justAddedRef.current = res.format.id; setFormatId(res.format.id); }
       await qc.invalidateQueries({ queryKey: ['recipe-formats', recipeId] });
-      if (res?.format?.id) setFormatId(res.format.id);
       notify.success(wasDup ? 'Format dupliqué' : 'Format ajouté');
     },
     onError: (err) => notify.error(extractErr(err)),
