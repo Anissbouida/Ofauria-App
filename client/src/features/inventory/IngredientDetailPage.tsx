@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, ingredientsApi, ingredientLotsApi } from '../../api/inventory.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { suppliersApi } from '../../api/accounting.api';
+import { referentielApi } from '../../api/referentiel.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
@@ -1084,6 +1085,17 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
     supplier: (ingredient.supplier as string) || '',
     categoryId: (ingredient.category_id as string) || '',
     threshold: String(threshold),
+    containerTypeId: (ingredient.container_type_id as string) || '',
+    containerSize: ingredient.container_size != null ? String(ingredient.container_size) : '',
+    densiteKgL: ingredient.densite_kg_l != null ? String(ingredient.densite_kg_l) : '',
+  });
+
+  // Referentiel editable des types de contenant (Parametres -> Referentiel).
+  const { data: containerTypes = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['ref-entries', 'container_types'],
+    // entries() renvoie { table, entries } — on extrait le tableau des entrees.
+    queryFn: () => referentielApi.entries('container_types').then((r: any) => (r?.entries ?? []) as Record<string, any>[]),
+    staleTime: 5 * 60 * 1000,
   });
 
   return (
@@ -1105,6 +1117,9 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
             name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0,
             supplier: form.supplier || undefined, categoryId: form.categoryId || null,
             threshold: parseFloat(form.threshold) || 0,
+            containerTypeId: form.containerTypeId || null,
+            containerSize: form.containerSize !== '' ? (parseFloat(form.containerSize) || null) : null,
+            densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
@@ -1135,6 +1150,39 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Seuil minimum d'alerte ({form.unit})</label>
             <input type="number" step="0.1" className="input" value={form.threshold} onChange={e => setForm({ ...form, threshold: e.target.value })} />
           </div>
+          {/* Contenant par defaut : sert a raisonner par contenant a l'achat et au transfert
+              vers le pesage (ex : Seau de 5 kg -> 3 seaux = 15 kg). */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Type de contenant</label>
+              <select className="input" value={form.containerTypeId} onChange={e => setForm({ ...form, containerTypeId: e.target.value })}>
+                <option value="">— Aucun —</option>
+                {containerTypes.map(ct => (
+                  <option key={ct.id as string} value={ct.id as string}>{ct.label as string}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité par contenant ({form.unit})</label>
+              <input type="number" step="0.001" min="0" className="input" placeholder="ex 5"
+                value={form.containerSize} onChange={e => setForm({ ...form, containerSize: e.target.value })} />
+            </div>
+          </div>
+          {/* Masse volumique : les chefs pesent les liquides (1.2 kg de lait) alors
+              que le stock est en litres. La densite (kg/L) permet de convertir la
+              saisie poids vers l'unite de stock (besoins, bon de sortie, couts). */}
+          {(form.unit === 'l' || form.unit === 'ml') && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+                Masse volumique (kg/L)
+              </label>
+              <input type="number" step="0.001" min="0" className="input" placeholder="ex 1.03 (lait), 0.92 (huile), 1 (eau)"
+                value={form.densiteKgL} onChange={e => setForm({ ...form, densiteKgL: e.target.value })} />
+              <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>
+                Permet les recettes saisies au poids (g/kg) pour un ingrédient stocké en volume. Vide = conversion impossible (alerte au plan de production).
+              </p>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">

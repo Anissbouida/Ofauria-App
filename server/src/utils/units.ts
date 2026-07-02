@@ -27,19 +27,70 @@ const FACTORS: Record<string, Record<string, number>> = {
   // unites "comptables" (pcs, paq...) : pas de conversion possible
 };
 
+const MASS_UNITS = new Set(['mg', 'g', 'kg']);
+const VOLUME_UNITS = new Set(['ml', 'cl', 'dl', 'l']);
+
+/** True si la conversion traverse poids <-> volume (necessite une densite). */
+export function isCrossTypeConversion(fromUnit: string | null, toUnit: string | null): boolean {
+  if (!fromUnit || !toUnit) return false;
+  const f = fromUnit.toLowerCase();
+  const t = toUnit.toLowerCase();
+  return (MASS_UNITS.has(f) && VOLUME_UNITS.has(t)) || (VOLUME_UNITS.has(f) && MASS_UNITS.has(t));
+}
+
+/**
+ * Convertit une quantite vers l'unite de base, avec support poids <-> volume via
+ * la masse volumique (densiteKgL, en kg/L == g/ml). Miroir de fn_unit_conv 3 args
+ * (migration 227). Les chefs pesent les liquides ("1.2 kg de lait") alors que le
+ * stock est en litres : sans densite, ce cas etait silencieusement ignore.
+ *
+ * `uncertain` = true quand une conversion poids<->volume etait necessaire mais la
+ * densite est absente : la valeur est retournee AS-IS et l'appelant doit avertir.
+ */
+export function convertQuantity(
+  quantity: number,
+  fromUnit: string | null,
+  baseUnit: string | null,
+  densiteKgL?: number | null
+): { value: number; uncertain: boolean } {
+  if (!fromUnit || !baseUnit || fromUnit === baseUnit) return { value: quantity, uncertain: false };
+  const from = fromUnit.toLowerCase();
+  const to = baseUnit.toLowerCase();
+
+  const factor = FACTORS[from]?.[to];
+  if (factor !== undefined) return { value: quantity * factor, uncertain: false };
+
+  if (isCrossTypeConversion(from, to)) {
+    if (densiteKgL && densiteKgL > 0) {
+      if (MASS_UNITS.has(from)) {
+        // Poids -> volume : grammes / densite(g/ml) = ml
+        const grams = quantity * (FACTORS[from]?.['g'] ?? (from === 'g' ? 1 : NaN));
+        const ml = grams / densiteKgL;
+        const volFactor = FACTORS['ml']?.[to] ?? (to === 'ml' ? 1 : NaN);
+        if (!Number.isNaN(grams) && !Number.isNaN(volFactor)) return { value: ml * volFactor, uncertain: false };
+      } else {
+        // Volume -> poids : ml * densite(g/ml) = grammes
+        const ml = quantity * (FACTORS[from]?.['ml'] ?? (from === 'ml' ? 1 : NaN));
+        const grams = ml * densiteKgL;
+        const massFactor = FACTORS['g']?.[to] ?? (to === 'g' ? 1 : NaN);
+        if (!Number.isNaN(ml) && !Number.isNaN(massFactor)) return { value: grams * massFactor, uncertain: false };
+      }
+    }
+    // Densite absente : valeur AS-IS, mais on le signale.
+    return { value: quantity, uncertain: true };
+  }
+
+  // Unites incompatibles hors poids/volume (ex: pcs -> kg) : comportement historique.
+  return { value: quantity, uncertain: false };
+}
+
 /**
  * Convertit une quantite vers l'unite de base.
  * Si les unites ne sont pas dans le meme systeme (ex: g -> l), retourne la valeur
- * AS-IS (l'appelant doit alors verifier que les unites matchent en amont).
+ * AS-IS sauf si une densite est fournie (cf convertQuantity).
  */
-export function toBaseUnit(quantity: number, fromUnit: string | null, baseUnit: string | null): number {
-  if (!fromUnit || !baseUnit || fromUnit === baseUnit) return quantity;
-  const factor = FACTORS[fromUnit]?.[baseUnit];
-  if (factor === undefined) {
-    // Unites incompatibles (ex: pcs -> kg). On ne peut pas convertir, on laisse tel quel.
-    return quantity;
-  }
-  return quantity * factor;
+export function toBaseUnit(quantity: number, fromUnit: string | null, baseUnit: string | null, densiteKgL?: number | null): number {
+  return convertQuantity(quantity, fromUnit, baseUnit, densiteKgL).value;
 }
 
 /**

@@ -7,7 +7,7 @@ import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
-import { toBaseUnit } from '../utils/units.js';
+import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
@@ -373,66 +373,37 @@ export const productionRepository = {
         }
       }
 
-      // Calculate ingredient needs per ingredient per product
+      // Calculate ingredient needs per ingredient per product.
+      // La nomenclature est resolue par le helper (legacy OU compose) : les
+      // quantites arrivent deja converties en unite de base de l'ingredient
+      // pour que l'agregation et les consommateurs aval (BSI, FEFO) comparent
+      // des kg avec des kg.
       const needsMap = new Map<string, { ingredientId: string; productId: string; quantity: number }>();
-
-      async function collectNeeds(
-        recipeId: string, yieldQty: number, multiplier: number,
-        productId: string, acc: Map<string, { ingredientId: string; productId: string; quantity: number }>
-      ) {
-        // Fetch BOTH the recipe-specified unit (ri.unit) and the ingredient's
-        // base unit (ing.unit). The recipe may say "420 g" while the ingredient
-        // is stored in "kg" — we must convert to base unit before aggregating.
-        const ingsResult = await client.query(
-          `SELECT ri.ingredient_id, ri.quantity,
-                  COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
-                  ing.unit AS base_unit
-             FROM recipe_ingredients ri
-             JOIN ingredients ing ON ing.id = ri.ingredient_id
-            WHERE ri.recipe_id = $1`,
-          [recipeId]
-        );
-        for (const ri of ingsResult.rows) {
-          const recipeQty = parseFloat(ri.quantity);
-          // Convert recipe quantity (e.g. 420 g) to base unit (e.g. 0.42 kg)
-          // so aggregation across products with mixed units (g + kg) is correct
-          // and downstream consumers (BSI, FEFO) can compare with lot stock in kg.
-          const recipeQtyInBase = toBaseUnit(recipeQty, ri.recipe_unit, ri.base_unit);
-          const needed = (recipeQtyInBase / yieldQty) * multiplier;
-          const key = `${ri.ingredient_id}::${productId}`;
-          const existing = acc.get(key);
-          if (existing) {
-            existing.quantity += needed;
-          } else {
-            acc.set(key, { ingredientId: ri.ingredient_id, productId, quantity: needed });
-          }
-        }
-
-        // Recurse into sub-recipes
-        const subsResult = await client.query(
-          `SELECT rsr.sub_recipe_id, rsr.quantity, r.yield_quantity
-           FROM recipe_sub_recipes rsr
-           JOIN recipes r ON r.id = rsr.sub_recipe_id
-           WHERE rsr.recipe_id = $1`,
-          [recipeId]
-        );
-        for (const sub of subsResult.rows) {
-          const subMultiplier = (parseFloat(sub.quantity) / yieldQty) * multiplier;
-          await collectNeeds(sub.sub_recipe_id, sub.yield_quantity, subMultiplier, productId, acc);
-        }
-      }
 
       for (const item of itemsResult.rows) {
         const recipeResult = await client.query(
-          `SELECT r.id, r.yield_quantity FROM recipes r WHERE r.product_id = $1`,
+          `SELECT r.id FROM recipes r WHERE r.product_id = $1`,
           [item.product_id]
         );
         if (!recipeResult.rows[0]) {
           warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
           continue;
         }
-        const recipe = recipeResult.rows[0];
-        await collectNeeds(recipe.id, recipe.yield_quantity, item.planned_quantity, item.product_id, needsMap);
+        const productId = item.product_id as string;
+        await collectIngredientNeedsForUnits(
+          client, recipeResult.rows[0].id, parseInt(item.planned_quantity),
+          (ingredientId, qty) => {
+            const key = `${ingredientId}::${productId}`;
+            const existing = needsMap.get(key);
+            if (existing) existing.quantity += qty;
+            else needsMap.set(key, { ingredientId, productId, quantity: qty });
+          },
+          { formatId: item.format_id ?? null, warnings }
+        );
+      }
+
+      if (needsMap.size === 0 && itemsResult.rows.length > 0) {
+        warnings.push(`Aucun besoin ingrédient calculé pour ce plan : vérifier la composition des recettes (aucun bon de sortie ne sera généré).`);
       }
 
       // Delete any previous needs (in case of re-confirmation)
@@ -702,43 +673,6 @@ export const productionRepository = {
         [planId]
       );
 
-      // Helper: collect all ingredient needs from a recipe, including sub-recipes (recursive)
-      async function collectIngredientNeeds(
-        recipeId: string, yieldQty: number, multiplier: number,
-        acc: Map<string, number>,
-      ) {
-        // 1. Direct ingredients — convert to base unit before aggregating
-        // (recipes may use g/ml while ingredients are stored in kg/l).
-        const ingsResult = await client.query(
-          `SELECT ri.ingredient_id, ri.quantity,
-                  COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
-                  ing.unit AS base_unit
-             FROM recipe_ingredients ri
-             JOIN ingredients ing ON ing.id = ri.ingredient_id
-            WHERE ri.recipe_id = $1`,
-          [recipeId],
-        );
-        for (const ri of ingsResult.rows) {
-          const qtyInBase = toBaseUnit(parseFloat(ri.quantity), ri.recipe_unit, ri.base_unit);
-          const consumption = (qtyInBase / yieldQty) * multiplier;
-          const prev = acc.get(ri.ingredient_id) || 0;
-          acc.set(ri.ingredient_id, prev + consumption);
-        }
-
-        // 2. Sub-recipes
-        const subsResult = await client.query(
-          `SELECT rsr.sub_recipe_id, rsr.quantity, r.yield_quantity
-           FROM recipe_sub_recipes rsr
-           JOIN recipes r ON r.id = rsr.sub_recipe_id
-           WHERE rsr.recipe_id = $1`,
-          [recipeId],
-        );
-        for (const sub of subsResult.rows) {
-          const subMultiplier = (parseFloat(sub.quantity) / yieldQty) * multiplier;
-          await collectIngredientNeeds(sub.sub_recipe_id, sub.yield_quantity, subMultiplier, acc);
-        }
-      }
-
       for (const item of itemsResult.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
         if (bsiAlreadyDeducted) continue;
@@ -748,10 +682,15 @@ export const productionRepository = {
           [item.product_id]
         );
         if (!recipeResult.rows[0]) continue;
-
         const recipe = recipeResult.rows[0];
+
+        // Besoins resolus par le helper (legacy OU compose), en unite de base.
         const ingredientNeeds = new Map<string, number>();
-        await collectIngredientNeeds(recipe.id, recipe.yield_quantity, item.actual_quantity, ingredientNeeds);
+        await collectIngredientNeedsForUnits(
+          client, recipe.id, item.actual_quantity,
+          (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
+          { formatId: item.format_id ?? null, warnings }
+        );
 
         for (const [ingredientId, consumption] of ingredientNeeds) {
           const storeFilter = storeId ? ' AND store_id = $3' : '';
@@ -1085,35 +1024,17 @@ export const productionRepository = {
           const recipe = recipeResult.rows[0];
           const ingredientNeeds = new Map<string, number>();
 
-          // Recursive ingredient collection — skips sub-recipes already fulfilled from semi-finished stock
-          async function collectNeeds(recipeId: string, yieldQty: number, multiplier: number) {
-            const ingsResult = await client.query(
-              `SELECT ri.ingredient_id, ri.quantity,
-                      COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
-                      ing.unit AS base_unit
-                 FROM recipe_ingredients ri
-                 JOIN ingredients ing ON ing.id = ri.ingredient_id
-                WHERE ri.recipe_id = $1`,
-              [recipeId]
-            );
-            for (const ri of ingsResult.rows) {
-              const qtyInBase = toBaseUnit(parseFloat(ri.quantity), ri.recipe_unit, ri.base_unit);
-              const consumption = (qtyInBase / yieldQty) * multiplier;
-              ingredientNeeds.set(ri.ingredient_id, (ingredientNeeds.get(ri.ingredient_id) || 0) + consumption);
+          // Besoins resolus par le helper (legacy OU compose) — on saute les
+          // sous-recettes deja couvertes par le stock semi-finis.
+          await collectIngredientNeedsForUnits(
+            client, recipe.id, item.actual_quantity,
+            (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
+            {
+              formatId: item.format_id ?? null,
+              skipSubRecipe: (subRecipeId) => fulfilledSubRecipes.has(subRecipeId),
+              warnings,
             }
-            const subsResult = await client.query(
-              `SELECT rsr.sub_recipe_id, rsr.quantity, r.yield_quantity
-               FROM recipe_sub_recipes rsr JOIN recipes r ON r.id = rsr.sub_recipe_id
-               WHERE rsr.recipe_id = $1`, [recipeId]
-            );
-            for (const sub of subsResult.rows) {
-              // Skip sub-recipes whose semi-finished stock was already consumed
-              if (fulfilledSubRecipes.has(sub.sub_recipe_id)) continue;
-              await collectNeeds(sub.sub_recipe_id, sub.yield_quantity, (parseFloat(sub.quantity) / yieldQty) * multiplier);
-            }
-          }
-
-          await collectNeeds(recipe.id, recipe.yield_quantity, item.actual_quantity);
+          );
 
           for (const [ingredientId, consumption] of ingredientNeeds) {
             const storeFilter = storeId ? ' AND store_id = $3' : '';
@@ -1638,7 +1559,7 @@ export const productionRepository = {
   async analyzeSubRecipes(planId: string) {
     // Get plan items with their recipes
     const itemsResult = await db.query(
-      `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity,
+      `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity, ppi.format_id,
               p.name as product_name,
               r.id as recipe_id, r.yield_quantity, r.yield_unit
        FROM production_plan_items ppi
@@ -1649,7 +1570,8 @@ export const productionRepository = {
       [planId]
     );
 
-    // For each item, find sub-recipes
+    // For each item, find sub-recipes — via le helper, pour couvrir les deux
+    // modes de nomenclature (legacy recipe_sub_recipes ET compose).
     const baseMap = new Map<string, {
       subRecipeId: string;
       subRecipeName: string;
@@ -1663,20 +1585,15 @@ export const productionRepository = {
     for (const item of itemsResult.rows) {
       if (!item.recipe_id) continue;
 
-      const subsResult = await db.query(
-        `SELECT rsr.sub_recipe_id, rsr.quantity,
-                sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-                sr.yield_unit as sub_yield_unit
-         FROM recipe_sub_recipes rsr
-         JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-         WHERE rsr.recipe_id = $1`,
-        [item.recipe_id]
-      );
+      const comp = await getCompositionForNeeds(db, item.recipe_id, item.format_id ?? null);
+      if (!comp) continue;
+      const batches = parseInt(item.planned_quantity) / comp.batchDivisor;
 
-      for (const sub of subsResult.rows) {
-        const qtyNeeded = (parseFloat(sub.quantity) / item.yield_quantity) * item.planned_quantity;
+      for (const sub of comp.subRecipes) {
+        // Besoin NET : ce qu'il faut d'utilisable (le stock semi-finis est deja net de perte).
+        const qtyNeeded = sub.netQtyPerBatch * batches;
 
-        const existing = baseMap.get(sub.sub_recipe_id);
+        const existing = baseMap.get(sub.subRecipeId);
         if (existing) {
           existing.totalNeeded += qtyNeeded;
           existing.usedBy.push({
@@ -1685,31 +1602,27 @@ export const productionRepository = {
             quantityNeeded: qtyNeeded,
           });
         } else {
-          // Get ingredients for this sub-recipe
-          const ingsResult = await db.query(
-            `SELECT ri.ingredient_id, ing.name as ingredient_name, ing.unit, ri.quantity
-             FROM recipe_ingredients ri
-             JOIN ingredients ing ON ing.id = ri.ingredient_id
-             WHERE ri.recipe_id = $1`,
-            [sub.sub_recipe_id]
-          );
+          // Ingredients directs de la sous-recette (pour affichage), tous modes.
+          const subComp = await getCompositionForNeeds(db, sub.subRecipeId, null);
 
-          baseMap.set(sub.sub_recipe_id, {
-            subRecipeId: sub.sub_recipe_id,
-            subRecipeName: sub.sub_recipe_name,
-            yieldQuantity: parseFloat(sub.sub_yield_quantity),
-            yieldUnit: sub.sub_yield_unit || 'unit',
+          baseMap.set(sub.subRecipeId, {
+            subRecipeId: sub.subRecipeId,
+            subRecipeName: sub.name,
+            yieldQuantity: sub.yieldQuantity,
+            yieldUnit: sub.yieldUnit,
             totalNeeded: qtyNeeded,
             usedBy: [{
               planItemId: item.plan_item_id,
               productName: item.product_name,
               quantityNeeded: qtyNeeded,
             }],
-            ingredients: ingsResult.rows.map((ing: any) => ({
-              ingredientId: ing.ingredient_id,
-              ingredientName: ing.ingredient_name,
-              unit: ing.unit,
-              quantity: parseFloat(ing.quantity),
+            // Affichage dans l'unite SAISIE de la recette (420 g reste 420 g) ;
+            // la conversion en unite de base ne sert qu'aux calculs BSI/FEFO.
+            ingredients: (subComp?.ingredients || []).map((ing) => ({
+              ingredientId: ing.ingredientId,
+              ingredientName: ing.name,
+              unit: ing.unitEntered,
+              quantity: ing.qtyEntered,
             })),
           });
         }
@@ -1762,7 +1675,7 @@ export const productionRepository = {
 
       // 2. Get all plan items with their recipes
       const itemsResult = await client.query(
-        `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity,
+        `SELECT ppi.id as plan_item_id, ppi.product_id, ppi.planned_quantity, ppi.format_id,
                 p.name as product_name,
                 r.id as recipe_id, r.yield_quantity
          FROM production_plan_items ppi
@@ -1772,7 +1685,10 @@ export const productionRepository = {
         [planId]
       );
 
-      // 3. Consolidate sub-recipe needs across all items
+      // 3. Consolidate sub-recipe needs across all items.
+      // La nomenclature est resolue par le helper : sans lui, les recettes en
+      // mode compose (recipe_components) etaient INVISIBLES ici — aucun plan
+      // semi-fini cree, aucune reservation de stock.
       const subRecipeNeeds = new Map<string, {
         subRecipeId: string;
         subRecipeName: string;
@@ -1785,29 +1701,26 @@ export const productionRepository = {
       for (const item of itemsResult.rows) {
         if (!item.recipe_id) continue;
 
-        const subsResult = await client.query(
-          `SELECT rsr.sub_recipe_id, rsr.quantity,
-                  sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-                  sr.yield_unit as sub_yield_unit, sr.is_base
-           FROM recipe_sub_recipes rsr
-           JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-           WHERE rsr.recipe_id = $1 AND sr.is_base = true`,
-          [item.recipe_id]
-        );
+        const comp = await getCompositionForNeeds(client, item.recipe_id, item.format_id ?? null);
+        if (!comp) continue;
+        const batches = parseInt(item.planned_quantity) / comp.batchDivisor;
 
-        for (const sub of subsResult.rows) {
-          const qtyNeeded = (parseFloat(sub.quantity) / parseFloat(item.yield_quantity)) * parseInt(item.planned_quantity);
+        for (const sub of comp.subRecipes) {
+          if (!sub.isBase) continue;
+          // Besoin NET (utilisable) : le stock semi-finis est deja net de perte ;
+          // le brut est gere a la production du plan enfant (rendement/pertes).
+          const qtyNeeded = sub.netQtyPerBatch * batches;
 
-          const existing = subRecipeNeeds.get(sub.sub_recipe_id);
+          const existing = subRecipeNeeds.get(sub.subRecipeId);
           if (existing) {
             existing.totalNeeded += qtyNeeded;
             existing.usedBy.push({ planItemId: item.plan_item_id, productName: item.product_name, qty: qtyNeeded });
           } else {
-            subRecipeNeeds.set(sub.sub_recipe_id, {
-              subRecipeId: sub.sub_recipe_id,
-              subRecipeName: sub.sub_recipe_name,
-              yieldQuantity: parseFloat(sub.sub_yield_quantity),
-              yieldUnit: sub.sub_yield_unit || 'unit',
+            subRecipeNeeds.set(sub.subRecipeId, {
+              subRecipeId: sub.subRecipeId,
+              subRecipeName: sub.name,
+              yieldQuantity: sub.yieldQuantity,
+              yieldUnit: sub.yieldUnit,
               totalNeeded: qtyNeeded,
               usedBy: [{ planItemId: item.plan_item_id, productName: item.product_name, qty: qtyNeeded }],
             });
