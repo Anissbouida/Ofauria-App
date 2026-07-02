@@ -4,6 +4,7 @@ import { Loader2, Package, PackageOpen, AlertTriangle, X, CalendarClock } from '
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { bonSortieApi } from '../../api/bon-sortie.api';
+import { referentielApi } from '../../api/referentiel.api';
 import { notify } from '../../components/ui/InlineNotification';
 
 type TransferModalPayload = {
@@ -15,6 +16,10 @@ type TransferModalPayload = {
   lotNumber?: string;
   lotDlc?: string;
   bonNumero: string;
+  // Contenant par defaut de l'ingredient : pilote la saisie par contenant (ex Seau de 5 kg).
+  containerSize?: number;
+  containerTypeId?: string;
+  containerTypeLabel?: string;
 };
 
 /**
@@ -49,11 +54,13 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
   };
 
   const transferLineMutation = useMutation({
-    mutationFn: (vars: { ligneId: string; overrideQty?: number; overrideLotId?: string; reason?: string }) =>
+    mutationFn: (vars: { ligneId: string; overrideQty?: number; overrideLotId?: string; reason?: string; containerTypeId?: string; containerCount?: number }) =>
       bonSortieApi.transferLineFromEconomat(vars.ligneId, {
         overrideQty: vars.overrideQty,
         overrideLotId: vars.overrideLotId,
         reason: vars.reason,
+        containerTypeId: vars.containerTypeId,
+        containerCount: vars.containerCount,
       }),
     onSuccess: () => {
       invalidateAll();
@@ -239,6 +246,9 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
                       lotNumber: l.suggested_lot_number as string | undefined,
                       lotDlc: l.suggested_lot_dlc as string | undefined,
                       bonNumero: g.bon_numero,
+                      containerSize: l.container_size != null ? parseFloat(l.container_size as string) : undefined,
+                      containerTypeId: (l.container_type_id as string) || undefined,
+                      containerTypeLabel: (l.container_type_label as string) || undefined,
                     })}
                     disabled={isPending || transferringAll || insufficient}
                     className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-1 text-xs font-semibold shrink-0 shadow-sm"
@@ -258,11 +268,13 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
         <BsiTransferModal
           payload={modalPayload}
           onClose={() => setModalPayload(null)}
-          onConfirm={(qty, reason, overrideLotId) => transferLineMutation.mutate({
+          onConfirm={(qty, reason, overrideLotId, containerTypeId, containerCount) => transferLineMutation.mutate({
             ligneId: modalPayload.ligneId,
             overrideQty: qty,
             overrideLotId,
             reason,
+            containerTypeId,
+            containerCount,
           })}
           isLoading={transferLineMutation.isPending}
         />
@@ -279,7 +291,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
 function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
   payload: TransferModalPayload;
   onClose: () => void;
-  onConfirm: (qty: number, reason?: string, overrideLotId?: string) => void;
+  onConfirm: (qty: number, reason?: string, overrideLotId?: string, containerTypeId?: string, containerCount?: number) => void;
   isLoading: boolean;
 }) {
   // Delta v1 point 4 : chargement de la liste FEFO des lots Economat dispo pour cette ligne.
@@ -298,9 +310,37 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
   const effectiveDlc = (selectedLot?.expiration_date as string) || payload.lotDlc;
   const isOverride = !!selectedLot && !selectedLot.is_suggested;
 
-  const [quantity, setQuantity] = useState<string>(payload.requiredQty.toFixed(2));
+  // Referentiel editable des types de contenant (Parametres -> Referentiel).
+  // Le magasinier declare le contenant ouvert (sac, carton...) + le nombre.
+  const { data: containerTypes = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['ref-entries', 'container_types'],
+    // entries() renvoie { table, entries } — on extrait le tableau des entrees.
+    queryFn: () => referentielApi.entries('container_types').then((r: any) => (r?.entries ?? []) as Record<string, any>[]),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // L'ingredient a-t-il un contenant defini (ex Seau de 5 kg) ? Si oui, on pilote la
+  // saisie par NOMBRE de contenants : la quantite en kg = nombre x taille du contenant.
+  // Le magasinier ne peut pas transferer "1.3 kg" : il ouvre des contenants entiers.
+  // Un contenant n'est "defini" que si le TYPE ET la quantite/contenant sont renseignes sur
+  // l'ingredient. Une container_size heritee seule (sans type) -> saisie kg libre.
+  const containerSize = payload.containerSize && payload.containerSize > 0 && payload.containerTypeId
+    ? payload.containerSize : null;
+  // Par defaut : assez de contenants pour couvrir le besoin BSI (arrondi superieur).
+  const defaultCount = containerSize ? Math.max(1, Math.ceil(payload.requiredQty / containerSize)) : 0;
+
   const [note, setNote] = useState<string>('');
-  const qty = parseFloat(quantity);
+  const [containerTypeId, setContainerTypeId] = useState<string>(payload.containerTypeId || '');
+  const [containerCount, setContainerCount] = useState<string>(containerSize ? String(defaultCount) : '');
+  // En mode libre (pas de contenant), la qty est saisie directement en kg.
+  const [freeQty, setFreeQty] = useState<string>(payload.requiredQty.toFixed(2));
+
+  const parsedCount = parseInt(containerCount, 10);
+  const effectiveCount = Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : undefined;
+  // Quantite effective : pilotee par les contenants si l'ingredient en a un, sinon saisie libre.
+  const qty = containerSize
+    ? (effectiveCount ? effectiveCount * containerSize : NaN)
+    : parseFloat(freeQty);
   const isValid = !isNaN(qty)
     && qty >= payload.requiredQty
     && qty <= effectiveAvailable
@@ -415,30 +455,83 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             <span className="hidden">{effectiveLotNumber}</span>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
-              Quantité à transférer
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number" step="0.01" min={payload.requiredQty} max={effectiveAvailable}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
-              />
-              <span className="text-sm text-gray-500 font-medium">{payload.unit}</span>
+          {/* Contenant : type (referentiel editable) + nombre. Si l'ingredient a une taille
+              de contenant definie (ex Seau de 5 kg), le NOMBRE pilote la quantite transferee
+              (transfert par contenant entier). Sinon, saisie libre en kg ci-dessous. */}
+          <div className="grid grid-cols-[1fr_auto] gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+                Type de contenant
+              </label>
+              <select
+                value={containerTypeId}
+                onChange={(e) => setContainerTypeId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-white"
+              >
+                <option value="">— Aucun —</option>
+                {containerTypes.map((ct) => (
+                  <option key={ct.id as string} value={ct.id as string}>
+                    {ct.label as string}
+                  </option>
+                ))}
+              </select>
             </div>
-            <p className="text-[11px] text-gray-500 mt-1.5">
-              Doit être ≥ {payload.requiredQty.toFixed(2)} (besoin BSI) et ≤ {effectiveAvailable.toFixed(2)} (dispo du lot sélectionné).
-              Tu peux transférer plus si tu ouvres un contenant entier — le surplus restera au pesage.
-            </p>
-            {qty < payload.requiredQty && (
-              <p className="text-xs text-red-600 mt-1">Inférieur au besoin BSI ({payload.requiredQty.toFixed(2)}).</p>
-            )}
-            {qty > effectiveAvailable && (
-              <p className="text-xs text-red-600 mt-1">Dépasse la quantité dispo sur ce lot ({effectiveAvailable.toFixed(2)}).</p>
-            )}
+            <div className="w-28">
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+                {containerSize ? 'Nb contenants' : 'Nombre'}
+              </label>
+              <input
+                type="number" min={1} step={1}
+                value={containerCount}
+                onChange={(e) => setContainerCount(e.target.value)}
+                placeholder="ex 2"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
+              />
+            </div>
           </div>
+
+          {containerSize ? (
+            /* Mode par contenant : la quantite en kg est calculee, non saisissable. */
+            <div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-sm text-amber-900">
+                <span className="font-mono">
+                  {effectiveCount || 0} × {containerSize} {payload.unit}
+                </span>
+                <span className="font-mono font-bold">
+                  = {Number.isFinite(qty) ? qty.toFixed(2) : '—'} {payload.unit}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                Transfert par contenant entier. Le besoin BSI est de {payload.requiredQty.toFixed(2)} {payload.unit} — le surplus reste au pesage.
+              </p>
+            </div>
+          ) : (
+            /* Mode libre : pas de contenant defini sur l'ingredient, saisie directe en kg. */
+            <div>
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+                Quantité à transférer
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" step="0.01" min={payload.requiredQty} max={effectiveAvailable}
+                  value={freeQty}
+                  onChange={(e) => setFreeQty(e.target.value)}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
+                />
+                <span className="text-sm text-gray-500 font-medium">{payload.unit}</span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                Doit être ≥ {payload.requiredQty.toFixed(2)} (besoin BSI) et ≤ {effectiveAvailable.toFixed(2)} (dispo du lot sélectionné).
+                Tu peux transférer plus si tu ouvres un contenant entier — le surplus restera au pesage.
+              </p>
+            </div>
+          )}
+          {qty < payload.requiredQty && (
+            <p className="text-xs text-red-600 -mt-2">Inférieur au besoin BSI ({payload.requiredQty.toFixed(2)} {payload.unit}).</p>
+          )}
+          {qty > effectiveAvailable && (
+            <p className="text-xs text-red-600 -mt-2">Dépasse la quantité dispo sur ce lot ({effectiveAvailable.toFixed(2)} {payload.unit}).</p>
+          )}
 
           <div>
             <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
@@ -457,7 +550,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               className="flex-1 py-2.5 px-4 rounded-xl text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-60">
               Annuler
             </button>
-            <button onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined)}
+            <button onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)}
               disabled={!isValid || isLoading}
               className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-amber-600 hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
               {isLoading ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}

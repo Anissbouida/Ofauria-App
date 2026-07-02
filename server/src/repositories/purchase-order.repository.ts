@@ -79,9 +79,12 @@ export const purchaseOrderRepository = {
       `SELECT poi.*,
               COALESCE(ing.name, pkg.name) as ingredient_name,
               COALESCE(ing.unit, pkg.unit) as ingredient_unit,
+              ing.container_size,
+              ctc.label as container_type_label,
               CASE WHEN poi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind
        FROM purchase_order_items poi
        LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+       LEFT JOIN ref_entries ctc ON ctc.id = ing.container_type_id
        LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
        WHERE poi.purchase_order_id = $1
        ORDER BY COALESCE(ing.name, pkg.name)`,

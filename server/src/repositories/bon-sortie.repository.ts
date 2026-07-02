@@ -466,6 +466,9 @@ export const bonSortieRepository = {
               s.name AS store_name,
               ing.name AS ingredient_name,
               ing.unit AS ingredient_unit,
+              ing.container_size,
+              ing.container_type_id,
+              ct.label AS container_type_label,
               il.lot_number AS suggested_lot_number,
               il.economat_quantity AS suggested_lot_economat_qty,
               il.expiration_date AS suggested_lot_dlc
@@ -474,6 +477,7 @@ export const bonSortieRepository = {
        LEFT JOIN production_plans pp ON pp.id = bs.plan_id
        LEFT JOIN stores s ON s.id = bs.store_id
        LEFT JOIN ingredients ing ON ing.id = bsl.ingredient_id
+       LEFT JOIN ref_entries ct ON ct.id = ing.container_type_id
        LEFT JOIN ingredient_lots il ON il.id = bsl.suggested_economat_lot_id
        WHERE ($1::uuid IS NULL OR bs.store_id = $1)
          AND bs.status IN ('genere', 'preparation', 'preparation_partielle', 'pret', 'prelevement')
@@ -879,7 +883,7 @@ export const bonSortieRepository = {
   async transferLineFromEconomat(
     ligneId: string,
     userId: string,
-    options: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number } = {},
+    options: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number; containerTypeId?: string } = {},
   ) {
     const client = await db.getClient();
     try {
@@ -959,10 +963,10 @@ export const bonSortieRepository = {
       // 3. Insert audit transfer (delta v1 point 4 : plan_production_id requis)
       await client.query(
         `INSERT INTO ingredient_stock_zone_transfers
-           (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count,
+           (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count, container_type_id,
             bon_sortie_id, bon_sortie_ligne_id, plan_production_id, reason, transferred_by)
-         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8, $9)`,
-        [lotId, line.store_id, transferQty, options.containerCount || null,
+         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [lotId, line.store_id, transferQty, options.containerCount || null, options.containerTypeId || null,
          line.bon_id, ligneId, line.plan_id, options.reason || `BSI ${line.bon_numero}`, userId]
       );
 
@@ -972,6 +976,7 @@ export const bonSortieRepository = {
         opened_at: new Date().toISOString(),
         opened_by: userId,
         container_count: options.containerCount || null,
+        container_type_id: options.containerTypeId || null,
         bon_sortie_id: line.bon_id,
       };
       // Migration 112 a supprime effective_expiry_after_opening / shelf_life_after_opening_days :

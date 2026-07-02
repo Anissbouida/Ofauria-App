@@ -369,17 +369,18 @@ export const bonSortieController = {
   },
 
   // ─── Magasinier : transferer une ligne BSI Economat -> Pesage ───
-  // Body : { overrideLotId?: string; reason?: string; containerCount?: number }
+  // Body : { overrideLotId?: string; reason?: string; containerCount?: number; containerTypeId?: string }
   async transferLineFromEconomat(req: Request, res: Response) {
     try {
       const ligneId = req.params.ligneId as string;
       const userId = (req as any).user?.userId;
-      const { overrideLotId, overrideQty, reason, containerCount } = req.body || {};
+      const { overrideLotId, overrideQty, reason, containerCount, containerTypeId } = req.body || {};
       const data = await bonSortieRepository.transferLineFromEconomat(ligneId, userId, {
         overrideLotId: typeof overrideLotId === 'string' ? overrideLotId : undefined,
         overrideQty: overrideQty != null && Number.isFinite(Number(overrideQty)) ? Number(overrideQty) : undefined,
         reason: typeof reason === 'string' ? reason : undefined,
-        containerCount: Number.isFinite(containerCount) ? Number(containerCount) : undefined,
+        containerCount: Number.isFinite(Number(containerCount)) ? Number(containerCount) : undefined,
+        containerTypeId: typeof containerTypeId === 'string' && containerTypeId ? containerTypeId : undefined,
       });
       res.json({ data });
     } catch (err: any) {

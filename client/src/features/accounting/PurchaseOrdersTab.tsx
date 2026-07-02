@@ -86,6 +86,10 @@ type POItem = {
   quantity_ordered: string;
   quantity_delivered: string;
   unit_price: string;
+  // Contenant par defaut de l'ingredient : permet de saisir la reception par contenant
+  // (ex : 3 seaux de 5 kg = 15 kg).
+  container_size?: string | null;
+  container_type_label?: string | null;
 };
 
 export default function PurchaseOrdersTab() {
@@ -1182,6 +1186,9 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   });
 
   const [deliveries, setDeliveries] = useState<Record<string, number>>({});
+  // Saisie par contenant : nb de contenants par ligne. Pilote la qty reçue en kg
+  // (nb x container_size) quand l'ingrédient a une taille de contenant définie.
+  const [containerCounts, setContainerCounts] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
@@ -1362,14 +1369,15 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
           {/* Items */}
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
-            <table className="odoo-table" style={{ minWidth: 1050 }}>
+            <table className="odoo-table" style={{ minWidth: 1180 }}>
               <thead>
                 <tr>
                   <th>Ingrédient</th>
                   <th style={{ textAlign: 'right' }}>Commandé</th>
                   <th style={{ textAlign: 'right' }}>Déjà reçu</th>
                   <th style={{ textAlign: 'right' }}>Restant</th>
-                  <th style={{ textAlign: 'right', width: 96 }}>Qté reçue</th>
+                  <th style={{ textAlign: 'center', width: 170 }}>Contenants</th>
+                  <th style={{ textAlign: 'right', width: 110 }}>Qté reçue</th>
                   <th style={{ textAlign: 'right', width: 96 }}>Prix U.</th>
                   <th style={{ textAlign: 'right', width: 96 }}>Total</th>
                   <th style={{ textAlign: 'center', width: 96 }}>Ref. lot</th>
@@ -1400,14 +1408,59 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                           ? <span style={{ color: '#28a745', fontWeight: 500 }} className="flex items-center justify-end gap-1"><CheckCircle2 size={14} /> Complet</span>
                           : <span style={{ fontWeight: 600 }}>{remaining}</span>}
                       </td>
-                      <td>
-                        {!isComplete ? (
-                          <input type="number" min={0} max={remaining} step="0.01"
-                            value={deliveries[item.id] ?? ''}
-                            onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
-                            style={{ ...odooNumFieldStyle, backgroundColor: '#fff8e8' }} placeholder="0" />
-                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
-                      </td>
+                      {(() => {
+                        const size = item.container_size != null ? parseFloat(item.container_size) : 0;
+                        // Un contenant n'est "defini" que si le TYPE ET la quantite/contenant sont
+                        // renseignes sur l'ingredient. Une simple container_size heritee (sans type)
+                        // ne compte pas -> saisie kg classique.
+                        const hasContainer = size > 0 && !!item.container_type_label;
+                        const unit = item.ingredient_unit || 'kg';
+                        const count = parseInt(containerCounts[item.id] ?? '', 10);
+                        const typeName = (item.container_type_label || 'contenant').toLowerCase();
+                        const typeLabel = Number.isFinite(count) && count > 1 ? `${typeName}s` : typeName;
+                        return (
+                          <>
+                            {/* Contenants : nombre saisi + rappel de la contenance unitaire. */}
+                            <td style={{ textAlign: 'center' }}>
+                              {isComplete ? (
+                                <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
+                              ) : hasContainer ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                                  <input type="number" min={0} step={1}
+                                    value={containerCounts[item.id] ?? ''}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      setContainerCounts({ ...containerCounts, [item.id]: raw });
+                                      const c = parseInt(raw, 10);
+                                      setDeliveries({ ...deliveries, [item.id]: Number.isFinite(c) && c > 0 ? c * size : 0 });
+                                    }}
+                                    style={{ ...odooNumFieldStyle, width: 56, backgroundColor: '#fff8e8', textAlign: 'center' }}
+                                    placeholder="0" />
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                                    {typeLabel} × {size} {unit}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
+                              )}
+                            </td>
+                            {/* Qté reçue : total en unité de base (auto depuis les contenants, ajustable). */}
+                            <td>
+                              {!isComplete ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                                  <input type="number" min={0} max={remaining} step="0.01"
+                                    value={deliveries[item.id] ?? ''}
+                                    onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
+                                    style={{ ...odooNumFieldStyle, width: 80, backgroundColor: '#fff8e8' }}
+                                    placeholder="0"
+                                    title={hasContainer ? `Total en ${unit} (calculé depuis les contenants, ajustable si contenant entamé)` : undefined} />
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', minWidth: 16 }}>{unit}</span>
+                                </div>
+                              ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
+                            </td>
+                          </>
+                        );
+                      })()}
                       <td>
                         {!isComplete ? (
                           <input type="number" min={0} step="0.01"

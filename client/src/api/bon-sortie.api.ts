@@ -82,7 +82,7 @@ export const bonSortieApi = {
   // (utile pour ouvrir un contenant entier au lieu de la portion exacte).
   transferLineFromEconomat: (
     ligneId: string,
-    payload: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number } = {},
+    payload: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number; containerTypeId?: string } = {},
   ) =>
     api.post(`/bons-sortie/ligne/${ligneId}/transfer-from-economat`, payload).then(r => r.data.data),
 

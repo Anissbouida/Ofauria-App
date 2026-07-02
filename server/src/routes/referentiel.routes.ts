@@ -14,7 +14,10 @@ router.get('/dashboard', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
 router.get('/tables', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(refTableController.list));
 
 // CRUD on entries of a specific table
-router.get('/:tableName', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(refEntryController.list));
+// Lecture ouverte au groupe WAREHOUSE (inclut le magasinier) : les référentiels sont des
+// listes de valeurs non sensibles, et le magasinier a besoin de lire p.ex. les types de
+// contenant au moment du transfert Économat → Pesage. Les mutations restent admin.
+router.get('/:tableName', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(refEntryController.list));
 router.post('/:tableName', authenticate, authorize(ROLES.ADMIN), asyncHandler(refEntryController.create));
 router.put('/:tableName/reorder', authenticate, authorize(ROLES.ADMIN), asyncHandler(refEntryController.reorder));
 router.get('/:tableName/audit', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(refEntryController.audit));
