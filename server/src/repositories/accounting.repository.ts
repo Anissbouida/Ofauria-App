@@ -1186,36 +1186,65 @@ export const invoiceRepository = {
   },
 
   /**
-   * Retourne les factures fournisseurs dont l'echeance est dans <= alertDays
-   * jours (defaut 7), et dont le statut est encore non finalise.
-   * Inclut les factures deja en retard (due_date < CURRENT_DATE).
+   * Retourne les echeances fournisseurs a <= alertDays jours (defaut 7),
+   * en deux familles distinguees par `kind` :
+   *   - kind='invoice' : factures recues non finalisees dont due_date approche
+   *     (inclut celles deja en retard).
+   *   - kind='check'   : cheques/traites EMIS mais pas encore encaisses dont
+   *     l'echeance effective (check_date, sinon due_date de la facture liee)
+   *     approche. Une facture reglee par cheque passe en 'paid' et sort de la
+   *     premiere famille, mais le cash ne quitte la banque qu'a l'encaissement —
+   *     sans cette branche, l'echeance disparaissait du radar.
    */
   async findPaymentAlerts(params: { storeId?: string; alertDays?: number }) {
     const alertDays = params.alertDays ?? 7;
-    const conditions: string[] = [
-      `inv.invoice_type = 'received'`,
-      `inv.due_date IS NOT NULL`,
-      `inv.due_date <= CURRENT_DATE + ($1 || ' days')::interval`,
-      `inv.status IN ('pending', 'partial', 'overdue', 'disputed')`,
-    ];
     const values: unknown[] = [String(alertDays)];
-    let i = 2;
+    let storeFilterInv = '';
+    let storeFilterP = '';
     if (params.storeId) {
-      conditions.push(`inv.store_id = $${i++}`);
+      storeFilterInv = 'AND inv.store_id = $2';
+      storeFilterP = 'AND p.store_id = $2';
       values.push(params.storeId);
     }
     const result = await db.query(
-      `SELECT inv.id, inv.invoice_number, inv.supplier_id, inv.invoice_date,
-              inv.reception_date, inv.due_date, inv.total_amount, inv.paid_amount,
-              inv.status, inv.expected_payment_mode, inv.notes,
-              s.name AS supplier_name,
-              (inv.total_amount - inv.paid_amount) AS remaining_amount,
-              (inv.due_date - CURRENT_DATE) AS days_until_due,
-              CASE WHEN inv.due_date < CURRENT_DATE THEN true ELSE false END AS is_overdue
-         FROM invoices inv
-         LEFT JOIN suppliers s ON s.id = inv.supplier_id
-         WHERE ${conditions.join(' AND ')}
-         ORDER BY inv.due_date ASC, inv.invoice_date ASC`,
+      `SELECT * FROM (
+         SELECT inv.id, 'invoice' AS kind, inv.invoice_number, inv.supplier_id,
+                inv.invoice_date, inv.due_date, inv.total_amount, inv.paid_amount,
+                inv.status, inv.expected_payment_mode, inv.notes,
+                inv.check_number,
+                s.name AS supplier_name,
+                (inv.total_amount - inv.paid_amount) AS remaining_amount,
+                (inv.due_date - CURRENT_DATE) AS days_until_due,
+                (inv.due_date < CURRENT_DATE) AS is_overdue
+           FROM invoices inv
+           LEFT JOIN suppliers s ON s.id = inv.supplier_id
+          WHERE inv.invoice_type = 'received'
+            AND inv.due_date IS NOT NULL
+            AND inv.due_date <= CURRENT_DATE + ($1 || ' days')::interval
+            AND inv.status IN ('pending', 'partial', 'overdue', 'disputed')
+            ${storeFilterInv}
+         UNION ALL
+         SELECT p.id, 'check' AS kind, inv.invoice_number, p.supplier_id,
+                inv.invoice_date, COALESCE(p.check_date, inv.due_date) AS due_date,
+                p.amount AS total_amount, 0 AS paid_amount,
+                'check_pending' AS status, p.payment_method AS expected_payment_mode,
+                p.description AS notes,
+                p.check_number,
+                COALESCE(s.name, e.first_name || ' ' || e.last_name) AS supplier_name,
+                p.amount AS remaining_amount,
+                (COALESCE(p.check_date, inv.due_date) - CURRENT_DATE) AS days_until_due,
+                (COALESCE(p.check_date, inv.due_date) < CURRENT_DATE) AS is_overdue
+           FROM payments p
+           LEFT JOIN invoices inv ON inv.id = p.invoice_id
+           LEFT JOIN suppliers s ON s.id = p.supplier_id
+           LEFT JOIN employees e ON e.id = p.employee_id
+          WHERE p.payment_method IN ('check', 'traite')
+            AND p.cashed_at IS NULL
+            AND COALESCE(p.check_date, inv.due_date) IS NOT NULL
+            AND COALESCE(p.check_date, inv.due_date) <= CURRENT_DATE + ($1 || ' days')::interval
+            ${storeFilterP}
+       ) t
+       ORDER BY t.due_date ASC, t.invoice_date ASC NULLS LAST`,
       values
     );
     return result.rows;
