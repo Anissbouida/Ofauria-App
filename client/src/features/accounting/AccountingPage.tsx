@@ -2636,11 +2636,27 @@ type CheckRow = {
   status: 'pending' | 'cashed' | 'overdue';
 };
 
+// Un cheque physique peut regler PLUSIEURS factures : N paiements partagent
+// alors le meme N° de cheque et le meme beneficiaire. Le tableau affiche une
+// seule ligne par cheque (montant total), depliable pour lister les factures.
+type CheckGroup = {
+  key: string;
+  rows: CheckRow[];
+  first: CheckRow;
+  totalAmount: number;
+  anyOverdue: boolean;
+  allCashed: boolean;
+  anyCashed: boolean;
+  pendingRows: CheckRow[];
+};
+
 function ChequesTab() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'pending' | 'cashed' | 'all'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
-  const [confirmingCheck, setConfirmingCheck] = useState<CheckRow | null>(null);
+  const [confirmingGroup, setConfirmingGroup] = useState<CheckGroup | null>(null);
+  // Cheques multi-factures depliés (cle de groupe -> visible)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   // Filtres : KPI clic (dueWindow), beneficiaire (single), periode echeance, methode.
   // Tous inline dans la meme barre — meme style que ChargesTab.
   const [dueWindow, setDueWindow] = useState<'all' | 'overdue' | 'next7d' | 'next30d' | 'later'>('all');
@@ -2659,16 +2675,20 @@ function ChequesTab() {
     queryFn: () => paymentsApi.listChecks({ status: 'all' }),
   });
 
+  // Un cheque multi-factures = N paiements : l'encaissement marque TOUS les
+  // paiements du cheque en une fois (un cheque est debite une seule fois).
   const markMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { cashedAt?: string; note?: string } }) =>
-      paymentsApi.markCashed(id, data),
-    onSuccess: () => {
+    mutationFn: ({ ids, data }: { ids: string[]; data: { cashedAt?: string; note?: string } }) =>
+      Promise.all(ids.map(id => paymentsApi.markCashed(id, data))),
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
-      notify.success('Cheque marque comme encaisse');
-      setConfirmingCheck(null);
+      notify.success(vars.ids.length > 1
+        ? `Cheque marque comme encaisse (${vars.ids.length} factures)`
+        : 'Cheque marque comme encaisse');
+      setConfirmingGroup(null);
     },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -2679,7 +2699,7 @@ function ChequesTab() {
   });
 
   const unmarkMutation = useMutation({
-    mutationFn: (id: string) => paymentsApi.unmarkCashed(id),
+    mutationFn: (ids: string[]) => Promise.all(ids.map(id => paymentsApi.unmarkCashed(id))),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
@@ -2803,6 +2823,39 @@ function ChequesTab() {
     return result;
   }, [data, statusFilter, dueWindow, supplierFilter, dueFromDate, dueToDate,
       methodFilter, searchTerm, sortBy, sortDir]);
+
+  // Regroupement par cheque physique : meme methode + meme N° + meme beneficiaire.
+  // Les paiements sans N° de cheque restent des lignes individuelles. L'ordre des
+  // groupes suit le tri courant (position de leur premiere ligne).
+  const groups = useMemo<CheckGroup[]>(() => {
+    const map = new Map<string, CheckRow[]>();
+    const order: string[] = [];
+    filtered.forEach(c => {
+      const benef = c.supplier_name || c.employee_name || c.category_name || '';
+      const key = c.check_number
+        ? `${c.payment_method}::${c.check_number}::${benef}`
+        : `solo::${c.id}`;
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key)!.push(c);
+    });
+    return order.map(key => {
+      const rows = map.get(key)!;
+      return {
+        key, rows, first: rows[0],
+        totalAmount: rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0),
+        anyOverdue: rows.some(r => r.status === 'overdue'),
+        allCashed: rows.every(r => r.status === 'cashed'),
+        anyCashed: rows.some(r => r.status === 'cashed'),
+        pendingRows: rows.filter(r => r.status !== 'cashed'),
+      };
+    });
+  }, [filtered]);
+
+  const toggleExpanded = (key: string) => setExpandedKeys(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   const hasActiveFilters = dueWindow !== 'all' || supplierFilter !== 'all' ||
     dueFromDate !== '' || dueToDate !== '' || methodFilter !== 'all';
@@ -3040,7 +3093,9 @@ function ChequesTab() {
           </button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
-          {filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
+          {groups.length !== filtered.length
+            ? `${groups.length} cheques · ${filtered.length} paiements${filtered.length !== data.length ? ` (sur ${data.length})` : ''}`
+            : filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
         </span>
       </div>
 
@@ -3096,13 +3151,31 @@ function ChequesTab() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => {
-                const isOverdue = c.status === 'overdue';
-                const isCashed = c.status === 'cashed';
+              {groups.map(g => {
+                const c = g.first;
+                const multi = g.rows.length > 1;
+                const isExpanded = multi && expandedKeys.has(g.key);
+                const isCashed = g.allCashed;
+                const isOverdue = !g.allCashed && g.anyOverdue;
+                // Emission = premiere date de paiement ; echeance = date du cheque
+                // (commune a toutes les factures) sinon la plus proche des factures.
+                const emissionDate = multi
+                  ? g.rows.reduce((min, r) => (r.payment_date && (!min || r.payment_date < min) ? r.payment_date : min), '' as string) || null
+                  : c.payment_date;
+                const dueDate = c.check_date
+                  || g.rows.reduce((min, r) => (r.invoice_due_date && (!min || r.invoice_due_date < min) ? r.invoice_due_date : min), '' as string)
+                  || null;
+                const lastCashed = g.rows.reduce((max, r) => (r.cashed_at && (!max || r.cashed_at > max) ? r.cashed_at : max), '' as string) || null;
                 return (
-                  <tr key={c.id}>
+                  <Fragment key={g.key}>
+                  <tr onClick={multi ? () => toggleExpanded(g.key) : undefined}
+                    style={multi ? { cursor: 'pointer' } : undefined}
+                    title={multi ? (isExpanded ? 'Cliquer pour replier les factures' : 'Cliquer pour lister les factures') : undefined}>
                     <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
-                      {c.check_number || <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {multi && (isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-accent)' }} />)}
+                        {c.check_number || <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                      </span>
                     </td>
                     <td>
                       <div style={{ fontWeight: 500 }}>{beneficiaire(c)}</div>
@@ -3113,44 +3186,55 @@ function ChequesTab() {
                       )}
                     </td>
                     <td style={{ fontSize: '0.75rem' }}>
-                      {c.invoice_number && (
+                      {multi ? (
                         <div>
-                          Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</strong>
-                          {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(c.invoice_total))} DH)</span>}
+                          <strong>{g.rows.length} factures</strong>
+                          <span style={{ color: 'var(--theme-text-muted)' }}> — {isExpanded ? 'replier' : 'cliquer pour lister'}</span>
                         </div>
-                      )}
-                      {c.purchase_order_number && (
-                        <div style={{ color: 'var(--theme-text-muted)' }}>
-                          BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.purchase_order_number}</strong>
-                        </div>
-                      )}
-                      {!c.invoice_number && !c.purchase_order_number && (c.description || c.category_name) && (
-                        <div style={{ color: 'var(--theme-text-muted)' }}>{c.description || c.category_name}</div>
+                      ) : (
+                        <>
+                          {c.invoice_number && (
+                            <div>
+                              Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</strong>
+                              {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(c.invoice_total))} DH)</span>}
+                            </div>
+                          )}
+                          {c.purchase_order_number && (
+                            <div style={{ color: 'var(--theme-text-muted)' }}>
+                              BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.purchase_order_number}</strong>
+                            </div>
+                          )}
+                          {!c.invoice_number && !c.purchase_order_number && (c.description || c.category_name) && (
+                            <div style={{ color: 'var(--theme-text-muted)' }}>{c.description || c.category_name}</div>
+                          )}
+                        </>
                       )}
                     </td>
-                    <td>{fmtDate(c.payment_date)}</td>
+                    <td>{fmtDate(emissionDate)}</td>
                     <td>
-                      {fmtDate(c.check_date || c.invoice_due_date)}
+                      {fmtDate(dueDate)}
                       {isOverdue && (
                         <div style={{ fontSize: '0.6875rem', color: '#b71c1c', fontWeight: 600 }}>en retard</div>
                       )}
                     </td>
                     <td>
-                      {c.cashed_at ? (
+                      {isCashed && lastCashed ? (
                         <div>
-                          {fmtDate(c.cashed_at)}
+                          {fmtDate(lastCashed)}
                           {c.cashed_by_name && (
                             <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                               par {c.cashed_by_name}
                             </div>
                           )}
                         </div>
+                      ) : g.anyCashed ? (
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>partiel</span>
                       ) : (
                         <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>
                       )}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
-                      {n(parseFloat(c.amount))} DH
+                      {n(g.totalAmount)} DH
                     </td>
                     <td>
                       {isCashed ? (
@@ -3161,48 +3245,107 @@ function ChequesTab() {
                         <span className="odoo-tag odoo-tag-orange">En attente</span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
                         {!isCashed ? (
-                          <button onClick={() => setConfirmingCheck(c)}
+                          <button onClick={() => setConfirmingGroup(g)}
                             className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}>
                             <Check size={11} /> Marquer encaisse
                           </button>
                         ) : (
                           <button onClick={() => {
-                            if (confirm('Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.')) {
-                              unmarkMutation.mutate(c.id);
-                            }
+                            const msg = multi
+                              ? `Annuler la confirmation d'encaissement ? Les ${g.rows.length} paiements du cheque repasseront en attente et seront retires des charges.`
+                              : 'Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.';
+                            if (confirm(msg)) unmarkMutation.mutate(g.rows.map(r => r.id));
                           }}
                             disabled={unmarkMutation.isPending}
                             className="odoo-pager-btn" title="Annuler l'encaissement (cheque revient en attente)">
                             <RotateCcw size={11} />
                           </button>
                         )}
-                        {/* Suppression definitive du paiement — corrige une erreur de saisie
-                            (mauvais montant, faux N° cheque, doublon). La facture est
-                            recalculee : revient en pending ou partial selon les autres paiements. */}
-                        <button onClick={() => {
-                          const ctx = c.invoice_number ? `facture ${c.invoice_number}` :
-                                      c.purchase_order_number ? `BC ${c.purchase_order_number}` :
-                                      'paiement';
-                          const amount = parseFloat(c.amount).toFixed(2);
-                          const msg = `Supprimer DEFINITIVEMENT ce paiement ?\n\n` +
-                                      `Beneficiaire : ${c.supplier_name || c.employee_name || '—'}\n` +
-                                      `Montant : ${amount} DH\n` +
-                                      `Contexte : ${ctx}\n\n` +
-                                      `Cette action est irreversible. La facture associee sera ` +
-                                      `recalculee (statut + montant restant).`;
-                          if (confirm(msg)) deleteMutation.mutate(c.id);
-                        }}
-                          disabled={deleteMutation.isPending}
-                          className="odoo-pager-btn" title="Supprimer ce paiement (corriger erreur de saisie)"
-                          style={{ color: '#b71c1c' }}>
-                          <Trash2 size={11} />
-                        </button>
+                        {/* Suppression definitive : uniquement au niveau paiement.
+                            Pour un cheque multi-factures, deplier la ligne et supprimer
+                            la facture concernee. */}
+                        {!multi && (
+                          <button onClick={() => {
+                            const ctx = c.invoice_number ? `facture ${c.invoice_number}` :
+                                        c.purchase_order_number ? `BC ${c.purchase_order_number}` :
+                                        'paiement';
+                            const amount = parseFloat(c.amount).toFixed(2);
+                            const msg = `Supprimer DEFINITIVEMENT ce paiement ?\n\n` +
+                                        `Beneficiaire : ${c.supplier_name || c.employee_name || '—'}\n` +
+                                        `Montant : ${amount} DH\n` +
+                                        `Contexte : ${ctx}\n\n` +
+                                        `Cette action est irreversible. La facture associee sera ` +
+                                        `recalculee (statut + montant restant).`;
+                            if (confirm(msg)) deleteMutation.mutate(c.id);
+                          }}
+                            disabled={deleteMutation.isPending}
+                            className="odoo-pager-btn" title="Supprimer ce paiement (corriger erreur de saisie)"
+                            style={{ color: '#b71c1c' }}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
+                  {/* Sous-lignes : une par facture reglee par ce cheque */}
+                  {isExpanded && g.rows.map(r => (
+                    <tr key={r.id} style={{ background: 'var(--theme-bg-page)' }}>
+                      <td />
+                      <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>└ Facture</td>
+                      <td style={{ fontSize: '0.75rem' }}>
+                        {r.invoice_number ? (
+                          <div>
+                            Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{r.invoice_number}</strong>
+                            {r.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(r.invoice_total))} DH)</span>}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--theme-text-muted)' }}>{r.description || r.purchase_order_number || '—'}</span>
+                        )}
+                        {r.purchase_order_number && r.invoice_number && (
+                          <div style={{ color: 'var(--theme-text-muted)' }}>
+                            BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{r.purchase_order_number}</strong>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.payment_date)}</td>
+                      <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.check_date || r.invoice_due_date)}</td>
+                      <td style={{ fontSize: '0.75rem' }}>
+                        {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
+                        {n(parseFloat(r.amount))} DH
+                      </td>
+                      <td>
+                        {r.status === 'cashed' ? (
+                          <span className="odoo-tag" style={{ background: '#d4edda', color: '#0e7c3a', fontSize: '0.6875rem' }}>Encaisse</span>
+                        ) : r.status === 'overdue' ? (
+                          <span className="odoo-tag" style={{ background: '#f8d7da', color: '#b71c1c', fontSize: '0.6875rem' }}>Retard</span>
+                        ) : (
+                          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>En attente</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button onClick={() => {
+                          const amount = parseFloat(r.amount).toFixed(2);
+                          const msg = `Retirer cette facture du cheque ${c.check_number || ''} ?\n\n` +
+                                      `Facture : ${r.invoice_number || '—'}\n` +
+                                      `Montant : ${amount} DH\n\n` +
+                                      `Le paiement est supprime definitivement ; la facture sera ` +
+                                      `recalculee (statut + montant restant).`;
+                          if (confirm(msg)) deleteMutation.mutate(r.id);
+                        }}
+                          disabled={deleteMutation.isPending}
+                          className="odoo-pager-btn" title="Retirer cette facture du cheque (supprime le paiement)"
+                          style={{ color: '#b71c1c' }}>
+                          <Trash2 size={11} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -3210,13 +3353,17 @@ function ChequesTab() {
         </div>
       )}
 
-      {/* Modal confirmation encaissement */}
-      {confirmingCheck && (
+      {/* Modal confirmation encaissement — un cheque multi-factures est encaisse
+          en une seule fois : tous ses paiements en attente sont marques ensemble. */}
+      {confirmingGroup && (
         <ConfirmCashedModal
-          check={confirmingCheck}
-          onClose={() => setConfirmingCheck(null)}
+          check={{ ...confirmingGroup.first, amount: String(confirmingGroup.totalAmount) }}
+          invoices={confirmingGroup.rows.length > 1
+            ? confirmingGroup.rows.map(r => ({ number: r.invoice_number, amount: parseFloat(r.amount) || 0 }))
+            : undefined}
+          onClose={() => setConfirmingGroup(null)}
           onConfirm={(cashedAt, note) => markMutation.mutate({
-            id: confirmingCheck.id,
+            ids: confirmingGroup.pendingRows.map(r => r.id),
             data: { cashedAt, note },
           })}
           isPending={markMutation.isPending}
@@ -3226,11 +3373,13 @@ function ChequesTab() {
   );
 }
 
-/* Mini-modal : confirme l'encaissement d'un cheque avec date + note */
+/* Mini-modal : confirme l'encaissement d'un cheque avec date + note.
+   `invoices` (optionnel) : liste des factures reglees par un cheque multi-factures. */
 function ConfirmCashedModal({
-  check, onClose, onConfirm, isPending,
+  check, invoices, onClose, onConfirm, isPending,
 }: {
   check: CheckRow;
+  invoices?: { number: string | null; amount: number }[];
   onClose: () => void;
   onConfirm: (cashedAt: string, note: string | undefined) => void;
   isPending: boolean;
@@ -3258,7 +3407,20 @@ function ConfirmCashedModal({
           <div style={{ padding: '10px 12px', background: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem' }}>
             <div><strong>Beneficiaire :</strong> {check.supplier_name || check.employee_name || '—'}</div>
             <div><strong>Montant :</strong> {n(parseFloat(check.amount))} DH</div>
-            {check.invoice_number && <div><strong>Facture :</strong> {check.invoice_number}</div>}
+            {invoices && invoices.length > 0 ? (
+              <div style={{ marginTop: 6 }}>
+                <strong>{invoices.length} factures reglees par ce cheque :</strong>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                  {invoices.map((inv, i) => (
+                    <li key={i} style={{ fontFamily: 'ui-monospace, monospace' }}>
+                      {inv.number || '—'} · {n(inv.amount)} DH
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              check.invoice_number && <div><strong>Facture :</strong> {check.invoice_number}</div>
+            )}
             {check.invoice_due_date && (
               <div style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>
                 Echeance prevue : {format(parseLocalDate(check.invoice_due_date.slice(0, 10)), 'dd/MM/yyyy')}
