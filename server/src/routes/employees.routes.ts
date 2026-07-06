@@ -1,5 +1,5 @@
 import { Router, json as expressJson } from 'express';
-import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController } from '../controllers/employee.controller.js';
+import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController, salaryAdvanceController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
@@ -58,6 +58,14 @@ payrollRouter.get('/', authenticate, authorize(ROLES.ADMIN), payrollController.l
 payrollRouter.post('/generate', authenticate, authorize(ROLES.ADMIN), payrollController.generate);
 payrollRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), payrollController.update);
 payrollRouter.post('/:id/pay', authenticate, authorize(ROLES.ADMIN), payrollController.markPaid);
+
+// Avances sur salaire (octroi via l'onglet Paie, retenue a la paie)
+export const salaryAdvancesRouter = Router();
+salaryAdvancesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), salaryAdvanceController.list);
+salaryAdvancesRouter.get('/outstanding', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), salaryAdvanceController.outstanding);
+salaryAdvancesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), salaryAdvanceController.create);
+// Suppression reservee admin : reverse le decaissement + son ecriture comptable.
+salaryAdvancesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), salaryAdvanceController.remove);
 
 // Weekly payroll (lundi = jour de paie pour les employes hebdo)
 export const weeklyPayrollRouter = Router();

@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
+import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
 /**
@@ -142,16 +143,26 @@ export const weeklyPayrollRepository = {
    * Marque comme paye + cree l'ecriture comptable (type 'salary').
    * Idempotent : si deja paye, retourne la ligne sans recreer l'ecriture.
    */
-  async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string) {
+  async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
     const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
     const row = existing.rows[0];
     if (!row) return null;
     if (row.paid) return row;
 
+    const net = parseFloat(row.net_amount as string);
+    const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
+    if (deduction > 0) {
+      const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(row.employee_id as string);
+      const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
+      if (deduction > Math.min(net, outstanding) + 0.005) {
+        throw new Error(`Retenue ${deduction.toFixed(2)} DH superieure au net a payer (${net.toFixed(2)} DH) ou au solde d'avances (${outstanding.toFixed(2)} DH)`);
+      }
+    }
+
     const r = await db.query(
-      `UPDATE weekly_payroll SET paid = true, paid_at = NOW(), payment_method = $1
-         WHERE id = $2 RETURNING *`,
-      [paymentMethod, id]
+      `UPDATE weekly_payroll SET paid = true, paid_at = NOW(), payment_method = $1, advance_deduction = $2
+         WHERE id = $3 RETURNING *`,
+      [paymentMethod, deduction, id]
     );
     const wp = r.rows[0];
 
@@ -162,18 +173,35 @@ export const weeklyPayrollRepository = {
     const catResult = await db.query(`SELECT id FROM expense_categories WHERE name = 'Salaires' AND type = 'expense' LIMIT 1`);
     const categoryId = catResult.rows[0]?.id || null;
 
-    await paymentRepository.create({
-      reference: `SAL-S${(wp.week_start as string).slice(0, 10)}-${empName.replace(/\s+/g, '')}`,
-      type: 'salary',
-      categoryId,
-      employeeId: wp.employee_id,
-      amount: parseFloat(wp.net_amount as string),
-      paymentMethod,
-      paymentDate: getLocalISODate(),
-      description: `Salaire semaine du ${(wp.week_start as string).slice(0, 10)} - ${empName}`,
-      createdBy: createdBy || wp.employee_id,
-      storeId,
-    });
+    // Decaissement reel = net moins la retenue (le cash de l'avance est deja
+    // sorti a l'octroi — une seule sortie caisse au total).
+    const cashOut = Math.round((net - deduction) * 100) / 100;
+    if (cashOut > 0) {
+      await paymentRepository.create({
+        reference: `SAL-S${(wp.week_start as string).slice(0, 10)}-${empName.replace(/\s+/g, '')}`,
+        type: 'salary',
+        categoryId,
+        employeeId: wp.employee_id,
+        amount: cashOut,
+        paymentMethod,
+        paymentDate: getLocalISODate(),
+        description: `Salaire semaine du ${(wp.week_start as string).slice(0, 10)} - ${empName}`
+          + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+        createdBy: createdBy || wp.employee_id,
+        storeId,
+      });
+    }
+
+    if (deduction > 0) {
+      await salaryAdvanceRepository.applyDeduction({
+        employeeId: wp.employee_id as string,
+        amount: deduction,
+        weeklyPayrollId: id,
+        userId: createdBy || (wp.employee_id as string),
+        storeId,
+        label: `${empName} semaine du ${(wp.week_start as string).slice(0, 10)}`,
+      });
+    }
 
     return wp;
   },

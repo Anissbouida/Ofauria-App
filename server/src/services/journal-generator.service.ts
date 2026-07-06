@@ -52,7 +52,7 @@ export interface GeneratedEntry {
   journal_code: 'AC' | 'VE' | 'BQ' | 'CA' | 'OD';
   entry_date: string;
   description: string;
-  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry';
+  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
@@ -394,7 +394,7 @@ export async function fromManualShiftEntry(
 export interface PaymentRow {
   id: string;
   reference: string | null;
-  type: 'invoice' | 'salary' | 'expense' | 'income';
+  type: 'invoice' | 'salary' | 'expense' | 'income' | 'advance';
   category_id: string | null;
   invoice_id: string | null;
   supplier_id: string | null;
@@ -439,6 +439,11 @@ export async function fromPaymentEmission(
     };
   } else if (p.type === 'salary' && p.employee_id) {
     debitLine = { account_code: '6171', debit: round2(amount), credit: 0, label: 'Paiement salaire' };
+  } else if (p.type === 'advance') {
+    // Avance sur salaire : creance sur l'employe (3431), PAS une charge.
+    // La charge 6171 sera reconnue au fil des retenues sur paie
+    // (ecritures 'advance_repayment' : 6171 D / 3431 C).
+    debitLine = { account_code: '3431', debit: round2(amount), credit: 0, label: p.description || 'Avance sur salaire' };
   } else if (p.type === 'expense') {
     const code = await resolveCategoryAccountCode(client, p.category_id, 'expense');
     debitLine = { account_code: code, debit: round2(amount), credit: 0, label: p.description || 'Depense' };

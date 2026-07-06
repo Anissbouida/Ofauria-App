@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
+import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
 export const employeeRepository = {
@@ -880,13 +881,28 @@ export const payrollRepository = {
     return result.rows[0];
   },
 
-  async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string) {
+  async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
+    // Idempotence : un double-clic ne doit pas recreer paiement + retenues.
+    const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
+    const current = existing.rows[0];
+    if (!current) return null;
+    if (current.paid) return current;
+
+    const net = parseFloat(current.net_salary);
+    const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
+    if (deduction > 0) {
+      const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(current.employee_id);
+      const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
+      if (deduction > Math.min(net, outstanding) + 0.005) {
+        throw new Error(`Retenue ${deduction.toFixed(2)} DH superieure au net a payer (${net.toFixed(2)} DH) ou au solde d'avances (${outstanding.toFixed(2)} DH)`);
+      }
+    }
+
     const result = await db.query(
-      `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1 WHERE id = $2 RETURNING *`,
-      [paymentMethod, id]
+      `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1, advance_deduction = $2 WHERE id = $3 RETURNING *`,
+      [paymentMethod, deduction, id]
     );
     const payroll = result.rows[0];
-    if (!payroll) return null;
 
     // Get employee info for the accounting entry description
     const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [payroll.employee_id]);
@@ -897,19 +913,35 @@ export const payrollRepository = {
     const catResult = await db.query(`SELECT id FROM expense_categories WHERE name = 'Salaires' AND type = 'expense' LIMIT 1`);
     const categoryId = catResult.rows[0]?.id || null;
 
-    // Create accounting entry (écriture comptable)
-    await paymentRepository.create({
-      reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`,
-      type: 'salary',
-      categoryId,
-      employeeId: payroll.employee_id,
-      amount: parseFloat(payroll.net_salary),
-      paymentMethod: paymentMethod,
-      paymentDate: getLocalISODate(),
-      description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`,
-      createdBy: createdBy || payroll.employee_id,
-      storeId,
-    });
+    // Decaissement reel = net moins la retenue d'avance (le cash de l'avance
+    // est deja sorti a l'octroi — ne le deduire qu'UNE fois de la caisse).
+    const cashOut = Math.round((net - deduction) * 100) / 100;
+    if (cashOut > 0) {
+      await paymentRepository.create({
+        reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`,
+        type: 'salary',
+        categoryId,
+        employeeId: payroll.employee_id,
+        amount: cashOut,
+        paymentMethod: paymentMethod,
+        paymentDate: getLocalISODate(),
+        description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
+          + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+        createdBy: createdBy || payroll.employee_id,
+        storeId,
+      });
+    }
+
+    if (deduction > 0) {
+      await salaryAdvanceRepository.applyDeduction({
+        employeeId: payroll.employee_id,
+        amount: deduction,
+        payrollId: id,
+        userId: createdBy || payroll.employee_id,
+        storeId,
+        label: `${empName} ${payroll.month}/${payroll.year}`,
+      });
+    }
 
     return payroll;
   },

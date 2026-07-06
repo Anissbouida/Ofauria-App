@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
 import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
+import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 
 export const employeeController = {
   async list(req: AuthRequest, res: Response) {
@@ -158,12 +159,17 @@ export const weeklyPayrollController = {
   },
 
   async markPaid(req: AuthRequest, res: Response) {
-    const { paymentMethod } = req.body;
-    const row = await weeklyPayrollRepository.markPaid(
-      req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId
-    );
-    if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
-    res.json({ success: true, data: row });
+    const { paymentMethod, advanceDeduction } = req.body;
+    try {
+      const row = await weeklyPayrollRepository.markPaid(
+        req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
+        parseFloat(String(advanceDeduction ?? 0)) || 0
+      );
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
   },
 
   async unmarkPaid(req: AuthRequest, res: Response) {
@@ -264,8 +270,58 @@ export const payrollController = {
     res.json({ success: true, data: payroll });
   },
   async markPaid(req: AuthRequest, res: Response) {
-    const { paymentMethod } = req.body;
-    const payroll = await payrollRepository.markPaid(req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId);
-    res.json({ success: true, data: payroll });
+    const { paymentMethod, advanceDeduction } = req.body;
+    try {
+      const payroll = await payrollRepository.markPaid(
+        req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
+        parseFloat(String(advanceDeduction ?? 0)) || 0
+      );
+      res.json({ success: true, data: payroll });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+};
+
+export const salaryAdvanceController = {
+  async list(req: AuthRequest, res: Response) {
+    const { employeeId, status } = req.query as Record<string, string>;
+    const advances = await salaryAdvanceRepository.list({
+      employeeId, status, storeId: req.user!.storeId,
+    });
+    res.json({ success: true, data: advances });
+  },
+  /** Solde d'avances en cours par employe (tous, ou un seul via ?employeeId=). */
+  async outstanding(req: AuthRequest, res: Response) {
+    const { employeeId } = req.query as Record<string, string>;
+    const rows = await salaryAdvanceRepository.outstandingByEmployee(employeeId);
+    res.json({ success: true, data: rows });
+  },
+  async create(req: AuthRequest, res: Response) {
+    const { employeeId, amount, paymentMethod, advanceDate, notes } = req.body;
+    const parsed = parseFloat(String(amount));
+    if (!employeeId || !parsed || parsed <= 0) {
+      res.status(400).json({ success: false, error: { message: 'employeeId et montant positif requis' } });
+      return;
+    }
+    try {
+      const advance = await salaryAdvanceRepository.create({
+        employeeId, amount: Math.round(parsed * 100) / 100,
+        paymentMethod: paymentMethod || 'cash',
+        advanceDate, notes,
+        createdBy: req.user!.userId, storeId: req.user!.storeId,
+      });
+      res.status(201).json({ success: true, data: advance });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+  async remove(req: AuthRequest, res: Response) {
+    try {
+      await salaryAdvanceRepository.remove(req.params.id);
+      res.json({ success: true, data: null });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
   },
 };

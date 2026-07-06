@@ -1912,7 +1912,10 @@ export const paymentRepository = {
 
     const result = await db.query(
       `SELECT
-        COALESCE(SUM(CASE WHEN ec.type = 'expense' OR p.type IN ('invoice','salary','expense') THEN p.amount ELSE 0 END), 0) as total_expenses,
+        -- 'advance' compte comme sortie (vue tresorerie) : pas de double
+        -- comptage car le paiement salaire est net de la retenue d'avance
+        -- (avance + salaire paye = net reel decaisse).
+        COALESCE(SUM(CASE WHEN ec.type = 'expense' OR p.type IN ('invoice','salary','expense','advance') THEN p.amount ELSE 0 END), 0) as total_expenses,
         COALESCE(SUM(CASE WHEN ec.type = 'income' OR p.type = 'income' THEN p.amount ELSE 0 END), 0) as total_income,
         COUNT(*) as total_payments
        FROM payments p

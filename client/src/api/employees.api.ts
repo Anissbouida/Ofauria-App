@@ -55,7 +55,19 @@ export const payrollApi = {
   list: (params?: Record<string, string>) => api.get('/payroll', { params }).then(r => r.data.data),
   generate: (month: number, year: number) => api.post('/payroll/generate', { month, year }).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/payroll/${id}`, data).then(r => r.data.data),
-  markPaid: (id: string, paymentMethod: string) => api.post(`/payroll/${id}/pay`, { paymentMethod }).then(r => r.data.data),
+  /** advanceDeduction : montant retenu sur les avances en cours (0 = aucune retenue). */
+  markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
+    api.post(`/payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
+};
+
+export const advancesApi = {
+  /** Liste des avances (avec remboursements). status='open' = non soldées. */
+  list: (params?: Record<string, string>) => api.get('/salary-advances', { params }).then(r => r.data.data),
+  /** Solde d'avances en cours par employé : [{ employee_id, outstanding }]. */
+  outstanding: (employeeId?: string) =>
+    api.get('/salary-advances/outstanding', { params: employeeId ? { employeeId } : undefined }).then(r => r.data.data),
+  create: (data: Record<string, any>) => api.post('/salary-advances', data).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/salary-advances/${id}`).then(r => r.data.data),
 };
 
 export const weeklyPayrollApi = {
@@ -65,9 +77,9 @@ export const weeklyPayrollApi = {
   /** Calcule et upsert les lignes paie hebdo pour la semaine. */
   generate: (weekStart: string) =>
     api.post('/weekly-payroll/generate', { weekStart }).then(r => r.data.data),
-  /** Marque paye + cree ecriture comptable. */
-  markPaid: (id: string, paymentMethod: string) =>
-    api.post(`/weekly-payroll/${id}/pay`, { paymentMethod }).then(r => r.data.data),
+  /** Marque paye + cree ecriture comptable. advanceDeduction = retenue sur avances. */
+  markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
+    api.post(`/weekly-payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
   /** Annule le marquage paye (ne supprime PAS l'ecriture comptable). */
   unmarkPaid: (id: string) =>
     api.post(`/weekly-payroll/${id}/unpay`).then(r => r.data.data),

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi } from '../../api/employees.api';
+import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi, advancesApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -8,7 +8,7 @@ import {
   Plus, Pencil, UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays,
   Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Download, Search,
   ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
-  Copy, Eraser, Save, Sparkles, Printer,
+  Copy, Eraser, Save, Sparkles, Printer, HandCoins,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
@@ -16,7 +16,7 @@ import { ROLE_LABELS, SHIFT_BADGE_COLORS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from
 import type { ShiftCode } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 
-type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'schedule';
+type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'advances' | 'schedule';
 
 const LEAVE_STATUS_COLORS: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' };
 const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
@@ -50,6 +50,7 @@ export default function EmployeesPage() {
     { key: 'attendance', label: 'Pointage', icon: Clock },
     { key: 'leaves', label: 'Congés', icon: CalendarOff },
     { key: 'payroll', label: 'Paie', icon: Banknote },
+    { key: 'advances', label: 'Avances', icon: HandCoins },
     { key: 'schedule', label: 'Planning', icon: CalendarDays },
   ];
   const currentTab = tabs.find(t => t.key === tab);
@@ -84,6 +85,7 @@ export default function EmployeesPage() {
         {tab === 'attendance' && <AttendanceTab queryClient={queryClient} />}
         {tab === 'leaves' && <LeavesTab queryClient={queryClient} />}
         {tab === 'payroll' && <PayrollTab queryClient={queryClient} />}
+        {tab === 'advances' && <AdvancesTab queryClient={queryClient} />}
         {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
       </div>
     </div>
@@ -1129,6 +1131,7 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [detailPayroll, setDetailPayroll] = useState<Record<string, any> | null>(null);
+  const [payTarget, setPayTarget] = useState<Record<string, any> | null>(null);
   const [paySortKey, setPaySortKey] = useState<string>('name');
   const [paySortDir, setPaySortDir] = useState<'asc' | 'desc'>('asc');
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
@@ -1147,6 +1150,17 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
     queryFn: () => payrollApi.list({ month: String(month), year: String(year) }),
   });
 
+  // Soldes d'avances en cours par employe (pour proposer la retenue au paiement)
+  const { data: outstandingRows = [] } = useQuery({
+    queryKey: ['advances-outstanding'],
+    queryFn: () => advancesApi.outstanding(),
+  });
+  const outstandingByEmp = useMemo(() => {
+    const m = new Map<string, number>();
+    (outstandingRows as Record<string, any>[]).forEach(r => m.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0));
+    return m;
+  }, [outstandingRows]);
+
   const generateMutation = useMutation({
     mutationFn: () => payrollApi.generate(month, year),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); notify.success('Bulletins generes'); },
@@ -1154,8 +1168,21 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
   });
 
   const payMutation = useMutation({
-    mutationFn: ({ id, method }: { id: string; method: string }) => payrollApi.markPaid(id, method),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll'] }); notify.success('Paiement enregistre'); },
+    mutationFn: ({ id, method, deduction }: { id: string; method: string; deduction: number }) =>
+      payrollApi.markPaid(id, method, deduction),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      notify.success('Paiement enregistre');
+      setPayTarget(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors du paiement');
+    },
   });
 
   const pf = (v: unknown) => parseFloat(v as string || '0').toFixed(2);
@@ -1405,6 +1432,7 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
                 <th onClick={() => togglePaySort('amo')} style={{ cursor: 'pointer', textAlign: 'right' }}>AMO <PaySortIcon col="amo" /></th>
                 <th onClick={() => togglePaySort('ir')} style={{ cursor: 'pointer', textAlign: 'right' }}>IR <PaySortIcon col="ir" /></th>
                 <th onClick={() => togglePaySort('net')} style={{ cursor: 'pointer', textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net <PaySortIcon col="net" /></th>
+                <th style={{ textAlign: 'right' }}>Avance</th>
                 <th onClick={() => togglePaySort('status')} style={{ cursor: 'pointer', textAlign: 'center' }}>Statut <PaySortIcon col="status" /></th>
                 <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
@@ -1425,11 +1453,24 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
                   <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.amo_employee)}</td>
                   <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>{pf(p.net_salary)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {p.paid ? (
+                      pn(p.advance_deduction) > 0
+                        ? <span style={{ color: '#b85d1a', fontWeight: 500 }}>− {pf(p.advance_deduction)}</span>
+                        : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                    ) : (outstandingByEmp.get(p.employee_id as string) || 0) > 0 ? (
+                      <span className="odoo-tag odoo-tag-orange" title="Solde d'avances à récupérer">
+                        {(outstandingByEmp.get(p.employee_id as string) || 0).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'center' }}>
                     {p.paid ? (
                       <span className="odoo-tag odoo-tag-green">Payé</span>
                     ) : (
-                      <button onClick={() => payMutation.mutate({ id: p.id as string, method: 'cash' })}
+                      <button onClick={() => setPayTarget(p)}
                         className="odoo-tag odoo-tag-purple" style={{ cursor: 'pointer', border: 'none' }}>
                         Payer
                       </button>
@@ -1450,6 +1491,20 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* ─── Dialogue de paiement (mode + retenue avance) ─── */}
+      {payTarget && (
+        <PayrollPayDialog
+          employeeName={`${payTarget.first_name} ${payTarget.last_name}`}
+          periodLabel={`${MONTH_NAMES[month - 1]} ${year}`}
+          net={pn(payTarget.net_salary)}
+          outstanding={outstandingByEmp.get(payTarget.employee_id as string) || 0}
+          defaultMethod="cash"
+          pending={payMutation.isPending}
+          onClose={() => setPayTarget(null)}
+          onConfirm={(method, deduction) => payMutation.mutate({ id: payTarget.id as string, method, deduction })}
+        />
       )}
 
       {/* ─── Bulletin de paie detail modal ─── */}
@@ -1591,6 +1646,19 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
     queryFn: () => weeklyPayrollApi.list(weekStartStr) as Promise<WeeklyPayrollData>,
   });
 
+  // Soldes d'avances en cours (pour proposer la retenue au paiement)
+  const { data: outstandingRows = [] } = useQuery({
+    queryKey: ['advances-outstanding'],
+    queryFn: () => advancesApi.outstanding(),
+  });
+  const outstandingByEmp = useMemo(() => {
+    const m = new Map<string, number>();
+    (outstandingRows as Record<string, any>[]).forEach(r => m.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0));
+    return m;
+  }, [outstandingRows]);
+  // Cible du dialogue de paiement (ouvert seulement si l'employe a une avance en cours)
+  const [payTarget, setPayTarget] = useState<{ row: WeeklyPayrollRow; method: string } | null>(null);
+
   const generateMutation = useMutation({
     mutationFn: () => weeklyPayrollApi.generate(weekStartStr),
     onSuccess: () => {
@@ -1601,13 +1669,29 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
   });
 
   const payMutation = useMutation({
-    mutationFn: ({ id, method }: { id: string; method: string }) => weeklyPayrollApi.markPaid(id, method),
+    mutationFn: ({ id, method, deduction }: { id: string; method: string; deduction?: number }) =>
+      weeklyPayrollApi.markPaid(id, method, deduction || 0),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
       notify.success('Marqué comme payé + écriture comptable créée');
+      setPayTarget(null);
     },
-    onError: () => notify.error('Erreur'),
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur');
+    },
   });
+
+  /** Paiement direct si pas d'avance en cours, sinon dialogue avec retenue proposée. */
+  const startPay = (row: WeeklyPayrollRow, method: string) => {
+    const outstanding = outstandingByEmp.get(row.employee_id) || 0;
+    if (outstanding > 0) setPayTarget({ row, method });
+    else payMutation.mutate({ id: row.payroll_id as string, method });
+  };
 
   const unpayMutation = useMutation({
     mutationFn: (id: string) => weeklyPayrollApi.unmarkPaid(id),
@@ -1749,13 +1833,19 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                               </button>
                             </div>
                           ) : (
-                            <div style={{ display: 'inline-flex', gap: 4 }}>
-                              <button onClick={() => payMutation.mutate({ id: r.payroll_id as string, method: 'cash' })} className="odoo-btn-primary"
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              {(outstandingByEmp.get(r.employee_id) || 0) > 0 && (
+                                <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)} DH — retenue proposée au paiement`}>
+                                  <HandCoins size={10} style={{ marginRight: 2 }} />
+                                  {(outstandingByEmp.get(r.employee_id) || 0).toFixed(0)}
+                                </span>
+                              )}
+                              <button onClick={() => startPay(r, 'cash')} className="odoo-btn-primary"
                                 disabled={payMutation.isPending}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
                                 <Banknote size={11} /> Espèces
                               </button>
-                              <button onClick={() => payMutation.mutate({ id: r.payroll_id as string, method: 'bank' })} className="odoo-btn-secondary"
+                              <button onClick={() => startPay(r, 'bank')} className="odoo-btn-secondary"
                                 disabled={payMutation.isPending}
                                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
                                 Virement
@@ -1799,10 +1889,374 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
         </div>
       )}
 
+      {/* ─── Dialogue de paiement avec retenue d'avance ─── */}
+      {payTarget && (
+        <PayrollPayDialog
+          employeeName={`${payTarget.row.first_name} ${payTarget.row.last_name}`}
+          periodLabel={`Semaine du ${format(weekStartDate, 'dd MMM yyyy', { locale: fr })}`}
+          net={parseFloat(payTarget.row.net_amount || '0')}
+          outstanding={outstandingByEmp.get(payTarget.row.employee_id) || 0}
+          defaultMethod={payTarget.method}
+          pending={payMutation.isPending}
+          onClose={() => setPayTarget(null)}
+          onConfirm={(method, deduction) => payMutation.mutate({ id: payTarget.row.payroll_id as string, method, deduction })}
+        />
+      )}
+
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
         Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
+        Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
       </div>
+    </>
+  );
+}
+
+/* ═══════════════════════ PAY DIALOG (méthode + retenue d'avance) ═══════════════════════ */
+/**
+ * Dialogue de paiement commun mensuel/hebdo : choix du mode de règlement +
+ * proposition de retenue sur les avances en cours de l'employé.
+ * Par défaut on propose de retenir min(solde d'avances, net) — modifiable
+ * librement (étalement sur plusieurs paies).
+ */
+function PayrollPayDialog({ employeeName, periodLabel, net, outstanding, defaultMethod, pending, onClose, onConfirm }: {
+  employeeName: string;
+  periodLabel: string;
+  net: number;
+  outstanding: number;
+  defaultMethod: string;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (method: string, deduction: number) => void;
+}) {
+  const maxDeduction = Math.min(outstanding, net);
+  const [method, setMethod] = useState(defaultMethod);
+  const [deduction, setDeduction] = useState<string>(maxDeduction > 0 ? maxDeduction.toFixed(2) : '0');
+  const ded = Math.max(0, parseFloat(deduction) || 0);
+  const cashOut = Math.max(0, Math.round((net - ded) * 100) / 100);
+  const invalid = ded > maxDeduction + 0.005;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={ev => ev.stopPropagation()}>
+        <div className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white p-5 rounded-t-2xl flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Payer {employeeName}</h2>
+            <p className="text-teal-100 text-sm">{periodLabel}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Net dû</span>
+            <span className="text-lg font-bold">{net.toFixed(2)} DH</span>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de paiement</label>
+            <select value={method} onChange={e => setMethod(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="cash">Espèces</option>
+              <option value="bank">Virement</option>
+              <option value="check">Chèque</option>
+            </select>
+          </div>
+
+          {outstanding > 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+              <p className="text-sm text-amber-800">
+                <HandCoins size={14} className="inline mr-1" />
+                Avances en cours : <strong>{outstanding.toFixed(2)} DH</strong>
+              </p>
+              <label className="block text-xs font-medium text-amber-800">Retenue sur cette paie (max {maxDeduction.toFixed(2)} DH)</label>
+              <input type="number" step="0.01" min="0" max={maxDeduction} value={deduction}
+                onChange={e => setDeduction(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 ${invalid ? 'border-red-400 focus:ring-red-500' : 'border-amber-200 focus:ring-amber-500'}`} />
+              {invalid && <p className="text-xs text-red-600">La retenue dépasse le solde d'avances ou le net dû.</p>}
+              <p className="text-xs text-amber-700">Mettre 0 pour ne rien retenir ce mois-ci (étalement libre).</p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">Aucune avance en cours pour cet employé.</p>
+          )}
+
+          <div className="bg-green-50 rounded-xl p-3 flex justify-between items-baseline">
+            <span className="text-sm text-green-700">À verser ({method === 'cash' ? 'espèces' : method === 'bank' ? 'virement' : 'chèque'})</span>
+            <span className="text-xl font-bold text-green-700">{cashOut.toFixed(2)} DH</span>
+          </div>
+
+          <button disabled={pending || invalid}
+            onClick={() => onConfirm(method, Math.round(ded * 100) / 100)}
+            className="w-full py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
+            <Check size={16} /> {pending ? 'Enregistrement...' : 'Confirmer le paiement'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════ ADVANCES TAB (avances sur salaire) ═══════════════════════ */
+function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+  const [showForm, setShowForm] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<'open' | 'all'>('open');
+  const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
+  const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const { user } = useAuth();
+
+  const { data: advances = [], isLoading } = useQuery({
+    queryKey: ['salary-advances', statusFilter],
+    queryFn: () => advancesApi.list(statusFilter === 'open' ? { status: 'open' } : undefined),
+  });
+  const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
+
+  const createMutation = useMutation({
+    mutationFn: (data: Record<string, any>) => advancesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      notify.success('Avance enregistrée (le décaissement apparaît en Caisse)');
+      setShowForm(false);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'enregistrement');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => advancesApi.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      notify.success('Avance supprimée (décaissement annulé)');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Suppression impossible');
+    },
+  });
+
+  const pn = (v: unknown) => parseFloat(v as string || '0');
+  const rows = advances as Record<string, any>[];
+  const totalOutstanding = rows.filter(a => a.status !== 'repaid').reduce((s, a) => s + pn(a.remaining_amount), 0);
+  const employeesConcerned = new Set(rows.filter(a => a.status !== 'repaid' && pn(a.remaining_amount) > 0).map(a => a.employee_id)).size;
+  const totalGranted = rows.reduce((s, a) => s + pn(a.amount), 0);
+  const totalRepaid = rows.reduce((s, a) => s + pn(a.amount) - pn(a.remaining_amount), 0);
+
+  const STATUS_META: Record<string, { label: string; cls: string }> = {
+    open: { label: 'En cours', cls: 'odoo-tag-orange' },
+    partial: { label: 'Partiel', cls: 'odoo-tag-purple' },
+    repaid: { label: 'Soldée', cls: 'odoo-tag-green' },
+  };
+
+  const toggleExpand = (id: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const repaymentLabel = (r: Record<string, any>) => {
+    if (r.payrollMonth) return `Paie ${MONTH_NAMES[(r.payrollMonth as number) - 1]} ${r.payrollYear}`;
+    if (r.weekStart) return `Paie semaine du ${r.weekStart}`;
+    return r.repaymentDate as string;
+  };
+
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div className="odoo-view-switcher">
+          <button onClick={() => setStatusFilter('open')} className={statusFilter === 'open' ? 'active' : ''}>En cours</button>
+          <button onClick={() => setStatusFilter('all')} className={statusFilter === 'all' ? 'active' : ''}>Toutes</button>
+        </div>
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Accorder une avance
+        </button>
+      </div>
+
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><HandCoins size={11} style={{ display: 'inline', marginRight: 4 }} />Avances en cours</div>
+          <div className="odoo-stat-card-value" style={{ color: totalOutstanding > 0 ? '#b85d1a' : undefined }}>
+            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>
+          </div>
+          <div className="odoo-stat-card-sub">à récupérer sur les paies</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Employés concernés</div>
+          <div className="odoo-stat-card-value">{employeesConcerned}</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">Total accordé{statusFilter === 'open' ? ' (en cours)' : ''}</div>
+          <div className="odoo-stat-card-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label">Déjà remboursé</div>
+          <div className="odoo-stat-card-value" style={{ color: totalRepaid > 0 ? '#28a745' : undefined }}>
+            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <HandCoins size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>
+            {statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
+          </p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>La retenue se fait automatiquement au moment de payer le salaire (onglet Paie).</p>
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 20 }}></th>
+                <th>Employé</th>
+                <th>Date</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+                <th style={{ textAlign: 'right' }}>Remboursé</th>
+                <th style={{ textAlign: 'right', background: '#fdf3e7', color: '#b85d1a' }}>Solde</th>
+                <th style={{ textAlign: 'center' }}>Statut</th>
+                <th>Mode</th>
+                <th style={{ textAlign: 'center', width: 60 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(a => {
+                const reps = (a.repayments || []) as Record<string, any>[];
+                const isExpanded = expanded.has(a.id as string);
+                const meta = STATUS_META[a.status as string] || STATUS_META.open;
+                return (
+                  <Fragment key={a.id as string}>
+                    <tr onClick={() => reps.length > 0 && toggleExpand(a.id as string)} style={{ cursor: reps.length > 0 ? 'pointer' : 'default' }}>
+                      <td>{reps.length > 0 && (isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}</td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                          <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                          {a.first_name as string} {a.last_name as string}
+                          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(a.employee_role as string)}</span>
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--odoo-text-muted)' }}>{isoDate(a.advance_date) ? format(new Date(isoDate(a.advance_date)), 'dd/MM/yyyy') : ''}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 500 }}>{pn(a.amount).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', color: '#28a745' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#b85d1a', background: '#fdf3e7' }}>{pn(a.remaining_amount).toFixed(2)}</td>
+                      <td style={{ textAlign: 'center' }}><span className={`odoo-tag ${meta.cls}`}>{meta.label}</span></td>
+                      <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{getPaymentLabel(a.payment_method as string)}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {reps.length === 0 && user?.role === 'admin' && (
+                          <button onClick={ev => {
+                            ev.stopPropagation();
+                            if (confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`)) {
+                              deleteMutation.mutate(a.id as string);
+                            }
+                          }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && reps.map(r => (
+                      <tr key={r.id as string} style={{ background: 'var(--odoo-bg-alt)' }}>
+                        <td></td>
+                        <td colSpan={3} style={{ paddingLeft: 28, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                          <RotateCcw size={10} style={{ display: 'inline', marginRight: 4 }} />
+                          {repaymentLabel(r)}
+                        </td>
+                        <td style={{ textAlign: 'right', fontSize: '0.75rem', color: '#28a745' }}>+ {pn(r.amount).toFixed(2)}</td>
+                        <td colSpan={4} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{r.repaymentDate as string}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+        L'avance sort de la caisse au moment de l'octroi (visible dans Caisse et la trésorerie) mais n'est pas une charge :
+        c'est une créance sur l'employé (compte 3431). La charge salaire est reconnue au fil des retenues, proposées automatiquement au paiement de la paie.
+      </div>
+
+      {/* ─── Grant advance modal ─── */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={ev => ev.stopPropagation()}>
+            <div className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white p-5 rounded-t-2xl flex items-center justify-between">
+              <h2 className="text-lg font-bold">Accorder une avance</h2>
+              <button onClick={() => setShowForm(false)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
+              if (!fd.employeeId) { notify.error('Sélectionnez un employé'); return; }
+              const amount = parseFloat(fd.amount as string);
+              if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
+              createMutation.mutate({
+                employeeId: fd.employeeId, amount,
+                paymentMethod: fd.paymentMethod || 'cash',
+                advanceDate: fd.advanceDate || undefined,
+                notes: fd.notes || undefined,
+              });
+            }} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Employé *</label>
+                <select name="employeeId" required
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  <option value="">Sélectionner...</option>
+                  {(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => (
+                    <option key={e2.id as string} value={e2.id as string}>{e2.first_name as string} {e2.last_name as string}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
+                  <input name="amount" type="number" step="0.01" min="0.01" required
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
+                  <input name="advanceDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de paiement</label>
+                <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  {paymentMethods.length > 0
+                    ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
+                    : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                <input name="notes" type="text" placeholder="Motif, accord de remboursement..."
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              </div>
+              <button type="submit" disabled={createMutation.isPending}
+                className="w-full py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
+                <HandCoins size={16} /> {createMutation.isPending ? 'Enregistrement...' : 'Accorder l\'avance'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

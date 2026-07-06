@@ -1929,6 +1929,30 @@ function ChargesTab() {
   };
   const isPersonnelExpense = isPersonnelCategory(formCategoryId);
 
+  // Salaires et avances ne se saisissent plus ici : ils sont crees par le
+  // module RH (Paie / Avances) et apparaissent ensuite en lecture seule dans
+  // cette liste. Bloque : sous-arbre "Salaires" (L2) + feuille "Avances sur
+  // salaire". Les autres categories personnel (primes...) restent saisissables.
+  const SALAIRES_SUBTREE_ID = '20000000-0000-0000-0000-000000000006';
+  const AVANCES_CATEGORY_ID = '30000000-0000-0000-0000-000000000023';
+  const isRhManagedCategory = (() => {
+    if (!formCategoryId) return false;
+    if (formCategoryId === AVANCES_CATEGORY_ID) return true;
+    if (String(selectedCategory?.name || '').trim() === 'Avances sur salaire') return true;
+    const all = categories as Record<string, any>[];
+    let current = all.find(c => String(c.id) === formCategoryId);
+    const seen = new Set<string>();
+    while (current) {
+      const id = String(current.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      if (id === SALAIRES_SUBTREE_ID || String(current.name).trim() === 'Salaires') return true;
+      if (!current.parent_id) return false;
+      current = all.find(c => String(c.id) === String(current!.parent_id));
+    }
+    return false;
+  })();
+
   // Build full path label for display: "Categorie > Sous-cat > Type"
   const getCategoryPath = (catId: string) => {
     const all = categories as Record<string, any>[];
@@ -2007,6 +2031,9 @@ function ChargesTab() {
   // Sorties affichees :
   //   - payments hors income et hors invoice (les anciens reglements cheque
   //     ne sont plus la source des achats),
+  //   - salaires ET avances inclus en LECTURE SEULE : crees uniquement depuis
+  //     RH (Paie / Avances). Pas de double comptage : le paiement salaire est
+  //     net de la retenue d'avance, donc avance + salaire = net reel decaisse,
   //   - + 1 ligne par ingredient de facture recue (via invoicesApi.lineExpenses).
   const otherPayments = (payments as Record<string, any>[]).filter(p => p.type !== 'income' && p.type !== 'invoice');
   const outgoing = useMemo(
@@ -2297,12 +2324,12 @@ function ChargesTab() {
                           title="Categoriser cette ligne">
                           <Pencil size={13} />
                         </button>
-                      ) : p.type !== 'salary' ? (
+                      ) : p.type !== 'salary' && p.type !== 'advance' ? (
                         <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button onClick={() => setEditingPayment(p)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }} title="Modifier"><Pencil size={13} /></button>
                           <button onClick={() => deleteMutation.mutate(p.id as string)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }} title="Supprimer"><X size={13} /></button>
                         </div>
-                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }}>auto</span>}
+                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }} title="Géré depuis RH → Paie / Avances">RH</span>}
                     </td>
                   </tr>
                 );
@@ -2358,6 +2385,7 @@ function ChargesTab() {
                 delete fd.employeeId;
               }
               if (!fd.categoryId) { notify.error('Veuillez sélectionner une catégorie'); return; }
+              if (isRhManagedCategory) { notify.error('Les salaires et avances se gèrent dans Ressources Humaines (onglets Paie et Avances) — ils apparaîtront ici automatiquement une fois payés'); return; }
               if (requiresPO && !formPOId) { notify.error('Cette catégorie nécessite un bon de commande'); return; }
               createMutation.mutate(fd);
             }} className="p-5 space-y-4">
@@ -2370,6 +2398,13 @@ function ChargesTab() {
                 />
               </div>
 
+              {isRhManagedCategory && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                  ⚠️ Les salaires et avances ne se saisissent plus ici : utilisez <strong>Ressources Humaines → Paie</strong> (salaires)
+                  ou <strong>→ Avances</strong> (avances, avec retenue automatique à la paie).
+                  Une fois payés, ils apparaissent automatiquement dans cette liste.
+                </div>
+              )}
               {showPOWaivedBanner && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
                   ℹ️ Cette catégorie demande normalement un bon de commande, mais l'obligation est <strong>temporairement désactivée</strong>. Tu peux saisir la dépense directement.
