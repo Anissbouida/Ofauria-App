@@ -1,6 +1,7 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, CheckCircle2, FileText } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, FileText, ChevronRight, ChevronDown } from 'lucide-react';
 import { invoicesApi } from '../api/accounting.api';
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
@@ -41,12 +42,53 @@ export default function PaymentAlertsWidget({
   compact?: boolean;
 }) {
   const navigate = useNavigate();
+  const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set());
   const { data = [], isLoading, isError } = useQuery({
     queryKey: ['invoice-payment-alerts', days],
     queryFn: () => invoicesApi.paymentAlerts(days),
     refetchInterval: 60000,
   });
   const alerts = data as Array<Record<string, any>>;
+
+  // Un cheque physique peut regler plusieurs factures : autant de lignes
+  // kind='check' partageant le meme N° + beneficiaire. On les regroupe en une
+  // seule entree (montant total, echeance commune), depliable pour lister les
+  // factures. Les factures (kind != 'check') et les cheques a une seule facture
+  // restent des lignes simples. L'ordre backend (par echeance) est preserve.
+  const items = useMemo(() => {
+    type Leaf = { type: 'leaf'; alert: Record<string, any> };
+    type Group = {
+      type: 'group'; key: string; rows: Record<string, any>[];
+      first: Record<string, any>; total: number;
+    };
+    const groupMap = new Map<string, Record<string, any>[]>();
+    const built: Array<Leaf | Group> = [];
+    for (const a of alerts) {
+      if (a.kind === 'check' && a.check_number) {
+        const key = `${a.expected_payment_mode as string}::${a.check_number as string}::${(a.supplier_name as string) || ''}`;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, []);
+          built.push({ type: 'group', key, rows: [], first: a, total: 0 });
+        }
+        groupMap.get(key)!.push(a);
+      } else {
+        built.push({ type: 'leaf', alert: a });
+      }
+    }
+    return built.map((it): Leaf | Group => {
+      if (it.type !== 'group') return it;
+      const rows = groupMap.get(it.key)!;
+      // Cheque a une seule facture -> ligne simple (pas de dependliage inutile).
+      if (rows.length === 1) return { type: 'leaf', alert: rows[0] };
+      return { type: 'group', key: it.key, rows, first: rows[0], total: rows.reduce((s, r) => s + parseFloat((r.remaining_amount as string) || '0'), 0) };
+    });
+  }, [alerts]);
+
+  const toggleCheck = (key: string) => setExpandedChecks(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   if (isLoading) {
     if (hideWhenEmpty) return null;
@@ -67,7 +109,8 @@ export default function PaymentAlertsWidget({
 
   const count = alerts.length;
   const invoiceCount = alerts.filter(a => a.kind !== 'check').length;
-  const checkCount = count - invoiceCount;
+  // Compte les cheques DISTINCTS (un cheque multi-factures = 1 cheque a encaisser).
+  const checkCount = items.filter(it => it.type === 'group' || (it.type === 'leaf' && it.alert.kind === 'check')).length;
   const overdueCount = alerts.filter(a => a.is_overdue).length;
   const totalDue = alerts.reduce((s, a) => s + parseFloat((a.remaining_amount as string) || '0'), 0);
 
@@ -116,7 +159,61 @@ export default function PaymentAlertsWidget({
         </button>
       </div>
       <div className={`divide-y divide-gray-50 overflow-auto ${compact ? 'max-h-80' : 'max-h-[28rem]'}`}>
-        {alerts.slice(0, compact ? 8 : 50).map(a => {
+        {items.slice(0, compact ? 8 : 50).map(it => {
+          // ─── Cheque multi-factures : ligne depliable ───
+          if (it.type === 'group') {
+            const a = it.first;
+            const days = parseInt(String(a.days_until_due ?? 0));
+            const isOverdue = !!a.is_overdue;
+            const isExpanded = expandedChecks.has(it.key);
+            const title = `${PAYMENT_MODE_LABELS[a.expected_payment_mode as string] || 'Chèque'} n°${(a.check_number as string) || '?'}`;
+            return (
+              <div key={it.key}>
+                <div onClick={() => toggleCheck(it.key)}
+                  className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer"
+                  title={isExpanded ? 'Replier les factures' : 'Lister les factures'}>
+                  {isExpanded
+                    ? <ChevronDown size={14} className="text-red-500 shrink-0" />
+                    : <ChevronRight size={14} className="text-red-500 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-mono font-semibold text-gray-800">{title}</span>
+                      <span className="text-xs text-gray-500 truncate">
+                        — {(a.supplier_name as string) || 'Fournisseur ?'} ({it.rows.length} factures)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                      <span>Encaissement : {a.due_date ? new Date(a.due_date as string).toLocaleDateString('fr-FR') : '—'}</span>
+                      <span>·</span>
+                      <span className={isOverdue ? 'text-red-600 font-semibold' : 'text-orange-600'}>
+                        {isOverdue ? `encaissable depuis ${Math.abs(days)}j` : days === 0 ? "Aujourd'hui" : `dans ${days}j`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-red-700">{it.total.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                    <p className="text-[10px] text-gray-400">À encaisser</p>
+                  </div>
+                </div>
+                {isExpanded && it.rows.map(r => (
+                  <div key={`${r.kind as string}-${r.id as string}`}
+                    onClick={() => navigate('/accounting')}
+                    className="pl-11 pr-4 py-2 flex items-center gap-3 bg-gray-50/60 hover:bg-gray-100 cursor-pointer">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-gray-600">
+                        Facture <span className="font-mono font-semibold text-gray-800">{(r.invoice_number as string) || '—'}</span>
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-semibold text-red-700">{parseFloat((r.remaining_amount as string) || '0').toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          }
+          // ─── Facture ou cheque a une seule facture : ligne simple ───
+          const a = it.alert;
           const days = parseInt(String(a.days_until_due ?? 0));
           const isOverdue = !!a.is_overdue;
           const isCheck = a.kind === 'check';
@@ -162,9 +259,9 @@ export default function PaymentAlertsWidget({
             </div>
           );
         })}
-        {compact && alerts.length > 8 && (
+        {compact && items.length > 8 && (
           <div className="px-4 py-2 text-center text-[11px] text-gray-400">
-            … {alerts.length - 8} échéance{alerts.length - 8 > 1 ? 's' : ''} supplémentaire{alerts.length - 8 > 1 ? 's' : ''}
+            … {items.length - 8} échéance{items.length - 8 > 1 ? 's' : ''} supplémentaire{items.length - 8 > 1 ? 's' : ''}
           </div>
         )}
       </div>
