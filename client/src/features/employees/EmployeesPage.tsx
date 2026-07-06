@@ -1477,7 +1477,26 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
                   <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.cnss_employee)}</td>
                   <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.amo_employee)}</td>
                   <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>{pf(p.net_salary)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                    {(() => {
+                      const net = pn(p.net_salary);
+                      const ded = p.paid
+                        ? pn(p.advance_deduction)
+                        : Math.min(suggestedByEmp.get(p.employee_id as string) ?? 0, net);
+                      const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
+                      if (ded <= 0.005) return pf(p.net_salary);
+                      return (
+                        <span title={p.paid
+                          ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
+                          : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
+                          {verse.toFixed(2)}
+                          <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
+                            net {net.toFixed(2)}
+                          </div>
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td style={{ textAlign: 'right' }}>
                     {p.paid ? (
                       pn(p.advance_deduction) > 0
@@ -1754,8 +1773,17 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
   const generated = rows.filter(r => r.payroll_id);
   const ungenerated = rows.filter(r => !r.payroll_id);
   const paidCount = generated.filter(r => r.paid).length;
-  const totalDue = generated.filter(r => !r.paid).reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0);
-  const totalPaid = generated.filter(r => r.paid).reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0);
+  // Montants REELS de tresorerie : net moins la retenue d'avance (faite pour
+  // les paies payees, proposee — plan d'etalement — pour celles a payer).
+  const cashOutOf = (r: WeeklyPayrollRow) => {
+    const net = parseFloat(r.net_amount || '0');
+    const ded = r.paid
+      ? parseFloat(r.advance_deduction || '0')
+      : Math.min(suggestedByEmp.get(r.employee_id) ?? 0, net);
+    return Math.max(0, Math.round((net - ded) * 100) / 100);
+  };
+  const totalDue = generated.filter(r => !r.paid).reduce((s, r) => s + cashOutOf(r), 0);
+  const totalPaid = generated.filter(r => r.paid).reduce((s, r) => s + cashOutOf(r), 0);
 
   const isCurrentWeek = weekOffset === 0;
 
@@ -1883,7 +1911,24 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                           )}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
-                          {parseFloat(r.net_amount || '0').toFixed(2)} DH
+                          {(() => {
+                            const net = parseFloat(r.net_amount || '0');
+                            const ded = paid
+                              ? parseFloat(r.advance_deduction || '0')
+                              : Math.min(suggestedByEmp.get(r.employee_id) ?? 0, net);
+                            const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
+                            if (ded <= 0.005) return `${net.toFixed(2)} DH`;
+                            return (
+                              <span title={paid
+                                ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
+                                : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
+                                {verse.toFixed(2)} DH
+                                <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
+                                  net {net.toFixed(2)}
+                                </div>
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {paid ? (
@@ -1945,8 +1990,9 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                       return t > 0 ? `− ${t.toFixed(2)} DH` : '—';
                     })()}
                   </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
-                    {generated.reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0).toFixed(2)} DH
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}
+                    title="Total à verser (net moins retenues d'avance)">
+                    {generated.reduce((s, r) => s + cashOutOf(r), 0).toFixed(2)} DH
                   </td>
                   <td></td>
                 </tr>
