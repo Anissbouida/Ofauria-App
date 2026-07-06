@@ -31,6 +31,18 @@ import { getLocalISODate } from '../utils/timezone.js';
  * journaliers/extras, paye au noir ou en CDD courte duree). Si besoin,
  * cumuler dans le futur via une logique similaire au mensuel.
  */
+/**
+ * pg renvoie les colonnes DATE comme objets Date JS (pas de type parser
+ * custom) : formatte en 'YYYY-MM-DD' local sans passer par toISOString
+ * (qui peut decaler d'un jour selon le fuseau).
+ */
+function toDateStr(v: unknown): string {
+  if (v instanceof Date) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  }
+  return String(v).slice(0, 10);
+}
+
 export const weeklyPayrollRepository = {
   /**
    * Liste enrichie : employes weekly + leur ligne sur la semaine (ou null
@@ -191,18 +203,19 @@ export const weeklyPayrollRepository = {
     // Echec paiement/retenue -> on annule le marquage paye (sinon ligne
     // "Payee" sans sortie de caisse, invisible en Caisse/Charges).
     try {
+      const weekStartStr = toDateStr(wp.week_start);
       const cashOut = Math.round((net - deduction) * 100) / 100;
       if (cashOut > 0) {
         await paymentRepository.create({
           // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
-          reference: `SAL-S${(wp.week_start as string).slice(0, 10)}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
+          reference: `SAL-S${weekStartStr}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
           type: 'salary',
           categoryId,
           employeeId: wp.employee_id,
           amount: cashOut,
           paymentMethod,
           paymentDate: getLocalISODate(),
-          description: `Salaire semaine du ${(wp.week_start as string).slice(0, 10)} - ${empName}`
+          description: `Salaire semaine du ${weekStartStr} - ${empName}`
             + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
           createdBy: createdBy || wp.employee_id,
           storeId,
@@ -216,7 +229,7 @@ export const weeklyPayrollRepository = {
           weeklyPayrollId: id,
           userId: createdBy || (wp.employee_id as string),
           storeId,
-          label: `${empName} semaine du ${(wp.week_start as string).slice(0, 10)}`,
+          label: `${empName} semaine du ${weekStartStr}`,
         });
       }
     } catch (err) {
