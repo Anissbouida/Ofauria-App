@@ -244,13 +244,32 @@ export const weeklyPayrollRepository = {
   },
 
   /**
-   * Annule le marquage paye (en cas d'erreur). N'annule PAS l'ecriture
-   * comptable cree (le manager doit la supprimer manuellement dans
-   * l'onglet Paiements s'il veut nettoyer).
+   * Annule le marquage paye (correction d'erreur). Nettoie TOUT ce que le
+   * paiement avait cree, pour permettre de re-payer sans doublon :
+   *  - supprime les sorties de caisse liees (reference SAL-S{semaine}-...)
+   *    -> leurs ecritures comptables sont reversees ;
+   *  - reverse les retenues d'avance imputees (solde re-credite) ;
+   *  - reset les flags paid/paid_at/payment_method/advance_deduction.
    */
   async unmarkPaid(id: string) {
+    const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
+    const wp = existing.rows[0];
+    if (!wp) return null;
+
+    if (wp.paid) {
+      const weekStartStr = toDateStr(wp.week_start);
+      const payments = await db.query(
+        `SELECT id FROM payments WHERE type = 'salary' AND employee_id = $1 AND reference LIKE $2`,
+        [wp.employee_id, `SAL-S${weekStartStr}-%`]
+      );
+      for (const p of payments.rows) {
+        await paymentRepository.delete(p.id);
+      }
+      await salaryAdvanceRepository.reverseRepayments({ weeklyPayrollId: id });
+    }
+
     const r = await db.query(
-      `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL
+      `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
          WHERE id = $1 RETURNING *`,
       [id]
     );

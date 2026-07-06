@@ -981,4 +981,34 @@ export const payrollRepository = {
 
     return payroll;
   },
+
+  /**
+   * Annule le marquage paye d'un bulletin mensuel (correction d'erreur).
+   * Meme nettoyage complet que l'hebdo : supprime les sorties de caisse
+   * liees (reference SAL-{mois}/{annee}-..., ecritures reversees), reverse
+   * les retenues d'avance (solde re-credite), reset les flags.
+   */
+  async unmarkPaid(id: string) {
+    const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
+    const p = existing.rows[0];
+    if (!p) return null;
+
+    if (p.paid) {
+      const payments = await db.query(
+        `SELECT id FROM payments WHERE type = 'salary' AND employee_id = $1 AND reference LIKE $2`,
+        [p.employee_id, `SAL-${p.month}/${p.year}-%`]
+      );
+      for (const pay of payments.rows) {
+        await paymentRepository.delete(pay.id);
+      }
+      await salaryAdvanceRepository.reverseRepayments({ payrollId: id });
+    }
+
+    const r = await db.query(
+      `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
+         WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    return r.rows[0] || null;
+  },
 };

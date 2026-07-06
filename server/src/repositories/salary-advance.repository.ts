@@ -2,7 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { paymentRepository } from './accounting.repository.js';
-import { persistEntry } from '../services/journal-generator.service.js';
+import { persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
 /**
@@ -128,6 +128,52 @@ export const salaryAdvanceRepository = {
       [payment.id, advance.id]
     );
     return updated.rows[0];
+  },
+
+  /**
+   * Reverse les retenues imputees par une paie (annulation de paiement) :
+   * re-credite le solde des avances, reverse les ecritures 6171/3431 et
+   * supprime les lignes de remboursement. Retourne le total re-credite.
+   */
+  async reverseRepayments(params: { payrollId?: string; weeklyPayrollId?: string }): Promise<number> {
+    const col = params.payrollId ? 'payroll_id' : 'weekly_payroll_id';
+    const val = params.payrollId || params.weeklyPayrollId;
+    if (!val) return 0;
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const reps = await client.query(
+        `SELECT sr.id, sr.advance_id, sr.amount
+           FROM salary_advance_repayments sr
+          WHERE sr.${col} = $1
+          FOR UPDATE`,
+        [val]
+      );
+      let reversed = 0;
+      for (const rep of reps.rows) {
+        if (FLAGS.LEDGER_AUTOGEN) {
+          await reverseEntriesForSource(client as PoolClient, {
+            sourceId: rep.id, sourceKinds: ['advance_repayment'],
+          });
+        }
+        await client.query(
+          `UPDATE salary_advances
+              SET remaining_amount = remaining_amount + $1,
+                  status = CASE WHEN remaining_amount + $1 >= amount THEN 'open' ELSE 'partial' END
+            WHERE id = $2`,
+          [rep.amount, rep.advance_id]
+        );
+        await client.query('DELETE FROM salary_advance_repayments WHERE id = $1', [rep.id]);
+        reversed = Math.round((reversed + parseFloat(rep.amount)) * 100) / 100;
+      }
+      await client.query('COMMIT');
+      return reversed;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /**

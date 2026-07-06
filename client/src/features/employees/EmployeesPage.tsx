@@ -1191,6 +1191,22 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
     },
   });
 
+  const unpayMutation = useMutation({
+    mutationFn: (id: string) => payrollApi.unmarkPaid(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      notify.success('Paiement annulé : sortie de caisse supprimée et retenues re-créditées');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'annulation');
+    },
+  });
+
   const pf = (v: unknown) => parseFloat(v as string || '0').toFixed(2);
   const pn = (v: unknown) => parseFloat(v as string || '0');
 
@@ -1474,7 +1490,16 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     {p.paid ? (
-                      <span className="odoo-tag odoo-tag-green">Payé</span>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span className="odoo-tag odoo-tag-green">Payé</span>
+                        <button onClick={() => {
+                          if (confirm(`Annuler le paiement de ${p.first_name} ${p.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`)) {
+                            unpayMutation.mutate(p.id as string);
+                          }
+                        }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
+                          <RotateCcw size={12} />
+                        </button>
+                      </div>
                     ) : (
                       <button onClick={() => setPayTarget(p)}
                         className="odoo-tag odoo-tag-purple" style={{ cursor: 'pointer', border: 'none' }}>
@@ -1708,9 +1733,16 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
     mutationFn: (id: string) => weeklyPayrollApi.unmarkPaid(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
-      notify.success('Paiement annulé (l\'écriture comptable reste, à supprimer manuellement)');
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      notify.success('Paiement annulé : sortie de caisse supprimée et retenues re-créditées');
     },
-    onError: () => notify.error('Erreur'),
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'annulation');
+    },
   });
 
   const rows = weekData?.rows ?? [];
@@ -1840,7 +1872,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                                 <Check size={10} style={{ marginRight: 3 }} /> Payé
                               </span>
                               <button onClick={() => {
-                                if (confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nL'écriture comptable créée reste en place (à supprimer manuellement dans l'onglet Paiements si besoin).`)) {
+                                if (confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`)) {
                                   unpayMutation.mutate(r.payroll_id as string);
                                 }
                               }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>

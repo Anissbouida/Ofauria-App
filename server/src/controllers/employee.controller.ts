@@ -173,9 +173,13 @@ export const weeklyPayrollController = {
   },
 
   async unmarkPaid(req: AuthRequest, res: Response) {
-    const row = await weeklyPayrollRepository.unmarkPaid(req.params.id);
-    if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
-    res.json({ success: true, data: row });
+    try {
+      const row = await weeklyPayrollRepository.unmarkPaid(req.params.id);
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur lors de l\'annulation' } });
+    }
   },
 
   async update(req: AuthRequest, res: Response) {
@@ -268,6 +272,16 @@ export const payrollController = {
   async update(req: AuthRequest, res: Response) {
     const payroll = await payrollRepository.update(req.params.id, req.body);
     res.json({ success: true, data: payroll });
+  },
+  /** Annule un paiement mensuel : supprime la sortie de caisse + reverse les retenues. */
+  async unmarkPaid(req: AuthRequest, res: Response) {
+    try {
+      const row = await payrollRepository.unmarkPaid(req.params.id);
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur lors de l\'annulation' } });
+    }
   },
   async markPaid(req: AuthRequest, res: Response) {
     const { paymentMethod, advanceDeduction } = req.body;

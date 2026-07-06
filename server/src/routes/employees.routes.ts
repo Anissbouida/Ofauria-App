@@ -59,6 +59,8 @@ payrollRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), pa
 payrollRouter.post('/generate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.generate);
 payrollRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.update);
 payrollRouter.post('/:id/pay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.markPaid);
+// Annulation d'un paiement (supprime la sortie de caisse + reverse les retenues d'avance)
+payrollRouter.post('/:id/unpay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.unmarkPaid);
 
 // Avances sur salaire (octroi via l'onglet Paie, retenue a la paie)
 export const salaryAdvancesRouter = Router();

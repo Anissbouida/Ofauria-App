@@ -58,6 +58,8 @@ export const payrollApi = {
   /** advanceDeduction : montant retenu sur les avances en cours (0 = aucune retenue). */
   markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
     api.post(`/payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
+  /** Annule le paiement : supprime la sortie de caisse liée + reverse les retenues d'avance. */
+  unmarkPaid: (id: string) => api.post(`/payroll/${id}/unpay`).then(r => r.data.data),
 };
 
 export const advancesApi = {
@@ -82,7 +84,7 @@ export const weeklyPayrollApi = {
   /** Marque paye + cree ecriture comptable. advanceDeduction = retenue sur avances. */
   markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
     api.post(`/weekly-payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
-  /** Annule le marquage paye (ne supprime PAS l'ecriture comptable). */
+  /** Annule le paiement : supprime la sortie de caisse liée + reverse les retenues d'avance. */
   unmarkPaid: (id: string) =>
     api.post(`/weekly-payroll/${id}/unpay`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/weekly-payroll/${id}`),
