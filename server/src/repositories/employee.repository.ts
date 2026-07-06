@@ -744,8 +744,31 @@ export const payrollRepository = {
 
     const r2 = (v: number) => Math.round(v * 100) / 100;
 
+    // Cotisations sociales et IR DESACTIVES pour le moment (demande metier
+    // 07/2026 : etablissement pas encore declare) : net = brut, charges
+    // patronales a 0. Repasser a true pour reactiver le calcul marocain
+    // complet CNSS/AMO/CIMR/IR ci-dessous (le bareme reste en place).
+    const APPLY_SOCIAL_DEDUCTIONS = false;
+
+    // Seuls les employes payes AU MOIS : les hebdo ont leur propre paie
+    // (weekly_payroll), ils ne doivent pas apparaitre dans les deux.
     const employees = await db.query(
-      `SELECT * FROM employees WHERE is_active = true AND monthly_salary IS NOT NULL`
+      `SELECT * FROM employees
+        WHERE is_active = true
+          AND monthly_salary IS NOT NULL
+          AND COALESCE(pay_frequency, 'monthly') = 'monthly'`
+    );
+
+    // Purge les bulletins generes par erreur pour des employes passes en
+    // hebdo (non payes uniquement — l'historique paye n'est jamais touche).
+    await db.query(
+      `DELETE FROM payroll p
+        USING employees e
+        WHERE e.id = p.employee_id
+          AND p.month = $1 AND p.year = $2
+          AND p.paid = false
+          AND COALESCE(e.pay_frequency, 'monthly') != 'monthly'`,
+      [month, year]
     );
     const results = [];
 
@@ -782,13 +805,13 @@ export const payrollRepository = {
 
       // ═══ ETAPE 2 : CNSS salariale (plafonnee a 6 000 DH) ═══
       const cnssBase = Math.min(grossSalary, CNSS_PLAFOND);
-      const cnssEmployee = r2(cnssBase * CNSS_RATE_EMP);
+      const cnssEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(cnssBase * CNSS_RATE_EMP) : 0;
 
       // ═══ ETAPE 3 : AMO salariale (sans plafond) ═══
-      const amoEmployee = r2(grossSalary * AMO_RATE_EMP);
+      const amoEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * AMO_RATE_EMP) : 0;
 
       // ═══ ETAPE 3b : CIMR salariale (si applicable) ═══
-      const cimrEmployee = r2(grossSalary * cimrRate / 100);
+      const cimrEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * cimrRate / 100) : 0;
 
       // ═══ ETAPE 4 : Salaire net imposable ═══
       // SNI = Brut - CNSS - AMO - CIMR
@@ -796,16 +819,16 @@ export const payrollRepository = {
 
       // ═══ ETAPE 5 : Frais professionnels ═══
       // 20% du SNI, plafonne a 2 500 DH/mois
-      const fraisPro = r2(Math.min(salaireNetImposable * FRAIS_PRO_RATE, FRAIS_PRO_PLAFOND));
+      const fraisPro = APPLY_SOCIAL_DEDUCTIONS ? r2(Math.min(salaireNetImposable * FRAIS_PRO_RATE, FRAIS_PRO_PLAFOND)) : 0;
 
       // ═══ ETAPE 6 : Base imposable IR ═══
       const baseIR = r2(salaireNetImposable - fraisPro);
 
       // ═══ ETAPE 7 : IR (bareme annuel / 12) ═══
-      const irBrut = r2(calcIRAnnuel(baseIR));
+      const irBrut = APPLY_SOCIAL_DEDUCTIONS ? r2(calcIRAnnuel(baseIR)) : 0;
 
       // ═══ ETAPE 8 : Deduction charges familiales ═══
-      const familyDeduction = r2(nbDependents * DEDUCTION_FAMILLE);
+      const familyDeduction = APPLY_SOCIAL_DEDUCTIONS ? r2(nbDependents * DEDUCTION_FAMILLE) : 0;
 
       // ═══ ETAPE 9 : IR net ═══
       const irNet = r2(Math.max(irBrut - familyDeduction, 0));
@@ -815,11 +838,11 @@ export const payrollRepository = {
       const netSalary = r2(salaireNetImposable - irNet);
 
       // ═══ Charges patronales ═══
-      const cnssEmployer = r2(cnssBase * CNSS_RATE_PAT);
-      const amoEmployer = r2(grossSalary * AMO_RATE_PAT);
-      const cimrEmployer = r2(grossSalary * cimrRate / 100); // meme taux que salarie par defaut
-      const allocFamiliales = r2(grossSalary * ALLOC_FAM_RATE);
-      const taxeFP = r2(grossSalary * TAXE_FP_RATE);
+      const cnssEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(cnssBase * CNSS_RATE_PAT) : 0;
+      const amoEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * AMO_RATE_PAT) : 0;
+      const cimrEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * cimrRate / 100) : 0; // meme taux que salarie par defaut
+      const allocFamiliales = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * ALLOC_FAM_RATE) : 0;
+      const taxeFP = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * TAXE_FP_RATE) : 0;
       const totalChargesPatron = r2(cnssEmployer + amoEmployer + cimrEmployer + allocFamiliales + taxeFP);
 
       const result = await db.query(
