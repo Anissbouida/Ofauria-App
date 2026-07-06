@@ -2029,6 +2029,13 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   // Champs controles du formulaire d'octroi (pour l'apercu d'etalement en direct)
   const [formAmount, setFormAmount] = useState('');
   const [formMonthly, setFormMonthly] = useState('');
+  // Modale de modification (admin) : montant/date/mode si aucune retenue, plan+notes toujours
+  const [editingAdvance, setEditingAdvance] = useState<Record<string, any> | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editMonthly, setEditMonthly] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editMethod, setEditMethod] = useState('cash');
+  const [editNotes, setEditNotes] = useState('');
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
   const { user } = useAuth();
@@ -2052,6 +2059,22 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
         ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
         : null;
       notify.error(msg || 'Erreur lors de l\'enregistrement');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) => advancesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      notify.success('Avance modifiée');
+      setEditingAdvance(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Modification impossible');
     },
   });
 
@@ -2193,15 +2216,30 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                       <td style={{ textAlign: 'center' }}><span className={`odoo-tag ${meta.cls}`}>{meta.label}</span></td>
                       <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{getPaymentLabel(a.payment_method as string)}</td>
                       <td style={{ textAlign: 'center' }}>
-                        {reps.length === 0 && user?.role === 'admin' && (
-                          <button onClick={ev => {
-                            ev.stopPropagation();
-                            if (confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`)) {
-                              deleteMutation.mutate(a.id as string);
-                            }
-                          }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
-                            <Trash2 size={12} />
-                          </button>
+                        {user?.role === 'admin' && (
+                          <div style={{ display: 'inline-flex', gap: 2 }}>
+                            <button onClick={ev => {
+                              ev.stopPropagation();
+                              setEditingAdvance(a);
+                              setEditAmount(pn(a.amount).toFixed(2));
+                              setEditMonthly(pn(a.monthly_deduction) > 0 ? pn(a.monthly_deduction).toFixed(2) : '');
+                              setEditDate(isoDate(a.advance_date));
+                              setEditMethod((a.payment_method as string) || 'cash');
+                              setEditNotes((a.notes as string) || '');
+                            }} className="odoo-pager-btn" title={reps.length > 0 ? 'Modifier le plan de retenue / notes' : 'Modifier l\'avance'}>
+                              <Pencil size={12} />
+                            </button>
+                            {reps.length === 0 && (
+                              <button onClick={ev => {
+                                ev.stopPropagation();
+                                if (confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`)) {
+                                  deleteMutation.mutate(a.id as string);
+                                }
+                              }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -2328,6 +2366,110 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
           </div>
         </div>
       )}
+
+      {/* ─── Edit advance modal (admin) ─── */}
+      {editingAdvance && (() => {
+        const hasReps = ((editingAdvance.repayments || []) as Record<string, any>[]).length > 0;
+        const remaining = pn(editingAdvance.remaining_amount);
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingAdvance(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={ev => ev.stopPropagation()}>
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-5 rounded-t-2xl flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold">Modifier l'avance</h2>
+                  <p className="text-blue-100 text-sm">{editingAdvance.first_name as string} {editingAdvance.last_name as string}</p>
+                </div>
+                <button onClick={() => setEditingAdvance(null)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
+                  <X size={16} />
+                </button>
+              </div>
+              <form onSubmit={e => {
+                e.preventDefault();
+                const amount = parseFloat(editAmount) || 0;
+                const monthly = parseFloat(editMonthly) || 0;
+                if (!hasReps && amount <= 0) { notify.error('Montant invalide'); return; }
+                const refAmount = hasReps ? pn(editingAdvance.amount) : amount;
+                if (editMonthly && (monthly <= 0 || monthly > refAmount)) {
+                  notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
+                  return;
+                }
+                const data: Record<string, any> = {
+                  monthlyDeduction: monthly > 0 ? monthly : null,
+                  notes: editNotes,
+                };
+                if (!hasReps) {
+                  data.amount = amount;
+                  data.paymentMethod = editMethod;
+                  data.advanceDate = editDate || undefined;
+                }
+                updateMutation.mutate({ id: editingAdvance.id as string, data });
+              }} className="p-5 space-y-4">
+                {hasReps && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+                    Des retenues ont déjà été imputées sur cette avance : le montant, la date et le mode ne sont plus modifiables.
+                    Le plan de retenue et les notes restent ajustables — les prochaines paies suivront le nouveau plan.
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
+                    <input type="number" step="0.01" min="0.01" required disabled={hasReps}
+                      value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
+                    <input type="date" disabled={hasReps} value={editDate} onChange={e => setEditDate(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de paiement</label>
+                  <select disabled={hasReps} value={editMethod} onChange={e => setEditMethod(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
+                    {paymentMethods.length > 0
+                      ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
+                      : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Retenue par mois (vide = tout à la prochaine paie)</label>
+                  <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
+                    value={editMonthly} onChange={e => setEditMonthly(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  {(() => {
+                    const monthlyNum = parseFloat(editMonthly) || 0;
+                    if (monthlyNum <= 0) return (
+                      <p className="text-xs text-gray-400 mt-1">Sans plan, tout le solde ({remaining.toFixed(2)} DH) sera proposé à la prochaine paie.</p>
+                    );
+                    const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
+                    if (monthlyNum > refAmount) return (
+                      <p className="text-xs text-red-600 mt-1">La retenue par mois dépasse le montant de l'avance.</p>
+                    );
+                    if (remaining <= 0) return null;
+                    const nbLeft = Math.ceil(remaining / monthlyNum);
+                    return (
+                      <p className="text-xs text-blue-700 mt-1">
+                        Solde restant {remaining.toFixed(2)} DH → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {monthlyNum.toFixed(2)} DH max.
+                      </p>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+                  <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                    placeholder="Motif, accord de remboursement..."
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <button type="submit" disabled={updateMutation.isPending}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
+                  <Check size={16} /> {updateMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

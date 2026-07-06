@@ -326,6 +326,40 @@ export const salaryAdvanceController = {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
     }
   },
+  /**
+   * Modification d'une avance (admin) : plan de retenue et notes toujours
+   * modifiables ; montant/mode/date uniquement tant qu'aucune retenue n'a
+   * ete imputee (le decaissement lie est alors mis a jour).
+   */
+  async update(req: AuthRequest, res: Response) {
+    const { amount, paymentMethod, advanceDate, notes, monthlyDeduction } = req.body;
+    const data: {
+      amount?: number; paymentMethod?: string; advanceDate?: string;
+      monthlyDeduction?: number | null; notes?: string;
+    } = {};
+    if (amount !== undefined) {
+      const parsed = parseFloat(String(amount));
+      if (!parsed || parsed <= 0) {
+        res.status(400).json({ success: false, error: { message: 'Montant invalide' } });
+        return;
+      }
+      data.amount = Math.round(parsed * 100) / 100;
+    }
+    if (paymentMethod !== undefined) data.paymentMethod = String(paymentMethod);
+    if (advanceDate !== undefined && advanceDate) data.advanceDate = String(advanceDate);
+    if (notes !== undefined) data.notes = String(notes ?? '');
+    if (monthlyDeduction !== undefined) {
+      // null / '' / 0 = suppression du plan (tout a la prochaine paie)
+      const parsed = parseFloat(String(monthlyDeduction ?? ''));
+      data.monthlyDeduction = parsed > 0 ? Math.round(parsed * 100) / 100 : null;
+    }
+    try {
+      const advance = await salaryAdvanceRepository.update(req.params.id, data);
+      res.json({ success: true, data: advance });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
   async remove(req: AuthRequest, res: Response) {
     try {
       await salaryAdvanceRepository.remove(req.params.id);

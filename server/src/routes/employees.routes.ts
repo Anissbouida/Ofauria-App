@@ -66,6 +66,8 @@ salaryAdvancesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAG
 salaryAdvancesRouter.get('/outstanding', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), salaryAdvanceController.outstanding);
 salaryAdvancesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), salaryAdvanceController.create);
 // Suppression reservee admin : reverse le decaissement + son ecriture comptable.
+// Modification (plan de retenue, notes ; montant/mode/date si aucune retenue) : admin only
+salaryAdvancesRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), salaryAdvanceController.update);
 salaryAdvancesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), salaryAdvanceController.remove);
 
 // Weekly payroll (lundi = jour de paie pour les employes hebdo)

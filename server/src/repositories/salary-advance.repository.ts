@@ -131,6 +131,73 @@ export const salaryAdvanceRepository = {
   },
 
   /**
+   * Modifie une avance existante (admin).
+   *  - monthlyDeduction (plan d'etalement) et notes : modifiables a tout
+   *    moment — les retenues futures suivront le nouveau plan.
+   *  - amount / paymentMethod / advanceDate : uniquement si AUCUNE retenue
+   *    n'a encore ete imputee. Le decaissement lie (payments) est mis a
+   *    jour et son ecriture comptable regeneree.
+   */
+  async update(id: string, data: {
+    amount?: number; paymentMethod?: string; advanceDate?: string;
+    /** undefined = inchange ; null = supprimer le plan ; nombre = nouveau plan */
+    monthlyDeduction?: number | null; notes?: string;
+  }) {
+    const existing = await db.query(
+      `SELECT a.*, COUNT(sr.id)::int AS repayment_count
+         FROM salary_advances a
+         LEFT JOIN salary_advance_repayments sr ON sr.advance_id = a.id
+        WHERE a.id = $1
+        GROUP BY a.id`,
+      [id]
+    );
+    const adv = existing.rows[0];
+    if (!adv) throw new Error('Avance introuvable');
+
+    const touchesDisbursement = data.amount !== undefined
+      || data.paymentMethod !== undefined || data.advanceDate !== undefined;
+    if (touchesDisbursement && adv.repayment_count > 0) {
+      throw new Error('Des retenues ont déjà été faites : seuls le plan de retenue et les notes sont modifiables');
+    }
+
+    const newAmount = data.amount !== undefined ? Math.round(data.amount * 100) / 100 : parseFloat(adv.amount);
+    if (newAmount <= 0) throw new Error('Montant invalide');
+    const newMonthly = data.monthlyDeduction === undefined
+      ? (adv.monthly_deduction !== null ? parseFloat(adv.monthly_deduction) : null)
+      : data.monthlyDeduction;
+    if (newMonthly !== null && (newMonthly <= 0 || newMonthly > newAmount)) {
+      throw new Error('La retenue mensuelle doit être comprise entre 0 et le montant de l\'avance');
+    }
+
+    const sets: string[] = []; const values: unknown[] = []; let i = 1;
+    if (data.amount !== undefined) {
+      // Aucune retenue (verifie ci-dessus) -> le solde restant = le montant
+      sets.push(`amount = $${i}, remaining_amount = $${i}`); values.push(newAmount); i++;
+    }
+    if (data.advanceDate !== undefined) { sets.push(`advance_date = $${i++}`); values.push(data.advanceDate); }
+    if (data.paymentMethod !== undefined) { sets.push(`payment_method = $${i++}`); values.push(data.paymentMethod); }
+    if (data.monthlyDeduction !== undefined) { sets.push(`monthly_deduction = $${i++}`); values.push(data.monthlyDeduction); }
+    if (data.notes !== undefined) { sets.push(`notes = $${i++}`); values.push(data.notes || null); }
+    if (sets.length === 0) return adv;
+
+    values.push(id);
+    const updated = await db.query(
+      `UPDATE salary_advances SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+
+    // Repercute sur le decaissement lie (regenere l'ecriture 3431/tresorerie)
+    if (touchesDisbursement && adv.payment_id) {
+      await paymentRepository.update(adv.payment_id, {
+        ...(data.amount !== undefined ? { amount: newAmount } : {}),
+        ...(data.paymentMethod !== undefined ? { paymentMethod: data.paymentMethod } : {}),
+        ...(data.advanceDate !== undefined ? { paymentDate: data.advanceDate } : {}),
+      });
+    }
+    return updated.rows[0];
+  },
+
+  /**
    * Supprime une avance saisie par erreur. Refuse si des retenues existent
    * (il faudrait d'abord annuler les paies concernees). Supprime aussi le
    * decaissement lie, ce qui reverse son ecriture comptable.

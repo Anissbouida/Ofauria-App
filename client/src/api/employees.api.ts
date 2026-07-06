@@ -67,6 +67,8 @@ export const advancesApi = {
   outstanding: (employeeId?: string) =>
     api.get('/salary-advances/outstanding', { params: employeeId ? { employeeId } : undefined }).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/salary-advances', data).then(r => r.data.data),
+  /** Admin : plan de retenue/notes toujours modifiables ; montant/mode/date si aucune retenue imputée. */
+  update: (id: string, data: Record<string, any>) => api.put(`/salary-advances/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/salary-advances/${id}`).then(r => r.data.data),
 };
 
