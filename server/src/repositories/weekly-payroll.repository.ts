@@ -12,7 +12,9 @@ import { getLocalISODate } from '../utils/timezone.js';
  * il coche les employes au fur et a mesure des paiements.
  *
  * Convention salaire :
- *   dailyRate = weekly_salary / 6  (6 jours travailles par semaine)
+ *   dailyRate = weekly_salary / 7  (le salaire hebdo couvre 7 jours :
+ *     6 travailles + 1 jour de repos PAYE, compte comme jour travaille
+ *     au pointage via le statut 'repos')
  *   baseAmount = dailyRate × workedDays
  *   overtimeHours = SUM(attendance.overtime_minutes) / 60
  *   overtimeAmount = overtimeHours × (dailyRate / 8) × 1.25
@@ -87,7 +89,8 @@ export const weeklyPayrollRepository = {
 
     for (const emp of employeesRes.rows) {
       const weeklySalary = parseFloat(emp.weekly_salary as string);
-      const dailyRate = weeklySalary / 6;
+      // /7 : semaine complete = 6 jours travailles + 1 repos paye = salaire entier
+      const dailyRate = weeklySalary / 7;
 
       const att = await db.query(
         // 'repos' = jour paye au meme titre que 'present'/'late' (jour de
