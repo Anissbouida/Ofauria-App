@@ -113,8 +113,10 @@ export const weeklyPayrollRepository = {
       const att = await db.query(
         // 'repos' est EXCLU des jours travailles : le repos paye est ajoute
         // automatiquement (+1) ci-dessous, le pointer ne doit pas doubler.
+        // 'double' = deux shifts le meme jour -> compte 2 jours payes.
         `SELECT
            COUNT(*) FILTER (WHERE status IN ('present', 'late'))::int AS present_days,
+           COUNT(*) FILTER (WHERE status = 'double')::int             AS double_days,
            COUNT(*) FILTER (WHERE status = 'absent')::int             AS absent_days,
            COUNT(*) FILTER (WHERE status = 'half_day')::int           AS half_days,
            COALESCE(SUM(overtime_minutes), 0)::int                    AS total_overtime_min
@@ -125,7 +127,7 @@ export const weeklyPayrollRepository = {
         [emp.id, weekStart, weekEnd]
       );
       const a = att.rows[0];
-      const workedDays = a.present_days + Math.floor(a.half_days / 2);
+      const workedDays = a.present_days + 2 * a.double_days + Math.floor(a.half_days / 2);
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
       // Repos hebdomadaire paye automatiquement (+1 jour) des qu'il y a eu

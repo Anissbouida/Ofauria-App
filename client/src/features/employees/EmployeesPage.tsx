@@ -26,6 +26,8 @@ const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
   { value: 'half_day', label: 'Demi-journée', color: 'bg-blue-100 text-blue-700' },
   // Repos hebdomadaire paye (comptabilise comme jour travaille pour la paie).
   { value: 'repos', label: 'Repos', color: 'bg-purple-100 text-purple-700' },
+  // Deux shifts le meme jour : compte 2 jours payes dans la paie.
+  { value: 'double', label: 'Double shift', color: 'bg-indigo-100 text-indigo-700' },
 ];
 const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -1319,6 +1321,7 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
     addLine('Salaire de base', `${pf(p.base_salary)} DH`);
     if (pn(p.seniority_bonus) > 0) addLine("Prime d'anciennete", `${pf(p.seniority_bonus)} DH`);
     if (pn(p.overtime_amount) > 0) addLine('Heures supplementaires', `${pf(p.overtime_amount)} DH`);
+    if (pn(p.extra_shift_amount) > 0) addLine(`Double shifts (+${p.extra_shift_days} j)`, `${pf(p.extra_shift_amount)} DH`);
     if (pn(p.deductions) > 0) addLine('Retenue absences', `- ${pf(p.deductions)} DH`);
     addSeparator();
     doc.setFont('helvetica', 'bold');
@@ -1581,6 +1584,7 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
                   {line('Salaire de base', pf(p.base_salary))}
                   {pn(p.seniority_bonus) > 0 && line('Prime d\'anciennete', pf(p.seniority_bonus))}
                   {pn(p.overtime_amount) > 0 && line('Heures supplementaires', pf(p.overtime_amount))}
+                  {pn(p.extra_shift_amount) > 0 && line(`Double shifts (+${p.extra_shift_days} j)`, pf(p.extra_shift_amount))}
                   {pn(p.deductions) > 0 && line('Retenue absences', '-' + pf(p.deductions), 'text-red-600')}
                   <div className="border-t border-blue-200 mt-1">
                     {line('Salaire brut', pf(p.gross_salary), 'text-blue-700', true)}
@@ -1953,7 +1957,8 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
 
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
         Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
-        Taux journalier = salaire / 7. Le repos hebdomadaire est payé automatiquement (« +R ») dès que l'employé a travaillé dans la semaine : 6 jours travaillés = salaire complet ; 7 jours travaillés (repos non pris) = salaire + 1 journée.
+        Taux journalier = salaire / 7. Le repos hebdomadaire est payé automatiquement dès que l'employé a travaillé dans la semaine : 6 jours travaillés = salaire complet ; 7 jours travaillés (repos non pris) = salaire + 1 journée.
+        Un jour pointé « Double shift » compte 2 jours payés.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
         Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
       </div>

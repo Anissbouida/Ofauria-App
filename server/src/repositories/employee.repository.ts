@@ -579,6 +579,7 @@ export const attendanceRepository = {
     const result = await db.query(
       `SELECT
         COUNT(*) FILTER (WHERE status = 'present') as present_days,
+        COUNT(*) FILTER (WHERE status = 'double') as double_days,
         COUNT(*) FILTER (WHERE status = 'absent') as absent_days,
         COUNT(*) FILTER (WHERE status = 'late') as late_days,
         COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
@@ -778,8 +779,11 @@ export const payrollRepository = {
         // 'repos' compte comme jour paye (jour de repos hebdomadaire inclus
         // dans le salaire mensuel) — regroupe avec 'present'/'late' pour le
         // decompte des jours travailles facturables.
+        // 'double' = deux shifts le meme jour : compte 2 jours travailles et
+        // ajoute 1 jour supplementaire au brut (taux journalier base/26).
         `SELECT
           COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos')) as present_days,
+          COUNT(*) FILTER (WHERE status = 'double') as double_days,
           COUNT(*) FILTER (WHERE status = 'absent') as absent_days,
           COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
           COALESCE(SUM(overtime_minutes), 0) as total_overtime
@@ -789,7 +793,8 @@ export const payrollRepository = {
       );
       const a = att.rows[0];
       const baseSalary = parseFloat(emp.monthly_salary);
-      const workedDays = parseInt(a.present_days) + Math.floor(parseInt(a.half_days) / 2);
+      const doubleDays = parseInt(a.double_days);
+      const workedDays = parseInt(a.present_days) + 2 * doubleDays + Math.floor(parseInt(a.half_days) / 2);
       const absentDays = parseInt(a.absent_days);
       const overtimeHours = parseFloat(a.total_overtime) / 60;
       const dailyRate = baseSalary / 26;
@@ -800,8 +805,11 @@ export const payrollRepository = {
       // ═══ ETAPE 1 : Salaire brut ═══
       const seniorityBonus = r2(baseSalary * calcSeniorityRate(seniorityYears));
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
+      // Double shift : le 2e service du jour est paye 1 jour supplementaire
+      // (symetrique de la retenue d'absence, meme taux journalier base/26).
+      const extraShiftAmount = r2(doubleDays * dailyRate);
       const absenceDeduction = r2(absentDays * dailyRate);
-      const grossSalary = r2(baseSalary + seniorityBonus + overtimeAmount - absenceDeduction);
+      const grossSalary = r2(baseSalary + seniorityBonus + overtimeAmount + extraShiftAmount - absenceDeduction);
 
       // ═══ ETAPE 2 : CNSS salariale (plafonnee a 6 000 DH) ═══
       const cnssBase = Math.min(grossSalary, CNSS_PLAFOND);
@@ -852,8 +860,9 @@ export const payrollRepository = {
           cnss_employee, cnss_employer, amo_employee, amo_employer,
           cimr_employee, cimr_employer,
           frais_pro, ir_gross, ir_net, family_deduction, nb_dependents,
-          alloc_familiales, taxe_fp, total_charges_patron, net_salary
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+          alloc_familiales, taxe_fp, total_charges_patron, net_salary,
+          extra_shift_days, extra_shift_amount
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
          ON CONFLICT (employee_id, month, year) DO UPDATE SET
            base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
            absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
@@ -867,14 +876,17 @@ export const payrollRepository = {
            nb_dependents = EXCLUDED.nb_dependents,
            alloc_familiales = EXCLUDED.alloc_familiales, taxe_fp = EXCLUDED.taxe_fp,
            total_charges_patron = EXCLUDED.total_charges_patron,
-           net_salary = EXCLUDED.net_salary
+           net_salary = EXCLUDED.net_salary,
+           extra_shift_days = EXCLUDED.extra_shift_days,
+           extra_shift_amount = EXCLUDED.extra_shift_amount
          RETURNING *`,
         [emp.id, month, year, baseSalary, workedDays, absentDays,
          overtimeHours, overtimeAmount, seniorityBonus, grossSalary, absenceDeduction,
          cnssEmployee, cnssEmployer, amoEmployee, amoEmployer,
          cimrEmployee, cimrEmployer,
          fraisPro, irBrut, irNet, familyDeduction, nbDependents,
-         allocFamiliales, taxeFP, totalChargesPatron, netSalary]
+         allocFamiliales, taxeFP, totalChargesPatron, netSalary,
+         doubleDays, extraShiftAmount]
       );
       results.push(result.rows[0]);
     }
