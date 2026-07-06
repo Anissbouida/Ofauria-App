@@ -1809,7 +1809,9 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                     </td>
                     {generated ? (
                       <>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.worked_days} / 7</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }} title="Jours travaillés + repos payé automatique">
+                          {r.worked_days}{(r.worked_days ?? 0) > 0 && <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400 }}> +R</span>}
+                        </td>
                         <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
                         <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
                         <td style={{ textAlign: 'right', color: parseFloat(r.overtime_amount || '0') > 0 ? '#b85d1a' : 'var(--odoo-text-light)' }}>
@@ -1905,7 +1907,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
 
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
         Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
-        Le salaire hebdo couvre 7 jours : 6 travaillés + 1 repos payé (taux journalier = salaire / 7). Pensez à pointer le jour de repos en « Repos » pour qu'il soit payé.
+        Taux journalier = salaire / 7. Le repos hebdomadaire est payé automatiquement (« +R ») dès que l'employé a travaillé dans la semaine : 6 jours travaillés = salaire complet ; 7 jours travaillés (repos non pris) = salaire + 1 journée.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
         Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
       </div>

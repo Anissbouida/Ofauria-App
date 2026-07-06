@@ -11,11 +11,18 @@ import { getLocalISODate } from '../utils/timezone.js';
  * systeme calcule le net a payer depuis le pointage de la semaine, puis
  * il coche les employes au fur et a mesure des paiements.
  *
- * Convention salaire :
- *   dailyRate = weekly_salary / 7  (le salaire hebdo couvre 7 jours :
- *     6 travailles + 1 jour de repos PAYE, compte comme jour travaille
- *     au pointage via le statut 'repos')
- *   baseAmount = dailyRate × workedDays
+ * Convention salaire (validee metier 07/2026) :
+ *   dailyRate = weekly_salary / 7
+ *   Le repos hebdomadaire est PAYE comme une journee de travail et il est
+ *   AUTOMATIQUE : +1 jour paye des que l'employe a travaille dans la semaine,
+ *   qu'il soit pointe 'repos' ou pas. Consequences :
+ *     - 6 jours travailles (+ repos pris)      -> 7/7 = salaire complet
+ *     - 7 jours travailles (repos non pris)    -> (7+1)/7 = salaire + 1 jour
+ *       (le repos reste paye + la journee travaillee en plus)
+ *     - 4 travailles + 2 absents               -> (4+1)/7
+ *   Les jours pointes 'repos' ne sont PAS comptes comme travailles (le +1
+ *   automatique les couvre — sinon double comptage).
+ *   baseAmount = dailyRate × paidDays
  *   overtimeHours = SUM(attendance.overtime_minutes) / 60
  *   overtimeAmount = overtimeHours × (dailyRate / 8) × 1.25
  *   netAmount = baseAmount + overtimeAmount
@@ -89,17 +96,16 @@ export const weeklyPayrollRepository = {
 
     for (const emp of employeesRes.rows) {
       const weeklySalary = parseFloat(emp.weekly_salary as string);
-      // /7 : semaine complete = 6 jours travailles + 1 repos paye = salaire entier
       const dailyRate = weeklySalary / 7;
 
       const att = await db.query(
-        // 'repos' = jour paye au meme titre que 'present'/'late' (jour de
-        // repos hebdomadaire inclus dans le salaire).
+        // 'repos' est EXCLU des jours travailles : le repos paye est ajoute
+        // automatiquement (+1) ci-dessous, le pointer ne doit pas doubler.
         `SELECT
-           COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos'))::int AS present_days,
-           COUNT(*) FILTER (WHERE status = 'absent')::int                     AS absent_days,
-           COUNT(*) FILTER (WHERE status = 'half_day')::int                   AS half_days,
-           COALESCE(SUM(overtime_minutes), 0)::int                            AS total_overtime_min
+           COUNT(*) FILTER (WHERE status IN ('present', 'late'))::int AS present_days,
+           COUNT(*) FILTER (WHERE status = 'absent')::int             AS absent_days,
+           COUNT(*) FILTER (WHERE status = 'half_day')::int           AS half_days,
+           COALESCE(SUM(overtime_minutes), 0)::int                    AS total_overtime_min
          FROM attendance
          WHERE employee_id = $1
            AND date BETWEEN $2 AND $3
@@ -110,7 +116,11 @@ export const weeklyPayrollRepository = {
       const workedDays = a.present_days + Math.floor(a.half_days / 2);
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
-      const baseAmount = r2(dailyRate * workedDays);
+      // Repos hebdomadaire paye automatiquement (+1 jour) des qu'il y a eu
+      // du travail dans la semaine. 6 travailles -> 7 payes = salaire ;
+      // 7 travailles -> 8 payes = salaire + 1 jour.
+      const paidDays = workedDays > 0 ? workedDays + 1 : 0;
+      const baseAmount = r2(dailyRate * paidDays);
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
       const netAmount = r2(baseAmount + overtimeAmount);
 
