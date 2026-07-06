@@ -52,12 +52,13 @@ leavesRouter.post('/:id/approve', authenticate, authorize(...ROLE_GROUPS.ADMIN_M
 leavesRouter.post('/:id/reject', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), leaveController.reject);
 leavesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), leaveController.remove);
 
-// Payroll
+// Payroll — gestion ouverte au gerant (ADMIN_MANAGER), comme la paie hebdo
+// et les avances : c'est lui qui paie les salaires au quotidien.
 export const payrollRouter = Router();
-payrollRouter.get('/', authenticate, authorize(ROLES.ADMIN), payrollController.list);
-payrollRouter.post('/generate', authenticate, authorize(ROLES.ADMIN), payrollController.generate);
-payrollRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), payrollController.update);
-payrollRouter.post('/:id/pay', authenticate, authorize(ROLES.ADMIN), payrollController.markPaid);
+payrollRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.list);
+payrollRouter.post('/generate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.generate);
+payrollRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.update);
+payrollRouter.post('/:id/pay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), payrollController.markPaid);
 
 // Avances sur salaire (octroi via l'onglet Paie, retenue a la paie)
 export const salaryAdvancesRouter = Router();
