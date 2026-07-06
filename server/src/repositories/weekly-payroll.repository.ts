@@ -68,6 +68,7 @@ export const weeklyPayrollRepository = {
          wp.overtime_hours,
          wp.overtime_amount,
          wp.net_amount,
+         wp.advance_deduction,
          wp.paid,
          wp.paid_at,
          wp.payment_method,

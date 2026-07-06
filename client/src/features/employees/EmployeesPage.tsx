@@ -1661,6 +1661,7 @@ type WeeklyPayrollRow = {
   overtime_hours: string | null;
   overtime_amount: string | null;
   net_amount: string | null;
+  advance_deduction: string | null;
   paid: boolean | null;
   paid_at: string | null;
   payment_method: string | null;
@@ -1832,6 +1833,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                 <th style={{ textAlign: 'center' }}>Absents</th>
                 <th style={{ textAlign: 'right' }}>Base</th>
                 <th style={{ textAlign: 'right' }}>H. Sup</th>
+                <th style={{ textAlign: 'right' }} title="Solde d'avances à récupérer, ou retenue faite sur cette paie">Avance</th>
                 <th style={{ textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net</th>
                 <th style={{ textAlign: 'center', width: 110 }}>Paiement</th>
               </tr>
@@ -1866,6 +1868,20 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                         <td style={{ textAlign: 'right', color: parseFloat(r.overtime_amount || '0') > 0 ? '#b85d1a' : 'var(--odoo-text-light)' }}>
                           {parseFloat(r.overtime_amount || '0') > 0 ? `+${parseFloat(r.overtime_amount || '0').toFixed(2)}` : '—'}
                         </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {paid ? (
+                            parseFloat(r.advance_deduction || '0') > 0
+                              ? <span style={{ color: '#b85d1a', fontWeight: 500 }} title="Retenue d'avance sur cette paie">− {parseFloat(r.advance_deduction || '0').toFixed(2)}</span>
+                              : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                          ) : (outstandingByEmp.get(r.employee_id) || 0) > 0 ? (
+                            <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)} DH — retenue proposée au paiement`}>
+                              <HandCoins size={10} style={{ marginRight: 2 }} />
+                              {(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
                           {parseFloat(r.net_amount || '0').toFixed(2)} DH
                         </td>
@@ -1885,12 +1901,6 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                             </div>
                           ) : (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              {(outstandingByEmp.get(r.employee_id) || 0) > 0 && (
-                                <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)} DH — retenue proposée au paiement`}>
-                                  <HandCoins size={10} style={{ marginRight: 2 }} />
-                                  {(outstandingByEmp.get(r.employee_id) || 0).toFixed(0)}
-                                </span>
-                              )}
                               <button onClick={() => startPay(r, 'cash')} className="odoo-btn-primary"
                                 disabled={payMutation.isPending}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
@@ -1907,7 +1917,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                       </>
                     ) : (
                       <>
-                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
+                        <td colSpan={7} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
                           — Cliquez « Générer depuis pointage » pour calculer —
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -1928,6 +1938,12 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }}>
                     {generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }} title="Retenues d'avance effectuées sur les paies payées">
+                    {(() => {
+                      const t = generated.reduce((s, r) => s + parseFloat(r.advance_deduction || '0'), 0);
+                      return t > 0 ? `− ${t.toFixed(2)} DH` : '—';
+                    })()}
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
                     {generated.reduce((s, r) => s + parseFloat(r.net_amount || '0'), 0).toFixed(2)} DH
