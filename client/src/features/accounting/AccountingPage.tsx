@@ -2439,20 +2439,24 @@ function ChargesTab() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-                  <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" required
+                  <input name="amount" type="number" step="0.01" disabled={isRhManagedCategory}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required
                     defaultValue={selectedPO ? parseFloat(selectedPO.total_amount as string) || '' : ''} key={formPOId} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+                  <input name="paymentDate" type="date" disabled={isRhManagedCategory}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
-                  <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                  <select name="paymentMethod" disabled={isRhManagedCategory}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
                     {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
                   </select></div>
                 {!requiresPO && !isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
-                    <select name="supplierId" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                    <select name="supplierId" disabled={isRhManagedCategory}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
                       <option value="">Aucun</option>
                       {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
                         <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
@@ -2463,7 +2467,8 @@ function ChargesTab() {
                     Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
                 {!requiresPO && isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
-                    <select name="employeeId" required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                    <select name="employeeId" required disabled={isRhManagedCategory}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
                       <option value="">Choisir un employé...</option>
                       {(employees as Record<string, any>[])
                         .filter(emp => emp.is_active !== false)
@@ -2483,13 +2488,15 @@ function ChargesTab() {
               </div>
 
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-                <textarea name="description" rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
+                <textarea name="description" rows={2} disabled={isRhManagedCategory}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" /></div>
 
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }}
                   className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+                <button type="submit" disabled={createMutation.isPending || isRhManagedCategory}
+                  title={isRhManagedCategory ? 'Saisie depuis Ressources Humaines → Paie / Avances' : undefined}
+                  className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none">
                   {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
