@@ -188,32 +188,43 @@ export const weeklyPayrollRepository = {
 
     // Decaissement reel = net moins la retenue (le cash de l'avance est deja
     // sorti a l'octroi — une seule sortie caisse au total).
-    const cashOut = Math.round((net - deduction) * 100) / 100;
-    if (cashOut > 0) {
-      await paymentRepository.create({
-        reference: `SAL-S${(wp.week_start as string).slice(0, 10)}-${empName.replace(/\s+/g, '')}`,
-        type: 'salary',
-        categoryId,
-        employeeId: wp.employee_id,
-        amount: cashOut,
-        paymentMethod,
-        paymentDate: getLocalISODate(),
-        description: `Salaire semaine du ${(wp.week_start as string).slice(0, 10)} - ${empName}`
-          + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
-        createdBy: createdBy || wp.employee_id,
-        storeId,
-      });
-    }
+    // Echec paiement/retenue -> on annule le marquage paye (sinon ligne
+    // "Payee" sans sortie de caisse, invisible en Caisse/Charges).
+    try {
+      const cashOut = Math.round((net - deduction) * 100) / 100;
+      if (cashOut > 0) {
+        await paymentRepository.create({
+          // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
+          reference: `SAL-S${(wp.week_start as string).slice(0, 10)}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
+          type: 'salary',
+          categoryId,
+          employeeId: wp.employee_id,
+          amount: cashOut,
+          paymentMethod,
+          paymentDate: getLocalISODate(),
+          description: `Salaire semaine du ${(wp.week_start as string).slice(0, 10)} - ${empName}`
+            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+          createdBy: createdBy || wp.employee_id,
+          storeId,
+        });
+      }
 
-    if (deduction > 0) {
-      await salaryAdvanceRepository.applyDeduction({
-        employeeId: wp.employee_id as string,
-        amount: deduction,
-        weeklyPayrollId: id,
-        userId: createdBy || (wp.employee_id as string),
-        storeId,
-        label: `${empName} semaine du ${(wp.week_start as string).slice(0, 10)}`,
-      });
+      if (deduction > 0) {
+        await salaryAdvanceRepository.applyDeduction({
+          employeeId: wp.employee_id as string,
+          amount: deduction,
+          weeklyPayrollId: id,
+          userId: createdBy || (wp.employee_id as string),
+          storeId,
+          label: `${empName} semaine du ${(wp.week_start as string).slice(0, 10)}`,
+        });
+      }
+    } catch (err) {
+      await db.query(
+        `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
+        [id]
+      );
+      throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
     return wp;

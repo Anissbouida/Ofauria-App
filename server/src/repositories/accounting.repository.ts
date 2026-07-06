@@ -13,7 +13,10 @@ export const caisseRepository = {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    const storeFilterP = storeId ? ' AND p.store_id = $3' : '';
+    // Convention app : store_id NULL = paiement global (cree par un compte
+    // sans magasin, ex. salaires payes par l'admin) -> visible dans toutes
+    // les caisses, comme pour employees/salary_advances.
+    const storeFilterP = storeId ? ' AND (p.store_id = $3 OR p.store_id IS NULL)' : '';
     const storeFilterS = storeId ? ' AND store_id = $3' : '';
     const storeFilterSales = storeId ? ' AND store_id = $3' : '';
     const baseParams = [startDate, endDate];
@@ -100,7 +103,7 @@ export const caisseRepository = {
     );
 
     // Previous balance: payments before this month
-    const prevStoreFilter = storeId ? ' AND p.store_id = $2' : '';
+    const prevStoreFilter = storeId ? ' AND (p.store_id = $2 OR p.store_id IS NULL)' : '';
     const prevParams = storeId ? [startDate, storeId] : [startDate];
 
     // Solde reporte : meme logique tresorerie que la requete principale.
@@ -1501,7 +1504,8 @@ export const paymentRepository = {
       `(p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)`,
     ];
     const values: unknown[] = []; let i = 1;
-    if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
+    // store_id NULL = paiement global (voir getRegister) : toujours visible
+    if (params.storeId) { conditions.push(`(p.store_id = $${i++} OR p.store_id IS NULL)`); values.push(params.storeId); }
     if (params.type) { conditions.push(`p.type = $${i++}`); values.push(params.type); }
     // Date filter applique sur la date effective (cashed_at pour cheque, sinon payment_date)
     const effectiveDateExpr = `(CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END)`;

@@ -938,32 +938,45 @@ export const payrollRepository = {
 
     // Decaissement reel = net moins la retenue d'avance (le cash de l'avance
     // est deja sorti a l'octroi — ne le deduire qu'UNE fois de la caisse).
-    const cashOut = Math.round((net - deduction) * 100) / 100;
-    if (cashOut > 0) {
-      await paymentRepository.create({
-        reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`,
-        type: 'salary',
-        categoryId,
-        employeeId: payroll.employee_id,
-        amount: cashOut,
-        paymentMethod: paymentMethod,
-        paymentDate: getLocalISODate(),
-        description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
-          + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
-        createdBy: createdBy || payroll.employee_id,
-        storeId,
-      });
-    }
+    // Si la creation du paiement ou la retenue echoue, on ANNULE le marquage
+    // paye : sinon le bulletin resterait "Paye" sans aucune sortie de caisse
+    // (invisible en Caisse/Charges) et le re-clic serait bloque par
+    // l'idempotence.
+    try {
+      const cashOut = Math.round((net - deduction) * 100) / 100;
+      if (cashOut > 0) {
+        await paymentRepository.create({
+          // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
+          reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
+          type: 'salary',
+          categoryId,
+          employeeId: payroll.employee_id,
+          amount: cashOut,
+          paymentMethod: paymentMethod,
+          paymentDate: getLocalISODate(),
+          description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
+            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+          createdBy: createdBy || payroll.employee_id,
+          storeId,
+        });
+      }
 
-    if (deduction > 0) {
-      await salaryAdvanceRepository.applyDeduction({
-        employeeId: payroll.employee_id,
-        amount: deduction,
-        payrollId: id,
-        userId: createdBy || payroll.employee_id,
-        storeId,
-        label: `${empName} ${payroll.month}/${payroll.year}`,
-      });
+      if (deduction > 0) {
+        await salaryAdvanceRepository.applyDeduction({
+          employeeId: payroll.employee_id,
+          amount: deduction,
+          payrollId: id,
+          userId: createdBy || payroll.employee_id,
+          storeId,
+          label: `${empName} ${payroll.month}/${payroll.year}`,
+        });
+      }
+    } catch (err) {
+      await db.query(
+        `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
+        [id]
+      );
+      throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
     return payroll;
