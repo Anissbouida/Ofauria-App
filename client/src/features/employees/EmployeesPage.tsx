@@ -1781,6 +1781,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                 <th>Employé</th>
                 <th style={{ textAlign: 'right' }}>Salaire hebdo</th>
                 <th style={{ textAlign: 'center' }}>Jours trav.</th>
+                <th style={{ textAlign: 'center' }} title="Repos hebdomadaire payé (automatique dès que la semaine a été travaillée)">Repos</th>
                 <th style={{ textAlign: 'center' }}>Absents</th>
                 <th style={{ textAlign: 'right' }}>Base</th>
                 <th style={{ textAlign: 'right' }}>H. Sup</th>
@@ -1809,8 +1810,9 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                     </td>
                     {generated ? (
                       <>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }} title="Jours travaillés + repos payé automatique">
-                          {r.worked_days}{(r.worked_days ?? 0) > 0 && <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400 }}> +R</span>}
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.worked_days}</td>
+                        <td style={{ textAlign: 'center', color: (r.worked_days ?? 0) > 0 ? '#7c3aed' : 'var(--odoo-text-light)' }} title="Repos payé (1 jour, automatique)">
+                          {(r.worked_days ?? 0) > 0 ? 1 : '—'}
                         </td>
                         <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
                         <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
@@ -1858,7 +1860,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                       </>
                     ) : (
                       <>
-                        <td colSpan={5} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
+                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
                           — Cliquez « Générer depuis pointage » pour calculer —
                         </td>
                         <td style={{ textAlign: 'center' }}>
@@ -1873,7 +1875,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
             {generated.length > 0 && (
               <tfoot style={{ background: 'var(--odoo-bg-alt)', borderTop: '2px solid var(--odoo-border)' }}>
                 <tr>
-                  <td colSpan={5} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total semaine</td>
+                  <td colSpan={6} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total semaine</td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700 }}>
                     {generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0).toFixed(2)} DH
                   </td>
