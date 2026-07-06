@@ -298,17 +298,27 @@ export const salaryAdvanceController = {
     res.json({ success: true, data: rows });
   },
   async create(req: AuthRequest, res: Response) {
-    const { employeeId, amount, paymentMethod, advanceDate, notes } = req.body;
+    const { employeeId, amount, paymentMethod, advanceDate, notes, monthlyDeduction } = req.body;
     const parsed = parseFloat(String(amount));
     if (!employeeId || !parsed || parsed <= 0) {
       res.status(400).json({ success: false, error: { message: 'employeeId et montant positif requis' } });
       return;
     }
+    // Plan d'etalement optionnel : retenue par paie, entre 0 exclu et le
+    // montant de l'avance (au-dela, autant ne pas definir de plan).
+    let monthly: number | null = null;
+    if (monthlyDeduction !== undefined && monthlyDeduction !== null && monthlyDeduction !== '') {
+      monthly = Math.round((parseFloat(String(monthlyDeduction)) || 0) * 100) / 100;
+      if (monthly <= 0 || monthly > parsed) {
+        res.status(400).json({ success: false, error: { message: 'La retenue mensuelle doit être comprise entre 0 et le montant de l\'avance' } });
+        return;
+      }
+    }
     try {
       const advance = await salaryAdvanceRepository.create({
         employeeId, amount: Math.round(parsed * 100) / 100,
         paymentMethod: paymentMethod || 'cash',
-        advanceDate, notes,
+        advanceDate, notes, monthlyDeduction: monthly,
         createdBy: req.user!.userId, storeId: req.user!.storeId,
       });
       res.status(201).json({ success: true, data: advance });

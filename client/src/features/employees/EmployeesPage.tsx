@@ -1155,10 +1155,16 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
     queryKey: ['advances-outstanding'],
     queryFn: () => advancesApi.outstanding(),
   });
-  const outstandingByEmp = useMemo(() => {
-    const m = new Map<string, number>();
-    (outstandingRows as Record<string, any>[]).forEach(r => m.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0));
-    return m;
+  // outstanding = solde total ; suggested = retenue proposee (plan d'etalement
+  // monthly_deduction si defini, sinon tout le solde).
+  const { outstandingByEmp, suggestedByEmp } = useMemo(() => {
+    const o = new Map<string, number>();
+    const s = new Map<string, number>();
+    (outstandingRows as Record<string, any>[]).forEach(r => {
+      o.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0);
+      s.set(r.employee_id as string, parseFloat(r.suggested as string) || 0);
+    });
+    return { outstandingByEmp: o, suggestedByEmp: s };
   }, [outstandingRows]);
 
   const generateMutation = useMutation({
@@ -1500,6 +1506,7 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
           periodLabel={`${MONTH_NAMES[month - 1]} ${year}`}
           net={pn(payTarget.net_salary)}
           outstanding={outstandingByEmp.get(payTarget.employee_id as string) || 0}
+          suggested={suggestedByEmp.get(payTarget.employee_id as string) ?? (outstandingByEmp.get(payTarget.employee_id as string) || 0)}
           defaultMethod="cash"
           pending={payMutation.isPending}
           onClose={() => setPayTarget(null)}
@@ -1651,10 +1658,14 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
     queryKey: ['advances-outstanding'],
     queryFn: () => advancesApi.outstanding(),
   });
-  const outstandingByEmp = useMemo(() => {
-    const m = new Map<string, number>();
-    (outstandingRows as Record<string, any>[]).forEach(r => m.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0));
-    return m;
+  const { outstandingByEmp, suggestedByEmp } = useMemo(() => {
+    const o = new Map<string, number>();
+    const s = new Map<string, number>();
+    (outstandingRows as Record<string, any>[]).forEach(r => {
+      o.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0);
+      s.set(r.employee_id as string, parseFloat(r.suggested as string) || 0);
+    });
+    return { outstandingByEmp: o, suggestedByEmp: s };
   }, [outstandingRows]);
   // Cible du dialogue de paiement (ouvert seulement si l'employe a une avance en cours)
   const [payTarget, setPayTarget] = useState<{ row: WeeklyPayrollRow; method: string } | null>(null);
@@ -1900,6 +1911,7 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
           periodLabel={`Semaine du ${format(weekStartDate, 'dd MMM yyyy', { locale: fr })}`}
           net={parseFloat(payTarget.row.net_amount || '0')}
           outstanding={outstandingByEmp.get(payTarget.row.employee_id) || 0}
+          suggested={suggestedByEmp.get(payTarget.row.employee_id) ?? (outstandingByEmp.get(payTarget.row.employee_id) || 0)}
           defaultMethod={payTarget.method}
           pending={payMutation.isPending}
           onClose={() => setPayTarget(null)}
@@ -1921,22 +1933,26 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
 /**
  * Dialogue de paiement commun mensuel/hebdo : choix du mode de règlement +
  * proposition de retenue sur les avances en cours de l'employé.
- * Par défaut on propose de retenir min(solde d'avances, net) — modifiable
- * librement (étalement sur plusieurs paies).
+ * `suggested` = retenue proposée : suit le plan d'étalement de chaque avance
+ * (monthly_deduction) si défini, sinon tout le solde. Toujours plafonnée au
+ * net dû, et modifiable librement au moment du paiement.
  */
-function PayrollPayDialog({ employeeName, periodLabel, net, outstanding, defaultMethod, pending, onClose, onConfirm }: {
+function PayrollPayDialog({ employeeName, periodLabel, net, outstanding, suggested, defaultMethod, pending, onClose, onConfirm }: {
   employeeName: string;
   periodLabel: string;
   net: number;
   outstanding: number;
+  suggested: number;
   defaultMethod: string;
   pending: boolean;
   onClose: () => void;
   onConfirm: (method: string, deduction: number) => void;
 }) {
   const maxDeduction = Math.min(outstanding, net);
+  const proposed = Math.min(suggested, maxDeduction);
+  const hasPlan = suggested < outstanding - 0.005;
   const [method, setMethod] = useState(defaultMethod);
-  const [deduction, setDeduction] = useState<string>(maxDeduction > 0 ? maxDeduction.toFixed(2) : '0');
+  const [deduction, setDeduction] = useState<string>(proposed > 0 ? proposed.toFixed(2) : '0');
   const ded = Math.max(0, parseFloat(deduction) || 0);
   const cashOut = Math.max(0, Math.round((net - ded) * 100) / 100);
   const invalid = ded > maxDeduction + 0.005;
@@ -1975,12 +1991,15 @@ function PayrollPayDialog({ employeeName, periodLabel, net, outstanding, default
                 <HandCoins size={14} className="inline mr-1" />
                 Avances en cours : <strong>{outstanding.toFixed(2)} DH</strong>
               </p>
-              <label className="block text-xs font-medium text-amber-800">Retenue sur cette paie (max {maxDeduction.toFixed(2)} DH)</label>
+              <label className="block text-xs font-medium text-amber-800">
+                Retenue sur cette paie (max {maxDeduction.toFixed(2)} DH)
+                {hasPlan && <span className="font-normal"> — plan d'étalement : {proposed.toFixed(2)} DH proposés</span>}
+              </label>
               <input type="number" step="0.01" min="0" max={maxDeduction} value={deduction}
                 onChange={e => setDeduction(e.target.value)}
                 className={`w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 ${invalid ? 'border-red-400 focus:ring-red-500' : 'border-amber-200 focus:ring-amber-500'}`} />
               {invalid && <p className="text-xs text-red-600">La retenue dépasse le solde d'avances ou le net dû.</p>}
-              <p className="text-xs text-amber-700">Mettre 0 pour ne rien retenir ce mois-ci (étalement libre).</p>
+              <p className="text-xs text-amber-700">Montant modifiable — mettre 0 pour ne rien retenir sur cette paie.</p>
             </div>
           ) : (
             <p className="text-xs text-gray-400">Aucune avance en cours pour cet employé.</p>
@@ -2007,6 +2026,9 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<'open' | 'all'>('open');
+  // Champs controles du formulaire d'octroi (pour l'apercu d'etalement en direct)
+  const [formAmount, setFormAmount] = useState('');
+  const [formMonthly, setFormMonthly] = useState('');
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
   const { user } = useAuth();
@@ -2080,7 +2102,7 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
           <button onClick={() => setStatusFilter('open')} className={statusFilter === 'open' ? 'active' : ''}>En cours</button>
           <button onClick={() => setStatusFilter('all')} className={statusFilter === 'all' ? 'active' : ''}>Toutes</button>
         </div>
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+        <button onClick={() => { setFormAmount(''); setFormMonthly(''); setShowForm(true); }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Accorder une avance
         </button>
@@ -2132,6 +2154,7 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                 <th style={{ textAlign: 'right' }}>Montant</th>
                 <th style={{ textAlign: 'right' }}>Remboursé</th>
                 <th style={{ textAlign: 'right', background: '#fdf3e7', color: '#b85d1a' }}>Solde</th>
+                <th style={{ textAlign: 'right' }} title="Plan d'étalement : retenue proposée à chaque paie">Retenue/mois</th>
                 <th style={{ textAlign: 'center' }}>Statut</th>
                 <th>Mode</th>
                 <th style={{ textAlign: 'center', width: 60 }}></th>
@@ -2157,6 +2180,16 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                       <td style={{ textAlign: 'right', fontWeight: 500 }}>{pn(a.amount).toFixed(2)}</td>
                       <td style={{ textAlign: 'right', color: '#28a745' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#b85d1a', background: '#fdf3e7' }}>{pn(a.remaining_amount).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {pn(a.monthly_deduction) > 0 ? (
+                          <span title={pn(a.remaining_amount) > 0 ? `≈ ${Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paie(s) restante(s)` : 'Plan soldé'}>
+                            {pn(a.monthly_deduction).toFixed(2)}
+                            {pn(a.remaining_amount) > 0 && (
+                              <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}> · {Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paies</span>
+                            )}
+                          </span>
+                        ) : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>}
+                      </td>
                       <td style={{ textAlign: 'center' }}><span className={`odoo-tag ${meta.cls}`}>{meta.label}</span></td>
                       <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{getPaymentLabel(a.payment_method as string)}</td>
                       <td style={{ textAlign: 'center' }}>
@@ -2180,7 +2213,7 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                           {repaymentLabel(r)}
                         </td>
                         <td style={{ textAlign: 'right', fontSize: '0.75rem', color: '#28a745' }}>+ {pn(r.amount).toFixed(2)}</td>
-                        <td colSpan={4} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{r.repaymentDate as string}</td>
+                        <td colSpan={5} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{r.repaymentDate as string}</td>
                       </tr>
                     ))}
                   </Fragment>
@@ -2212,11 +2245,17 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
               if (!fd.employeeId) { notify.error('Sélectionnez un employé'); return; }
               const amount = parseFloat(fd.amount as string);
               if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
+              const monthly = parseFloat(formMonthly) || 0;
+              if (formMonthly && (monthly <= 0 || monthly > amount)) {
+                notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
+                return;
+              }
               createMutation.mutate({
                 employeeId: fd.employeeId, amount,
                 paymentMethod: fd.paymentMethod || 'cash',
                 advanceDate: fd.advanceDate || undefined,
                 notes: fd.notes || undefined,
+                monthlyDeduction: monthly > 0 ? monthly : undefined,
               });
             }} className="p-5 space-y-4">
               <div>
@@ -2233,6 +2272,7 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
                   <input name="amount" type="number" step="0.01" min="0.01" required
+                    value={formAmount} onChange={e => setFormAmount(e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 </div>
                 <div>
@@ -2248,6 +2288,32 @@ function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
                     ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
                     : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Retenue par mois (optionnel)
+                </label>
+                <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
+                  value={formMonthly} onChange={e => setFormMonthly(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                {(() => {
+                  const amountNum = parseFloat(formAmount) || 0;
+                  const monthlyNum = parseFloat(formMonthly) || 0;
+                  if (amountNum <= 0 || monthlyNum <= 0) return (
+                    <p className="text-xs text-gray-400 mt-1">Le système proposera ce montant à chaque paie jusqu'au solde de l'avance (modifiable au moment du paiement).</p>
+                  );
+                  if (monthlyNum > amountNum) return (
+                    <p className="text-xs text-red-600 mt-1">La retenue par mois dépasse le montant de l'avance.</p>
+                  );
+                  const nbMonths = Math.ceil(amountNum / monthlyNum);
+                  const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
+                  return (
+                    <p className="text-xs text-teal-700 mt-1">
+                      Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${monthlyNum.toFixed(2)} DH` : `${monthlyNum.toFixed(2)} DH`}
+                      {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${lastAmount.toFixed(2)} DH` : ''}
+                    </p>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>

@@ -54,11 +54,18 @@ export const salaryAdvanceRepository = {
     return result.rows;
   },
 
-  /** Solde d'avances en cours par employe (pour le dialogue de paie et les tuiles). */
+  /**
+   * Solde d'avances en cours par employe (pour le dialogue de paie et les
+   * tuiles). `suggested` = retenue proposee pour la prochaine paie en
+   * respectant le plan d'etalement : par avance, monthly_deduction si
+   * definie (plafonnee au solde restant), sinon tout le solde.
+   */
   async outstandingByEmployee(employeeId?: string) {
     const where = employeeId ? 'AND employee_id = $1' : '';
     const result = await db.query(
-      `SELECT employee_id, COALESCE(SUM(remaining_amount), 0) AS outstanding
+      `SELECT employee_id,
+              COALESCE(SUM(remaining_amount), 0) AS outstanding,
+              COALESCE(SUM(LEAST(remaining_amount, COALESCE(monthly_deduction, remaining_amount))), 0) AS suggested
          FROM salary_advances
         WHERE status != 'repaid' ${where}
         GROUP BY employee_id`,
@@ -76,6 +83,8 @@ export const salaryAdvanceRepository = {
   async create(data: {
     employeeId: string; amount: number; paymentMethod: string;
     advanceDate?: string; notes?: string; createdBy: string; storeId?: string;
+    /** Plan d'etalement : retenue proposee par paie. NULL = tout a la prochaine paie. */
+    monthlyDeduction?: number | null;
   }) {
     const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [data.employeeId]);
     if (!emp.rows[0]) throw new Error('Employe introuvable');
@@ -83,10 +92,11 @@ export const salaryAdvanceRepository = {
     const advanceDate = data.advanceDate || getLocalISODate();
 
     const inserted = await db.query(
-      `INSERT INTO salary_advances (employee_id, amount, advance_date, payment_method, remaining_amount, notes, created_by, store_id)
-       VALUES ($1, $2, $3, $4, $2, $5, $6, $7) RETURNING *`,
+      `INSERT INTO salary_advances (employee_id, amount, advance_date, payment_method, remaining_amount, notes, created_by, store_id, monthly_deduction)
+       VALUES ($1, $2, $3, $4, $2, $5, $6, $7, $8) RETURNING *`,
       [data.employeeId, data.amount, advanceDate, data.paymentMethod,
-       data.notes || null, data.createdBy, data.storeId || null]
+       data.notes || null, data.createdBy, data.storeId || null,
+       data.monthlyDeduction ?? null]
     );
     const advance = inserted.rows[0];
 
