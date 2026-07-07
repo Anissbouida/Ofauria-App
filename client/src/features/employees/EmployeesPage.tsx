@@ -1675,7 +1675,7 @@ type WeeklyPayrollRow = {
   weekly_salary: string | null;
   payroll_id: string | null;
   base_amount: string | null;
-  worked_days: number | null;
+  worked_days: number | string | null;
   absent_days: number | null;
   overtime_hours: string | null;
   overtime_amount: string | null;
@@ -1887,9 +1887,16 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                     </td>
                     {generated ? (
                       <>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.worked_days}</td>
-                        <td style={{ textAlign: 'center', color: (r.worked_days ?? 0) > 0 ? '#7c3aed' : 'var(--odoo-text-light)' }} title="Repos payé (1 jour, automatique)">
-                          {(r.worked_days ?? 0) > 0 ? 1 : '—'}
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                          {(Math.round(parseFloat(String(r.worked_days ?? 0)) * 100) / 100).toString()}
+                        </td>
+                        <td style={{ textAlign: 'center', color: parseFloat(String(r.worked_days ?? 0)) > 0 ? '#7c3aed' : 'var(--odoo-text-light)' }}
+                          title="Repos payé proportionnel : jours travaillés / 6, plafonné à 1 (semaine complète = 1 jour)">
+                          {(() => {
+                            const wd = parseFloat(String(r.worked_days ?? 0));
+                            if (wd <= 0) return '—';
+                            return (Math.round(Math.min(wd / 6, 1) * 100) / 100).toString();
+                          })()}
                         </td>
                         <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
                         <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
@@ -2019,8 +2026,8 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
 
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
         Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
-        Taux journalier = salaire / 7. Le repos hebdomadaire est payé automatiquement dès que l'employé a travaillé dans la semaine : 6 jours travaillés = salaire complet ; 7 jours travaillés (repos non pris) = salaire + 1 journée.
-        Un jour pointé « Double shift » compte 2 jours payés.
+        Taux journalier = salaire / 7. Le repos hebdomadaire est payé au prorata des jours travaillés (jours ÷ 6, plafonné à 1) : 6 jours = 1 journée de repos (salaire complet), une demi-semaine = une demi-journée de repos, 7 jours travaillés (repos non pris) = salaire + 1 journée.
+        Une demi-journée compte 0,5 ; un « Double shift » compte 2 jours payés.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
         Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
       </div>

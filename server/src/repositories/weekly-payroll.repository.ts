@@ -128,13 +128,18 @@ export const weeklyPayrollRepository = {
         [emp.id, weekStart, weekEnd]
       );
       const a = att.rows[0];
-      const workedDays = a.present_days + 2 * a.double_days + Math.floor(a.half_days / 2);
+      // Demi-journee = 0.5 jour paye (un simple half_day compte donc 0.5).
+      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days;
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
-      // Repos hebdomadaire paye automatiquement (+1 jour) des qu'il y a eu
-      // du travail dans la semaine. 6 travailles -> 7 payes = salaire ;
-      // 7 travailles -> 8 payes = salaire + 1 jour.
-      const paidDays = workedDays > 0 ? workedDays + 1 : 0;
+      // Repos hebdomadaire paye PROPORTIONNELLEMENT aux jours travailles :
+      // une semaine complete = 6 jours travailles -> 1 jour de repos entier.
+      // Donc repos = jours travailles / 6, plafonne a 1 jour.
+      //   6 j travailles -> repos 1   -> 7 payes = salaire complet ;
+      //   3 j (demi-semaine) -> repos 0.5 -> 3.5 payes = 1/2 salaire ;
+      //   7 j (repos non pris) -> repos 1 (plafond) -> 8 payes = salaire + 1 j.
+      const reposDays = Math.min(workedDays / 6, 1);
+      const paidDays = workedDays + reposDays;
       const baseAmount = r2(dailyRate * paidDays);
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
       const netAmount = r2(baseAmount + overtimeAmount);
