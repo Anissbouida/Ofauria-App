@@ -98,6 +98,9 @@ export default function EmittedInvoicesTab() {
   const [manualCustomerId, setManualCustomerId] = useState('');
   const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [manualNotes, setManualNotes] = useState('');
+  // Édition d'une facture existante : id ciblé (null = création). Réutilise le formulaire manuel.
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
   // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
   const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
     { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null },
@@ -168,6 +171,7 @@ export default function EmittedInvoicesTab() {
     setManualDate(format(new Date(), 'yyyy-MM-dd'));
     setManualNotes('');
     setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
+    setEditingInvoiceId(null);
   };
 
   const addManualItem = () => setManualItems([...manualItems, { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
@@ -207,6 +211,68 @@ export default function EmittedInvoicesTab() {
         subtotal: it.quantity * it.unitPrice,
         tvaRate: it.tvaRate,
       })),
+    });
+  };
+
+  // Modification : remplace les lignes (recalcule HT/TVA/TTC) puis met à jour date/notes/client.
+  const updateManualMutation = useMutation({
+    mutationFn: async (payload: { id: string; items: Record<string, any>[]; header: Record<string, any> }) => {
+      await invoicesApi.replaceItems(payload.id, payload.items as any);
+      await invoicesApi.update(payload.id, payload.header);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notify.success('Facture modifiée');
+      setShowCreateModal(false);
+      resetManualForm();
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur lors de la modification'),
+  });
+
+  const openEdit = async (inv: Record<string, any>) => {
+    setEditingInvoiceId(inv.id as string);
+    setCreateMode('manual');
+    setShowCreateModal(true);
+    setEditLoading(true);
+    try {
+      const full = await invoicesApi.getById(inv.id as string) as Record<string, any>;
+      setManualCustomerId((full.customer_id as string) || '');
+      setManualDate(full.invoice_date ? String(full.invoice_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd'));
+      setManualNotes((full.notes as string) || '');
+      const items = (full.items as Record<string, any>[]) || [];
+      setManualItems(items.length ? items.map(it => ({
+        productId: (it.product_id as string) || '',
+        description: (it.description as string) || (it.product_name as string) || '',
+        quantity: parseFloat(it.quantity as string) || 0,
+        unitPrice: parseFloat(it.unit_price as string) || 0,
+        tvaRate: it.tva_rate === null || it.tva_rate === undefined ? null : parseFloat(it.tva_rate as string),
+      })) : [{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
+    } catch {
+      notify.error('Erreur lors du chargement de la facture');
+      setShowCreateModal(false);
+      resetManualForm();
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleUpdateManual = () => {
+    if (!editingInvoiceId) return;
+    if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
+    if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { notify.error('Veuillez remplir tous les articles'); return; }
+    if (!manualDate) { notify.error('Veuillez saisir la date de facturation'); return; }
+    updateManualMutation.mutate({
+      id: editingInvoiceId,
+      items: manualItems.map(it => ({
+        productId: it.productId || undefined,
+        description: it.description,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        subtotal: it.quantity * it.unitPrice,
+        tvaRate: it.tvaRate,
+      })),
+      // Pas de montants ici : replaceItems a déjà recalculé HT/TVA/TTC depuis les lignes.
+      header: { invoiceDate: manualDate, notes: manualNotes, customerId: manualCustomerId },
     });
   };
 
@@ -314,7 +380,7 @@ export default function EmittedInvoicesTab() {
             Encaissée <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>{countByStatus.paid}</span>
           </button>
         </div>
-        <button onClick={() => { setShowCreateModal(true); setCreateMode('order'); }}
+        <button onClick={() => { resetManualForm(); setShowCreateModal(true); setCreateMode('order'); }}
           className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
           <Plus size={13} /> Nouvelle facture
         </button>
@@ -331,7 +397,7 @@ export default function EmittedInvoicesTab() {
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{searchQuery ? 'Aucun résultat' : 'Aucune facture émise'}</p>
           {!searchQuery && (
-            <button onClick={() => { setShowCreateModal(true); setCreateMode('order'); }}
+            <button onClick={() => { resetManualForm(); setShowCreateModal(true); setCreateMode('order'); }}
               className="odoo-btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Plus size={13} /> Créer une facture
             </button>
@@ -398,6 +464,9 @@ export default function EmittedInvoicesTab() {
                       <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: 2 }}>
                           <button onClick={() => handleDownloadPdf(inv)} className="odoo-pager-btn" title="Télécharger PDF"><Download size={13} /></button>
+                          {inv.status !== 'cancelled' && (
+                            <button onClick={() => openEdit(inv)} className="odoo-pager-btn" title="Modifier (date, TVA, articles)"><Pencil size={13} /></button>
+                          )}
                           {inv.status !== 'cancelled' && inv.status !== 'paid' && remaining > 0 && (
                             <button onClick={() => { setShowPayModal(inv); setPayMethod('cash'); }} className="odoo-pager-btn" title="Encaisser" style={{ color: '#28a745' }}><Banknote size={13} /></button>
                           )}
@@ -451,20 +520,22 @@ export default function EmittedInvoicesTab() {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center"><Receipt size={18} className="text-white" /></div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-800">Nouvelle facture</h3>
-                    <p className="text-xs text-gray-400">Créez une facture client</p>
+                    <h3 className="text-lg font-bold text-gray-800">{editingInvoiceId ? 'Modifier la facture' : 'Nouvelle facture'}</h3>
+                    <p className="text-xs text-gray-400">{editingInvoiceId ? 'Modifiez la date, la TVA ou les articles' : 'Créez une facture client'}</p>
                   </div>
                 </div>
                 <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={18} className="text-gray-400" /></button>
               </div>
-              <div className="flex gap-1 mt-4 bg-gray-100 rounded-xl p-1">
-                <button onClick={() => setCreateMode('order')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'order' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                  <ShoppingCart size={14} className="inline mr-1.5" />Depuis commande
-                </button>
-                <button onClick={() => setCreateMode('manual')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'manual' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                  <Pencil size={14} className="inline mr-1.5" />Saisie manuelle
-                </button>
-              </div>
+              {!editingInvoiceId && (
+                <div className="flex gap-1 mt-4 bg-gray-100 rounded-xl p-1">
+                  <button onClick={() => setCreateMode('order')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'order' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <ShoppingCart size={14} className="inline mr-1.5" />Depuis commande
+                  </button>
+                  <button onClick={() => setCreateMode('manual')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'manual' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    <Pencil size={14} className="inline mr-1.5" />Saisie manuelle
+                  </button>
+                </div>
+              )}
             </div>
             <div className="p-5 space-y-4">
               {createMode === 'order' ? (
@@ -501,6 +572,11 @@ export default function EmittedInvoicesTab() {
                     {createFromOrderMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Receipt size={16} />} Générer la facture
                   </button>
                 </>
+              ) : editLoading ? (
+                <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                  <Loader2 className="animate-spin" size={22} style={{ margin: '0 auto 8px' }} />
+                  <p className="text-sm">Chargement de la facture...</p>
+                </div>
               ) : (
                 <>
                   <div>
@@ -568,10 +644,17 @@ export default function EmittedInvoicesTab() {
                       <span className="text-xl font-bold text-blue-800">{n(manualTtc)} <span className="text-xs font-normal">DH</span></span>
                     </div>
                   </div>
-                  <button onClick={handleCreateManual} disabled={createManualMutation.isPending}
-                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {createManualMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Receipt size={16} />} Créer la facture
-                  </button>
+                  {editingInvoiceId ? (
+                    <button onClick={handleUpdateManual} disabled={updateManualMutation.isPending}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {updateManualMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Enregistrer les modifications
+                    </button>
+                  ) : (
+                    <button onClick={handleCreateManual} disabled={createManualMutation.isPending}
+                      className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {createManualMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Receipt size={16} />} Créer la facture
+                    </button>
+                  )}
                 </>
               )}
             </div>
