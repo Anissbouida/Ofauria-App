@@ -96,6 +96,7 @@ export default function EmittedInvoicesTab() {
   const [showPayModal, setShowPayModal] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [manualCustomerId, setManualCustomerId] = useState('');
+  const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [manualNotes, setManualNotes] = useState('');
   // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
   const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
@@ -164,6 +165,7 @@ export default function EmittedInvoicesTab() {
 
   const resetManualForm = () => {
     setManualCustomerId('');
+    setManualDate(format(new Date(), 'yyyy-MM-dd'));
     setManualNotes('');
     setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
   };
@@ -187,10 +189,11 @@ export default function EmittedInvoicesTab() {
   const handleCreateManual = () => {
     if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
     if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { notify.error('Veuillez remplir tous les articles'); return; }
+    if (!manualDate) { notify.error('Veuillez saisir la date de facturation'); return; }
     createManualMutation.mutate({
       invoiceType: 'emitted',
       customerId: manualCustomerId,
-      invoiceDate: format(new Date(), 'yyyy-MM-dd'),
+      invoiceDate: manualDate,
       // Le backend redrive HT/TVA/TTC depuis les lignes quand un taux est saisi.
       amount: manualTotal,
       taxAmount: manualTva,
@@ -507,6 +510,11 @@ export default function EmittedInvoicesTab() {
                       <option value="">-- Sélectionner un client --</option>
                       {customers.map(c => (<option key={c.id as string} value={c.id as string}>{c.first_name as string} {c.last_name as string || ''}</option>))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date de facturation</label>
+                    <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
