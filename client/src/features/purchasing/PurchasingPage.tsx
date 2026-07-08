@@ -326,6 +326,7 @@ function ReceivedInvoicesSection() {
   const [searchTerm, setSearchTerm] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [sortBy, setSortBy] = useState<string>('invoice_date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
@@ -481,6 +482,21 @@ function ReceivedInvoicesSection() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [invoicesList]);
 
+  // Liste des mois presents dans les factures (cle YYYY-MM), pour le dropdown, du plus recent au plus ancien
+  const invoiceMonths = useMemo(() => {
+    const map = new Map<string, string>();
+    const monthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    invoicesList.forEach(inv => {
+      const raw = inv.invoice_date as string | undefined;
+      if (!raw) return;
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!map.has(key)) map.set(key, `${monthNames[d.getMonth()]} ${d.getFullYear()}`);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [invoicesList]);
+
   // Nombre de factures par statut, pour les badges des onglets
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -511,6 +527,15 @@ function ReceivedInvoicesSection() {
     }
     if (categoryFilter) {
       list = list.filter(inv => inv.category_id === categoryFilter);
+    }
+    if (monthFilter) {
+      list = list.filter(inv => {
+        const raw = inv.invoice_date as string | undefined;
+        if (!raw) return false;
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return false;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === monthFilter;
+      });
     }
     const sorted = [...list].sort((a, b) => {
       let cmp = 0;
@@ -543,7 +568,7 @@ function ReceivedInvoicesSection() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
+  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, monthFilter, sortBy, sortDir]);
 
   // Totaux de la liste affichée (recalculés selon l'onglet de statut et les filtres)
   const displayedTotals = useMemo(() => {
@@ -572,7 +597,7 @@ function ReceivedInvoicesSection() {
       : <ArrowDown size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />;
   };
 
-  const hasActiveFilters = !!(searchTerm || supplierFilter || categoryFilter);
+  const hasActiveFilters = !!(searchTerm || supplierFilter || categoryFilter || monthFilter);
 
   return (
     <>
@@ -650,8 +675,16 @@ function ReceivedInvoicesSection() {
             ))}
           </select>
         )}
+        {invoiceMonths.length > 1 && (
+          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="odoo-filter-dropdown">
+            <option value="">Tous les mois</option>
+            {invoiceMonths.map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+        )}
         {hasActiveFilters && (
-          <button onClick={() => { setSearchTerm(''); setSupplierFilter(''); setCategoryFilter(''); }}
+          <button onClick={() => { setSearchTerm(''); setSupplierFilter(''); setCategoryFilter(''); setMonthFilter(''); }}
             className="odoo-filter-dropdown"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
             <X size={11} /> Effacer
