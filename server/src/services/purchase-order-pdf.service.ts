@@ -20,6 +20,23 @@ function findDefaultLogo(): string {
 }
 const DEFAULT_LOGO = findDefaultLogo();
 
+// Resolve le logo du PDF : data URI base64 (persiste en base, dispo meme sur FS
+// ephemere type Cloud Run), chemin fichier, ou logo par defaut bundle. Renvoie une
+// valeur acceptee par doc.image() : chemin (string) ou Buffer, ou null.
+function resolveLogoInput(logoPath?: string): string | Buffer | null {
+  if (logoPath) {
+    if (logoPath.startsWith('data:')) {
+      const b64 = logoPath.slice(logoPath.indexOf(',') + 1);
+      if (b64) {
+        try { return Buffer.from(b64, 'base64'); } catch { /* data URI invalide */ }
+      }
+    } else if (existsSync(logoPath)) {
+      return logoPath;
+    }
+  }
+  return existsSync(DEFAULT_LOGO) ? DEFAULT_LOGO : null;
+}
+
 interface POItem {
   ingredientName: string;
   unit: string;
@@ -106,8 +123,7 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
   // ════════════════════════════════════════════════════════════
   let y = M;
 
-  const resolvedLogo = (data.logoPath && existsSync(data.logoPath)) ? data.logoPath
-                     : existsSync(DEFAULT_LOGO) ? DEFAULT_LOGO : null;
+  const resolvedLogo = resolveLogoInput(data.logoPath);
 
   if (resolvedLogo) {
     try {

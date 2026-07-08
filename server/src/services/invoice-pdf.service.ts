@@ -20,6 +20,24 @@ function findDefaultLogo(): string {
 }
 const DEFAULT_LOGO = findDefaultLogo();
 
+// Resolve the logo passed to the PDF. Accepts either a base64 data URI
+// (logo persiste en base -> disponible meme sur un FS ephemere type Cloud Run),
+// un chemin fichier, ou retombe sur le logo par defaut bundle. Renvoie une valeur
+// acceptee par doc.image() : chemin (string) ou Buffer, ou null si rien de dispo.
+function resolveLogoInput(logoPath?: string): string | Buffer | null {
+  if (logoPath) {
+    if (logoPath.startsWith('data:')) {
+      const b64 = logoPath.slice(logoPath.indexOf(',') + 1);
+      if (b64) {
+        try { return Buffer.from(b64, 'base64'); } catch { /* data URI invalide */ }
+      }
+    } else if (existsSync(logoPath)) {
+      return logoPath;
+    }
+  }
+  return existsSync(DEFAULT_LOGO) ? DEFAULT_LOGO : null;
+}
+
 interface InvoiceItem {
   description: string;
   category?: string;
@@ -167,9 +185,8 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // ════════════════════════════════════════════════════════════
   let y = M;
 
-  // Resolve logo: use provided path, or fall back to bundled asset
-  const resolvedLogo = (data.logoPath && existsSync(data.logoPath)) ? data.logoPath
-                     : existsSync(DEFAULT_LOGO) ? DEFAULT_LOGO : null;
+  // Resolve logo: data URI (base) / chemin fichier / logo par defaut bundle
+  const resolvedLogo = resolveLogoInput(data.logoPath);
 
   if (resolvedLogo) {
     try {

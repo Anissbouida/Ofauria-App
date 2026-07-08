@@ -119,6 +119,9 @@ app.use('/api/v1', originCheck(allowedOrigins));
 const ROUTES_WITH_LOCAL_JSON_PARSER = [
   '/api/v1/unsold-decisions',
   '/api/v1/schedules/week',
+  // Le logo de l'entreprise est envoye en data URI base64 (company_settings.logo_url),
+  // ce qui depasse la limite globale de 10 Ko : parser local elargi cote route settings.
+  '/api/v1/settings',
 ];
 const globalJsonParser = express.json({ limit: '10kb' });
 app.use((req, res, next) => {

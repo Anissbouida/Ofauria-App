@@ -329,14 +329,19 @@ export const purchaseOrderController = {
       const __dirname = dirname(__filename);
       const projectRoot = resolve(__dirname, '..', '..', '..');
       let logoPath: string | undefined;
-      const logoCandidates = [
-        settings?.logo_url ? resolve(projectRoot, 'uploads', settings.logo_url) : '',
-        settings?.logo_url ? resolve(projectRoot, settings.logo_url) : '',
-        resolve(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
-        resolve(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
-      ].filter(Boolean);
-      for (const candidate of logoCandidates) {
-        if (existsSync(candidate)) { logoPath = candidate; break; }
+      if (settings?.logo_url && settings.logo_url.startsWith('data:')) {
+        // Logo persiste en base (data URI) : transmis tel quel, le service PDF le decode.
+        logoPath = settings.logo_url;
+      } else {
+        const logoCandidates = [
+          settings?.logo_url ? resolve(projectRoot, 'uploads', settings.logo_url) : '',
+          settings?.logo_url ? resolve(projectRoot, settings.logo_url) : '',
+          resolve(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
+          resolve(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
+        ].filter(Boolean);
+        for (const candidate of logoCandidates) {
+          if (existsSync(candidate)) { logoPath = candidate; break; }
+        }
       }
 
       // Format dates

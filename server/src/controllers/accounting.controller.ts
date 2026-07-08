@@ -461,16 +461,20 @@ export const invoiceController = {
       const __dirname = pathMod.dirname(__filename);
       // server/src/controllers/ -> go up 3 levels to project root
       const projectRoot = pathMod.resolve(__dirname, '..', '..', '..');
-      const logoCandidates = [
-        settings?.logo_url ? pathMod.join(projectRoot, 'uploads', settings.logo_url) : '',
-        settings?.logo_url ? pathMod.join(projectRoot, settings.logo_url) : '',
-        pathMod.join(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
-        pathMod.join(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
-      ].filter(Boolean);
-      for (const candidate of logoCandidates) {
-        if (fsMod.existsSync(candidate)) { logoPath = candidate; break; }
+      if (settings?.logo_url && settings.logo_url.startsWith('data:')) {
+        // Logo persiste en base (data URI) : transmis tel quel, le service PDF le decode.
+        logoPath = settings.logo_url;
+      } else {
+        const logoCandidates = [
+          settings?.logo_url ? pathMod.join(projectRoot, 'uploads', settings.logo_url) : '',
+          settings?.logo_url ? pathMod.join(projectRoot, settings.logo_url) : '',
+          pathMod.join(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
+          pathMod.join(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
+        ].filter(Boolean);
+        for (const candidate of logoCandidates) {
+          if (fsMod.existsSync(candidate)) { logoPath = candidate; break; }
+        }
       }
-      console.log('[Invoice PDF] Logo resolution:', { projectRoot, logoPath, found: !!logoPath });
 
       // Ventilation TVA par taux a partir des lignes (factures multi-taux).
       // Vide si aucune ligne ne porte de taux explicite -> rendu ligne unique.

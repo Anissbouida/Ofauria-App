@@ -9,14 +9,6 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const logoStorage = multer.diskStorage({
-  destination: path.resolve(__dirname, '../../../uploads/logos'),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `logo-${Date.now()}${ext}`);
-  },
-});
-
 const lossPhotoStorage = multer.diskStorage({
   destination: path.resolve(__dirname, '../../../uploads/losses'),
   filename: (_req, file, cb) => {
@@ -35,7 +27,22 @@ const imageFilter = (_req: Express.Request, file: Express.Multer.File, cb: multe
   }
 };
 
-const uploadLogo = multer({ storage: logoStorage, limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: imageFilter });
+// Le logo est genere sur les PDF (factures, bons de commande) par PDFKit, qui ne
+// sait pas rendre le SVG : on limite donc le logo aux formats raster.
+const logoFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = ['.png', '.jpg', '.jpeg', '.webp'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowed.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Format non supporte. Utilisez PNG, JPG ou WebP.'));
+  }
+};
+
+// Stockage en memoire : le logo n'est pas ecrit sur le disque local (ephemere sur
+// Cloud Run) mais renvoye en data URI base64 pour etre persiste en base
+// (company_settings.logo_url) et donc disponible a la generation des PDF.
+const uploadLogo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: logoFilter });
 const uploadLossPhoto = multer({ storage: lossPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
 
 const router = Router();
@@ -45,7 +52,8 @@ router.post('/logo', authenticate, authorize('admin'), uploadLogo.single('logo')
     res.status(400).json({ success: false, error: { message: 'Aucun fichier envoye' } });
     return;
   }
-  const url = `/uploads/logos/${req.file.filename}`;
+  const mime = req.file.mimetype || 'image/png';
+  const url = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
   res.json({ success: true, data: { url } });
 });
 
