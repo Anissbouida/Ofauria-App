@@ -101,9 +101,6 @@ export default function EmittedInvoicesTab() {
   // Édition d'une facture existante : id ciblé (null = création). Réutilise le formulaire manuel.
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
-  // Mode de saisie du prix unitaire : 'HT' (défaut) ou 'TTC'. On stocke toujours le HT
-  // en interne ; en mode TTC on affiche/saisit le TTC et on en déduit le HT via le taux TVA.
-  const [priceMode, setPriceMode] = useState<'HT' | 'TTC'>('HT');
   // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
   const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
     { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null },
@@ -175,21 +172,20 @@ export default function EmittedInvoicesTab() {
     setManualNotes('');
     setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
     setEditingInvoiceId(null);
-    setPriceMode('HT');
   };
 
-  // Conversion HT <-> TTC pour la saisie « intelligente ». Taux null => 0 (pas de TVA).
+  // Saisie « intelligente » HT <-> TTC. On stocke toujours le prix unitaire HT ; le TTC
+  // est dérivé du taux TVA de la ligne (taux null => 0, pas de TVA). Éditer l'un recalcule l'autre.
   const lineRate = (it: { tvaRate: number | null }) => (it.tvaRate == null ? 0 : it.tvaRate);
   const round2 = (v: number) => Math.round(v * 100) / 100;
-  // Prix unitaire affiché dans le champ selon le mode courant (HT stocké -> TTC affiché en mode TTC).
-  const priceInMode = (it: { unitPrice: number; tvaRate: number | null }) =>
-    priceMode === 'TTC' ? round2(it.unitPrice * (1 + lineRate(it) / 100)) : it.unitPrice;
-  // Saisie utilisateur -> on reconstitue toujours le HT stocké.
-  const setLinePrice = (idx: number, val: number) => {
+  const unitTtc = (it: { unitPrice: number; tvaRate: number | null }) => round2(it.unitPrice * (1 + lineRate(it) / 100));
+  const setUnitHt = (idx: number, ht: number) => updateManualItem(idx, 'unitPrice', ht);
+  const setUnitTtc = (idx: number, ttc: number) => {
     const it = manualItems[idx];
-    const ht = priceMode === 'TTC' ? round2(val / (1 + lineRate(it) / 100)) : val;
-    updateManualItem(idx, 'unitPrice', ht);
+    updateManualItem(idx, 'unitPrice', round2(ttc / (1 + lineRate(it) / 100)));
   };
+  // Gabarit de colonnes partagé entre l'en-tête et les lignes d'articles (une seule ligne par article).
+  const ITEM_GRID = 'minmax(0,1fr) 44px 72px 64px 72px 84px 22px';
 
   const addManualItem = () => setManualItems([...manualItems, { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
   const removeManualItem = (idx: number) => setManualItems(manualItems.filter((_, i) => i !== idx));
@@ -531,7 +527,7 @@ export default function EmittedInvoicesTab() {
       {/* Create Invoice Modal */}
       {showCreateModal && (
         <ModalBackdrop onClose={() => { setShowCreateModal(false); resetManualForm(); }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className={`bg-white rounded-2xl shadow-2xl w-full ${createMode === 'manual' || editingInvoiceId ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -611,41 +607,40 @@ export default function EmittedInvoicesTab() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <label className="block text-sm font-medium text-gray-700">Articles</label>
-                        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-[11px] font-medium" title="Saisir les prix en HT ou en TTC">
-                          <button type="button" onClick={() => setPriceMode('HT')} className={`px-2 py-0.5 transition-colors ${priceMode === 'HT' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>Prix HT</button>
-                          <button type="button" onClick={() => setPriceMode('TTC')} className={`px-2 py-0.5 transition-colors ${priceMode === 'TTC' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>Prix TTC</button>
-                        </div>
-                      </div>
-                      <button onClick={addManualItem} className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 font-medium"><Plus size={12} /> Ajouter</button>
+                      <label className="block text-sm font-medium text-gray-700">Articles</label>
+                      <button onClick={addManualItem} className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 font-medium"><Plus size={12} /> Ajouter un article</button>
                     </div>
-                    <div className="space-y-2">
+                    <p className="text-[11px] text-gray-400 mb-2">Saisissez le <b>Prix HT</b> ou le <b>Prix TTC</b> : l'autre se calcule automatiquement selon la TVA.</p>
+                    <div className="grid gap-2 items-center px-1 mb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400" style={{ gridTemplateColumns: ITEM_GRID }}>
+                      <span>Désignation</span>
+                      <span className="text-center">Qté</span>
+                      <span className="text-right">Prix HT</span>
+                      <span className="text-center">TVA</span>
+                      <span className="text-right">Prix TTC</span>
+                      <span className="text-right">Total TTC</span>
+                      <span></span>
+                    </div>
+                    <div className="space-y-1.5">
                       {manualItems.map((item, idx) => (
-                        <div key={idx} className="bg-gray-50 rounded-xl p-2.5 space-y-2 border border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <ProductSearchInput products={products} value={item.description}
-                              onSelect={(product) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], productId: product.id as string, description: product.name as string, unitPrice: parseFloat(product.price as string) || 0 }; setManualItems(updated); }}
-                              onChange={(val) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], description: val, productId: '' }; setManualItems(updated); }} />
-                            {manualItems.length > 1 && <button onClick={() => removeManualItem(idx)} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400 flex-shrink-0"><X size={14} /></button>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 flex items-center gap-1 text-xs text-gray-400">
-                              {item.productId && <Check size={12} className="text-green-500" />}
-                              {item.productId ? <span className="text-green-600">Produit lié</span> : <span>Saisie libre</span>}
-                            </div>
-                            <input type="number" placeholder="Qté" value={item.quantity || ''} onChange={e => updateManualItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="1" />
-                            <input type="number" placeholder={priceMode === 'TTC' ? 'Prix TTC' : 'Prix HT'} value={priceInMode(item) || ''} onChange={e => setLinePrice(idx, parseFloat(e.target.value) || 0)}
-                              className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="0" step="0.01" />
-                            <select title="Taux TVA" value={item.tvaRate === null ? '' : String(item.tvaRate)}
-                              onChange={e => updateManualItem(idx, 'tvaRate', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
-                              className="w-20 px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                              <option value="">TVA —</option>
-                              {['0', '7', '10', '14', '20'].map(r => (<option key={r} value={r}>{r} %</option>))}
-                            </select>
-                            <span className="text-xs text-gray-700 w-20 text-right font-bold">{n(item.quantity * priceInMode(item))}</span>
-                          </div>
+                        <div key={idx} className="grid gap-2 items-center px-1" style={{ gridTemplateColumns: ITEM_GRID }}>
+                          <ProductSearchInput products={products} value={item.description}
+                            onSelect={(product) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], productId: product.id as string, description: product.name as string, unitPrice: parseFloat(product.price as string) || 0 }; setManualItems(updated); }}
+                            onChange={(val) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], description: val, productId: '' }; setManualItems(updated); }} />
+                          <input type="number" title="Quantité" value={item.quantity || ''} onChange={e => updateManualItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                            className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="1" />
+                          <input type="number" title="Prix unitaire HT" value={item.unitPrice || ''} onChange={e => setUnitHt(idx, parseFloat(e.target.value) || 0)}
+                            className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="0" step="0.01" />
+                          <select title="Taux TVA" value={item.tvaRate === null ? '' : String(item.tvaRate)}
+                            onChange={e => updateManualItem(idx, 'tvaRate', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}
+                            className="w-full px-1 py-1.5 border border-gray-200 rounded-lg text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                            <option value="">—</option>
+                            {['0', '7', '10', '14', '20'].map(r => (<option key={r} value={r}>{r} %</option>))}
+                          </select>
+                          <input type="number" title="Prix unitaire TTC" value={unitTtc(item) || ''} onChange={e => setUnitTtc(idx, parseFloat(e.target.value) || 0)}
+                            className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500/30" min="0" step="0.01" />
+                          <div className="text-right text-sm font-bold text-gray-800">{n(item.quantity * unitTtc(item))}</div>
+                          <button onClick={() => removeManualItem(idx)} disabled={manualItems.length <= 1}
+                            className="p-1 hover:bg-red-50 rounded-lg text-red-400 disabled:opacity-0 disabled:cursor-default" title="Supprimer la ligne"><X size={14} /></button>
                         </div>
                       ))}
                     </div>
