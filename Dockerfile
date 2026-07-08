@@ -53,6 +53,9 @@ RUN npm ci --omit=dev --workspaces --include-workspace-root --ignore-scripts \
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/server/migrations ./server/migrations
+# Assets statiques (logo par defaut des PDF factures / bons de commande).
+# cwd runtime = /app/server -> le service PDF resout ./assets/logo-ofauria.png.
+COPY --from=builder /app/server/assets ./server/assets
 COPY --from=builder /app/client/dist ./client/dist
 
 # Cloud Run ecoute sur PORT (par defaut 8080)
