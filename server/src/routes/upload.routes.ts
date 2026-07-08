@@ -42,7 +42,7 @@ const logoFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer
 // Stockage en memoire : le logo n'est pas ecrit sur le disque local (ephemere sur
 // Cloud Run) mais renvoye en data URI base64 pour etre persiste en base
 // (company_settings.logo_url) et donc disponible a la generation des PDF.
-const uploadLogo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: logoFilter });
+const uploadLogo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: logoFilter });
 const uploadLossPhoto = multer({ storage: lossPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
 
 const router = Router();

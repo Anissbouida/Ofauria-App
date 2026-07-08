@@ -612,8 +612,8 @@ function PrintTab() {
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      notify.error('Le fichier ne doit pas depasser 2 Mo');
+    if (file.size > 10 * 1024 * 1024) {
+      notify.error('Le fichier ne doit pas depasser 10 Mo');
       return;
     }
     setUploading(true);
@@ -700,7 +700,7 @@ function PrintTab() {
             <div className="flex-1">
               <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
                 onChange={handleLogoUpload} className="hidden" />
-              <p className="text-sm text-gray-500 mb-2">Logo affiche sur les recus et tickets (PNG, JPG, SVG - max 2 Mo)</p>
+              <p className="text-sm text-gray-500 mb-2">Logo affiche sur les recus et tickets (PNG, JPG, SVG - max 10 Mo)</p>
               <div className="flex gap-2">
                 <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
                   className="btn-secondary flex items-center gap-2 text-sm">
