@@ -1840,6 +1840,10 @@ function CaisseTab() {
 /* Tout ce qui sort : achats fournisseurs, salaires, depenses diverses */
 function ChargesTab() {
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const { user } = useAuth();
+  // L'admin peut saisir manuellement salaires/avances (rattrapage, corrections) ;
+  // les autres roles passent obligatoirement par RH (Paie / Avances).
+  const isAdmin = user?.role === 'admin';
   const queryClient = useQueryClient();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -1935,7 +1939,7 @@ function ChargesTab() {
   // salaire". Les autres categories personnel (primes...) restent saisissables.
   const SALAIRES_SUBTREE_ID = '20000000-0000-0000-0000-000000000006';
   const AVANCES_CATEGORY_ID = '30000000-0000-0000-0000-000000000023';
-  const isRhManagedCategory = (() => {
+  const isRhManagedCategory = isAdmin ? false : (() => {
     if (!formCategoryId) return false;
     if (formCategoryId === AVANCES_CATEGORY_ID) return true;
     if (String(selectedCategory?.name || '').trim() === 'Avances sur salaire') return true;
