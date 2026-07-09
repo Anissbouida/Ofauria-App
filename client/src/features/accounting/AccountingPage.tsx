@@ -1857,10 +1857,10 @@ function ChargesTab() {
   const [filterLeaf, setFilterLeaf] = useState<string>('all');
   const [filterMethod, setFilterMethod] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
-  // Plage de dates pour filtrer dans la periode chargee (mois courant par defaut).
-  // Format ISO YYYY-MM-DD. Vide = pas de borne sur ce cote.
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  // Selecteur de periode facon Pilotage : "Par mois" ou "Periode personnalisee".
+  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
+  const [customFrom, setCustomFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
+  const [customTo, setCustomTo] = useState(format(now, 'yyyy-MM-dd'));
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   useEffect(() => {
@@ -1868,15 +1868,14 @@ function ChargesTab() {
     setEditCategoryId(editingPayment ? (editingPayment.category_id as string) || '' : '');
   }, [editingPayment]);
 
-  // Periode chargee : par defaut le mois selectionne, mais si une plage
-  // personnalisee "Du/au" est renseignee elle PILOTE la requete (peut
-  // couvrir plusieurs mois). Une seule borne => l'autre reste ouverte.
-  const useCustomRange = !!(filterDateFrom || filterDateTo);
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+  // Periode chargee : mois selectionne, ou plage personnalisee selon le mode.
+  const useCustomRange = periodMode === 'custom';
   const lastDay = new Date(year, month, 0).getDate();
-  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  const dateFrom = useCustomRange ? (filterDateFrom || '2000-01-01') : monthStart;
-  const dateTo = useCustomRange ? (filterDateTo || '2100-12-31') : monthEnd;
+  const dateFrom = useCustomRange ? customFrom : `${year}-${String(month).padStart(2, '0')}-01`;
+  const dateTo = useCustomRange ? customTo : `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const periodLabel = useCustomRange
+    ? `${format(parseLocalDate(customFrom), 'dd MMM', { locale: fr })} → ${format(parseLocalDate(customTo), 'dd MMM yyyy', { locale: fr })}`
+    : format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr });
 
   const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
     queryKey: ['payments-charges', dateFrom, dateTo],
@@ -2147,7 +2146,7 @@ function ChargesTab() {
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [outgoing, filterRoot, filterLeaf, filterMethod, filterDateFrom, filterDateTo, searchTerm, sortCol, sortDir, catMap]);
+  }, [outgoing, filterRoot, filterLeaf, filterMethod, searchTerm, sortCol, sortDir, catMap]);
 
   const displayedTotal = useMemo(() => displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [displayed]);
 
@@ -2166,7 +2165,7 @@ function ChargesTab() {
       (p.description as string) || '',
       n(parseFloat(p.amount as string) || 0),
     ]);
-    const exportSuffix = useCustomRange ? `${dateFrom}_${dateTo}` : `${MONTH_NAMES[month - 1]}_${year}`;
+    const exportSuffix = useCustomRange ? `${customFrom}_${customTo}` : `${MONTH_NAMES[month - 1]}_${year}`;
     exportCSV(`charges_${exportSuffix}.csv`,
       ['DATE', 'REF', 'CATEGORIE', 'SOUS-CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
   };
@@ -2174,21 +2173,44 @@ function ChargesTab() {
 
   return (
     <>
-      {/* Search panel : period + actions */}
+      {/* Search panel : period (facon Pilotage) + actions */}
       <div className="odoo-search-panel">
-        <select value={month} onChange={e => setMonth(+e.target.value)} disabled={useCustomRange}
-          title={useCustomRange ? 'Ignoré : une plage de dates personnalisée est active' : undefined}
-          className="odoo-filter-dropdown" style={{ minWidth: 120, opacity: useCustomRange ? 0.5 : 1 }}>
-          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        <input type="number" value={year} onChange={e => setYear(+e.target.value)} disabled={useCustomRange}
-          title={useCustomRange ? 'Ignoré : une plage de dates personnalisée est active' : undefined}
-          className="odoo-filter-dropdown" style={{ width: 80, opacity: useCustomRange ? 0.5 : 1 }} />
-        {useCustomRange && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
-            Plage personnalisée active
-          </span>
+        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
+          {[
+            { key: 'month' as const, label: 'Par mois' },
+            { key: 'custom' as const, label: 'Période personnalisée' },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setPeriodMode(opt.key)}
+              style={{
+                padding: '6px 12px', border: 'none', borderRadius: 3,
+                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
+                background: periodMode === opt.key ? 'var(--theme-bg-card)' : 'transparent',
+                color: periodMode === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
+                boxShadow: periodMode === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {periodMode === 'month' ? (
+          <>
+            <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+              {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+            <input type="number" value={year} onChange={e => setYear(+e.target.value)}
+              className="odoo-filter-dropdown" style={{ width: 80 }} />
+          </>
+        ) : (
+          <>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="odoo-filter-dropdown" style={{ width: 150 }} />
+            <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="odoo-filter-dropdown" style={{ width: 150 }} />
+          </>
         )}
+        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem', alignSelf: 'center' }}>
+          <Calendar size={12} style={{ display: 'inline', marginRight: 4 }} />
+          <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
+        </span>
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2245,23 +2267,8 @@ function ChargesTab() {
           <option value="all">Toutes méthodes</option>
           {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
         </select>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          title="Filtre date : restreint a une plage dans la periode chargee">
-          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>Du</span>
-          <input type="date" value={filterDateFrom}
-            onChange={e => setFilterDateFrom(e.target.value)}
-            min={dateFrom} max={dateTo}
-            className="odoo-filter-dropdown"
-            style={{ padding: '4px 6px' }} />
-          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>au</span>
-          <input type="date" value={filterDateTo}
-            onChange={e => setFilterDateTo(e.target.value)}
-            min={dateFrom} max={dateTo}
-            className="odoo-filter-dropdown"
-            style={{ padding: '4px 6px' }} />
-        </div>
-        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || filterDateFrom || filterDateTo || searchTerm) && (
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchTerm(''); }}
+        {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
             className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={11} /> Réinitialiser
           </button>
@@ -2286,7 +2293,7 @@ function ChargesTab() {
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>Aucune sortie ne correspond à ces filtres</p>
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchTerm(''); }}
+          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
             style={{ marginTop: 8, color: '#0d6efd', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
             Réinitialiser les filtres
           </button>
@@ -2358,7 +2365,7 @@ function ChargesTab() {
             <tfoot>
               <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
                 <td colSpan={6} style={{ padding: 12, fontWeight: 600 }}>
-                  Total {useCustomRange ? `${dateFrom} → ${dateTo}` : `${MONTH_NAMES[month - 1]} ${year}`} ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
+                  Total <span style={{ textTransform: 'capitalize' }}>{periodLabel}</span> ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
                   {n(displayedTotal)} DH
