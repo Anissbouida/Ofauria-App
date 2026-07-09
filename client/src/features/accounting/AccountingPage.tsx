@@ -1868,12 +1868,18 @@ function ChargesTab() {
     setEditCategoryId(editingPayment ? (editingPayment.category_id as string) || '' : '');
   }, [editingPayment]);
 
-  const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`;
+  // Periode chargee : par defaut le mois selectionne, mais si une plage
+  // personnalisee "Du/au" est renseignee elle PILOTE la requete (peut
+  // couvrir plusieurs mois). Une seule borne => l'autre reste ouverte.
+  const useCustomRange = !!(filterDateFrom || filterDateTo);
+  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
-  const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const dateFrom = useCustomRange ? (filterDateFrom || '2000-01-01') : monthStart;
+  const dateTo = useCustomRange ? (filterDateTo || '2100-12-31') : monthEnd;
 
   const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
-    queryKey: ['payments-charges', year, month],
+    queryKey: ['payments-charges', dateFrom, dateTo],
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
   // Achats fournisseurs : on lit les lignes des factures INTEGRALEMENT PAYEES
@@ -1882,7 +1888,7 @@ function ChargesTab() {
   // date facture. Les impayees/partielles ne sont pas la — visibles dans
   // l'onglet "Factures recues" du module Achats.
   const { data: invoiceLines = [], isLoading: isLoadingLines } = useQuery({
-    queryKey: ['invoice-line-expenses', year, month],
+    queryKey: ['invoice-line-expenses', dateFrom, dateTo],
     queryFn: () => invoicesApi.lineExpenses({ dateFrom, dateTo }),
   });
   const isLoading = isLoadingPayments || isLoadingLines;
@@ -2111,9 +2117,10 @@ function ChargesTab() {
     if (filterRoot !== 'all') list = list.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === filterRoot);
     if (filterLeaf !== 'all') list = list.filter(p => (p.category_name as string || '') === filterLeaf);
     if (filterMethod !== 'all') list = list.filter(p => (p.payment_method as string || '') === filterMethod);
-    // Filtre plage de dates : compare la portion YYYY-MM-DD (ISO lexicographique).
-    if (filterDateFrom) list = list.filter(p => String(p.payment_date || '').slice(0, 10) >= filterDateFrom);
-    if (filterDateTo) list = list.filter(p => String(p.payment_date || '').slice(0, 10) <= filterDateTo);
+    // La plage de dates "Du/au" est appliquee cote serveur (sur la date
+    // effective : cashed_at pour les cheques) via la requete — pas de filtre
+    // client ici, sinon un cheque encaisse dans la plage mais signe hors
+    // plage serait exclu a tort.
     // Recherche texte sur designation/description, beneficiaire, reference, N° facture, categorie
     const q = searchTerm.trim().toLowerCase();
     if (q) {
@@ -2159,7 +2166,8 @@ function ChargesTab() {
       (p.description as string) || '',
       n(parseFloat(p.amount as string) || 0),
     ]);
-    exportCSV(`charges_${MONTH_NAMES[month - 1]}_${year}.csv`,
+    const exportSuffix = useCustomRange ? `${dateFrom}_${dateTo}` : `${MONTH_NAMES[month - 1]}_${year}`;
+    exportCSV(`charges_${exportSuffix}.csv`,
       ['DATE', 'REF', 'CATEGORIE', 'SOUS-CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
   };
 
@@ -2168,11 +2176,19 @@ function ChargesTab() {
     <>
       {/* Search panel : period + actions */}
       <div className="odoo-search-panel">
-        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
+        <select value={month} onChange={e => setMonth(+e.target.value)} disabled={useCustomRange}
+          title={useCustomRange ? 'Ignoré : une plage de dates personnalisée est active' : undefined}
+          className="odoo-filter-dropdown" style={{ minWidth: 120, opacity: useCustomRange ? 0.5 : 1 }}>
           {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <input type="number" value={year} onChange={e => setYear(+e.target.value)} disabled={useCustomRange}
+          title={useCustomRange ? 'Ignoré : une plage de dates personnalisée est active' : undefined}
+          className="odoo-filter-dropdown" style={{ width: 80, opacity: useCustomRange ? 0.5 : 1 }} />
+        {useCustomRange && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
+            Plage personnalisée active
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2342,7 +2358,7 @@ function ChargesTab() {
             <tfoot>
               <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
                 <td colSpan={6} style={{ padding: 12, fontWeight: 600 }}>
-                  Total {MONTH_NAMES[month - 1]} {year} ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
+                  Total {useCustomRange ? `${dateFrom} → ${dateTo}` : `${MONTH_NAMES[month - 1]} ${year}`} ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
                   {n(displayedTotal)} DH
