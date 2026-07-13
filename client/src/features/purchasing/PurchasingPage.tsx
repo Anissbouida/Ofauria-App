@@ -322,6 +322,8 @@ function ReceivedInvoicesSection() {
   const [paymentsInvoiceId, setPaymentsInvoiceId] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
+  const [payAmount, setPayAmount] = useState('');
+  const [payAvoir, setPayAvoir] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
@@ -855,9 +857,10 @@ function ReceivedInvoicesSection() {
                         {inv.status !== 'paid' && inv.status !== 'cancelled' && (
                           <button onClick={() => {
                             setShowPayForm(inv);
-                            // Pre-selectionne le mode prevu sur la facture (ex: cheque)
                             const preMode = (inv.expected_payment_mode as string) || 'cash';
                             setPayMethod(preMode);
+                            setPayAmount((parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string)).toFixed(2));
+                            setPayAvoir('');
                           }}
                             className="odoo-btn-primary"
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
@@ -1002,9 +1005,12 @@ function ReceivedInvoicesSection() {
               payMutation.mutate(fd);
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Montant *</label>
+                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+                    {(payMethod === 'check' || payMethod === 'traite') && parseFloat(payAvoir) > 0
+                      ? `Montant ${payMethod === 'traite' ? 'traite' : 'chèque'} *` : 'Montant *'}
+                  </label>
                   <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required
-                    defaultValue={(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string)).toFixed(2)} /></div>
+                    value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Méthode *</label>
                     <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
@@ -1029,12 +1035,27 @@ function ReceivedInvoicesSection() {
                     <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Avoir fournisseur (DH)</label>
                         <input name="avoirAmount" type="number" step="0.01" min="0" placeholder="0.00"
+                          value={payAvoir} onChange={e => {
+                            const av = parseFloat(e.target.value) || 0;
+                            setPayAvoir(e.target.value);
+                            const remaining = parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string);
+                            setPayAmount(Math.max(0, remaining - av).toFixed(2));
+                          }}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                        <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', margin: 0, paddingBottom: 6 }}>
-                          Déduit de la dette sans sortie de trésorerie
-                        </p>
-                      </div>
+                      {parseFloat(payAvoir) > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <p style={{ fontSize: '0.6875rem', color: '#2563eb', fontWeight: 600, margin: 0, paddingBottom: 6 }}>
+                            Avoir {n(parseFloat(payAvoir))} + {payMethod === 'traite' ? 'traite' : 'chèque'} {n(parseFloat(payAmount))} = {n(parseFloat(payAvoir) + parseFloat(payAmount))} DH
+                          </p>
+                        </div>
+                      )}
+                      {!parseFloat(payAvoir) && (
+                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', margin: 0, paddingBottom: 6 }}>
+                            Déduit de la dette sans sortie de trésorerie
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
