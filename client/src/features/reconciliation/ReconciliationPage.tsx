@@ -290,16 +290,25 @@ function printBonSection(
   <button type="button" id="btn-print">&#128424; Imprimer</button>
   <button type="button" id="btn-close" class="secondary">Fermer</button>
 </div>
-${pages.join('')}</body></html>`;
+${pages.join('')}
+<script src="${window.location.origin}/print-helper.js"></script>
+</body></html>`;
 
   const w = window.open('', '_blank');
   if (!w) { notify.error('Pop-up bloqué — autorisez les pop-ups pour imprimer.'); return; }
   w.document.write(html);
   w.document.close();
-  // Handlers attaches depuis l'opener : la CSP de prod bloque le JS inline
-  // (onclick) dans la fenetre about:blank, qui herite de la politique du site.
-  w.document.getElementById('btn-print')?.addEventListener('click', () => w.print());
-  w.document.getElementById('btn-close')?.addEventListener('click', () => w.close());
+  // Cablage principal : /print-helper.js (script 'self', autorise par la CSP de
+  // prod qui bloque le JS inline). Repli : listeners attaches depuis l'opener si
+  // le script n'a pas charge (__printWired absent).
+  setTimeout(() => {
+    try {
+      if (!(w as any).__printWired) {
+        w.document.getElementById('btn-print')?.addEventListener('click', () => w.print());
+        w.document.getElementById('btn-close')?.addEventListener('click', () => w.close());
+      }
+    } catch { /* fenetre fermee entre-temps */ }
+  }, 1000);
 }
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
