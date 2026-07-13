@@ -993,7 +993,12 @@ function ReceivedInvoicesSection() {
               fd.supplierId = showPayForm.supplier_id;
               fd.categoryId = showPayForm.category_id || undefined;
               fd.description = `Paiement facture ${showPayForm.invoice_number}`;
-              if (payMethod !== 'check' && payMethod !== 'traite') { fd.checkNumber = undefined; fd.checkDate = undefined; }
+              if (payMethod !== 'check' && payMethod !== 'traite') {
+                fd.checkNumber = undefined; fd.checkDate = undefined; fd.avoirAmount = undefined;
+              } else {
+                const av = parseFloat(fd.avoirAmount as string) || 0;
+                fd.avoirAmount = av > 0 ? Math.round(av * 100) / 100 : undefined;
+              }
               payMutation.mutate(fd);
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1019,10 +1024,17 @@ function ReceivedInvoicesSection() {
                         <input name="checkNumber" defaultValue={(showPayForm.check_number as string) || ''}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
-                        {/* Pre-rempli avec l'echeance de la facture : c'est la date a laquelle le
-                            fournisseur presentera le cheque/la traite a la banque. Fallback aujourd'hui
-                            si la facture n'a pas de due_date. */}
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={(showPayForm.due_date as string)?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd')} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Avoir fournisseur (DH)</label>
+                        <input name="avoirAmount" type="number" step="0.01" min="0" placeholder="0.00"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', margin: 0, paddingBottom: 6 }}>
+                          Déduit de la dette sans sortie de trésorerie
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}

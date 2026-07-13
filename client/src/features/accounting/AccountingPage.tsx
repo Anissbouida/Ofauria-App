@@ -375,6 +375,7 @@ function DettesTab() {
   const [payAmount, setPayAmount] = useState('');
   const [rasTypeId, setRasTypeId] = useState('');
   const [rasAmount, setRasAmount] = useState('');
+  const [avoirAmount, setAvoirAmount] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice-debts'],
@@ -415,6 +416,7 @@ function DettesTab() {
       setPayAmount((parseFloat(payingInvoice.remaining_amount) || 0).toFixed(2));
       setRasTypeId('');
       setRasAmount('');
+      setAvoirAmount('');
     }
   }, [payingInvoice]);
 
@@ -730,7 +732,8 @@ function DettesTab() {
                 const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
                 const amount = parseFloat(payAmount);
                 if (!Number.isFinite(amount) || amount <= 0) { notify.error('Montant invalide'); return; }
-                if (amount > remaining + 0.01) { notify.error(`Le montant dépasse le reste à payer (${n(remaining)} DH)`); return; }
+                const avoir = parseFloat(avoirAmount) || 0;
+                if (amount + avoir > remaining + 0.01) { notify.error(`Le total (${n(amount + avoir)} DH) dépasse le reste à payer (${n(remaining)} DH)`); return; }
                 const retenue = parseFloat(rasAmount) || 0;
                 if (!isReceivable && rasTypeId && retenue >= amount) {
                   notify.error('La retenue doit être inférieure au montant brut'); return;
@@ -751,6 +754,7 @@ function DettesTab() {
                 if (fd.paymentMethod === 'check' || fd.paymentMethod === 'traite') {
                   payload.checkNumber = fd.checkNumber || undefined;
                   payload.checkDate = fd.checkDate || undefined;
+                  if (avoir > 0) payload.avoirAmount = Math.round(avoir * 100) / 100;
                 }
                 createPayment.mutate(payload);
               }} className="p-5 space-y-4">
@@ -830,7 +834,7 @@ function DettesTab() {
                     </div>
                   );
                 })()}
-                {(payMethod === 'check' || payMethod === 'traite') && (
+                {(payMethod === 'check' || payMethod === 'traite') && (<>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {payMethod === 'traite' ? 'traite' : 'chèque'}</label>
@@ -843,7 +847,36 @@ function DettesTab() {
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                   </div>
-                )}
+                  {!isReceivable && (() => {
+                    const av = parseFloat(avoirAmount) || 0;
+                    const chk = parseFloat(payAmount) || 0;
+                    return (
+                      <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">Avoir fournisseur</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">Montant avoir (DH)</label>
+                            <input type="number" step="0.01" min="0" value={avoirAmount}
+                              onChange={e => setAvoirAmount(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          </div>
+                          {av > 0 && (
+                            <div>
+                              <label className="block text-xs text-gray-600 mb-1">Total réglé</label>
+                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{n(chk + av)} DH</div>
+                            </div>
+                          )}
+                        </div>
+                        {av > 0 && (
+                          <p className="text-xs text-gray-500">
+                            L'avoir de <strong>{n(av)} DH</strong> sera déduit de la dette. {payMethod === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{n(chk)} DH</strong>.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>)}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Note</label>
                   <textarea name="description" rows={2}

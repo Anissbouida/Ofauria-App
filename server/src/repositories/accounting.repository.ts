@@ -1680,6 +1680,7 @@ export const paymentRepository = {
     paymentMethod: string; paymentDate: string; description?: string; createdBy: string; storeId?: string;
     purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
     withholdingTypeId?: string | null; withholdingAmount?: number | null;
+    avoirAmount?: number | null;
   }) {
     // ─── Cas simple : pas de facture liee ───────────────────────────────
     if (!data.invoiceId) {
@@ -1759,7 +1760,8 @@ export const paymentRepository = {
 
       // Garde 1 — sur-paiement : refuse si le cumul depasse le total.
       // Tolerance de 0.01 DH pour arrondis flottants.
-      if (currentPaid + data.amount > totalAmount + 0.01) {
+      const effectiveAmount = data.amount + (data.avoirAmount ?? 0);
+      if (currentPaid + effectiveAmount > totalAmount + 0.01) {
         const remaining = Math.max(0, totalAmount - currentPaid);
         const e: Error & { statusCode?: number } = new Error(
           `Le paiement de ${data.amount.toFixed(2)} DH dépasse le reste à payer ` +
@@ -1806,6 +1808,34 @@ export const paymentRepository = {
           `UPDATE invoices SET check_number = $1 WHERE id = $2`,
           [data.checkNumber, data.invoiceId]
         );
+      }
+
+      // Avoir fournisseur : cree un 2e paiement "avoir" dans la meme transaction.
+      // Le montant de l'avoir vient en deduction du reste a payer sans sortie de
+      // tresorerie — seul le cheque/traite sort reellement.
+      if (data.avoirAmount && data.avoirAmount > 0) {
+        const avoirResult = await client.query(
+          `INSERT INTO payments (type, category_id, invoice_id, supplier_id, employee_id,
+            amount, payment_method, payment_date, description, created_by, store_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'avoir',$7,$8,$9,$10) RETURNING *`,
+          [data.type, data.categoryId || null, data.invoiceId,
+           data.supplierId || null, data.employeeId || null,
+           data.avoirAmount, data.paymentDate,
+           `Avoir déduit du ${data.paymentMethod === 'traite' ? 'traite' : 'chèque'} ${data.checkNumber || ''}`.trim(),
+           data.createdBy, data.storeId || null]
+        );
+        if (FLAGS.LEDGER_AUTOGEN) {
+          await client.query('SAVEPOINT ledger_avoir');
+          try {
+            const avoirEmission = await fromPaymentEmission(client, avoirResult.rows[0]);
+            if (avoirEmission) await persistEntry(client, avoirEmission, { userId: data.createdBy });
+            await client.query('RELEASE SAVEPOINT ledger_avoir');
+          } catch (genErr) {
+            await client.query('ROLLBACK TO SAVEPOINT ledger_avoir');
+            console.error('[ledger] generation echec pour avoir', avoirResult.rows[0].id,
+              genErr instanceof Error ? genErr.message : genErr);
+          }
+        }
       }
 
       // Generation auto de l'ecriture comptable + auto-lettrage (LEDGER_AUTOGEN)
