@@ -30,6 +30,7 @@ import AccountingPage from './features/accounting/AccountingPage';
 import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
 import RequestDetailPage from './features/replenishment/RequestDetailPage';
+import ReconciliationPage from './features/reconciliation/ReconciliationPage';
 import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
 import InventoryCheckValidationPage from './features/inventory-check/InventoryCheckValidationPage';
@@ -75,6 +76,7 @@ export default function App() {
               <Route path="/warehouse/bsi/:id" element={<BonSortiePrelevementPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
+              <Route path="/reconciliation" element={<ReconciliationPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />
               <Route path="/inventory-check/opening" element={<OpeningInventoryCheckPage />} />
               <Route path="/inventory-check/validation" element={<InventoryCheckValidationPage />} />

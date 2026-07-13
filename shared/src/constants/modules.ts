@@ -26,6 +26,8 @@ export const APP_MODULES = {
   warehouse: 'warehouse',
   /** Catalogue + stock des emballages (caissettes, boites, etiquettes...). */
   packaging: 'packaging',
+  /** Rapprochement journalier (ISOLE, TEMPORAIRE) : appro - vendu - invendu. */
+  reconciliation: 'reconciliation',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -52,12 +54,13 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   pesage: 'Pesage',
   warehouse: 'Pesage',  // alias retrocompat
   packaging: 'Emballages',
+  reconciliation: 'Contrôle des ventes',
 };
 
 /** Default permissions per role (used when no custom permissions are set) */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging', 'reconciliation'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   baker: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],

@@ -10,7 +10,7 @@ import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag, Truck,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
-  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock, Box,
+  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock, Box, ArrowLeftRight,
   Plus, Zap,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
@@ -32,6 +32,7 @@ const modules: { name: string; description: string; href: string; icon: typeof L
   { name: 'Comptabilite', description: 'Caisse, charges et tresorerie', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
   { name: 'Achats', description: 'Fournisseurs, commandes et factures', href: '/purchasing', icon: Truck, color: 'bg-blue-700', module: 'purchasing' },
   { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
+  { name: 'Contrôle des ventes', description: 'Suivi appro, transferts et invendus', href: '/reconciliation', icon: ArrowLeftRight, color: 'bg-sky-600', module: 'reconciliation' },
   { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },
   { name: 'Parametres', description: 'Personnalisation de l\'application', href: '/settings', icon: Settings, color: 'bg-slate-600', module: 'settings' },
 ];
