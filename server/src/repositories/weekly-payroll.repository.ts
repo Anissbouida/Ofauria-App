@@ -135,10 +135,12 @@ export const weeklyPayrollRepository = {
       // Repos hebdomadaire paye PROPORTIONNELLEMENT aux jours travailles :
       // une semaine complete = 6 jours travailles -> 1 jour de repos entier.
       // Donc repos = jours travailles / 6, plafonne a 1 jour.
+      // Regle : moins de 4 jours travailles -> pas de repos paye.
       //   6 j travailles -> repos 1   -> 7 payes = salaire complet ;
-      //   3 j (demi-semaine) -> repos 0.5 -> 3.5 payes = 1/2 salaire ;
+      //   4 j travailles -> repos 0.67 -> 4.67 payes ;
+      //   3 j travailles -> repos 0   -> 3 payes (pas de repos) ;
       //   7 j (repos non pris) -> repos 1 (plafond) -> 8 payes = salaire + 1 j.
-      const reposDays = Math.min(workedDays / 6, 1);
+      const reposDays = workedDays < 4 ? 0 : Math.min(workedDays / 6, 1);
       const paidDays = workedDays + reposDays;
       const baseAmount = r2(dailyRate * paidDays);
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
