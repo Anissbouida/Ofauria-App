@@ -122,6 +122,9 @@ const ROUTES_WITH_LOCAL_JSON_PARSER = [
   // Le logo de l'entreprise est envoye en data URI base64 (company_settings.logo_url),
   // ce qui depasse la limite globale de 10 Ko : parser local elargi cote route settings.
   '/api/v1/settings',
+  // Contrôle des ventes : imports batch (catalogue Loyverse ~350 produits,
+  // ventes du jour, appro en masse) — parser local elargi cote route.
+  '/api/v1/reconciliation',
 ];
 const globalJsonParser = express.json({ limit: '10kb' });
 app.use((req, res, next) => {

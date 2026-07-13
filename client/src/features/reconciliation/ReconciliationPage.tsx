@@ -8,7 +8,7 @@ import {
   Settings, Clock, Package,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot } from '../../api/reconciliation.api';
-import { parseLoyverseFiles } from './loyverseParser';
+import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -822,11 +822,27 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
   onSave: (f: { name: string; qty: number; category?: string; price?: number }) => void;
 }) {
   const [f, setF] = useState({ name: '', qty: '', category: '', price: '' });
-  const known = products.find(p => p.product_name.trim().toLowerCase() === f.name.trim().toLowerCase());
-  const isNew = f.name.trim() !== '' && !known;
+  const [catFilter, setCatFilter] = useState('');
+
+  // Categories issues des produits (inclut « Non classé » si besoin).
+  const cats = useMemo(
+    () => [...new Set(products.map(p => p.category || 'Non classé'))].sort((a, b) => a.localeCompare(b, 'fr')),
+    [products],
+  );
+
+  const inCategory = useMemo(
+    () => catFilter ? products.filter(p => (p.category || 'Non classé') === catFilter) : products,
+    [products, catFilter],
+  );
+
+  const q = f.name.trim().toLowerCase();
+  const matches = q ? inCategory.filter(p => p.product_name.toLowerCase().includes(q)) : inCategory;
+  const known = inCategory.find(p => p.product_name.trim().toLowerCase() === q);
+  const isNew = q !== '' && !products.some(p => p.product_name.trim().toLowerCase() === q);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 440, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
           Ajouter un produit à la fiche
         </div>
@@ -836,34 +852,68 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
           if (!f.name.trim() || !(qty > 0)) return;
           onSave({
             name: f.name, qty,
-            category: f.category.trim() || undefined,
+            category: f.category.trim() || (catFilter !== 'Non classé' ? catFilter : '') || undefined,
             price: parseFloat(f.price) || undefined,
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
           <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
+            <select className="input" value={catFilter}
+              onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, name: '' })); }}>
+              <option value="">Toutes les catégories ({products.length})</option>
+              {cats.map(c => (
+                <option key={c} value={c}>
+                  {c} ({products.filter(p => (p.category || 'Non classé') === c).length})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Produit *</label>
-            <input className="input" autoFocus required value={f.name} list="fiche-add-products"
-              placeholder="Tape pour chercher dans le catalogue…"
+            <input className="input" autoFocus required value={f.name}
+              placeholder="Tape pour chercher…"
               onChange={e => setF({ ...f, name: e.target.value })} />
-            <datalist id="fiche-add-products">
-              {products.map(p => <option key={p.product_key} value={p.product_name} />)}
-            </datalist>
+            {/* Resultats de recherche cliquables (limites a 8) */}
+            {q !== '' && !known && matches.length > 0 && (
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+                {matches.slice(0, 8).map(p => (
+                  <button key={p.product_key} type="button"
+                    onClick={() => setF(prev => ({ ...prev, name: p.product_name }))}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', width: '100%',
+                      padding: '6px 10px', border: 'none', background: 'transparent',
+                      textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
+                      borderBottom: '1px solid var(--theme-bg-separator)',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <span style={{ fontWeight: 500 }}>{p.product_name}</span>
+                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{p.category || 'Non classé'}</span>
+                  </button>
+                ))}
+                {matches.length > 8 && (
+                  <div style={{ padding: '4px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                    … {matches.length - 8} autre{matches.length - 8 > 1 ? 's' : ''} — affine la recherche
+                  </div>
+                )}
+              </div>
+            )}
             {known && (
               <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', marginTop: 3 }}>
                 <Check size={11} style={{ display: 'inline', verticalAlign: -1 }} /> Produit du catalogue — {known.category || 'Non classé'}
               </div>
             )}
-            {isNew && (
+            {isNew && matches.length === 0 && (
               <div style={{ fontSize: '0.6875rem', color: '#b26a00', marginTop: 3 }}>
                 Nouveau produit : il sera ajouté au catalogue.
               </div>
             )}
           </div>
-          {isNew && (
+          {isNew && matches.length === 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
-                <input className="input" value={f.category} list="fiche-add-categories"
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie du produit</label>
+                <input className="input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="fiche-add-categories"
                   onChange={e => setF({ ...f, category: e.target.value })} />
                 <datalist id="fiche-add-categories">
                   {categories.map(c => <option key={c} value={c} />)}
@@ -1634,11 +1684,11 @@ function CatalogView() {
 
   const importMut = useMutation({
     mutationFn: async (files: File[]) => {
-      const parsed = await parseLoyverseFiles(files);
-      const rows = parsed.flatMap(p => p.items.map(i => ({
+      const items = await parseLoyverseCatalogFiles(files);
+      const rows = items.map(i => ({
         sku: i.sku || undefined, productName: i.productName,
         category: i.category || undefined, unitPrice: i.unitPrice || undefined,
-      })));
+      }));
       if (rows.length === 0) throw new Error('Aucun produit exploitable dans le fichier');
       return reconciliationApi.bulkProducts(rows);
     },

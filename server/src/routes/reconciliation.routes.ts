@@ -1,13 +1,18 @@
-import { Router } from 'express';
+import { Router, json as expressJson } from 'express';
 import { reconciliationController } from '../controllers/reconciliation.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 
-// Module Rapprochement journalier (ISOLE, TEMPORAIRE) — admin / gerant.
+// Module Contrôle des ventes (ISOLE, TEMPORAIRE) — admin / gerant.
+// Parser local elargi : la limite globale (10kb, OWASP A04) est trop serree pour
+// les imports batch (catalogue Loyverse ~350 produits, ventes du jour, appro en
+// masse). 512 Ko donne de la marge (~150 o/produit x 350 ≈ 50 Ko) en restant
+// inexploitable pour un abus DoS ; routes reservees admin/gerant.
 const router = Router();
 
+router.use(expressJson({ limit: '512kb' }));
 router.use(authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER));
 
 // Journees
