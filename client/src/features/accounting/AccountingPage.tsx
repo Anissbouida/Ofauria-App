@@ -2901,7 +2901,7 @@ function ChequesTab() {
     const map = new Map<string, CheckRow[]>();
     const order: string[] = [];
     filtered.forEach(c => {
-      const num = c.check_number?.trim();
+      const num = c.check_number?.trim().toUpperCase().replace(/\s+/g, ' ');
       const key = num
         ? `${c.payment_method}::${num}`
         : `solo::${c.id}`;
