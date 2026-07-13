@@ -2893,16 +2893,17 @@ function ChequesTab() {
   }, [data, statusFilter, dueWindow, supplierFilter, dueFromDate, dueToDate,
       methodFilter, searchTerm, sortBy, sortDir]);
 
-  // Regroupement par cheque physique : meme methode + meme N° + meme beneficiaire.
-  // Les paiements sans N° de cheque restent des lignes individuelles. L'ordre des
-  // groupes suit le tri courant (position de leur premiere ligne).
+  // Regroupement par cheque physique : meme methode + meme N° normalise.
+  // Un cheque/traite physique a un numero unique — on ne separe pas par
+  // beneficiaire car un seul effet peut couvrir des factures de categories
+  // differentes chez le meme fournisseur.
   const groups = useMemo<CheckGroup[]>(() => {
     const map = new Map<string, CheckRow[]>();
     const order: string[] = [];
     filtered.forEach(c => {
-      const benef = c.supplier_name || c.employee_name || c.category_name || '';
-      const key = c.check_number
-        ? `${c.payment_method}::${c.check_number}::${benef}`
+      const num = c.check_number?.trim();
+      const key = num
+        ? `${c.payment_method}::${num}`
         : `solo::${c.id}`;
       if (!map.has(key)) { map.set(key, []); order.push(key); }
       map.get(key)!.push(c);
