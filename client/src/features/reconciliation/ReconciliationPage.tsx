@@ -287,8 +287,8 @@ function printBonSection(
 <title>Bons de Transfert - ${dateFormatted}</title>
 <style>${printCSS()}</style></head><body>
 <div class="toolbar no-print">
-  <button type="button" onclick="window.print()">&#128424; Imprimer</button>
-  <button type="button" class="secondary" onclick="window.close()">Fermer</button>
+  <button type="button" id="btn-print">&#128424; Imprimer</button>
+  <button type="button" id="btn-close" class="secondary">Fermer</button>
 </div>
 ${pages.join('')}</body></html>`;
 
@@ -296,6 +296,10 @@ ${pages.join('')}</body></html>`;
   if (!w) { notify.error('Pop-up bloqué — autorisez les pop-ups pour imprimer.'); return; }
   w.document.write(html);
   w.document.close();
+  // Handlers attaches depuis l'opener : la CSP de prod bloque le JS inline
+  // (onclick) dans la fenetre about:blank, qui herite de la politique du site.
+  w.document.getElementById('btn-print')?.addEventListener('click', () => w.print());
+  w.document.getElementById('btn-close')?.addEventListener('click', () => w.close());
 }
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
