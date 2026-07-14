@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { notify } from '../../components/ui/InlineNotification';
+import { getApiErrorMessage } from '../../utils/api-error';
 import { ROLE_LABELS, SHIFT_BADGE_COLORS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
 import type { ShiftCode } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
@@ -43,9 +44,28 @@ function isoDate(raw: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
 }
 
+// Rôles autorisés côté client (miroir de authorize(...ROLE_GROUPS.ADMIN_MANAGER)
+// sur les routes serveur). Les autres rôles doivent voir un message clair au
+// lieu de "Aucun employé trouvé" qui laisse penser à un état vide legitime.
+const HR_ALLOWED_ROLES = ['admin', 'manager'];
+
 export default function EmployeesPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<HrTab>('employees');
+
+  // Guard cote client : les APIs sont deja gardees par authorize() serveur.
+  // Ce guard evite l'appel API (bruit de 403 dans les logs) et affiche un
+  // message explicite plutot que la page vide + le "aucun employe trouve".
+  if (user && !HR_ALLOWED_ROLES.includes(user.role)) {
+    return (
+      <div className="p-8 text-center" style={{ color: 'var(--odoo-text-muted)' }}>
+        <AlertOctagon size={32} style={{ margin: '0 auto 12px', color: '#dc3545' }} />
+        <h2 className="text-lg font-semibold mb-2">Accès non autorisé</h2>
+        <p className="text-sm">Le module RH est réservé aux administrateurs et gérants.</p>
+      </div>
+    );
+  }
 
   const tabs: { key: HrTab; label: string; icon: typeof Users }[] = [
     { key: 'employees', label: 'Employés', icon: Users },
@@ -233,6 +253,29 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
 
   const activeCount = employees.filter((e: Record<string, any>) => e.is_active).length;
 
+  // ─── Agregats masse salariale (uniquement sur actifs) ────────────────────
+  // Masse mensuelle = somme des monthly_salary des actifs mensuels.
+  // Masse hebdo = somme des weekly_salary des actifs hebdo.
+  // Coût mensuel équivalent = mensuel + hebdo × 4.33 (nb moyen de semaines / mois).
+  const activeEmployees = employees.filter((e: Record<string, any>) => e.is_active);
+  const activeMonthly = activeEmployees.filter((e: Record<string, any>) => (e.pay_frequency ?? 'monthly') === 'monthly');
+  const activeWeekly = activeEmployees.filter((e: Record<string, any>) => e.pay_frequency === 'weekly');
+  const massMonthly = activeMonthly.reduce((s: number, e: Record<string, any>) => s + (parseFloat(e.monthly_salary as string) || 0), 0);
+  const massWeekly = activeWeekly.reduce((s: number, e: Record<string, any>) => s + (parseFloat(e.weekly_salary as string) || 0), 0);
+  const WEEKS_PER_MONTH = 52 / 12; // ≈ 4.333
+  const massMonthlyEquiv = massMonthly + massWeekly * WEEKS_PER_MONTH;
+  const withSalaryCount = activeMonthly.filter((e: Record<string, any>) => parseFloat(e.monthly_salary as string) > 0).length
+    + activeWeekly.filter((e: Record<string, any>) => parseFloat(e.weekly_salary as string) > 0).length;
+  const avgSalary = withSalaryCount > 0 ? massMonthlyEquiv / withSalaryCount : 0;
+
+  // Repartition par contrat (uniquement actifs)
+  const contractCounts: Record<string, number> = {};
+  for (const e of activeEmployees) {
+    const c = (e.contract_type as string) || 'cdi';
+    contractCounts[c] = (contractCounts[c] || 0) + 1;
+  }
+  const formatMoney = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('asc'); }
@@ -297,19 +340,52 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       {/* Stat tiles - style Odoo */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Total employés</div>
-          <div className="odoo-stat-card-value">{employees.length}</div>
-          <div className="odoo-stat-card-sub">référencés</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Effectif actif</div>
           <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
-          <div className="odoo-stat-card-sub">en activité</div>
+          <div className="odoo-stat-card-sub" title="Repartition mensuel / hebdomadaire">
+            {activeMonthly.length} mensuel · {activeWeekly.length} hebdo
+            {employees.length - activeCount > 0 && (
+              <> · <span style={{ color: '#adb5bd' }}>{employees.length - activeCount} inactif(s)</span></>
+            )}
+          </div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><X size={11} style={{ display: 'inline', marginRight: 4 }} />Inactifs</div>
-          <div className="odoo-stat-card-value" style={{ color: '#adb5bd' }}>{employees.length - activeCount}</div>
-          <div className="odoo-stat-card-sub">archivés</div>
+        <div className="odoo-stat-card" title="Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)">
+          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Masse salariale</div>
+          <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
+            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>DH/mois</span>
+          </div>
+          <div className="odoo-stat-card-sub">
+            {formatMoney(massMonthly)} mensuel
+            {massWeekly > 0 && <> + {formatMoney(massWeekly * WEEKS_PER_MONTH)} hebdo eq.</>}
+          </div>
+        </div>
+        <div className="odoo-stat-card" title="Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)">
+          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Coût annuel projeté</div>
+          <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
+            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>DH</span>
+          </div>
+          <div className="odoo-stat-card-sub">
+            {withSalaryCount > 0 ? <>salaire moyen {formatMoney(avgSalary)} DH/mois</> : 'aucun salaire renseigné'}
+          </div>
+        </div>
+        <div className="odoo-stat-card" title="Répartition par type de contrat des employés actifs">
+          <div className="odoo-stat-card-label"><FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Contrats</div>
+          <div className="odoo-stat-card-value" style={{ fontSize: '1.125rem' }}>
+            {Object.entries(contractCounts).length === 0
+              ? <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+              : Object.entries(contractCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([code, count], idx) => (
+                <span key={code} style={{ marginRight: 10 }}>
+                  <span style={{ fontWeight: 700 }}>{count}</span>
+                  <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 3, textTransform: 'uppercase' }}>
+                    {getContractLabel(code).slice(0, 4)}
+                  </span>
+                  {idx < 2 && Object.entries(contractCounts).length > idx + 1 && (
+                    <span style={{ color: 'var(--odoo-text-light)' }}> ·</span>
+                  )}
+                </span>
+              ))}
+          </div>
+          <div className="odoo-stat-card-sub">sur {activeCount} actif(s)</div>
         </div>
       </div>
 
@@ -369,9 +445,26 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   <td><span className="odoo-tag odoo-tag-grey">{getContractLabel(e.contract_type as string || 'cdi')}</span></td>
                   <td style={{ color: 'var(--odoo-text-muted)' }}>{e.phone as string || '—'}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {e.monthly_salary ? (
-                      <span style={{ fontWeight: 600 }}>{parseFloat(e.monthly_salary as string).toFixed(0)} <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>DH</span></span>
-                    ) : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>}
+                    {(() => {
+                      const isWeekly = e.pay_frequency === 'weekly';
+                      const sal = isWeekly ? e.weekly_salary : e.monthly_salary;
+                      if (!sal) return <span style={{ color: 'var(--odoo-text-light)' }}>—</span>;
+                      const val = parseFloat(sal as string);
+                      const eqMonth = isWeekly ? val * WEEKS_PER_MONTH : val;
+                      return (
+                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${eqMonth.toFixed(0)} DH/mois equivalent` : 'Salaire mensuel'}>
+                          <span style={{ fontWeight: 600 }}>{val.toFixed(0)}</span>
+                          <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem', marginLeft: 3 }}>
+                            DH/{isWeekly ? 'sem' : 'mois'}
+                          </span>
+                          {isWeekly && (
+                            <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-light)' }}>
+                              ≈ {eqMonth.toFixed(0)} DH/mois
+                            </div>
+                          )}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td>
                     <span className={`odoo-tag ${e.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
@@ -653,16 +746,27 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
 
   const getRecord = (empId: string) => (records as Record<string, any>[]).find(r => r.employee_id === empId);
 
-  // Calculate monthly summary per employee
+  // Recap mensuel — formule STRICTEMENT alignee sur payrollRepository.generate
+  // cote serveur (employee.repository.ts:785-797). Sinon la colonne "Salaire
+  // calcule" divergerait du bulletin reellement genere :
+  //   * 'repos' est PAYE (jour de repos hebdo inclus dans le salaire mensuel)
+  //     -> comptabilise avec present + late
+  //   * 'double' = deux shifts le meme jour -> 2 jours travailles
+  //   * 'half_day' -> 1 demi-jour (Math.floor(halfDay/2) = 0 si un seul, 1 si deux, etc.)
+  //   * 'absent' -> deduction (non compte dans worked)
   const getEmployeeMonthlySummary = (empId: string) => {
     const empRecords = (monthlyRecords as Record<string, any>[]).filter(r => r.employee_id === empId);
     const present = empRecords.filter(r => r.status === 'present').length;
     const late = empRecords.filter(r => r.status === 'late').length;
+    const repos = empRecords.filter(r => r.status === 'repos').length;
+    const double = empRecords.filter(r => r.status === 'double').length;
     const absent = empRecords.filter(r => r.status === 'absent').length;
     const halfDay = empRecords.filter(r => r.status === 'half_day').length;
     const overtimeMin = empRecords.reduce((s, r) => s + (parseInt(r.overtime_minutes as string) || 0), 0);
-    const workedDays = present + late + Math.floor(halfDay / 2);
-    return { present, late, absent, halfDay, overtimeMin, workedDays };
+    // Meme formule que server: present+late+repos comme "jours payes normaux",
+    // double compte 2 jours, half_day/2 pour les demi-journees.
+    const workedDays = present + late + repos + 2 * double + Math.floor(halfDay / 2);
+    return { present, late, repos, double, absent, halfDay, overtimeMin, workedDays };
   };
 
   return (
@@ -883,7 +987,11 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                       )}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      {/* key inclut selectedDate : sans ca, defaultValue est
+                          fige au 1er render et changer de jour affichait les
+                          heures du jour precedent (risque d'ecraser le bon
+                          jour au onBlur). */}
+                      <input key={`ci-${emp.id}-${selectedDate}`} type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
                         disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_in as string || ''}
                         onBlur={e => {
@@ -896,7 +1004,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      <input key={`co-${emp.id}-${selectedDate}`} type="time" className="input text-center text-sm w-28 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed"
                         disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_out as string || ''}
                         onBlur={e => {
@@ -909,7 +1017,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="number" className="input text-center text-sm w-20 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed" min="0"
+                      <input key={`ot-${emp.id}-${selectedDate}`} type="number" className="input text-center text-sm w-20 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed" min="0"
                         disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.overtime_minutes as number || 0}
                         onBlur={e => {
@@ -956,10 +1064,17 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
   const approveMutation = useMutation({
     mutationFn: (id: string) => leavesApi.approve(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé approuvé'); },
+    onError: (err: unknown) => notify.error(getApiErrorMessage(err, 'Erreur lors de l\'approbation')),
   });
   const rejectMutation = useMutation({
     mutationFn: (id: string) => leavesApi.reject(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé refusé'); },
+    onError: (err: unknown) => notify.error(getApiErrorMessage(err, 'Erreur lors du refus')),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => leavesApi.remove(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé supprimé'); },
+    onError: (err: unknown) => notify.error(getApiErrorMessage(err, 'Erreur lors de la suppression')),
   });
 
   const leavesList = leaves as Record<string, any>[];
@@ -1045,18 +1160,35 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    {l.status === 'pending' && (
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={() => approveMutation.mutate(l.id as string)}
-                          className="odoo-pager-btn" title="Approuver" style={{ color: '#28a745' }}>
-                          <Check size={14} />
-                        </button>
-                        <button onClick={() => rejectMutation.mutate(l.id as string)}
-                          className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }}>
-                          <X size={14} />
-                        </button>
-                      </div>
-                    )}
+                    <div style={{ display: 'inline-flex', gap: 2 }}>
+                      {l.status === 'pending' && (
+                        <>
+                          <button onClick={() => {
+                            if (confirm(`Approuver le conge de ${l.first_name} ${l.last_name} du ${format(new Date(l.start_date as string), 'dd/MM/yyyy')} au ${format(new Date(l.end_date as string), 'dd/MM/yyyy')} (${l.days as number} j) ?`)) {
+                              approveMutation.mutate(l.id as string);
+                            }
+                          }}
+                            className="odoo-pager-btn" title="Approuver" style={{ color: '#28a745' }}>
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => rejectMutation.mutate(l.id as string)}
+                            className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }}>
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
+                      {/* Suppression : possible sur tous statuts. Un conge approuve
+                          peut avoir ete accorde par erreur (dates incorrectes) ;
+                          la suppression re-libere les jours dans la balance. */}
+                      <button onClick={() => {
+                        if (confirm(`Supprimer definitivement ce conge (${l.first_name} ${l.last_name}, ${l.days as number} j) ?\n\nSi le conge etait approuve, les jours seront re-credites dans la balance.`)) {
+                          removeMutation.mutate(l.id as string);
+                        }
+                      }}
+                        className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--odoo-text-muted)' }}>
+                        <X size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1409,7 +1541,11 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Download size={13} /> CSV
           </button>
-          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="odoo-btn-primary"
+          <button onClick={() => {
+            if (confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`)) {
+              generateMutation.mutate();
+            }
+          }} disabled={generateMutation.isPending} className="odoo-btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> Générer les bulletins
           </button>
@@ -1685,6 +1821,9 @@ type WeeklyPayrollRow = {
   paid_at: string | null;
   payment_method: string | null;
   notes: string | null;
+  // Calcules serveur (regle repos paye centralisee, cf. reposDaysFor).
+  repos_days?: number | null;
+  paid_days?: number | null;
 };
 
 type WeeklyPayrollData = { weekStart: string; weekEnd: string; rows: WeeklyPayrollRow[] };
@@ -1801,7 +1940,11 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
           </button>
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
+          <button onClick={() => {
+            if (confirm(`Generer la paie hebdo pour la semaine du ${weekStartStr} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`)) {
+              generateMutation.mutate();
+            }
+          }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}
           </button>
@@ -1891,11 +2034,11 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
                           {(Math.round(parseFloat(String(r.worked_days ?? 0)) * 100) / 100).toString()}
                         </td>
                         <td style={{ textAlign: 'center', color: parseFloat(String(r.worked_days ?? 0)) > 0 ? '#7c3aed' : 'var(--odoo-text-light)' }}
-                          title="Repos payé proportionnel : jours travaillés / 6, plafonné à 1 (semaine complète = 1 jour)">
+                          title="Repos payé proportionnel : 0 si moins de 4 jours travaillés, sinon min(jours travaillés / 6, 1). Valeur calculée serveur.">
                           {(() => {
-                            const wd = parseFloat(String(r.worked_days ?? 0));
-                            if (wd <= 0) return '—';
-                            return (Math.round(Math.min(wd / 6, 1) * 100) / 100).toString();
+                            const repos = parseFloat(String(r.repos_days ?? 0));
+                            if (repos <= 0) return '—';
+                            return (Math.round(repos * 100) / 100).toString();
                           })()}
                         </td>
                         <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
@@ -2815,14 +2958,17 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
         const prevRow = prev.rows.find(r => r.employeeId === row.employeeId);
         if (!prevRow) continue;
         const empMap = { ...(next[row.employeeId] ?? {}) };
-        const prevDays = Object.keys(prevRow.assignments).sort();
-        days.forEach((d, idx) => {
+        // Mapping PAR DATE (jour J = jour J-7). Un mapping ordinal sur
+        // Object.keys(assignments) sortait faux quand la S-1 avait des
+        // trous : si l'employe etait en repos lundi S-1, la position 0
+        // etait mardi, et toute la semaine glissait d'un jour.
+        for (const d of days) {
           const dateStr = format(d, 'yyyy-MM-dd');
-          if (row.onLeaveDays.includes(dateStr)) { skippedLeaves++; return; }
-          const srcDate = prevDays[idx]; // mapping ordinal Lun->Lun, etc.
-          const srcCode = srcDate ? prevRow.assignments[srcDate] : null;
-          empMap[dateStr] = srcCode ?? null;
-        });
+          if (row.onLeaveDays.includes(dateStr)) { skippedLeaves++; continue; }
+          const srcDate = format(new Date(d.getTime() - 7 * 86400_000), 'yyyy-MM-dd');
+          const srcCode = prevRow.assignments[srcDate] ?? null;
+          empMap[dateStr] = srcCode;
+        }
         next[row.employeeId] = empMap;
       }
       setDraft(next);

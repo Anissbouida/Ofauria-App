@@ -78,7 +78,9 @@ export const salaryAdvanceRepository = {
    * Accorde une avance : ligne salary_advances + decaissement payments
    * type='advance' (avec ecriture 3431 D / tresorerie C si LEDGER_AUTOGEN).
    * paymentRepository.create gere sa propre transaction ; en cas d'echec du
-   * paiement on supprime l'avance orpheline avant de relancer l'erreur.
+   * paiement on supprime l'avance orpheline (best-effort — si ce nettoyage
+   * echoue lui-meme, on laisse une avance sans payment_id detectable par un
+   * script de reconciliation).
    */
   async create(data: {
     employeeId: string; amount: number; paymentMethod: string;
@@ -119,7 +121,11 @@ export const salaryAdvanceRepository = {
         storeId: data.storeId,
       });
     } catch (err) {
-      await db.query('DELETE FROM salary_advances WHERE id = $1', [advance.id]);
+      try { await db.query('DELETE FROM salary_advances WHERE id = $1', [advance.id]); }
+      catch (cleanupErr) {
+        // eslint-disable-next-line no-console
+        console.error('[salaryAdvance.create] cleanup avance orpheline echoue', advance.id, cleanupErr);
+      }
       throw err;
     }
 
@@ -247,29 +253,49 @@ export const salaryAdvanceRepository = {
    * Supprime une avance saisie par erreur. Refuse si des retenues existent
    * (il faudrait d'abord annuler les paies concernees). Supprime aussi le
    * decaissement lie, ce qui reverse son ecriture comptable.
+   *
+   * Le verrou FOR UPDATE sur salary_advances garantit qu'une retenue
+   * concurrente (applyDeduction prend aussi FOR UPDATE sur ces lignes) ne
+   * peut pas s'inserer entre le check repayment_count et le DELETE.
+   *
+   * Ordre : paiement -> avance. La FK salary_advances.payment_id est
+   * ON DELETE SET NULL : supprimer le paiement d'abord ne casse rien, et
+   * si le DELETE de l'avance echoue derriere on garde une avance orpheline
+   * (payment_id NULL) detectable — moins pire qu'un paiement sans avance.
    */
   async remove(id: string) {
-    const existing = await db.query(
-      `SELECT a.payment_id, COUNT(sr.id)::int AS repayment_count
-         FROM salary_advances a
-         LEFT JOIN salary_advance_repayments sr ON sr.advance_id = a.id
-        WHERE a.id = $1
-        GROUP BY a.id, a.payment_id`,
-      [id]
-    );
-    const row = existing.rows[0];
-    if (!row) throw new Error('Avance introuvable');
-    if (row.repayment_count > 0) {
-      throw new Error('Avance deja partiellement remboursee : suppression impossible');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const existing = await client.query(
+        `SELECT a.id, a.payment_id, COUNT(sr.id)::int AS repayment_count
+           FROM salary_advances a
+           LEFT JOIN salary_advance_repayments sr ON sr.advance_id = a.id
+          WHERE a.id = $1
+          GROUP BY a.id, a.payment_id
+          FOR UPDATE OF a`,
+        [id]
+      );
+      const row = existing.rows[0];
+      if (!row) throw new Error('Avance introuvable');
+      if (row.repayment_count > 0) {
+        throw new Error('Avance deja partiellement remboursee : suppression impossible');
+      }
+      const paymentId = row.payment_id;
+      if (paymentId) {
+        // paymentRepository.delete a sa propre transaction (reverse ledger +
+        // resync facture). Si elle echoue, on ROLLBACK notre transaction sans
+        // avoir touche a l'avance -> etat coherent.
+        await paymentRepository.delete(paymentId);
+      }
+      await client.query('DELETE FROM salary_advances WHERE id = $1', [id]);
+      await client.query('COMMIT');
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
     }
-    // L'avance d'abord (sa FK payment_id serait mise a NULL par la suppression
-    // du paiement, mais l'ordre inverse laisserait une avance sans decaissement
-    // si la suppression du paiement echoue sur une periode cloturee).
-    const paymentId = row.payment_id;
-    if (paymentId) {
-      await paymentRepository.delete(paymentId);
-    }
-    await db.query('DELETE FROM salary_advances WHERE id = $1', [id]);
   },
 
   /**

@@ -1,9 +1,52 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { db } from '../config/database.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
 import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
+import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
+
+/**
+ * Verifie qu'un employe appartient au store du user connecte.
+ * - Admin sans storeId (global) -> passe toujours
+ * - Sinon : employees.store_id doit correspondre (ou etre NULL = employe global)
+ * Retourne l'employe, ou null si introuvable / hors scope.
+ */
+async function loadEmployeeInScope(employeeId: string, userStoreId?: string) {
+  const r = await db.query('SELECT id, store_id FROM employees WHERE id = $1', [employeeId]);
+  const emp = r.rows[0];
+  if (!emp) return null;
+  // store_id NULL = employe global visible par tous les stores (cf. listing patterns)
+  if (emp.store_id !== null && !checkStoreOwnership(emp.store_id, userStoreId)) return null;
+  return emp;
+}
+
+async function loadPayrollInScope(payrollId: string, userStoreId?: string) {
+  const r = await db.query(
+    `SELECT p.id, p.employee_id, e.store_id
+       FROM payroll p JOIN employees e ON e.id = p.employee_id
+      WHERE p.id = $1`,
+    [payrollId]
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  if (row.store_id !== null && !checkStoreOwnership(row.store_id, userStoreId)) return null;
+  return row;
+}
+
+async function loadWeeklyPayrollInScope(id: string, userStoreId?: string) {
+  const r = await db.query(
+    `SELECT wp.id, wp.employee_id, e.store_id
+       FROM weekly_payroll wp JOIN employees e ON e.id = wp.employee_id
+      WHERE wp.id = $1`,
+    [id]
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  if (row.store_id !== null && !checkStoreOwnership(row.store_id, userStoreId)) return null;
+  return row;
+}
 
 export const employeeController = {
   async list(req: AuthRequest, res: Response) {
@@ -11,19 +54,29 @@ export const employeeController = {
     res.json({ success: true, data: employees });
   },
   async getById(req: AuthRequest, res: Response) {
+    // Scoping store : un manager du magasin A ne doit pas lire les employes
+    // du magasin B (IDOR). Un employe sans store_id (global) reste visible.
+    const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     const employee = await employeeRepository.findById(req.params.id);
     if (!employee) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     res.json({ success: true, data: employee });
   },
   async create(req: AuthRequest, res: Response) {
-    const employee = await employeeRepository.create({ ...req.body, storeId: req.user!.storeId });
+    const employee = await employeeRepository.create({
+      ...req.body, storeId: req.user!.storeId, createdBy: req.user!.userId,
+    });
     res.status(201).json({ success: true, data: employee });
   },
   async update(req: AuthRequest, res: Response) {
-    const employee = await employeeRepository.update(req.params.id, req.body);
+    const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    const employee = await employeeRepository.update(req.params.id, req.body, req.user!.userId);
     res.json({ success: true, data: employee });
   },
   async remove(req: AuthRequest, res: Response) {
+    const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     const hard = String(req.query.hard || '').toLowerCase() === 'true';
     if (hard) {
       try {
@@ -40,6 +93,8 @@ export const employeeController = {
     res.json({ success: true, data: null });
   },
   async dependencies(req: AuthRequest, res: Response) {
+    const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     const counts = await employeeRepository.countDependencies(req.params.id);
     res.json({ success: true, data: counts });
   },
@@ -58,18 +113,38 @@ export const scheduleController = {
       res.status(400).json({ success: false, error: { message: 'startDate et endDate sont requis' } });
       return;
     }
-    const schedules = await scheduleRepository.findByDateRange(startDate, endDate, employeeId);
+    const schedules = await scheduleRepository.findByDateRange(startDate, endDate, employeeId, req.user!.storeId);
     res.json({ success: true, data: schedules });
   },
   async create(req: AuthRequest, res: Response) {
+    // Bloque la creation pour un employe d'un autre store.
+    const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     const schedule = await scheduleRepository.create(req.body);
     res.status(201).json({ success: true, data: schedule });
   },
   async update(req: AuthRequest, res: Response) {
+    // Verifie que le schedule cible un employe du store courant.
+    const r = await db.query(
+      `SELECT e.store_id FROM schedules s JOIN employees e ON e.id = s.employee_id WHERE s.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Planning non trouve' } });
+      return;
+    }
     const schedule = await scheduleRepository.update(req.params.id, req.body);
     res.json({ success: true, data: schedule });
   },
   async remove(req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT e.store_id FROM schedules s JOIN employees e ON e.id = s.employee_id WHERE s.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Planning non trouve' } });
+      return;
+    }
     await scheduleRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
@@ -159,6 +234,8 @@ export const weeklyPayrollController = {
   },
 
   async markPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     const { paymentMethod, advanceDeduction } = req.body;
     try {
       const row = await weeklyPayrollRepository.markPaid(
@@ -173,6 +250,8 @@ export const weeklyPayrollController = {
   },
 
   async unmarkPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     try {
       const row = await weeklyPayrollRepository.unmarkPaid(req.params.id);
       if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
@@ -183,11 +262,20 @@ export const weeklyPayrollController = {
   },
 
   async update(req: AuthRequest, res: Response) {
-    const row = await weeklyPayrollRepository.update(req.params.id, req.body);
-    res.json({ success: true, data: row });
+    const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    try {
+      const row = await weeklyPayrollRepository.update(req.params.id, req.body);
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
   },
 
   async remove(req: AuthRequest, res: Response) {
+    const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     await weeklyPayrollRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
@@ -200,23 +288,48 @@ export const attendanceController = {
       res.status(400).json({ success: false, error: { message: 'startDate et endDate sont requis' } });
       return;
     }
-    const records = await attendanceRepository.findByDateRange(startDate, endDate, employeeId);
+    const records = await attendanceRepository.findByDateRange(startDate, endDate, employeeId, req.user!.storeId);
     res.json({ success: true, data: records });
   },
   async upsert(req: AuthRequest, res: Response) {
+    const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
     const record = await attendanceRepository.upsert(req.body);
     res.json({ success: true, data: record });
   },
   async bulkUpsert(req: AuthRequest, res: Response) {
+    // Verifie tous les employeeIds distincts avant d'attaquer le batch.
+    const empIds = Array.from(new Set(
+      (req.body.records as Array<{ employeeId: string }>).map(r => r.employeeId)
+    ));
+    for (const empId of empIds) {
+      const scoped = await loadEmployeeInScope(empId, req.user!.storeId);
+      if (!scoped) {
+        res.status(404).json({ success: false, error: { message: `Employe ${empId} hors scope` } });
+        return;
+      }
+    }
     const records = await attendanceRepository.bulkUpsert(req.body.records);
     res.json({ success: true, data: records });
   },
   async monthlySummary(req: AuthRequest, res: Response) {
     const { employeeId, month, year } = req.query as Record<string, string>;
+    if (employeeId) {
+      const scoped = await loadEmployeeInScope(employeeId, req.user!.storeId);
+      if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    }
     const summary = await attendanceRepository.monthlySummary(employeeId, parseInt(month), parseInt(year));
     res.json({ success: true, data: summary });
   },
   async remove(req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT e.store_id FROM attendance a JOIN employees e ON e.id = a.employee_id WHERE a.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Pointage non trouve' } });
+      return;
+    }
     await attendanceRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
@@ -228,27 +341,66 @@ export const leaveController = {
     const leaves = await leaveRepository.findAll({
       employeeId, status, year: year ? parseInt(year) : undefined,
       activeOn: activeOn && /^\d{4}-\d{2}-\d{2}$/.test(activeOn) ? activeOn : undefined,
+      storeId: req.user!.storeId,
     });
     res.json({ success: true, data: leaves });
   },
   async create(req: AuthRequest, res: Response) {
-    const leave = await leaveRepository.create(req.body);
+    const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    // Recalcule `days` cote SERVEUR depuis start/end : le validator garantit
+    // que start/end sont YYYY-MM-DD et que end >= start (cf. createLeaveSchema).
+    // Faire confiance au client permettait de gonfler artificiellement la
+    // balance de conges ("j'ai pris 1 jour mais je declare 0.5").
+    const { startDate, endDate } = req.body as { startDate: string; endDate: string };
+    const start = Date.parse(`${startDate}T00:00:00Z`);
+    const end = Date.parse(`${endDate}T00:00:00Z`);
+    const days = Math.floor((end - start) / 86400_000) + 1;
+    const leave = await leaveRepository.create({ ...req.body, days });
     res.status(201).json({ success: true, data: leave });
   },
   async approve(req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      return;
+    }
     const leave = await leaveRepository.updateStatus(req.params.id, 'approved', req.user!.userId);
     res.json({ success: true, data: leave });
   },
   async reject(req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      return;
+    }
     const leave = await leaveRepository.updateStatus(req.params.id, 'rejected', req.user!.userId);
     res.json({ success: true, data: leave });
   },
   async balance(req: AuthRequest, res: Response) {
     const { employeeId, year } = req.query as Record<string, string>;
+    if (employeeId) {
+      const scoped = await loadEmployeeInScope(employeeId, req.user!.storeId);
+      if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    }
     const balance = await leaveRepository.balanceByEmployee(employeeId, parseInt(year));
     res.json({ success: true, data: balance });
   },
   async remove(req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      return;
+    }
     await leaveRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
@@ -261,6 +413,7 @@ export const payrollController = {
       month: month ? parseInt(month) : undefined,
       year: year ? parseInt(year) : undefined,
       employeeId,
+      storeId: req.user!.storeId,
     });
     res.json({ success: true, data: payrolls });
   },
@@ -269,12 +422,10 @@ export const payrollController = {
     const payrolls = await payrollRepository.generate(month, year);
     res.json({ success: true, data: payrolls });
   },
-  async update(req: AuthRequest, res: Response) {
-    const payroll = await payrollRepository.update(req.params.id, req.body);
-    res.json({ success: true, data: payroll });
-  },
   /** Annule un paiement mensuel : supprime la sortie de caisse + reverse les retenues. */
   async unmarkPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
     try {
       const row = await payrollRepository.unmarkPaid(req.params.id);
       if (!row) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
@@ -284,12 +435,25 @@ export const payrollController = {
     }
   },
   async markPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
     const { paymentMethod, advanceDeduction } = req.body;
     try {
       const payroll = await payrollRepository.markPaid(
         req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
         parseFloat(String(advanceDeduction ?? 0)) || 0
       );
+      res.json({ success: true, data: payroll });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+  async update(req: AuthRequest, res: Response) {
+    const scoped = await loadPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
+    try {
+      const payroll = await payrollRepository.update(req.params.id, req.body);
+      if (!payroll) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
       res.json({ success: true, data: payroll });
     } catch (err) {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });

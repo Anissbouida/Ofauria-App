@@ -3,6 +3,22 @@ import { paymentRepository } from './accounting.repository.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
+/**
+ * Vue interne : compte les repayments d'avance rattaches a un employe.
+ * Utilise par hardDelete/countDependencies : les retenues d'avance sont
+ * bloquantes (il faut annuler la paie qui les a generees d'abord).
+ */
+async function countRepaymentsForEmployee(id: string): Promise<number> {
+  const r = await db.query(
+    `SELECT COUNT(*)::int AS n
+       FROM salary_advance_repayments sr
+       JOIN salary_advances a ON a.id = sr.advance_id
+      WHERE a.employee_id = $1`,
+    [id]
+  );
+  return parseInt(String(r.rows[0]?.n || '0'), 10) || 0;
+}
+
 export const employeeRepository = {
   async findAll(storeId?: string) {
     const where = storeId ? 'WHERE store_id = $1' : '';
@@ -24,25 +40,27 @@ export const employeeRepository = {
     emergencyContactName?: string; emergencyContactPhone?: string; notes?: string;
     storeId?: string; defaultShiftCode?: string;
     payFrequency?: string; weeklySalary?: number;
+    createdBy?: string;
   }) {
     const result = await db.query(
       `INSERT INTO employees (user_id, first_name, last_name, role, phone, monthly_salary, hire_date,
         cin, address, city, birth_date, cnss_number, contract_type, contract_start, contract_end,
         emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code,
-        pay_frequency, weekly_salary)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+        pay_frequency, weekly_salary, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$23) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
        data.phone || null, data.monthlySalary || null, data.hireDate,
        data.cin || null, data.address || null, data.city || null, data.birthDate || null,
        data.cnssNumber || null, data.contractType || 'cdi', data.contractStart || null, data.contractEnd || null,
        data.emergencyContactName || null, data.emergencyContactPhone || null, data.notes || null,
        data.storeId || null, data.defaultShiftCode || null,
-       data.payFrequency || 'monthly', data.weeklySalary || null]
+       data.payFrequency || 'monthly', data.weeklySalary || null,
+       data.createdBy || null]
     );
     return result.rows[0];
   },
 
-  async update(id: string, data: Record<string, unknown>) {
+  async update(id: string, data: Record<string, unknown>, updatedBy?: string) {
     const mapping: Record<string, string> = {
       firstName: 'first_name', lastName: 'last_name', role: 'role',
       phone: 'phone', monthlySalary: 'monthly_salary', isActive: 'is_active',
@@ -70,6 +88,9 @@ export const employeeRepository = {
       if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
     }
     if (fields.length === 0) return this.findById(id);
+    // updated_by : trace QUI a fait le changement (utilise par le trigger
+    // log_employee_salary_change pour alimenter employee_salary_history).
+    if (updatedBy) { fields.push(`updated_by = $${i++}`); values.push(updatedBy); }
     values.push(id);
     const result = await db.query(`UPDATE employees SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
     return result.rows[0];
@@ -90,43 +111,68 @@ export const employeeRepository = {
    * Retourne le nombre de lignes supprimees par table pour audit/log.
    */
   async hardDelete(id: string): Promise<{
-    payments: number; payroll: number; leaves: number; attendance: number;
-    schedules: number; productionTempsTravail: number;
-    salesUnlinked: number; employee: number;
+    payments: number; payroll: number; weeklyPayroll: number; leaves: number;
+    attendance: number; schedules: number; salaryAdvances: number;
+    productionTempsTravail: number; salesUnlinked: number; employee: number;
   }> {
+    // ─── Pre-validation HORS transaction ───
+    // 1. Refuse si des retenues d'avance existent : l'admin doit d'abord
+    //    annuler les paies concernees (sinon la suppression laisserait des
+    //    ecritures 6171/3431 orphelines).
+    const repayments = await countRepaymentsForEmployee(id);
+    if (repayments > 0) {
+      throw new Error(`${repayments} retenue(s) d'avance existent : annulez les paies concernees avant la suppression definitive.`);
+    }
+
+    // 2. Recupere la liste des paiements a supprimer AVANT d'ouvrir la
+    //    transaction : chaque paymentRepository.delete ouvre sa propre
+    //    transaction (reverse ledger + resync facture). On les supprime
+    //    un par un et on compte, puis on fait le reste dans une transaction
+    //    unique.
+    const paymentIdsRes = await db.query(
+      `SELECT id FROM payments WHERE employee_id = $1`, [id]
+    );
+    let paymentsDeleted = 0;
+    for (const p of paymentIdsRes.rows) {
+      // Si un DELETE echoue (periode close, contrainte), on stoppe : l'admin
+      // resout d'abord (ex. reouvrir la periode) et rejoue le hard delete.
+      // Les paiements deja supprimes le restent — mais aucun autre etat
+      // n'a bouge, l'operation est reprenable.
+      await paymentRepository.delete(p.id);
+      paymentsDeleted++;
+    }
+
+    // ─── Cascade transactionnelle sur le reste ───
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
-      // Verrouille la ligne pour eviter une suppression concurrente
       const exists = await client.query('SELECT id FROM employees WHERE id = $1 FOR UPDATE', [id]);
       if (!exists.rows[0]) {
         await client.query('ROLLBACK');
         throw new Error('Employe introuvable');
       }
 
-      // Strategie cascade :
-      // - DELETE pour les donnees 1:1 employe (paie, presence, paiements, conges, planning, temps)
-      // - UPDATE NULL pour les ventes (preserve le chiffre d'affaires, perd seulement
-      //   l'attribution employe — destruction des sales = destruction historique CA)
-      // - employee_commissions: ON DELETE CASCADE automatique au niveau DB
+      // - DELETE pour les donnees 1:1 employe
+      // - UPDATE NULL pour les ventes (preserve le CA)
+      // - salary_advance_repayments : deja verifie count=0 ci-dessus
+      // - employee_commissions : ON DELETE CASCADE au niveau DB
       const tryQuery = async (sql: string, label: string): Promise<number> => {
         try {
           const r = await client.query(sql, [id]);
           return r.rowCount || 0;
         } catch (e) {
           const code = (e as { code?: string }).code;
-          if (code === '42P01') {
-            // Table absente sur cet environnement — on ignore
-            return 0;
-          }
-          // Toute autre erreur (FK supplementaire, contrainte) annule la transaction
+          if (code === '42P01') return 0; // table absente sur cet env
           throw new Error(`${label}: ${(e as Error).message}`);
         }
       };
 
-      const payments = await tryQuery('DELETE FROM payments WHERE employee_id = $1', 'payments');
+      // Order : enfants avant parents. Weekly payroll et salary_advances
+      // etaient OUBLIES avant P1.4 -> FK error sur employe hebdo/avec avance.
       const payroll = await tryQuery('DELETE FROM payroll WHERE employee_id = $1', 'payroll');
+      const weeklyPayroll = await tryQuery('DELETE FROM weekly_payroll WHERE employee_id = $1', 'weekly_payroll');
+      const salaryAdvances = await tryQuery('DELETE FROM salary_advances WHERE employee_id = $1', 'salary_advances');
       const leaves = await tryQuery('DELETE FROM leaves WHERE employee_id = $1', 'leaves');
       const attendance = await tryQuery('DELETE FROM attendance WHERE employee_id = $1', 'attendance');
       const schedules = await tryQuery('DELETE FROM schedules WHERE employee_id = $1', 'schedules');
@@ -134,7 +180,6 @@ export const employeeRepository = {
         'DELETE FROM production_temps_travail WHERE employee_id = $1',
         'production_temps_travail'
       );
-      // Ventes : on NULL le lien plutot que de detruire la vente
       const salesUnlinked = await tryQuery(
         'UPDATE sales SET employee_id = NULL WHERE employee_id = $1',
         'sales'
@@ -145,8 +190,8 @@ export const employeeRepository = {
       await client.query('COMMIT');
 
       return {
-        payments, payroll, leaves, attendance, schedules,
-        productionTempsTravail, salesUnlinked,
+        payments: paymentsDeleted, payroll, weeklyPayroll, leaves, attendance,
+        schedules, salaryAdvances, productionTempsTravail, salesUnlinked,
         employee: empResult.rowCount || 0,
       };
     } catch (err) {
@@ -162,8 +207,10 @@ export const employeeRepository = {
    * delete supprimerait avant que l'admin confirme).
    */
   async countDependencies(id: string): Promise<{
-    payments: number; payroll: number; leaves: number; attendance: number;
-    schedules: number; productionTempsTravail: number; sales: number;
+    payments: number; payroll: number; weeklyPayroll: number; leaves: number;
+    attendance: number; schedules: number; salaryAdvances: number;
+    salaryAdvanceRepayments: number;
+    productionTempsTravail: number; sales: number;
   }> {
     const q = async (sql: string): Promise<number> => {
       try {
@@ -174,24 +221,38 @@ export const employeeRepository = {
         throw e;
       }
     };
-    const [payments, payroll, leaves, attendance, schedules, productionTempsTravail, sales] = await Promise.all([
+    // Weekly payroll, salary_advances et repayments etaient absents avant P1.4.
+    const [
+      payments, payroll, weeklyPayroll, leaves, attendance, schedules,
+      salaryAdvances, salaryAdvanceRepayments,
+      productionTempsTravail, sales,
+    ] = await Promise.all([
       q('SELECT COUNT(*)::int AS n FROM payments WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM payroll WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM weekly_payroll WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM leaves WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM attendance WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM schedules WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM salary_advances WHERE employee_id = $1'),
+      q(`SELECT COUNT(*)::int AS n FROM salary_advance_repayments sr
+           JOIN salary_advances a ON a.id = sr.advance_id WHERE a.employee_id = $1`),
       q('SELECT COUNT(*)::int AS n FROM production_temps_travail WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM sales WHERE employee_id = $1'),
     ]);
-    return { payments, payroll, leaves, attendance, schedules, productionTempsTravail, sales };
+    return {
+      payments, payroll, weeklyPayroll, leaves, attendance, schedules,
+      salaryAdvances, salaryAdvanceRepayments, productionTempsTravail, sales,
+    };
   },
 };
 
 export const scheduleRepository = {
-  async findByDateRange(startDate: string, endDate: string, employeeId?: string) {
+  async findByDateRange(startDate: string, endDate: string, employeeId?: string, storeId?: string) {
     const conditions = ['s.date BETWEEN $1 AND $2'];
     const values: unknown[] = [startDate, endDate];
-    if (employeeId) { conditions.push('s.employee_id = $3'); values.push(employeeId); }
+    let i = 3;
+    if (employeeId) { conditions.push(`s.employee_id = $${i++}`); values.push(employeeId); }
+    if (storeId) { conditions.push(`(e.store_id = $${i++} OR e.store_id IS NULL)`); values.push(storeId); }
 
     const result = await db.query(
       `SELECT s.*, e.first_name, e.last_name, e.role as employee_role
@@ -466,10 +527,14 @@ export const scheduleRepository = {
 };
 
 export const attendanceRepository = {
-  async findByDateRange(startDate: string, endDate: string, employeeId?: string) {
+  async findByDateRange(startDate: string, endDate: string, employeeId?: string, storeId?: string) {
     const conditions = ['a.date BETWEEN $1 AND $2'];
     const values: unknown[] = [startDate, endDate];
-    if (employeeId) { conditions.push('a.employee_id = $3'); values.push(employeeId); }
+    let i = 3;
+    if (employeeId) { conditions.push(`a.employee_id = $${i++}`); values.push(employeeId); }
+    // Scoping multi-store : un manager du magasin A ne voit pas les pointages
+    // des employes du magasin B. Employes NULL restent visibles (globaux).
+    if (storeId) { conditions.push(`(e.store_id = $${i++} OR e.store_id IS NULL)`); values.push(storeId); }
     // Jointure schedules pour ramener le shift planifie : permet a l'UI Pointage
     // d'afficher "Planifie: Vente 7h-14h" et de distinguer presence attendue/reelle.
     const result = await db.query(
@@ -598,7 +663,7 @@ export const attendanceRepository = {
 };
 
 export const leaveRepository = {
-  async findAll(params: { employeeId?: string; status?: string; year?: number; activeOn?: string }) {
+  async findAll(params: { employeeId?: string; status?: string; year?: number; activeOn?: string; storeId?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -613,6 +678,8 @@ export const leaveRepository = {
       values.push(params.activeOn);
       i++;
     }
+    // Scoping multi-store.
+    if (params.storeId) { conditions.push(`(e.store_id = $${i++} OR e.store_id IS NULL)`); values.push(params.storeId); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT l.*, e.first_name, e.last_name, e.role as employee_role,
@@ -664,13 +731,16 @@ export const leaveRepository = {
 };
 
 export const payrollRepository = {
-  async findAll(params: { month?: number; year?: number; employeeId?: string }) {
+  async findAll(params: { month?: number; year?: number; employeeId?: string; storeId?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
     if (params.month) { conditions.push(`p.month = $${i++}`); values.push(params.month); }
     if (params.year) { conditions.push(`p.year = $${i++}`); values.push(params.year); }
     if (params.employeeId) { conditions.push(`p.employee_id = $${i++}`); values.push(params.employeeId); }
+    // Scoping multi-store : le manager du magasin A ne voit que SES bulletins
+    // (employes NULL = globaux, restent visibles pour compatibilite).
+    if (params.storeId) { conditions.push(`(e.store_id = $${i++} OR e.store_id IS NULL)`); values.push(params.storeId); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
       `SELECT p.*, e.first_name, e.last_name, e.role as employee_role, e.monthly_salary, e.seniority_years, e.nb_dependents
@@ -893,10 +963,32 @@ export const payrollRepository = {
     return results;
   },
 
+  /**
+   * Edition d'un bulletin (primes/retenues/notes).
+   *
+   * INTERDIT sur un bulletin paye : le net qui a servi a la sortie de caisse
+   * doit rester intangible. Toute correction sur une paie payee doit passer
+   * par unmarkPaid -> update -> markPaid.
+   *
+   * Champs paid/paidAt/paymentMethod SUPPRIMES du mapping : le seul chemin
+   * legitime pour marquer paye est POST /payroll/:id/pay (createur d'ecriture
+   * comptable + retenue d'avance). Autoriser paid via PUT permettrait de
+   * marquer un bulletin "paye" sans sortie de caisse ni retenue.
+   *
+   * Recalcul du net : formule alignee sur generate() (grossSalary - cotisations).
+   * L'ancienne omettait seniority_bonus, extra_shift_amount, amo_employee,
+   * cimr_employee, ir_net -> modifier une prime corrompait le net.
+   */
   async update(id: string, data: Record<string, unknown>) {
+    // Verrou : refuse toute modification d'un bulletin deja paye.
+    const current = await db.query('SELECT paid FROM payroll WHERE id = $1', [id]);
+    if (!current.rows[0]) return null;
+    if (current.rows[0].paid) {
+      throw new Error('Bulletin deja paye : annulez le paiement avant de modifier (unmarkPaid puis re-generation ou re-edition).');
+    }
+
     const mapping: Record<string, string> = {
       bonuses: 'bonuses', deductions: 'deductions', notes: 'notes',
-      paid: 'paid', paidAt: 'paid_at', paymentMethod: 'payment_method',
     };
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -905,9 +997,17 @@ export const payrollRepository = {
       if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
     }
     if (fields.length === 0) return null;
-    // Recalculate net salary if bonuses or deductions changed
+    // Formule complete alignee sur generate() : brut - cotisations sociales - IR net.
+    // Bonuses est un ajustement manuel positif ; deductions inclut l'absence
+    // deduction calculee par generate (peut etre surchargee ici).
     if (data.bonuses !== undefined || data.deductions !== undefined) {
-      fields.push(`net_salary = base_salary + overtime_amount + COALESCE($${i}::numeric, bonuses) - COALESCE($${i + 1}::numeric, deductions) - cnss_employee`);
+      fields.push(
+        `net_salary = base_salary + COALESCE(seniority_bonus, 0) + COALESCE(overtime_amount, 0)`
+        + ` + COALESCE(extra_shift_amount, 0)`
+        + ` + COALESCE($${i}::numeric, bonuses, 0) - COALESCE($${i + 1}::numeric, deductions, 0)`
+        + ` - COALESCE(cnss_employee, 0) - COALESCE(amo_employee, 0)`
+        + ` - COALESCE(cimr_employee, 0) - COALESCE(ir_net, 0)`
+      );
       values.push(data.bonuses ?? null, data.deductions ?? null);
       i += 2;
     }
@@ -917,7 +1017,11 @@ export const payrollRepository = {
   },
 
   async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
-    // Idempotence : un double-clic ne doit pas recreer paiement + retenues.
+    // Lecture pre-validation (net + solde d'avances). On travaille sur un
+    // snapshot : la seule chose qui compte pour l'atomicite, c'est l'UPDATE
+    // conditionnel qui suit (voir plus bas). Si un autre process valide la
+    // paie entre ce SELECT et le UPDATE, notre UPDATE ne matchera pas (WHERE
+    // paid = false) et on ressort proprement.
     const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
     const current = existing.rows[0];
     if (!current) return null;
@@ -933,11 +1037,23 @@ export const payrollRepository = {
       }
     }
 
-    const result = await db.query(
-      `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1, advance_deduction = $2 WHERE id = $3 RETURNING *`,
-      [paymentMethod, deduction, id]
+    // ─── Verrou d'idempotence atomique ───
+    // WHERE paid = false RETURNING : PostgreSQL prend un verrou de ligne sur
+    // le UPDATE ; deux requetes concurrentes (double-clic) : la premiere passe,
+    // la seconde ne matche rien -> rowCount 0 -> on ressort avec l'etat actuel.
+    // Elimine la course qui existait entre le SELECT ci-dessus et l'UPDATE.
+    // paid_by (mig 239) : trace QUI a valide le paiement (conformite audit).
+    const claim = await db.query(
+      `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1,
+                          advance_deduction = $2, paid_by = $3, updated_by = $3
+         WHERE id = $4 AND paid = false RETURNING *`,
+      [paymentMethod, deduction, createdBy || null, id]
     );
-    const payroll = result.rows[0];
+    if (claim.rowCount === 0) {
+      const now = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
+      return now.rows[0] || null;
+    }
+    const payroll = claim.rows[0];
 
     // Get employee info for the accounting entry description
     const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [payroll.employee_id]);
@@ -950,14 +1066,15 @@ export const payrollRepository = {
 
     // Decaissement reel = net moins la retenue d'avance (le cash de l'avance
     // est deja sorti a l'octroi — ne le deduire qu'UNE fois de la caisse).
-    // Si la creation du paiement ou la retenue echoue, on ANNULE le marquage
-    // paye : sinon le bulletin resterait "Paye" sans aucune sortie de caisse
-    // (invisible en Caisse/Charges) et le re-clic serait bloque par
-    // l'idempotence.
+    // Si une etape (paiement OU retenue) echoue, on annule TOUT :
+    //  - la sortie de caisse deja creee est supprimee (paymentRepository.delete
+    //    reverse aussi l'ecriture comptable) ;
+    //  - le flag paid revient a false pour permettre un nouvel essai.
+    let createdPaymentId: string | null = null;
     try {
       const cashOut = Math.round((net - deduction) * 100) / 100;
       if (cashOut > 0) {
-        await paymentRepository.create({
+        const payment = await paymentRepository.create({
           // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
           reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
           type: 'salary',
@@ -971,10 +1088,11 @@ export const payrollRepository = {
           createdBy: createdBy || payroll.employee_id,
           storeId,
         });
+        createdPaymentId = payment?.id ?? null;
       }
 
       if (deduction > 0) {
-        await salaryAdvanceRepository.applyDeduction({
+        const applied = await salaryAdvanceRepository.applyDeduction({
           employeeId: payroll.employee_id,
           amount: deduction,
           payrollId: id,
@@ -982,8 +1100,26 @@ export const payrollRepository = {
           storeId,
           label: `${empName} ${payroll.month}/${payroll.year}`,
         });
+        // Course avec une autre paie qui consomme le solde entre validation
+        // et imputation : le cash est deja sorti pour la valeur pleine mais
+        // la creance 3431 n'est eteinte que pour `applied`. Refuse plutot que
+        // laisser une divergence silencieuse ; le cleanup ci-dessous annule
+        // tout et l'operateur retente avec la bonne retenue.
+        if (Math.abs(applied - deduction) > 0.005) {
+          throw new Error(
+            `Retenue partielle : ${applied.toFixed(2)} DH imputes sur ${deduction.toFixed(2)} DH demandes ` +
+            `(solde d'avances insuffisant, probablement une paie concurrente).`
+          );
+        }
       }
     } catch (err) {
+      if (createdPaymentId) {
+        try { await paymentRepository.delete(createdPaymentId); }
+        catch (cleanupErr) {
+          // eslint-disable-next-line no-console
+          console.error('[payroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
+        }
+      }
       await db.query(
         `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
         [id]
@@ -1001,11 +1137,25 @@ export const payrollRepository = {
    * les retenues d'avance (solde re-credite), reset les flags.
    */
   async unmarkPaid(id: string) {
-    const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
-    const p = existing.rows[0];
-    if (!p) return null;
+    // Idempotence : deux annulations concurrentes ne doivent pas supprimer
+    // deux fois les paiements. On revendique le passage a paid=false par un
+    // UPDATE conditionnel ; si un autre process a deja annule, on ressort.
+    const claim = await db.query(
+      `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
+         WHERE id = $1 AND paid = true RETURNING *`,
+      [id]
+    );
+    if (claim.rowCount === 0) {
+      // Soit inexistant, soit deja non paye : retourne l'etat actuel.
+      const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
+      return existing.rows[0] || null;
+    }
+    const p = claim.rows[0];
 
-    if (p.paid) {
+    // Cleanup : sortie caisse + retenues. Si un echec survient (periode close
+    // par ex.), on RESTAURE le flag paid=true pour ne pas laisser une ligne
+    // "non payee" avec un paiement en base.
+    try {
       const payments = await db.query(
         `SELECT id FROM payments WHERE type = 'salary' AND employee_id = $1 AND reference LIKE $2`,
         [p.employee_id, `SAL-${p.month}/${p.year}-%`]
@@ -1014,13 +1164,16 @@ export const payrollRepository = {
         await paymentRepository.delete(pay.id);
       }
       await salaryAdvanceRepository.reverseRepayments({ payrollId: id });
+    } catch (err) {
+      await db.query(
+        `UPDATE payroll SET paid = true, paid_at = $1, payment_method = $2, advance_deduction = $3
+           WHERE id = $4`,
+        [p.paid_at, p.payment_method, p.advance_deduction, id]
+      );
+      throw new Error(`Annulation impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
-    const r = await db.query(
-      `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
-         WHERE id = $1 RETURNING *`,
-      [id]
-    );
+    const r = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
     return r.rows[0] || null;
   },
 };

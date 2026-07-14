@@ -11,26 +11,39 @@ import { getLocalISODate } from '../utils/timezone.js';
  * systeme calcule le net a payer depuis le pointage de la semaine, puis
  * il coche les employes au fur et a mesure des paiements.
  *
- * Convention salaire (validee metier 07/2026) :
+ * Convention salaire (regle metier officielle — B, validee 07/2026,
+ * commit 65d0c16) :
  *   dailyRate = weekly_salary / 7
- *   Le repos hebdomadaire est PAYE comme une journee de travail et il est
- *   AUTOMATIQUE : +1 jour paye des que l'employe a travaille dans la semaine,
- *   qu'il soit pointe 'repos' ou pas. Consequences :
- *     - 6 jours travailles (+ repos pris)      -> 7/7 = salaire complet
- *     - 7 jours travailles (repos non pris)    -> (7+1)/7 = salaire + 1 jour
- *       (le repos reste paye + la journee travaillee en plus)
- *     - 4 travailles + 2 absents               -> (4+1)/7
- *   Les jours pointes 'repos' ne sont PAS comptes comme travailles (le +1
+ *   Le repos hebdomadaire est PAYE PROPORTIONNELLEMENT aux jours travailles :
+ *     reposDays = 0                        si workedDays < 4  (seuil metier)
+ *     reposDays = min(workedDays / 6, 1)   sinon
+ *   Ainsi 6 jours travailles = 1 j de repos paye -> 7/7 = salaire complet ;
+ *   4 jours travailles = 0,67 j paye -> 4,67 payes ;
+ *   moins de 4 jours = pas de repos paye.
+ *   Les jours pointes 'repos' ne sont PAS comptes comme travailles (le +/-
  *   automatique les couvre — sinon double comptage).
- *   baseAmount = dailyRate × paidDays
+ *   baseAmount = dailyRate × paidDays  (paidDays = workedDays + reposDays)
  *   overtimeHours = SUM(attendance.overtime_minutes) / 60
  *   overtimeAmount = overtimeHours × (dailyRate / 8) × 1.25
  *   netAmount = baseAmount + overtimeAmount
+ *
+ * Regle centrale : cf. reposDaysFor() ci-dessous. AUCUN recalcul cote
+ * frontend — la valeur est renvoyee par le serveur dans les colonnes
+ * `paid_days` / `repos_days` de la vue list().
  *
  * Note : pas de CNSS/IR ici (les employes hebdo sont typiquement
  * journaliers/extras, paye au noir ou en CDD courte duree). Si besoin,
  * cumuler dans le futur via une logique similaire au mensuel.
  */
+
+/**
+ * Repos paye proportionnel — regle metier officielle (voir docblock ci-dessus).
+ * SEUL point de verite : ne PAS reimplementer cote frontend ni ailleurs.
+ */
+export function reposDaysFor(workedDays: number): number {
+  if (workedDays < 4) return 0;
+  return Math.min(workedDays / 6, 1);
+}
 /**
  * pg renvoie les colonnes DATE comme objets Date JS (pas de type parser
  * custom) : formatte en 'YYYY-MM-DD' local sans passer par toISOString
@@ -83,7 +96,18 @@ export const weeklyPayrollRepository = {
        ORDER BY e.last_name, e.first_name`,
       storeId ? [weekStart, storeId] : [weekStart]
     );
-    return result.rows;
+    // Enrichit avec le repos paye et les jours payes calcules SERVEUR.
+    // Le frontend affiche ces valeurs telles quelles — plus aucun recalcul
+    // client (elimine les divergences repos paye / net).
+    return result.rows.map((row: Record<string, unknown>) => {
+      const wd = parseFloat(String(row.worked_days ?? 0));
+      const repos = Number.isFinite(wd) ? reposDaysFor(wd) : 0;
+      return {
+        ...row,
+        repos_days: Math.round(repos * 100) / 100,
+        paid_days: Math.round((wd + repos) * 100) / 100,
+      };
+    });
   },
 
   /**
@@ -132,15 +156,8 @@ export const weeklyPayrollRepository = {
       const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days;
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
-      // Repos hebdomadaire paye PROPORTIONNELLEMENT aux jours travailles :
-      // une semaine complete = 6 jours travailles -> 1 jour de repos entier.
-      // Donc repos = jours travailles / 6, plafonne a 1 jour.
-      // Regle : moins de 4 jours travailles -> pas de repos paye.
-      //   6 j travailles -> repos 1   -> 7 payes = salaire complet ;
-      //   4 j travailles -> repos 0.67 -> 4.67 payes ;
-      //   3 j travailles -> repos 0   -> 3 payes (pas de repos) ;
-      //   7 j (repos non pris) -> repos 1 (plafond) -> 8 payes = salaire + 1 j.
-      const reposDays = workedDays < 4 ? 0 : Math.min(workedDays / 6, 1);
+      // Repos hebdomadaire paye — regle metier centralisee (voir docblock).
+      const reposDays = reposDaysFor(workedDays);
       const paidDays = workedDays + reposDays;
       const baseAmount = r2(dailyRate * paidDays);
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
@@ -179,6 +196,9 @@ export const weeklyPayrollRepository = {
    * Idempotent : si deja paye, retourne la ligne sans recreer l'ecriture.
    */
   async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
+    // Pre-validation net + solde d'avances (voir employee.repository.ts:markPaid
+    // pour le raisonnement complet). L'atomicite reelle est portee par le
+    // UPDATE conditionnel qui suit.
     const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
     const row = existing.rows[0];
     if (!row) return null;
@@ -194,12 +214,20 @@ export const weeklyPayrollRepository = {
       }
     }
 
-    const r = await db.query(
-      `UPDATE weekly_payroll SET paid = true, paid_at = NOW(), payment_method = $1, advance_deduction = $2
-         WHERE id = $3 RETURNING *`,
-      [paymentMethod, deduction, id]
+    // Verrou d'idempotence atomique : double-clic -> seule la 1re requete
+    // matche paid=false, la 2e reprend l'etat courant sans re-payer.
+    // paid_by (mig 239) : trace QUI a valide le paiement (conformite audit).
+    const claim = await db.query(
+      `UPDATE weekly_payroll SET paid = true, paid_at = NOW(), payment_method = $1,
+                                 advance_deduction = $2, paid_by = $3, updated_by = $3
+         WHERE id = $4 AND paid = false RETURNING *`,
+      [paymentMethod, deduction, createdBy || null, id]
     );
-    const wp = r.rows[0];
+    if (claim.rowCount === 0) {
+      const now = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
+      return now.rows[0] || null;
+    }
+    const wp = claim.rows[0];
 
     // Recupere infos employe pour la description comptable
     const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [wp.employee_id]);
@@ -210,13 +238,15 @@ export const weeklyPayrollRepository = {
 
     // Decaissement reel = net moins la retenue (le cash de l'avance est deja
     // sorti a l'octroi — une seule sortie caisse au total).
-    // Echec paiement/retenue -> on annule le marquage paye (sinon ligne
-    // "Payee" sans sortie de caisse, invisible en Caisse/Charges).
+    // Rollback complet en cas d'echec : supprime le paiement deja cree + reset
+    // du flag paid. Verifie aussi le retour d'applyDeduction pour detecter une
+    // retenue partielle (course avec une paie concurrente).
+    let createdPaymentId: string | null = null;
     try {
       const weekStartStr = toDateStr(wp.week_start);
       const cashOut = Math.round((net - deduction) * 100) / 100;
       if (cashOut > 0) {
-        await paymentRepository.create({
+        const payment = await paymentRepository.create({
           // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
           reference: `SAL-S${weekStartStr}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
           type: 'salary',
@@ -230,10 +260,11 @@ export const weeklyPayrollRepository = {
           createdBy: createdBy || wp.employee_id,
           storeId,
         });
+        createdPaymentId = payment?.id ?? null;
       }
 
       if (deduction > 0) {
-        await salaryAdvanceRepository.applyDeduction({
+        const applied = await salaryAdvanceRepository.applyDeduction({
           employeeId: wp.employee_id as string,
           amount: deduction,
           weeklyPayrollId: id,
@@ -241,8 +272,21 @@ export const weeklyPayrollRepository = {
           storeId,
           label: `${empName} semaine du ${weekStartStr}`,
         });
+        if (Math.abs(applied - deduction) > 0.005) {
+          throw new Error(
+            `Retenue partielle : ${applied.toFixed(2)} DH imputes sur ${deduction.toFixed(2)} DH demandes ` +
+            `(solde d'avances insuffisant, probablement une paie concurrente).`
+          );
+        }
       }
     } catch (err) {
+      if (createdPaymentId) {
+        try { await paymentRepository.delete(createdPaymentId); }
+        catch (cleanupErr) {
+          // eslint-disable-next-line no-console
+          console.error('[weeklyPayroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
+        }
+      }
       await db.query(
         `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
         [id]
@@ -262,11 +306,19 @@ export const weeklyPayrollRepository = {
    *  - reset les flags paid/paid_at/payment_method/advance_deduction.
    */
   async unmarkPaid(id: string) {
-    const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
-    const wp = existing.rows[0];
-    if (!wp) return null;
+    // Idempotence : UPDATE conditionnel + restauration si le cleanup echoue.
+    const claim = await db.query(
+      `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
+         WHERE id = $1 AND paid = true RETURNING *`,
+      [id]
+    );
+    if (claim.rowCount === 0) {
+      const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
+      return existing.rows[0] || null;
+    }
+    const wp = claim.rows[0];
 
-    if (wp.paid) {
+    try {
       const weekStartStr = toDateStr(wp.week_start);
       const payments = await db.query(
         `SELECT id FROM payments WHERE type = 'salary' AND employee_id = $1 AND reference LIKE $2`,
@@ -276,22 +328,38 @@ export const weeklyPayrollRepository = {
         await paymentRepository.delete(p.id);
       }
       await salaryAdvanceRepository.reverseRepayments({ weeklyPayrollId: id });
+    } catch (err) {
+      await db.query(
+        `UPDATE weekly_payroll SET paid = true, paid_at = $1, payment_method = $2, advance_deduction = $3
+           WHERE id = $4`,
+        [wp.paid_at, wp.payment_method, wp.advance_deduction, id]
+      );
+      throw new Error(`Annulation impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
-    const r = await db.query(
-      `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
-         WHERE id = $1 RETURNING *`,
-      [id]
-    );
+    const r = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
     return r.rows[0] || null;
   },
 
+  /**
+   * Edition d'une ligne paie hebdo.
+   * - Bulletin paye : SEULES les notes sont modifiables (le net a servi a une
+   *   sortie de caisse — reecrire base_amount ou net_amount desynchroniserait
+   *   la compta).
+   * - Bulletin non paye : tout est modifiable (correction manuelle avant paie).
+   */
   async update(id: string, data: Record<string, unknown>) {
-    const mapping: Record<string, string> = {
+    const current = await db.query('SELECT paid FROM weekly_payroll WHERE id = $1', [id]);
+    if (!current.rows[0]) return null;
+    const isPaid = current.rows[0].paid === true;
+
+    const fullMapping: Record<string, string> = {
       baseAmount: 'base_amount', workedDays: 'worked_days', absentDays: 'absent_days',
       overtimeHours: 'overtime_hours', overtimeAmount: 'overtime_amount',
       netAmount: 'net_amount', notes: 'notes',
     };
+    const mapping = isPaid ? { notes: 'notes' } : fullMapping;
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
