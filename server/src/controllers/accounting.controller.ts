@@ -23,6 +23,31 @@ export const caisseController = {
     const data = await caisseRepository.getRegister(year, month, req.user!.storeId);
     res.json({ success: true, data });
   },
+
+  // Admin : fixe le « Report mois précédent » d'un mois (correction d'historique)
+  async saveReportOverride(req: AuthRequest, res: Response) {
+    const { year, month, cashNet, cardCumul, note } = req.body;
+    const y = parseInt(year); const m = parseInt(month);
+    if (!y || !m || m < 1 || m > 12) { res.status(400).json({ success: false, error: { message: 'year et month requis' } }); return; }
+    const cash = Number(cashNet); const card = Number(cardCumul);
+    if (!Number.isFinite(cash) || !Number.isFinite(card)) {
+      res.status(400).json({ success: false, error: { message: 'cashNet et cardCumul doivent etre des nombres' } }); return;
+    }
+    const row = await caisseRepository.saveBalanceOverride({
+      year: y, month: m, storeId: req.user!.storeId,
+      cashNet: cash, cardCumul: card, note, userId: req.user!.userId,
+    });
+    res.json({ success: true, data: row });
+  },
+
+  // Admin : supprime l'ajustement — le report redevient calcule
+  async deleteReportOverride(req: AuthRequest, res: Response) {
+    const year = parseInt(req.query.year as string);
+    const month = parseInt(req.query.month as string);
+    if (!year || !month) { res.status(400).json({ success: false, error: { message: 'year et month requis' } }); return; }
+    await caisseRepository.deleteBalanceOverride(year, month, req.user!.storeId);
+    res.json({ success: true, data: null });
+  },
 };
 
 export const supplierController = {

@@ -28,6 +28,9 @@ const invoiceUpload = multer({
 
 export const caisseRouter = Router();
 caisseRouter.get('/register', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), caisseController.register);
+// Ajustement du report mois précédent : admin uniquement
+caisseRouter.put('/report-override', authenticate, authorize(ROLES.ADMIN), caisseController.saveReportOverride);
+caisseRouter.delete('/report-override', authenticate, authorize(ROLES.ADMIN), caisseController.deleteReportOverride);
 
 export const suppliersRouter = Router();
 // Read access is granted to PRODUCTION roles too (chefs need to pick a supplier when creating purchase requests).

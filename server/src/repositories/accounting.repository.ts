@@ -102,9 +102,24 @@ export const caisseRepository = {
       params
     );
 
-    // Previous balance: payments before this month
-    const prevStoreFilter = storeId ? ' AND (p.store_id = $2 OR p.store_id IS NULL)' : '';
-    const prevParams = storeId ? [startDate, storeId] : [startDate];
+    // Ancre admin : la correction de report la plus recente <= 1er du mois.
+    // Si elle existe, le report = valeurs de l'ancre + flux entre l'ancre et
+    // le 1er du mois (fenetre vide si l'ancre est le mois affiche lui-meme).
+    const anchorRes = await db.query(
+      `SELECT TO_CHAR(effective_month, 'YYYY-MM-DD') as effective_month, cash_net, card_cumul, note
+       FROM caisse_balance_overrides
+       WHERE effective_month <= $1::date
+         AND ${storeId ? 'store_id = $2' : 'store_id IS NULL'}
+       ORDER BY effective_month DESC LIMIT 1`,
+      storeId ? [startDate, storeId] : [startDate]
+    );
+    const anchor = anchorRes.rows[0] || null;
+    // Borne basse des fenetres "historique avant le mois" (epoch si pas d'ancre)
+    const sinceDate = anchor ? anchor.effective_month : '1970-01-01';
+
+    // Previous balance: payments in [anchor, start of month)
+    const prevStoreFilter = storeId ? ' AND (p.store_id = $3 OR p.store_id IS NULL)' : '';
+    const prevParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
     // Solde reporte : meme logique tresorerie que la requete principale.
     // Cheques non encaisses exclus ; effective_date utilisee pour le filtre.
@@ -117,25 +132,27 @@ export const caisseRepository = {
        FROM payments p
        WHERE (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
          AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) < $1
+         AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) >= $2
          ${prevStoreFilter}`,
       prevParams
     );
 
-    // Previous balance: cash register sessions before this month (cashier declared amounts)
-    const prevStoreFilterS = storeId ? ' AND store_id = $2' : '';
-    const prevSessionParams = storeId ? [startDate, storeId] : [startDate];
+    // Previous balance: cash register sessions in [anchor, start of month)
+    const prevStoreFilterS = storeId ? ' AND store_id = $3' : '';
+    const prevSessionParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
     const prevSessions = await db.query(
       `SELECT COALESCE(SUM(actual_amount), 0) as cash_total
        FROM cash_register_sessions
        WHERE status = 'closed'
-         AND DATE(closed_at AT TIME ZONE '${tz}') < $1${prevStoreFilterS}`,
+         AND DATE(closed_at AT TIME ZONE '${tz}') < $1
+         AND DATE(closed_at AT TIME ZONE '${tz}') >= $2${prevStoreFilterS}`,
       prevSessionParams
     );
 
     // Previous sales totals (cash + card) from actual sales + saisies manuelles
-    const prevSalesFilterS = storeId ? ' AND store_id = $2' : '';
-    const prevSalesParams = storeId ? [startDate, storeId] : [startDate];
+    const prevSalesFilterS = storeId ? ' AND store_id = $3' : '';
+    const prevSalesParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
     const prevSales = await db.query(
       `SELECT
@@ -147,13 +164,14 @@ export const caisseRepository = {
            COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
          FROM sales
          WHERE payment_status IS DISTINCT FROM 'unpaid'
-           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1${prevSalesFilterS}
+           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1
+           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') >= $2${prevSalesFilterS}
          UNION ALL
          SELECT
            COALESCE(SUM(COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0)), 0) as cash_total,
            COALESCE(SUM(COALESCE(matin_carte_reel,0)+COALESCE(soir_carte_reel,0)), 0) as card_total
          FROM manual_shift_entries
-         WHERE entry_date < $1${prevSalesFilterS}
+         WHERE entry_date < $1 AND entry_date >= $2${prevSalesFilterS}
        ) combined`,
       prevSalesParams
     );
@@ -169,6 +187,8 @@ export const caisseRepository = {
     // Use session amounts when available, otherwise use cash sales
     // (for months without cash register sessions, cash caissière = cash système)
     const prevCash = prevSessionCash > 0 ? prevSessionCash : prevSalesCash;
+    const anchorCash = anchor ? parseFloat(anchor.cash_net) : 0;
+    const anchorCard = anchor ? parseFloat(anchor.card_cumul) : 0;
 
     // Detect discrepancies between session-reported cash and system cash sales
     const DISCREPANCY_THRESHOLD = 5; // DH — ignore rounding differences
@@ -194,10 +214,43 @@ export const caisseRepository = {
       sales: sales.rows,
       reconciliationAlerts,
       previousBalance: {
-        cashNet: cashEntries + prevCash - cashExits,
-        cardCumul: prevCardSales + bankEntries - bankExits,
+        cashNet: anchorCash + cashEntries + prevCash - cashExits,
+        cardCumul: anchorCard + prevCardSales + bankEntries - bankExits,
       },
+      // Ajustement exact du mois affiche (pour pre-remplir/supprimer cote UI) ;
+      // une ancre d'un mois anterieur influence le report sans etre renvoyee ici.
+      reportOverride: anchor && sinceDate === startDate
+        ? { cashNet: anchorCash, cardCumul: anchorCard, note: anchor.note }
+        : null,
     };
+  },
+
+  /** Fixe le report du mois (year/month) — upsert par (mois, magasin). */
+  async saveBalanceOverride(data: {
+    year: number; month: number; storeId?: string;
+    cashNet: number; cardCumul: number; note?: string; userId?: string;
+  }) {
+    const effectiveMonth = `${data.year}-${String(data.month).padStart(2, '0')}-01`;
+    const result = await db.query(
+      `INSERT INTO caisse_balance_overrides (effective_month, store_id, cash_net, card_cumul, note, created_by)
+       VALUES ($1, $2, $3::numeric, $4::numeric, $5, $6)
+       ON CONFLICT (effective_month, COALESCE(store_id, '00000000-0000-0000-0000-000000000000'::uuid))
+       DO UPDATE SET cash_net = EXCLUDED.cash_net, card_cumul = EXCLUDED.card_cumul,
+                     note = EXCLUDED.note, created_by = EXCLUDED.created_by, updated_at = NOW()
+       RETURNING *`,
+      [effectiveMonth, data.storeId || null, data.cashNet, data.cardCumul, data.note || null, data.userId || null]
+    );
+    return result.rows[0];
+  },
+
+  /** Supprime l'ajustement du mois — le report redevient calcule. */
+  async deleteBalanceOverride(year: number, month: number, storeId?: string) {
+    const effectiveMonth = `${year}-${String(month).padStart(2, '0')}-01`;
+    await db.query(
+      `DELETE FROM caisse_balance_overrides
+       WHERE effective_month = $1 AND ${storeId ? 'store_id = $2' : 'store_id IS NULL'}`,
+      storeId ? [effectiveMonth, storeId] : [effectiveMonth]
+    );
   },
 };
 

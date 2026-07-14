@@ -1559,10 +1559,13 @@ function PilotageTab() {
 /* Tresorerie pure : uniquement les entrees + solde cumule */
 function CaisseTab() {
   const now = new Date();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set());
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['caisse-register', year, month],
@@ -1646,17 +1649,38 @@ function CaisseTab() {
       {showImportModal && <CaisseImportModal onClose={() => setShowImportModal(false)} />}
 
       {/* Report line */}
-      {data && (data.previousBalance.cashNet !== 0 || data.previousBalance.cardCumul !== 0) && (
+      {data && (data.previousBalance.cashNet !== 0 || data.previousBalance.cardCumul !== 0 || isAdmin) && (
         <div className="odoo-alert warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <ArrowUpRight size={14} /> Report mois précédent
+            {data.reportOverride && (
+              <span className="odoo-tag odoo-tag-orange" title={data.reportOverride.note || 'Report fixé manuellement par un admin'}>
+                ajusté
+              </span>
+            )}
           </span>
-          <span style={{ display: 'inline-flex', gap: 16, fontSize: '0.75rem' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: '0.75rem' }}>
             <span>Cash: <strong>{n(data.previousBalance.cashNet)} DH</strong></span>
             <span>Carte: <strong>{n(data.previousBalance.cardCumul)} DH</strong></span>
             <span>Total: <strong>{n(data.previousBalance.cashNet + data.previousBalance.cardCumul)} DH</strong></span>
+            {isAdmin && (
+              <button onClick={() => setShowReportModal(true)} className="odoo-btn-secondary"
+                title="Modifier le report du mois précédent"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
+                <Pencil size={12} /> Modifier
+              </button>
+            )}
           </span>
         </div>
+      )}
+
+      {showReportModal && data && (
+        <ReportOverrideModal
+          year={year} month={month}
+          current={data.previousBalance}
+          override={data.reportOverride || null}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
 
       {/* Stat tiles */}
@@ -1866,6 +1890,109 @@ function CaisseTab() {
         </div>
       )}
     </>
+  );
+}
+
+/* Modale admin : fixer le « Report mois précédent » du mois affiché.
+   Le report des mois suivants repart de cette valeur + flux ulterieurs. */
+function ReportOverrideModal({ year, month, current, override, onClose }: {
+  year: number; month: number;
+  current: { cashNet: number; cardCumul: number };
+  override: { cashNet: number; cardCumul: number; note?: string | null } | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [cash, setCash] = useState(String(override ? override.cashNet : current.cashNet));
+  const [card, setCard] = useState(String(override ? override.cardCumul : current.cardCumul));
+  const [note, setNote] = useState(override?.note || '');
+
+  const saveMut = useMutation({
+    mutationFn: () => caisseApi.saveReportOverride({
+      year, month,
+      cashNet: parseFloat(cash.replace(',', '.')) || 0,
+      cardCumul: parseFloat(card.replace(',', '.')) || 0,
+      note: note.trim() || undefined,
+    }),
+    onSuccess: () => {
+      notify.success('Report du mois modifié');
+      qc.invalidateQueries({ queryKey: ['caisse-register'] });
+      onClose();
+    },
+    onError: () => notify.error('Erreur lors de l\'enregistrement du report'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => caisseApi.deleteReportOverride(year, month),
+    onSuccess: () => {
+      notify.success('Ajustement supprimé — report recalculé');
+      qc.invalidateQueries({ queryKey: ['caisse-register'] });
+      onClose();
+    },
+    onError: () => notify.error('Erreur lors de la suppression de l\'ajustement'),
+  });
+
+  const busy = saveMut.isPending || deleteMut.isPending;
+  const cashNum = parseFloat(cash.replace(',', '.')) || 0;
+  const cardNum = parseFloat(card.replace(',', '.')) || 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-orange-500" />
+            <h2 className="text-base font-semibold">Report mois précédent — {MONTH_NAMES[month - 1]} {year}</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Fermer">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            Fixe le solde reporté au 1er {MONTH_NAMES[month - 1].toLowerCase()} {year}.
+            Les mois suivants repartiront de cette valeur, augmentée des mouvements enregistrés depuis.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+              Cash (DH)
+              <input type="text" inputMode="decimal" value={cash} onChange={e => setCash(e.target.value)}
+                className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+              Carte (DH)
+              <input type="text" inputMode="decimal" value={card} onChange={e => setCard(e.target.value)}
+                className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
+            </label>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right' }}>
+            Total : <strong>{n(cashNum + cardNum)} DH</strong>
+          </div>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block' }}>
+            Motif (optionnel)
+            <input type="text" value={note} onChange={e => setNote(e.target.value)}
+              placeholder="Ex : reprise historique avant mise en prod"
+              className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4 }} />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between p-4 border-t">
+          {override ? (
+            <button onClick={() => deleteMut.mutate()} disabled={busy} className="odoo-btn-secondary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dc3545' }}>
+              <Trash2 size={13} /> Supprimer l'ajustement
+            </button>
+          ) : <span />}
+          <div style={{ display: 'inline-flex', gap: 8 }}>
+            <button onClick={onClose} disabled={busy} className="odoo-btn-secondary">Annuler</button>
+            <button onClick={() => saveMut.mutate()} disabled={busy} className="odoo-btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {busy && <Loader2 size={13} className="animate-spin" />} Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

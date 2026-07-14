@@ -3,6 +3,12 @@ import api from './client';
 export const caisseApi = {
   register: (year: number, month: number) =>
     api.get('/caisse/register', { params: { year, month } }).then(r => r.data.data),
+  /** Admin : fixe le report du mois affiché (cash + carte). */
+  saveReportOverride: (data: { year: number; month: number; cashNet: number; cardCumul: number; note?: string }) =>
+    api.put('/caisse/report-override', data).then(r => r.data.data),
+  /** Admin : supprime l'ajustement, le report redevient calculé. */
+  deleteReportOverride: (year: number, month: number) =>
+    api.delete('/caisse/report-override', { params: { year, month } }).then(r => r.data.data),
 };
 
 export const suppliersApi = {
