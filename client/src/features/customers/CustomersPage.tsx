@@ -851,19 +851,23 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           {/* Contact principal (entités morales) OU Identité (particulier) */}
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-              {isMoralEntity ? 'Contact principal' : 'Identité'}
+              {isMoralEntity ? 'Contact principal (optionnel)' : 'Identité'}
             </label>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prénom{isMoralEntity ? '' : ' *'}
+                  </label>
                   <input name="firstName" defaultValue={editing?.first_name as string}
-                    className={inputClass} required placeholder="Mohamed" />
+                    className={inputClass} required={!isMoralEntity} placeholder="Mohamed" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nom{isMoralEntity ? '' : ' *'}
+                  </label>
                   <input name="lastName" defaultValue={editing?.last_name as string}
-                    className={inputClass} required placeholder="Alami" />
+                    className={inputClass} required={!isMoralEntity} placeholder="Alami" />
                 </div>
               </div>
 

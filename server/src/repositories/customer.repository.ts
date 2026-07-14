@@ -73,7 +73,7 @@ export const customerRepository = {
         $23, $24, $25, $26
       ) RETURNING *`,
       [
-        data.firstName, data.lastName, data.email || null, data.phone || null, data.notes || null,
+        data.firstName || null, data.lastName || null, data.email || null, data.phone || null, data.notes || null,
         data.customerType || 'particulier', data.companyName || null, data.address || null,
         data.city || null, data.birthday || null, data.preferredContact || 'phone', data.allergies || null,
         data.ice || null, data.ifFiscal || null, data.rc || null, data.rcVille || null,
@@ -97,6 +97,7 @@ export const customerRepository = {
       tvaExonere: 'tva_exonere',
     };
     const nullable = new Set([
+      'firstName', 'lastName',
       'email', 'phone', 'notes', 'companyName', 'address', 'city', 'birthday', 'allergies',
       'ice', 'ifFiscal', 'rc', 'rcVille', 'tp', 'cnss', 'formeJuridique',
       'associationRecepisse', 'president', 'contactRole',
