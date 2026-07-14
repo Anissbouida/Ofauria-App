@@ -4,8 +4,9 @@ import { customersApi } from '../../api/customers.api';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, Crown, ShoppingCart,
   Receipt, X, Loader2, Phone, Mail, Calendar, ChevronRight,
-  ArrowUpDown, ArrowUp, ArrowDown, Clock, Award,
+  ArrowUp, ArrowDown, Clock,
   Building2, MapPin, Cake, Heart, MessageSquare,
+  HeartHandshake, FileText, Percent, CreditCard, User,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -32,12 +33,44 @@ function getLoyaltyBadge(points: number) {
   return null;
 }
 
+type CustomerType = 'particulier' | 'professionnel' | 'association' | 'revendeur';
+
+const TYPE_META: Record<CustomerType, { label: string; icon: any; color: string; badge: string }> = {
+  particulier:   { label: 'Particulier',   icon: User,           color: 'from-blue-500 to-indigo-500',    badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+  professionnel: { label: 'Société',       icon: Building2,      color: 'from-violet-500 to-purple-500',  badge: 'bg-violet-50 text-violet-700 border-violet-200' },
+  association:   { label: 'Association',   icon: HeartHandshake, color: 'from-emerald-500 to-teal-500',   badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  revendeur:     { label: 'Revendeur',     icon: ShoppingCart,   color: 'from-amber-500 to-orange-500',   badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+};
+
+function isMoral(t: string | undefined): boolean {
+  return t === 'professionnel' || t === 'association' || t === 'revendeur';
+}
+
+function displayName(c: Record<string, any>): { primary: string; secondary: string | null } {
+  const type = c.customer_type as string;
+  const personne = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+  if (isMoral(type) && c.company_name) {
+    return { primary: c.company_name as string, secondary: personne || null };
+  }
+  return { primary: personne || 'Client', secondary: null };
+}
+
+function displayInitials(c: Record<string, any>): string {
+  const type = c.customer_type as string;
+  if (isMoral(type) && c.company_name) {
+    const parts = (c.company_name as string).split(/\s+/).filter(Boolean);
+    return (parts[0]?.[0] || '') + (parts[1]?.[0] || parts[0]?.[1] || '');
+  }
+  return `${(c.first_name || '').charAt(0)}${(c.last_name || '').charAt(0)}`.toUpperCase() || '?';
+}
+
 type SortKey = 'name' | 'loyalty_points' | 'total_spent' | 'last_purchase';
 type SortDir = 'asc' | 'desc';
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<CustomerType | 'all'>('all');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -45,8 +78,12 @@ export default function CustomersPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', search],
-    queryFn: () => customersApi.list({ search, limit: '200' }),
+    queryKey: ['customers', search, typeFilter],
+    queryFn: () => customersApi.list({
+      search,
+      limit: '200',
+      ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}),
+    }),
   });
 
   const { data: globalStats } = useQuery({
@@ -73,7 +110,10 @@ export default function CustomersPage() {
       notify.success(editing ? 'Client mis a jour' : 'Client cree');
       setShowForm(false); setEditing(null);
     },
-    onError: () => notify.error(editing ? 'Impossible de mettre a jour le client' : 'Impossible de creer le client'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || (editing ? 'Impossible de mettre a jour le client' : 'Impossible de creer le client');
+      notify.error(msg);
+    },
   });
 
   const customers = data?.data || [];
@@ -82,7 +122,7 @@ export default function CustomersPage() {
     return [...customers].sort((a: Record<string, any>, b: Record<string, any>) => {
       let cmp = 0;
       switch (sortKey) {
-        case 'name': cmp = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`); break;
+        case 'name': cmp = displayName(a).primary.localeCompare(displayName(b).primary); break;
         case 'loyalty_points': cmp = (a.loyalty_points as number) - (b.loyalty_points as number); break;
         case 'total_spent': cmp = parseFloat(a.total_spent as string) - parseFloat(b.total_spent as string); break;
         case 'last_purchase': {
@@ -144,7 +184,9 @@ export default function CustomersPage() {
           </div>
           {gs.best_client ? (
             <>
-              <p className="text-lg font-bold text-gray-900 truncate">{gs.best_client.first_name} {gs.best_client.last_name}</p>
+              <p className="text-lg font-bold text-gray-900 truncate">
+                {gs.best_client.company_name || `${gs.best_client.first_name} ${gs.best_client.last_name}`}
+              </p>
               <p className="text-xs text-gray-500">{n(parseFloat(gs.best_client.total_spent))} DH</p>
             </>
           ) : (
@@ -156,11 +198,36 @@ export default function CustomersPage() {
         </div>
       </div>
 
+      {/* Filter by type */}
+      <div className="bg-white rounded-xl border p-2 flex gap-1 overflow-x-auto">
+        <button
+          onClick={() => setTypeFilter('all')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+            typeFilter === 'all' ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+          }`}>
+          <Users size={12} /> Tous
+        </button>
+        {(Object.keys(TYPE_META) as CustomerType[]).map(t => {
+          const meta = TYPE_META[t];
+          const Icon = meta.icon;
+          const active = typeFilter === t;
+          return (
+            <button key={t}
+              onClick={() => setTypeFilter(t)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                active ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'
+              }`}>
+              <Icon size={12} /> {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Search + Sort */}
       <div className="bg-white rounded-xl border p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Rechercher par nom, email, telephone..." value={search}
+          <input type="text" placeholder="Rechercher par nom, email, telephone, société, ICE..." value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="input pl-10 w-full" />
         </div>
@@ -198,13 +265,16 @@ export default function CustomersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sorted.map((c: Record<string, any>) => {
-            const fullName = `${c.first_name} ${c.last_name}`;
-            const initials = `${(c.first_name as string).charAt(0)}${(c.last_name as string).charAt(0)}`.toUpperCase();
-            const avatarColor = getAvatarColor(fullName);
+            const type = (c.customer_type as string) || 'particulier';
+            const meta = TYPE_META[type as CustomerType] || TYPE_META.particulier;
+            const { primary, secondary } = displayName(c);
+            const initials = displayInitials(c);
+            const avatarColor = isMoral(type) ? meta.color : getAvatarColor(primary);
             const badge = getLoyaltyBadge(c.loyalty_points as number);
             const ordersCount = (c.orders_count as number) || 0;
             const salesCount = (c.sales_count as number) || 0;
             const lastPurchase = c.last_purchase_at as string | null;
+            const TypeIcon = meta.icon;
 
             return (
               <div key={c.id as string}
@@ -217,23 +287,29 @@ export default function CustomersPage() {
                       <span className="text-white font-bold text-sm">{initials}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-900 truncate">{fullName}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-gray-900 truncate">{primary}</h3>
                         {badge && (
                           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${badge.bg} ${badge.text}`}>
                             {badge.icon} {badge.label}
                           </span>
                         )}
                       </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${meta.badge}`}>
+                          <TypeIcon size={9} /> {meta.label}
+                        </span>
+                        {secondary && (
+                          <span className="text-[11px] text-gray-500 truncate">{secondary}</span>
+                        )}
+                      </div>
                       {c.phone && (
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                           <Phone size={10} /> {c.phone as string}
                         </p>
                       )}
-                      {c.email && (
-                        <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5 truncate">
-                          <Mail size={10} /> {c.email as string}
-                        </p>
+                      {isMoral(type) && c.ice && (
+                        <p className="text-[11px] text-gray-400 mt-0.5">ICE : {c.ice as string}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -242,7 +318,7 @@ export default function CustomersPage() {
                         <Pencil size={13} className="text-gray-400" />
                       </button>
                       <button onClick={(e) => { e.stopPropagation();
-                        if (confirm(`Supprimer ${fullName} ?`)) deleteMutation.mutate(c.id as string);
+                        if (confirm(`Supprimer ${primary} ?`)) deleteMutation.mutate(c.id as string);
                       }} className="p-1.5 hover:bg-red-50 rounded-lg" title="Supprimer">
                         <Trash2 size={13} className="text-red-400" />
                       </button>
@@ -322,6 +398,11 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
   const sales = data?.sales;
   const [tab, setTab] = useState<'orders' | 'sales'>('sales');
 
+  const type = customer ? (customer.customer_type as string || 'particulier') : 'particulier';
+  const meta = TYPE_META[type as CustomerType] || TYPE_META.particulier;
+  const TypeIcon = meta.icon;
+  const { primary, secondary } = customer ? displayName(customer) : { primary: '', secondary: null };
+
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end z-50">
       <div className="bg-white w-full max-w-lg shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -334,13 +415,19 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
             {/* Header */}
             <div className="sticky top-0 bg-white border-b z-10">
               <div className="p-5 flex items-start gap-4">
-                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${getAvatarColor(`${customer.first_name} ${customer.last_name}`)} flex items-center justify-center flex-shrink-0`}>
-                  <span className="text-white font-bold text-lg">
-                    {(customer.first_name as string).charAt(0)}{(customer.last_name as string).charAt(0)}
-                  </span>
+                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${isMoral(type) ? meta.color : getAvatarColor(primary)} flex items-center justify-center flex-shrink-0`}>
+                  <span className="text-white font-bold text-lg">{displayInitials(customer)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold text-gray-900">{customer.first_name} {customer.last_name}</h2>
+                  <h2 className="text-xl font-bold text-gray-900">{primary}</h2>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${meta.badge}`}>
+                      <TypeIcon size={10} /> {meta.label}
+                    </span>
+                    {secondary && (
+                      <span className="text-xs text-gray-500">Contact : {secondary}{customer.contact_role ? ` (${customer.contact_role})` : ''}</span>
+                    )}
+                  </div>
                   {customer.phone && <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-1"><Phone size={13} /> {customer.phone}</p>}
                   {customer.email && <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-0.5"><Mail size={13} /> {customer.email}</p>}
                   <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -357,6 +444,69 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
                 </div>
               </div>
             </div>
+
+            {/* Identifiants légaux (entités morales) */}
+            {isMoral(type) && (
+              <div className="px-5 pt-4">
+                <div className="bg-gray-50 rounded-xl p-3 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase text-gray-500 mb-2 flex items-center gap-1">
+                    <FileText size={11} /> Identifiants légaux
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    {customer.forme_juridique && <Info label="Forme" value={customer.forme_juridique} />}
+                    {customer.ice && <Info label="ICE" value={customer.ice} mono />}
+                    {customer.if_fiscal && <Info label="IF" value={customer.if_fiscal} mono />}
+                    {customer.rc && <Info label="RC" value={`${customer.rc}${customer.rc_ville ? ' — ' + customer.rc_ville : ''}`} mono />}
+                    {customer.tp && <Info label="TP" value={customer.tp} mono />}
+                    {customer.cnss && <Info label="CNSS" value={customer.cnss} mono />}
+                    {type === 'association' && customer.association_recepisse && <Info label="Récépissé" value={customer.association_recepisse} mono />}
+                    {type === 'association' && customer.president && <Info label="Président" value={customer.president} />}
+                    {customer.tva_exonere && <Info label="TVA" value="Exonérée" />}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Conditions commerciales (revendeur) */}
+            {type === 'revendeur' && (customer.credit_limit || customer.remise_pct || customer.delai_paiement_jours) && (
+              <div className="px-5 pt-3">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-[10px] font-bold uppercase text-amber-700 mb-2 flex items-center gap-1">
+                    <CreditCard size={11} /> Conditions commerciales
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    {customer.credit_limit && (
+                      <div>
+                        <p className="text-[10px] text-amber-600">Plafond crédit</p>
+                        <p className="font-bold text-amber-900">{n(parseFloat(customer.credit_limit))} DH</p>
+                      </div>
+                    )}
+                    {customer.remise_pct && (
+                      <div>
+                        <p className="text-[10px] text-amber-600">Remise</p>
+                        <p className="font-bold text-amber-900">{customer.remise_pct}%</p>
+                      </div>
+                    )}
+                    {customer.delai_paiement_jours && (
+                      <div>
+                        <p className="text-[10px] text-amber-600">Délai</p>
+                        <p className="font-bold text-amber-900">{customer.delai_paiement_jours} j</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Adresse */}
+            {(customer.address || customer.city) && (
+              <div className="px-5 pt-3">
+                <p className="text-xs text-gray-500 flex items-start gap-1.5">
+                  <MapPin size={12} className="mt-0.5 flex-shrink-0" />
+                  <span>{[customer.address, customer.city].filter(Boolean).join(', ')}</span>
+                </p>
+              </div>
+            )}
 
             {/* Stats cards */}
             <div className="grid grid-cols-2 gap-3 p-5">
@@ -499,6 +649,15 @@ function CustomerDetailDrawer({ customerId, onClose, onEdit }: {
   );
 }
 
+function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="text-gray-500">{label}</span>
+      <span className={`text-gray-900 font-medium ${mono ? 'font-mono text-[11px]' : ''} text-right`}>{value}</span>
+    </div>
+  );
+}
+
 /* ═══════════════════════ CUSTOMER FORM MODAL ═══════════════════════ */
 function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   editing: Record<string, any> | null;
@@ -506,22 +665,28 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   onSubmit: (data: Record<string, any>) => void;
   isPending: boolean;
 }) {
-  const [customerType, setCustomerType] = useState(editing?.customer_type as string || 'particulier');
+  const [customerType, setCustomerType] = useState<CustomerType>(
+    (editing?.customer_type as CustomerType) || 'particulier'
+  );
+  const [tvaExonere, setTvaExonere] = useState<boolean>(
+    editing?.tva_exonere === true || editing?.customer_type === 'association'
+  );
 
+  const isMoralEntity = isMoral(customerType);
   const inputClass = "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors";
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-5 flex items-center justify-between flex-shrink-0">
+        <div className={`bg-gradient-to-r ${TYPE_META[customerType].color} p-5 flex items-center justify-between flex-shrink-0`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
               {editing ? <Pencil size={20} className="text-white" /> : <Users size={20} className="text-white" />}
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">{editing ? 'Modifier le client' : 'Nouveau client'}</h2>
-              <p className="text-sm text-white/70">{editing ? 'Mettre a jour les informations' : 'Remplir la fiche client'}</p>
+              <p className="text-sm text-white/80">{TYPE_META[customerType].label}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
@@ -532,30 +697,33 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
         <form onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
-          onSubmit(Object.fromEntries(fd));
+          const payload: Record<string, any> = Object.fromEntries(fd);
+          payload.tvaExonere = tvaExonere;
+          onSubmit(payload);
         }} className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* Section: Type de client */}
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Type de client</label>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { key: 'particulier', label: 'Particulier', icon: Users },
-                { key: 'professionnel', label: 'Professionnel', icon: Building2 },
-                { key: 'revendeur', label: 'Revendeur', icon: ShoppingCart },
-              ] as const).map(t => {
-                const Icon = t.icon;
-                const selected = customerType === t.key;
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(Object.keys(TYPE_META) as CustomerType[]).map(t => {
+                const m = TYPE_META[t];
+                const Icon = m.icon;
+                const selected = customerType === t;
                 return (
-                  <button type="button" key={t.key}
-                    onClick={() => setCustomerType(t.key)}
-                    className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all text-left ${
+                  <button type="button" key={t}
+                    onClick={() => {
+                      setCustomerType(t);
+                      if (t === 'association') setTvaExonere(true);
+                      else if (t === 'particulier') setTvaExonere(false);
+                    }}
+                    className={`flex flex-col items-center justify-center gap-1 p-3 rounded-xl border-2 transition-all ${
                       selected
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-200 hover:border-gray-300 bg-white text-gray-600'
                     }`}>
-                    <Icon size={16} className={selected ? 'text-blue-500' : 'text-gray-400'} />
-                    <span className="text-sm font-medium">{t.label}</span>
+                    <Icon size={18} className={selected ? 'text-blue-500' : 'text-gray-400'} />
+                    <span className="text-xs font-medium">{m.label}</span>
                   </button>
                 );
               })}
@@ -563,13 +731,132 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
             <input type="hidden" name="customerType" value={customerType} />
           </div>
 
-          {/* Section: Identite */}
+          {/* SOCIÉTÉ : Identité entreprise */}
+          {isMoralEntity && (
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                {customerType === 'association' ? 'Identité de l\'association' : 'Identité de l\'entreprise'}
+              </label>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="flex items-center gap-1.5"><Building2 size={13} /> Raison sociale *</span>
+                  </label>
+                  <input name="companyName" defaultValue={editing?.company_name as string}
+                    className={inputClass} required
+                    placeholder={customerType === 'association' ? 'Association X' : 'Pâtisserie du Coin SARL'} />
+                </div>
+
+                {customerType !== 'association' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Forme juridique</label>
+                      <select name="formeJuridique" defaultValue={editing?.forme_juridique as string || ''} className={inputClass}>
+                        <option value="">— Sélectionner —</option>
+                        <option value="SARL">SARL</option>
+                        <option value="SARL AU">SARL AU (associé unique)</option>
+                        <option value="SA">SA</option>
+                        <option value="SAS">SAS</option>
+                        <option value="SNC">SNC</option>
+                        <option value="AE">Auto-Entrepreneur</option>
+                        <option value="Coop">Coopérative</option>
+                        <option value="GIE">GIE</option>
+                        <option value="Autre">Autre</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Ville RC</label>
+                      <input name="rcVille" defaultValue={editing?.rc_ville as string}
+                        className={inputClass} placeholder="Casablanca" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SOCIÉTÉ : Identifiants légaux */}
+          {isMoralEntity && (
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Identifiants légaux</label>
+              <div className="space-y-3">
+                {customerType !== 'association' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ICE</label>
+                        <input name="ice" defaultValue={editing?.ice as string}
+                          className={`${inputClass} font-mono`}
+                          maxLength={15} pattern="[0-9]{15}"
+                          title="15 chiffres"
+                          placeholder="000000000000000" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">IF (Identifiant Fiscal)</label>
+                        <input name="ifFiscal" defaultValue={editing?.if_fiscal as string}
+                          className={`${inputClass} font-mono`} placeholder="12345678" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">RC (n°)</label>
+                        <input name="rc" defaultValue={editing?.rc as string}
+                          className={`${inputClass} font-mono`} placeholder="123456" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">TP (Taxe Prof.)</label>
+                        <input name="tp" defaultValue={editing?.tp as string}
+                          className={`${inputClass} font-mono`} placeholder="30123456" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">CNSS (employeur)</label>
+                      <input name="cnss" defaultValue={editing?.cnss as string}
+                        className={`${inputClass} font-mono`} placeholder="1234567" />
+                    </div>
+                  </>
+                )}
+
+                {customerType === 'association' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">N° récépissé</label>
+                        <input name="associationRecepisse" defaultValue={editing?.association_recepisse as string}
+                          className={`${inputClass} font-mono`} placeholder="Récépissé de déclaration" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">IF (si assujettie)</label>
+                        <input name="ifFiscal" defaultValue={editing?.if_fiscal as string}
+                          className={`${inputClass} font-mono`} placeholder="Optionnel" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Président</label>
+                      <input name="president" defaultValue={editing?.president as string}
+                        className={inputClass} placeholder="Nom du président" />
+                    </div>
+                  </>
+                )}
+
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={tvaExonere} onChange={(e) => setTvaExonere(e.target.checked)}
+                    className="w-4 h-4 accent-blue-500" />
+                  <span>Client exonéré de TVA</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Contact principal (entités morales) OU Identité (particulier) */}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Identite</label>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+              {isMoralEntity ? 'Contact principal' : 'Identité'}
+            </label>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Prenom *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prénom *</label>
                   <input name="firstName" defaultValue={editing?.first_name as string}
                     className={inputClass} required placeholder="Mohamed" />
                 </div>
@@ -579,33 +866,37 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                     className={inputClass} required placeholder="Alami" />
                 </div>
               </div>
-              {customerType !== 'particulier' && (
+
+              {isMoralEntity && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <span className="flex items-center gap-1.5"><Building2 size={13} /> Nom de l'entreprise</span>
-                  </label>
-                  <input name="companyName" defaultValue={editing?.company_name as string}
-                    className={inputClass} placeholder="Patisserie du Coin, Hotel Atlas..." />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fonction / Rôle</label>
+                  <input name="contactRole" defaultValue={editing?.contact_role as string}
+                    className={inputClass}
+                    placeholder={customerType === 'association' ? 'Trésorier, Secrétaire...' : 'Gérant, Acheteur, Comptable...'} />
                 </div>
               )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <span className="flex items-center gap-1.5"><Cake size={13} /> Date de naissance</span>
-                </label>
-                <input name="birthday" type="date" defaultValue={editing?.birthday ? (editing.birthday as string).slice(0, 10) : ''}
-                  className={inputClass} />
-              </div>
+
+              {!isMoralEntity && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="flex items-center gap-1.5"><Cake size={13} /> Date de naissance</span>
+                  </label>
+                  <input name="birthday" type="date"
+                    defaultValue={editing?.birthday ? (editing.birthday as string).slice(0, 10) : ''}
+                    className={inputClass} />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Section: Contact */}
+          {/* Contact */}
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Contact</label>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <span className="flex items-center gap-1.5"><Phone size={13} /> Telephone</span>
+                    <span className="flex items-center gap-1.5"><Phone size={13} /> Téléphone</span>
                   </label>
                   <input name="phone" defaultValue={editing?.phone as string}
                     className={inputClass} placeholder="06 XX XX XX XX" />
@@ -619,14 +910,14 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact prefere</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact préféré</label>
                 <div className="flex gap-2">
                   {(['phone', 'email', 'whatsapp'] as const).map(m => (
                     <label key={m} className="flex items-center gap-1.5 px-3 py-2 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors text-sm">
                       <input type="radio" name="preferredContact" value={m}
                         defaultChecked={(editing?.preferred_contact as string || 'phone') === m}
                         className="accent-blue-500" />
-                      {m === 'phone' ? 'Telephone' : m === 'email' ? 'Email' : 'WhatsApp'}
+                      {m === 'phone' ? 'Téléphone' : m === 'email' ? 'Email' : 'WhatsApp'}
                     </label>
                   ))}
                 </div>
@@ -634,9 +925,11 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
             </div>
           </div>
 
-          {/* Section: Adresse */}
+          {/* Adresse */}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Adresse</label>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+              {isMoralEntity ? 'Adresse du siège' : 'Adresse'}
+            </label>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -648,35 +941,68 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ville</label>
                 <input name="city" defaultValue={editing?.city as string}
-                  className={inputClass} placeholder="Casablanca, Rabat, Fes..." />
+                  className={inputClass} placeholder="Casablanca, Rabat, Fès..." />
               </div>
             </div>
           </div>
 
-          {/* Section: Preferences */}
-          <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Preferences & Notes</label>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <span className="flex items-center gap-1.5"><Heart size={13} /> Allergies / Restrictions</span>
-                </label>
-                <input name="allergies" defaultValue={editing?.allergies as string}
-                  className={inputClass} placeholder="Gluten, lactose, fruits a coque..." />
+          {/* REVENDEUR : Conditions commerciales */}
+          {customerType === 'revendeur' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <CreditCard size={11} /> Conditions commerciales
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plafond crédit (DH)</label>
+                  <input name="creditLimit" type="number" step="0.01" min="0"
+                    defaultValue={editing?.credit_limit as string}
+                    className={inputClass} placeholder="10000" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="flex items-center gap-1.5"><Percent size={11} /> Remise</span>
+                  </label>
+                  <input name="remisePct" type="number" step="0.01" min="0" max="100"
+                    defaultValue={editing?.remise_pct as string}
+                    className={inputClass} placeholder="5" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Délai (jours)</label>
+                  <input name="delaiPaiementJours" type="number" step="1" min="0"
+                    defaultValue={editing?.delai_paiement_jours as string}
+                    className={inputClass} placeholder="30" />
+                </div>
               </div>
+            </div>
+          )}
+
+          {/* Préférences (particulier surtout) */}
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Préférences & Notes</label>
+            <div className="space-y-3">
+              {customerType === 'particulier' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="flex items-center gap-1.5"><Heart size={13} /> Allergies / Restrictions</span>
+                  </label>
+                  <input name="allergies" defaultValue={editing?.allergies as string}
+                    className={inputClass} placeholder="Gluten, lactose, fruits à coque..." />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   <span className="flex items-center gap-1.5"><MessageSquare size={13} /> Notes internes</span>
                 </label>
                 <textarea name="notes" defaultValue={editing?.notes as string} rows={2}
                   className={`${inputClass} resize-none`}
-                  placeholder="Preferences, habitudes, informations utiles..." />
+                  placeholder="Préférences, habitudes, informations utiles..." />
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100 sticky bottom-0 bg-white pb-1 -mx-5 px-5">
             <button type="button" onClick={onClose}
               className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">
               Annuler
@@ -684,7 +1010,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
             <button type="submit" disabled={isPending}
               className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
               {isPending && <Loader2 size={14} className="animate-spin" />}
-              {editing ? 'Mettre a jour' : 'Creer le client'}
+              {editing ? 'Mettre à jour' : 'Créer le client'}
             </button>
           </div>
         </form>

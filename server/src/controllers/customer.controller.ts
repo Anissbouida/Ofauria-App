@@ -6,7 +6,7 @@ export const customerController = {
   async list(req: AuthRequest, res: Response) {
     const { search, customerType, page = '1', limit = '20' } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
-    const validType = ['particulier', 'professionnel'].includes(customerType) ? customerType : undefined;
+    const validType = ['particulier', 'professionnel', 'association', 'revendeur'].includes(customerType) ? customerType : undefined;
     const result = await customerRepository.findAll({ search, customerType: validType, limit: l, offset: (p - 1) * l });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },

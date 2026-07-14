@@ -54,13 +54,32 @@ export const customerRepository = {
   },
 
   async create(data: Record<string, unknown>) {
+    const num = (v: unknown) => (v === '' || v === null || v === undefined ? null : v);
+    const bool = (v: unknown) => v === true || v === 'true' || v === 'on' || v === '1';
     const result = await db.query(
-      `INSERT INTO customers (first_name, last_name, email, phone, notes, customer_type, company_name, address, city, birthday, preferred_contact, allergies)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      `INSERT INTO customers (
+        first_name, last_name, email, phone, notes,
+        customer_type, company_name, address, city, birthday,
+        preferred_contact, allergies,
+        ice, if_fiscal, rc, rc_ville, tp, cnss, forme_juridique,
+        association_recepisse, president, contact_role,
+        credit_limit, remise_pct, delai_paiement_jours, tva_exonere
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12,
+        $13, $14, $15, $16, $17, $18, $19,
+        $20, $21, $22,
+        $23, $24, $25, $26
+      ) RETURNING *`,
       [
         data.firstName, data.lastName, data.email || null, data.phone || null, data.notes || null,
         data.customerType || 'particulier', data.companyName || null, data.address || null,
         data.city || null, data.birthday || null, data.preferredContact || 'phone', data.allergies || null,
+        data.ice || null, data.ifFiscal || null, data.rc || null, data.rcVille || null,
+        data.tp || null, data.cnss || null, data.formeJuridique || null,
+        data.associationRecepisse || null, data.president || null, data.contactRole || null,
+        num(data.creditLimit), num(data.remisePct), num(data.delaiPaiementJours), bool(data.tvaExonere),
       ]
     );
     return result.rows[0];
@@ -71,15 +90,28 @@ export const customerRepository = {
       firstName: 'first_name', lastName: 'last_name', email: 'email', phone: 'phone', notes: 'notes',
       customerType: 'customer_type', companyName: 'company_name', address: 'address',
       city: 'city', birthday: 'birthday', preferredContact: 'preferred_contact', allergies: 'allergies',
+      ice: 'ice', ifFiscal: 'if_fiscal', rc: 'rc', rcVille: 'rc_ville',
+      tp: 'tp', cnss: 'cnss', formeJuridique: 'forme_juridique',
+      associationRecepisse: 'association_recepisse', president: 'president', contactRole: 'contact_role',
+      creditLimit: 'credit_limit', remisePct: 'remise_pct', delaiPaiementJours: 'delai_paiement_jours',
+      tvaExonere: 'tva_exonere',
     };
-    const nullable = new Set(['email', 'phone', 'notes', 'companyName', 'address', 'city', 'birthday', 'allergies']);
+    const nullable = new Set([
+      'email', 'phone', 'notes', 'companyName', 'address', 'city', 'birthday', 'allergies',
+      'ice', 'ifFiscal', 'rc', 'rcVille', 'tp', 'cnss', 'formeJuridique',
+      'associationRecepisse', 'president', 'contactRole',
+      'creditLimit', 'remisePct', 'delaiPaiementJours',
+    ]);
+    const boolKeys = new Set(['tvaExonere']);
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     for (const [key, col] of Object.entries(mapping)) {
       if (data[key] !== undefined) {
-        const v = nullable.has(key) && data[key] === '' ? null : data[key];
+        let v: unknown = data[key];
+        if (boolKeys.has(key)) v = v === true || v === 'true' || v === 'on' || v === '1';
+        else if (nullable.has(key) && v === '') v = null;
         fields.push(`${col} = $${i++}`); values.push(v);
       }
     }
