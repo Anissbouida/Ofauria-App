@@ -45,8 +45,10 @@ BEGIN
 
   IF NEW.check_out IS NOT NULL THEN
     IF NEW.check_in IS NOT NULL AND NEW.check_out < NEW.check_in THEN
-      -- Shift de nuit : depart le lendemain
-      NEW.check_out_at := _attendance_ts(NEW.date + INTERVAL '1 day', NEW.check_out);
+      -- Shift de nuit : depart le lendemain.
+      -- `date + 1` (integer) reste DATE ; `date + interval` deviendrait
+      -- timestamp et ne matcherait plus la signature _attendance_ts(DATE, TIME).
+      NEW.check_out_at := _attendance_ts(NEW.date + 1, NEW.check_out);
     ELSE
       NEW.check_out_at := _attendance_ts(NEW.date, NEW.check_out);
     END IF;
@@ -63,11 +65,12 @@ CREATE TRIGGER attendance_sync_at_ins BEFORE INSERT OR UPDATE OF check_in, check
   FOR EACH ROW EXECUTE FUNCTION _attendance_sync_at();
 
 -- Backfill : alimente les nouvelles colonnes pour les lignes existantes.
+-- `date + 1` (integer) reste DATE ; ne pas utiliser INTERVAL qui promeut en timestamp.
 UPDATE attendance
    SET check_in_at = CASE WHEN check_in IS NOT NULL THEN _attendance_ts(date, check_in) END,
        check_out_at = CASE
          WHEN check_out IS NOT NULL AND check_in IS NOT NULL AND check_out < check_in
-           THEN _attendance_ts(date + INTERVAL '1 day', check_out)
+           THEN _attendance_ts(date + 1, check_out)
          WHEN check_out IS NOT NULL
            THEN _attendance_ts(date, check_out)
        END
