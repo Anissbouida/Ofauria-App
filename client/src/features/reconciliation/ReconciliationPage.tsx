@@ -136,26 +136,26 @@ function esc(s: string): string {
 
 function printCSS() {
   return `@page{size:A4 portrait;margin:8mm 10mm}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#000}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#000}
 .section{page-break-after:always;page-break-inside:auto}
 .section:last-child{page-break-after:auto}
-.header{text-align:center;font-size:12pt;font-weight:bold;margin-bottom:2px;text-transform:capitalize;background:#222;color:#fff;padding:5px 8px;letter-spacing:1px}
-.sub-header{text-align:center;font-size:8pt;color:#555;margin:4px 0 6px}
-table{width:100%;border-collapse:collapse;margin-bottom:6px}
-th,td{border:1px solid #444;padding:3px 6px;font-size:8.5pt;vertical-align:middle}
-th{background:#e0e0e0;text-align:center;font-size:8pt;font-weight:700;text-transform:uppercase}
+.header{text-align:center;font-size:15pt;font-weight:bold;margin-bottom:2px;text-transform:capitalize;background:#222;color:#fff;padding:6px 8px;letter-spacing:1px}
+.sub-header{text-align:center;font-size:9.5pt;color:#555;margin:5px 0 7px}
+table{width:100%;border-collapse:collapse;margin-bottom:8px}
+th,td{border:1px solid #444;padding:4px 7px;font-size:10.5pt;vertical-align:middle}
+th{background:#e0e0e0;text-align:center;font-size:10pt;font-weight:700;text-transform:uppercase}
 tbody tr:nth-child(even) td{background:#f7f7f7}
-tbody tr.cat-row td{background:#d0d0d0;font-weight:700;font-size:8pt;text-transform:uppercase;letter-spacing:0.3px;padding:4px 6px;border-bottom:2px solid #888;text-align:center}
-td.qty{text-align:center;font-weight:bold;font-size:10.5pt}
-td.darija{color:#222;font-size:10pt;font-weight:bold;direction:rtl;text-align:right}
-td:first-child{text-align:left;font-size:9pt}
+tbody tr.cat-row td{background:#d0d0d0;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:0.3px;padding:5px 7px;border-bottom:2px solid #888;text-align:center}
+td.qty{text-align:center;font-weight:bold;font-size:13pt}
+td.darija{color:#222;font-size:12.5pt;font-weight:bold;direction:rtl;text-align:right}
+td:first-child{text-align:left;font-size:11pt}
 td:nth-child(2),td:nth-child(3){text-align:center}
 td:last-child{text-align:right}
 tfoot td{font-weight:bold;border-top:2px solid #000}
-.signatures{display:flex;justify-content:space-between;margin-top:10px}
-.sig-box{border:1px solid #000;padding:6px 10px;width:48%;font-size:8pt;line-height:1.9}
-.sig-box strong{font-size:8.5pt}
+.signatures{display:flex;justify-content:space-between;margin-top:12px}
+.sig-box{border:1px solid #000;padding:8px 12px;width:48%;font-size:10pt;line-height:1.9}
+.sig-box strong{font-size:10.5pt}
 .toolbar{position:fixed;top:14px;right:18px;z-index:10;display:flex;gap:8px}
 .toolbar button{font-family:inherit;font-size:14px;font-weight:600;padding:9px 18px;border:none;border-radius:6px;cursor:pointer;background:#1a56db;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}
 .toolbar button.secondary{background:#555}
@@ -220,14 +220,14 @@ function printBonSection(
     const title = slotLabel
       ? `${esc(section)} &mdash; ${esc(slotLabel)}`
       : esc(section);
-    const restCol = withReste ? '<col style="width:56px">' : '';
+    const restCol = withReste ? '<col style="width:68px">' : '';
     const restTh = withReste ? '<th>RESTE</th>' : '';
     const restTd = withReste ? '<td></td>' : '';
     return `<div class="section">
       <div class="header">${title}</div>
       <div class="sub-header">Commande Magasin &mdash; ${jour} ${dateFmt}</div>
       <table>
-        <colgroup><col style="width:36%"><col style="width:56px"><col style="width:56px"><col style="width:56px">${restCol}<col style="width:auto"></colgroup>
+        <colgroup><col style="width:36%"><col style="width:68px"><col style="width:68px"><col style="width:68px">${restCol}<col style="width:auto"></colgroup>
         <thead><tr><th style="text-align:left">PRODUIT</th><th>QT&Eacute;</th><th>RE&Ccedil;U</th><th>TRANSF.</th>${restTh}<th style="text-align:right">بالدارجة</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td>${restTd}<td></td></tr></tfoot>
