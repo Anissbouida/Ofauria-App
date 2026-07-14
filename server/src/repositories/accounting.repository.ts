@@ -485,6 +485,9 @@ export const invoiceRepository = {
       `SELECT inv.*,
               s.name as supplier_name, s.phone as supplier_phone, s.ice as supplier_ice, s.address as supplier_address, s.city as supplier_city,
               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone, c.email as customer_email,
+              c.company_name as customer_company_name, c.customer_type as customer_type,
+              c.address as customer_address, c.city as customer_city,
+              c.ice as customer_ice, c.if_fiscal as customer_if, c.rc as customer_rc,
               ec.name as category_name,
               po.order_number as purchase_order_number,
               rv.voucher_number as reception_voucher_number

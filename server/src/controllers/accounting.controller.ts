@@ -437,15 +437,30 @@ export const invoiceController = {
       // Get company settings
       const settings = await settingsRepository.get();
 
-      // Customer info
+      // Customer / supplier info (facturer à)
       let customerName = 'Client';
       let customerAddress = '';
+      let customerICE = '';
       const inv = invoice as Record<string, unknown>;
-      if (inv.customer_first_name) {
-        customerName = `${inv.customer_first_name} ${inv.customer_last_name || ''}`.trim();
+      const isMoral = ['professionnel', 'association', 'revendeur'].includes(inv.customer_type as string);
+      if (isMoral && inv.customer_company_name) {
+        customerName = inv.customer_company_name as string;
+      } else if (inv.customer_first_name || inv.customer_last_name) {
+        customerName = `${inv.customer_first_name || ''} ${inv.customer_last_name || ''}`.trim();
       } else if (inv.supplier_name) {
         customerName = inv.supplier_name as string;
       }
+      // Adresse : client ou fournisseur selon le type de facture
+      const addrParts: string[] = [];
+      if (inv.customer_address) addrParts.push(inv.customer_address as string);
+      if (inv.customer_city) addrParts.push(inv.customer_city as string);
+      if (addrParts.length === 0 && inv.supplier_address) {
+        addrParts.push(inv.supplier_address as string);
+        if (inv.supplier_city) addrParts.push(inv.supplier_city as string);
+      }
+      customerAddress = addrParts.join(', ');
+      // Identifiant fiscal : ICE d'abord, sinon IF, sinon ICE fournisseur
+      customerICE = (inv.customer_ice as string) || (inv.customer_if as string) || (inv.supplier_ice as string) || '';
 
       const totalAmount = parseFloat(inv.total_amount as string) || 0;
       let amount = parseFloat(inv.amount as string) || 0;
@@ -522,6 +537,7 @@ export const invoiceController = {
         paymentMethod: '',
         customerName,
         customerAddress,
+        customerICE,
         items: items.map((it: Record<string, unknown>) => ({
           description: (it.description as string) || '',
           category: (it.category_name as string) || '',
