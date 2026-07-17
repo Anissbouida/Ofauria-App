@@ -12,7 +12,7 @@ import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser'
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 
-/** Rapprochement journalier (ISOLE, TEMPORAIRE) : appro - vendu - invendu = ecart. */
+/** Rapprochement journalier (ISOLE, TEMPORAIRE) : recu - vendu - invendu = ecart (repli appro si recu non saisi). */
 
 function nf(v: number, dec = 2) {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -1057,10 +1057,13 @@ function DayView() {
 
   const totals = useMemo(() => {
     return lines.reduce((a, l) => {
+      const price = num(l.unit_price);
       a.appro += num(l.appro_qty); a.recu += num(l.recu_qty); a.vendu += num(l.vendu_qty); a.invendu += num(l.invendu_qty);
       a.ecartQty += num(l.ecart_qty); a.ecartVal += num(l.ecart_value);
+      a.approVal += num(l.appro_qty) * price; a.recuVal += num(l.recu_qty) * price;
+      a.venduVal += num(l.vendu_qty) * price; a.invenduVal += num(l.invendu_qty) * price;
       return a;
-    }, { appro: 0, recu: 0, vendu: 0, invendu: 0, ecartQty: 0, ecartVal: 0 });
+    }, { appro: 0, recu: 0, vendu: 0, invendu: 0, ecartQty: 0, ecartVal: 0, approVal: 0, recuVal: 0, venduVal: 0, invenduVal: 0 });
   }, [lines]);
 
   const commit = (l: ReconLine, field: EditField, raw: string) => {
@@ -1085,8 +1088,9 @@ function DayView() {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Écart = Approvisionné − Vendu − Invendu.</strong> Positif = manque à expliquer (perte / vol / erreur).
-          Ordre conseillé : saisir l'appro → <strong>importer Loyverse</strong> → saisir l'invendu compté.
+          <strong>Écart = Reçu − Vendu − Invendu.</strong> Positif = manque à expliquer (perte / vol / erreur).
+          Si le reçu n'est pas saisi, l'appro sert de base de calcul.
+          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir l'invendu compté.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>
       </div>
@@ -1195,6 +1199,17 @@ function DayView() {
                   <td></td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: ecartColor(totals.ecartQty) }}>{qf(totals.ecartQty)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: ecartColor(totals.ecartVal) }}>{nf(totals.ecartVal)} DH</td>
+                  <td></td>
+                </tr>
+                <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
+                  <td colSpan={2}>Montants (DH)</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.approVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.recuVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.venduVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.invenduVal)}</td>
+                  <td></td>
+                  <td></td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(totals.ecartVal) }}>{nf(totals.ecartVal)}</td>
                   <td></td>
                 </tr>
               </tfoot>
