@@ -12,7 +12,7 @@ import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser'
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 
-/** Rapprochement journalier (ISOLE, TEMPORAIRE) : recu - vendu - invendu = ecart (repli appro si recu non saisi). */
+/** Rapprochement journalier (ISOLE, TEMPORAIRE) : vendu + invendu - recu = ecart (negatif = manque ; repli appro si recu non saisi). */
 
 function nf(v: number, dec = 2) {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -25,8 +25,8 @@ function num(v: string | number | null | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 function ecartColor(e: number) {
-  if (e > 0.0001) return '#b71c1c';   // manque (a expliquer)
-  if (e < -0.0001) return '#b26a00';  // surplus
+  if (e < -0.0001) return '#b71c1c';  // manque (a expliquer)
+  if (e > 0.0001) return '#b26a00';   // surplus (vendu plus que recu)
   return '#0e7c3a';
 }
 
@@ -1088,8 +1088,8 @@ function DayView() {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Écart = Reçu − Vendu − Invendu.</strong> Positif = manque à expliquer (perte / vol / erreur).
-          Si le reçu n'est pas saisi, l'appro sert de base de calcul.
+          <strong>Écart = Vendu + Invendu − Reçu.</strong> Négatif = manque à expliquer (perte / vol / erreur),
+          positif = surplus. Si le reçu n'est pas saisi, l'appro sert de base de calcul.
           Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir l'invendu compté.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>
