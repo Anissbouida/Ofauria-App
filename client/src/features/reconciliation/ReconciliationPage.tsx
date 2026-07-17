@@ -992,6 +992,7 @@ function DayView() {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [showAdd, setShowAdd] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Ouvre (ou recupere) la journee pour la date choisie — idempotent cote serveur.
@@ -1162,15 +1163,23 @@ function DayView() {
                 <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                   Aucune ligne. Ajoute un produit ou importe le CSV Loyverse du jour.
                 </td></tr>
-              ) : groupedLines.map(({ cat, items }) => (
+              ) : groupedLines.map(({ cat, items }) => {
+                const isCollapsed = collapsed.has(cat);
+                return (
                 <Fragment key={cat}>
-                  <tr>
+                  <tr
+                    onClick={() => setCollapsed(prev => {
+                      const next = new Set(prev);
+                      if (next.has(cat)) next.delete(cat); else next.add(cat);
+                      return next;
+                    })}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <td colSpan={7} style={{
                       background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
                       color: 'var(--theme-accent)', fontSize: '0.75rem',
                       textTransform: 'uppercase', letterSpacing: 0.5,
                     }}>
-                      {cat} ({items.length})
+                      {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
                     </td>
                     <td colSpan={2} style={{
                       background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
@@ -1180,7 +1189,7 @@ function DayView() {
                       {nf(items.reduce((s, l) => s + num(l.ecart_value), 0))} DH
                     </td>
                   </tr>
-                  {items.map(l => {
+                  {!isCollapsed && items.map(l => {
                 const eQty = num(l.ecart_qty), eVal = num(l.ecart_value);
                 return (
                   <tr key={l.id}>
@@ -1217,7 +1226,8 @@ function DayView() {
                 );
               })}
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
             {lines.length > 0 && (
               <tfoot>
