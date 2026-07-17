@@ -339,6 +339,81 @@ export const reconciliationRepository = {
     return { referenceDate, products: rows };
   },
 
+  // ─── Fiche de besoin partagée ──────────────────────────────────────────
+
+  /** Fiche enregistrée pour une date : lignes + méta (qui / quand). */
+  async getFiche(date: string) {
+    const { rows } = await db.query(
+      `SELECT product_key, sku, product_name, category, unit_price,
+              slot_qty, total_qty, removed, saved_by_name, updated_at
+       FROM recon_fiche_lines
+       WHERE fiche_date = $1
+       ORDER BY category NULLS LAST, product_name`,
+      [date]
+    );
+    let savedAt: string | null = null;
+    let savedBy: string | null = null;
+    for (const r of rows) {
+      if (!savedAt || r.updated_at > savedAt) { savedAt = r.updated_at; savedBy = r.saved_by_name; }
+    }
+    return { savedAt, savedBy, lines: rows };
+  },
+
+  /**
+   * Enregistre la fiche d'une date (remplacement complet, atomique) : tout
+   * utilisateur qui rouvre la fiche retrouve les mêmes quantités par créneau,
+   * les produits ajoutés et les produits retirés.
+   */
+  async saveFiche(
+    date: string,
+    lines: {
+      sku?: string | null; productName: string; category?: string | null;
+      unitPrice?: number; slotQty?: Record<string, number>; totalQty?: number; removed?: boolean;
+    }[],
+    userId?: string | null
+  ) {
+    let savedByName: string | null = null;
+    if (userId) {
+      const u = await db.query(
+        `SELECT TRIM(first_name || ' ' || last_name) AS name FROM users WHERE id = $1`,
+        [userId]
+      );
+      savedByName = u.rows[0]?.name || null;
+    }
+    const client = await db.getClient();
+    let saved = 0;
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM recon_fiche_lines WHERE fiche_date = $1`, [date]);
+      for (const l of lines) {
+        if (!l.productName?.trim()) continue;
+        const key = productKey(l.sku, l.productName);
+        await client.query(
+          `INSERT INTO recon_fiche_lines
+             (fiche_date, product_key, sku, product_name, category, unit_price,
+              slot_qty, total_qty, removed, saved_by, saved_by_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (fiche_date, product_key) DO UPDATE SET
+             slot_qty = EXCLUDED.slot_qty, total_qty = EXCLUDED.total_qty,
+             removed = EXCLUDED.removed, updated_at = NOW()`,
+          [
+            date, key, l.sku ?? null, l.productName.trim(), l.category ?? null,
+            l.unitPrice ?? 0, JSON.stringify(l.slotQty ?? {}), l.totalQty ?? 0,
+            l.removed === true, userId ?? null, savedByName,
+          ]
+        );
+        saved++;
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    return { saved };
+  },
+
   // ─── Créneaux d'approvisionnement ────────────────────────────────────
 
   async listSlots() {

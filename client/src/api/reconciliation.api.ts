@@ -66,6 +66,33 @@ export type SuggestResult = {
   products: SuggestProduct[];
 };
 
+export type ReconFicheLine = {
+  product_key: string;
+  sku: string | null;
+  product_name: string;
+  category: string | null;
+  unit_price: string;
+  slot_qty: Record<string, number>;
+  total_qty: string;
+  removed: boolean;
+};
+
+export type ReconFiche = {
+  savedAt: string | null;
+  savedBy: string | null;
+  lines: ReconFicheLine[];
+};
+
+export type ReconFicheLineInput = {
+  productName: string;
+  sku?: string;
+  category?: string;
+  unitPrice?: number;
+  slotQty?: Record<string, number>;
+  totalQty?: number;
+  removed?: boolean;
+};
+
 export type SupplySlot = {
   id: string;
   category: string;
@@ -116,6 +143,11 @@ export const reconciliationApi = {
 
   suggest: (date: string) =>
     api.get('/reconciliation/suggest', { params: { date } }).then(r => r.data.data as SuggestResult),
+
+  getFiche: (date: string) =>
+    api.get('/reconciliation/fiche', { params: { date } }).then(r => r.data.data as ReconFiche),
+  saveFiche: (date: string, lines: ReconFicheLineInput[]) =>
+    api.put('/reconciliation/fiche', { date, lines }).then(r => r.data.data as { saved: number }),
 
   listSlots: () =>
     api.get('/reconciliation/slots').then(r => r.data.data as SupplySlot[]),

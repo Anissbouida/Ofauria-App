@@ -5,9 +5,9 @@ import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package, RotateCcw,
+  Settings, Clock, Package, RotateCcw, Save,
 } from 'lucide-react';
-import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot } from '../../api/reconciliation.api';
+import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
@@ -362,6 +362,14 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
     queryFn: () => reconciliationApi.listSlots(),
   });
 
+  // Fiche enregistrée en base (partagée entre utilisateurs). Pas de refetch au
+  // focus : une saisie en cours ne doit pas être écrasée en changeant de fenêtre.
+  const { data: fiche } = useQuery({
+    queryKey: ['recon-fiche', date],
+    queryFn: () => reconciliationApi.getFiche(date),
+    refetchOnWindowFocus: false,
+  });
+
   const { data: darijaEntries = [] } = useQuery({
     queryKey: ['recon-darija'],
     queryFn: () => reconciliationApi.listDarija(),
@@ -421,6 +429,26 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       return init;
     });
   }, [data, slotsByCategory, riskPct, catRiskPct]);
+
+  // Applique la fiche enregistrée par-dessus les suggestions : les lignes
+  // sauvées sont marquées « touchées » pour que le recalcul (J-7, ajustement %)
+  // ne les écrase pas. Tous les utilisateurs voient ainsi les mêmes chiffres.
+  useEffect(() => {
+    const lines = fiche?.lines;
+    if (!lines || lines.length === 0) return;
+    const saved: Record<string, string> = {};
+    const rem = new Set<string>();
+    for (const l of lines) {
+      touchedRef.current.add(l.product_key);
+      if (l.removed) rem.add(l.product_key);
+      for (const [slot, v] of Object.entries(l.slot_qty || {})) {
+        saved[`${l.product_key}__${slot}`] = String(v);
+      }
+      saved[`${l.product_key}__total`] = String(num(l.total_qty));
+    }
+    setRemoved(rem);
+    setSlotQty(prev => ({ ...prev, ...saved }));
+  }, [fiche]);
 
   const setSlotVal = (key: string, val: string, productKey: string, cat: string) => {
     touchedRef.current.add(productKey);
@@ -506,8 +534,40 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
     [allProducts, slotQty],
   );
 
+  /** Lignes de la fiche courante (quantités par créneau + produits retirés). */
+  const buildFicheLines = (): ReconFicheLineInput[] =>
+    allProducts
+      .filter(p => removed.has(p.product_key) || slotQty[`${p.product_key}__total`] !== undefined)
+      .map(p => {
+        const cat = p.category || 'Non classé';
+        const sq: Record<string, number> = {};
+        for (const s of slotsByCategory[cat] || []) {
+          sq[String(s.slot_number)] = num(slotQty[`${p.product_key}__${s.slot_number}`]);
+        }
+        return {
+          productName: p.product_name,
+          sku: p.sku || undefined,
+          category: p.category || undefined,
+          unitPrice: num(p.unit_price) || undefined,
+          slotQty: sq,
+          totalQty: num(slotQty[`${p.product_key}__total`]),
+          removed: removed.has(p.product_key),
+        };
+      });
+
+  const saveMut = useMutation({
+    mutationFn: () => reconciliationApi.saveFiche(date, buildFicheLines()),
+    onSuccess: (r) => {
+      notify.success(`Fiche enregistrée (${r.saved} ligne(s)) — visible par tous les utilisateurs`);
+      qc.invalidateQueries({ queryKey: ['recon-fiche', date] });
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+
   const validateMut = useMutation({
     mutationFn: async () => {
+      // La validation enregistre aussi la fiche : l'état validé reste partagé.
+      await reconciliationApi.saveFiche(date, buildFicheLines());
       const day = await reconciliationApi.openDay(date);
       const rows = allProducts
         .filter(p => num(slotQty[`${p.product_key}__total`]) > 0)
@@ -525,6 +585,7 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       notify.success(`Appro validé : ${r.upserted} produit(s)`);
       qc.invalidateQueries({ queryKey: ['recon-day', date] });
       qc.invalidateQueries({ queryKey: ['recon-suggest'] });
+      qc.invalidateQueries({ queryKey: ['recon-fiche', date] });
       onValidated();
     },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
@@ -556,6 +617,13 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             Basé sur <strong>{refLabel}</strong>
           </span>
         )}
+        {fiche?.savedAt && (
+          <span className="odoo-tag odoo-tag-green" style={{ fontSize: '0.6875rem' }}
+            title={fiche.savedBy ? `Enregistrée par ${fiche.savedBy}` : undefined}>
+            <Check size={11} /> Enregistrée{fiche.savedBy ? ` par ${fiche.savedBy}` : ''} le{' '}
+            {format(new Date(fiche.savedAt), 'd MMM à HH:mm', { locale: fr })}
+          </span>
+        )}
         {data && !data.referenceDate && data.products.length > 0 && (
           <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>
             Pas de référence J-7/J-14
@@ -575,6 +643,14 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         <div style={{ flex: 1 }} />
         <button className="odoo-btn-secondary" onClick={() => setShowAddProduct(true)}>
           <Plus size={14} /> Produit
+        </button>
+        <button className="odoo-btn-secondary"
+          disabled={!hasProducts || saveMut.isPending}
+          title="Enregistre la fiche en base : les autres utilisateurs verront les mêmes quantités et produits"
+          onClick={() => saveMut.mutate()}>
+          {saveMut.isPending
+            ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</>
+            : <><Save size={14} /> Enregistrer</>}
         </button>
         <div style={{ position: 'relative' }}>
           <button className="odoo-btn-secondary"

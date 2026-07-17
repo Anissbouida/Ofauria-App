@@ -50,6 +50,10 @@ router.post('/darija', asyncHandler(reconciliationController.upsertDarija));
 // Suggestion fiche de besoin (J-7 / J-14)
 router.get('/suggest', asyncHandler(reconciliationController.suggest));
 
+// Fiche de besoin partagée (enregistrée en base, visible par tous)
+router.get('/fiche', asyncHandler(reconciliationController.getFiche));
+router.put('/fiche', asyncHandler(reconciliationController.saveFiche));
+
 // Rapport de periode
 router.get('/report', asyncHandler(reconciliationController.report));
 

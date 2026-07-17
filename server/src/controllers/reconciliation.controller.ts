@@ -142,6 +142,52 @@ export const reconciliationController = {
     res.json({ success: true, data: result });
   },
 
+  // ─── Fiche de besoin partagée ──────────────────────────────────────────
+
+  /** Fiche enregistrée pour une date. Query: ?date=AAAA-MM-JJ */
+  async getFiche(req: AuthRequest, res: Response) {
+    const { date } = req.query as Record<string, string>;
+    if (!date || !DATE_RE.test(date)) {
+      res.status(400).json({ success: false, error: { message: 'Date invalide (AAAA-MM-JJ)' } });
+      return;
+    }
+    const result = await reconciliationRepository.getFiche(date);
+    res.json({ success: true, data: result });
+  },
+
+  /** Body: { date, lines: [{ productName, sku?, category?, unitPrice?, slotQty?, totalQty?, removed? }] } */
+  async saveFiche(req: AuthRequest, res: Response) {
+    const b = req.body as { date?: string; lines?: unknown };
+    if (!b.date || !DATE_RE.test(b.date)) {
+      res.status(400).json({ success: false, error: { message: 'Date invalide (AAAA-MM-JJ)' } });
+      return;
+    }
+    if (!Array.isArray(b.lines)) {
+      res.status(400).json({ success: false, error: { message: 'lines doit être un tableau' } });
+      return;
+    }
+    const lines = (b.lines as Record<string, unknown>[]).map(l => {
+      const slotQty: Record<string, number> = {};
+      if (l.slotQty && typeof l.slotQty === 'object') {
+        for (const [k, v] of Object.entries(l.slotQty as Record<string, unknown>)) {
+          const n = num(v);
+          if (n !== undefined) slotQty[k] = n;
+        }
+      }
+      return {
+        sku: (l.sku as string) ?? null,
+        productName: String(l.productName ?? '').trim(),
+        category: (l.category as string) ?? null,
+        unitPrice: num(l.unitPrice),
+        slotQty,
+        totalQty: num(l.totalQty),
+        removed: l.removed === true,
+      };
+    }).filter(l => l.productName);
+    const result = await reconciliationRepository.saveFiche(b.date, lines, req.user!.userId);
+    res.json({ success: true, data: result });
+  },
+
   // ─── Créneaux ──────────────────────────────────────────────────────────
 
   async listSlots(_req: AuthRequest, res: Response) {
