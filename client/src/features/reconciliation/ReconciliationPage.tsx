@@ -1055,6 +1055,19 @@ function DayView() {
   const locked = day?.status === 'closed';
   const lines = day?.lines || [];
 
+  // Regroupement par categorie : le serveur trie deja par categorie puis nom,
+  // on decoupe donc la liste en sections consecutives.
+  const groupedLines = useMemo(() => {
+    const groups: { cat: string; items: ReconLine[] }[] = [];
+    for (const l of lines) {
+      const cat = l.category || 'Aucune catégorie';
+      const last = groups[groups.length - 1];
+      if (last && last.cat === cat) last.items.push(l);
+      else groups.push({ cat, items: [l] });
+    }
+    return groups;
+  }, [lines]);
+
   const totals = useMemo(() => {
     return lines.reduce((a, l) => {
       const price = num(l.unit_price);
@@ -1134,7 +1147,6 @@ function DayView() {
             <thead>
               <tr>
                 <th>Produit</th>
-                <th className="hidden md:table-cell">Catégorie</th>
                 <th style={{ textAlign: 'right' }}>Appro</th>
                 <th style={{ textAlign: 'right' }}>Reçu</th>
                 <th style={{ textAlign: 'right' }}>Vendu</th>
@@ -1147,10 +1159,28 @@ function DayView() {
             </thead>
             <tbody>
               {lines.length === 0 ? (
-                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                   Aucune ligne. Ajoute un produit ou importe le CSV Loyverse du jour.
                 </td></tr>
-              ) : lines.map(l => {
+              ) : groupedLines.map(({ cat, items }) => (
+                <Fragment key={cat}>
+                  <tr>
+                    <td colSpan={7} style={{
+                      background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
+                      color: 'var(--theme-accent)', fontSize: '0.75rem',
+                      textTransform: 'uppercase', letterSpacing: 0.5,
+                    }}>
+                      {cat} ({items.length})
+                    </td>
+                    <td colSpan={2} style={{
+                      background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
+                      textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem',
+                      color: ecartColor(items.reduce((s, l) => s + num(l.ecart_value), 0)),
+                    }}>
+                      {nf(items.reduce((s, l) => s + num(l.ecart_value), 0))} DH
+                    </td>
+                  </tr>
+                  {items.map(l => {
                 const eQty = num(l.ecart_qty), eVal = num(l.ecart_value);
                 return (
                   <tr key={l.id}>
@@ -1161,7 +1191,6 @@ function DayView() {
                       )}
                       {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
-                    <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{l.category || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'approQty', 'appro_qty')}</td>
                     <td style={{ textAlign: 'right' }}>
                       {numCell(l, 'recuQty', 'recu_qty')}
@@ -1187,11 +1216,13 @@ function DayView() {
                   </tr>
                 );
               })}
+                </Fragment>
+              ))}
             </tbody>
             {lines.length > 0 && (
               <tfoot>
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
-                  <td colSpan={2}>Total ({lines.length})</td>
+                  <td>Total ({lines.length})</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.appro)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : undefined }}>{qf(totals.recu)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.vendu)}</td>
@@ -1202,7 +1233,7 @@ function DayView() {
                   <td></td>
                 </tr>
                 <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
-                  <td colSpan={2}>Montants (DH)</td>
+                  <td>Montants (DH)</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.approVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.recuVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.venduVal)}</td>
