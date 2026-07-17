@@ -111,6 +111,8 @@ export const reconciliationApi = {
 
   importSales: (dayId: string, items: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[]) =>
     api.post(`/reconciliation/days/${dayId}/import-sales`, { items }).then(r => r.data.data as { upserted: number }),
+  resetSales: (dayId: string) =>
+    api.post(`/reconciliation/days/${dayId}/reset-sales`).then(r => r.data.data as { reset: number }),
 
   suggest: (date: string) =>
     api.get('/reconciliation/suggest', { params: { date } }).then(r => r.data.data as SuggestResult),

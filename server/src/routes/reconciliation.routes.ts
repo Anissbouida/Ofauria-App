@@ -30,6 +30,7 @@ router.delete('/lines/:lineId', asyncHandler(reconciliationController.deleteLine
 
 // Import Loyverse (ventes)
 router.post('/days/:id/import-sales', asyncHandler(reconciliationController.importSales));
+router.post('/days/:id/reset-sales', asyncHandler(reconciliationController.resetSales));
 
 // Créneaux d'approvisionnement
 router.get('/slots', asyncHandler(reconciliationController.listSlots));

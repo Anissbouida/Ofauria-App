@@ -110,6 +110,12 @@ export const reconciliationController = {
     res.json({ success: true, data: result });
   },
 
+  /** Remet vendu_qty / vendu_amount a 0 sur toutes les lignes du jour. */
+  async resetSales(req: AuthRequest, res: Response) {
+    const result = await reconciliationRepository.resetSales(req.params.id);
+    res.json({ success: true, data: result });
+  },
+
   // ─── Import Loyverse ───────────────────────────────────────────────────
 
   /** Body: { items: [{ sku?, productName, category?, quantity, unitPrice, netSales? }] } */

@@ -238,6 +238,21 @@ export const reconciliationRepository = {
     return r.rows[0]?.n ?? 0;
   },
 
+  /**
+   * Remet les ventes du jour a zero (vendu_qty + vendu_amount) avant un
+   * reimport propre. Appro / recu / invendu / prix sont preserves.
+   */
+  async resetSales(dayId: string) {
+    await this.assertOpen(dayId);
+    const r = await db.query(
+      `UPDATE recon_lines
+       SET vendu_qty = 0, vendu_amount = 0, source_vendu = 'manual', updated_at = NOW()
+       WHERE recon_day_id = $1 AND (vendu_qty <> 0 OR vendu_amount <> 0 OR source_vendu = 'loyverse_import')`,
+      [dayId]
+    );
+    return { reset: r.rowCount ?? 0 };
+  },
+
   // ─── Import Loyverse (ventes) ──────────────────────────────────────────
 
   /**

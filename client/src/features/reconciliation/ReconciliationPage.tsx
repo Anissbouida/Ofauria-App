@@ -5,7 +5,7 @@ import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package,
+  Settings, Clock, Package, RotateCcw,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
@@ -1037,6 +1037,11 @@ function DayView() {
     onSuccess: (r) => { invalidate(); setShowPaste(false); notify.success(`Appro importé : ${r.upserted} produit(s)`); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
+  const resetSalesMut = useMutation({
+    mutationFn: () => reconciliationApi.resetSales(day!.id),
+    onSuccess: (r) => { invalidate(); notify.success(`Ventes remises à zéro : ${r.reset} ligne(s)`); },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
+  });
   const statusMut = useMutation({
     mutationFn: (v: { action: 'open' | 'closed'; force?: boolean }) =>
       v.action === 'closed' ? reconciliationApi.close(day!.id, v.force) : reconciliationApi.reopen(day!.id),
@@ -1124,6 +1129,15 @@ function DayView() {
         <div style={{ flex: 1 }} />
         <input ref={fileRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
           onChange={e => { if (e.target.files?.length) importMut.mutate(Array.from(e.target.files)); e.target.value = ''; }} />
+        <button className="odoo-btn-secondary" disabled={!day || locked || resetSalesMut.isPending || totals.vendu === 0}
+          title="Remet vendu et montant vendu à 0 sur toutes les lignes (appro, reçu et invendu conservés) avant un réimport propre"
+          onClick={() => {
+            if (window.confirm('Remettre toutes les ventes du jour à zéro ?\n\nAppro, reçu et invendu sont conservés. À utiliser avant un réimport Loyverse propre.')) {
+              resetSalesMut.mutate();
+            }
+          }}>
+          {resetSalesMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Ventes à 0
+        </button>
         <button className="odoo-btn-secondary" disabled={!day || locked || importMut.isPending}
           onClick={() => fileRef.current?.click()}>
           {importMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Importer Loyverse
