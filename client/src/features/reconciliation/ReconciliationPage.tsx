@@ -1024,6 +1024,7 @@ function DayView() {
       const parsed = await parseLoyverseFiles(files);
       const items = parsed.flatMap(p => p.items.map(i => ({
         sku: i.sku, productName: i.productName, category: i.category || undefined, quantity: i.quantity, unitPrice: i.unitPrice,
+        netSales: i.netSales,
       })));
       if (items.length === 0) throw new Error('Aucune vente exploitable dans le fichier');
       return reconciliationApi.importSales(day!.id, items);
@@ -1075,7 +1076,9 @@ function DayView() {
       a.appro += num(l.appro_qty); a.recu += num(l.recu_qty); a.vendu += num(l.vendu_qty); a.invendu += num(l.invendu_qty);
       a.ecartQty += num(l.ecart_qty); a.ecartVal += num(l.ecart_value);
       a.approVal += num(l.appro_qty) * price; a.recuVal += num(l.recu_qty) * price;
-      a.venduVal += num(l.vendu_qty) * price; a.invenduVal += num(l.invendu_qty) * price;
+      // Montant vendu : ventes nettes reelles Loyverse si importees, sinon qte x prix.
+      a.venduVal += num(l.vendu_amount) > 0 ? num(l.vendu_amount) : num(l.vendu_qty) * price;
+      a.invenduVal += num(l.invendu_qty) * price;
       return a;
     }, { appro: 0, recu: 0, vendu: 0, invendu: 0, ecartQty: 0, ecartVal: 0, approVal: 0, recuVal: 0, venduVal: 0, invenduVal: 0 });
   }, [lines]);

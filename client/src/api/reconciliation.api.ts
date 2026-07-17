@@ -12,6 +12,7 @@ export type ReconLine = {
   appro_qty: string;
   recu_qty: string;
   vendu_qty: string;
+  vendu_amount: string;
   invendu_qty: string;
   unit_price: string;
   ecart_qty: string;
@@ -108,7 +109,7 @@ export const reconciliationApi = {
     api.put(`/reconciliation/lines/${lineId}`, data).then(r => r.data.data as ReconLine),
   deleteLine: (lineId: string) => api.delete(`/reconciliation/lines/${lineId}`).then(r => r.data),
 
-  importSales: (dayId: string, items: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number }[]) =>
+  importSales: (dayId: string, items: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[]) =>
     api.post(`/reconciliation/days/${dayId}/import-sales`, { items }).then(r => r.data.data as { upserted: number }),
 
   suggest: (date: string) =>

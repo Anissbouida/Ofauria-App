@@ -112,10 +112,10 @@ export const reconciliationController = {
 
   // ─── Import Loyverse ───────────────────────────────────────────────────
 
-  /** Body: { items: [{ sku?, productName, category?, quantity, unitPrice }] } */
+  /** Body: { items: [{ sku?, productName, category?, quantity, unitPrice, netSales? }] } */
   async importSales(req: AuthRequest, res: Response) {
     const { items } = req.body as {
-      items?: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number }[];
+      items?: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[];
     };
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Aucune vente a importer' } }); return;

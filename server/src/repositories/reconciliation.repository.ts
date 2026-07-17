@@ -248,7 +248,7 @@ export const reconciliationRepository = {
    */
   async importSales(
     dayId: string,
-    items: { sku?: string | null; productName: string; category?: string | null; quantity: number; unitPrice: number }[]
+    items: { sku?: string | null; productName: string; category?: string | null; quantity: number; unitPrice: number; netSales?: number }[]
   ) {
     await this.assertOpen(dayId);
     const client = await db.getClient();
@@ -260,17 +260,18 @@ export const reconciliationRepository = {
         const key = productKey(it.sku, it.productName);
         await client.query(
           `INSERT INTO recon_lines
-             (recon_day_id, product_key, sku, product_name, category, vendu_qty, unit_price, source_vendu)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'loyverse_import')
+             (recon_day_id, product_key, sku, product_name, category, vendu_qty, vendu_amount, unit_price, source_vendu)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'loyverse_import')
            ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
              sku          = COALESCE(NULLIF(EXCLUDED.sku, ''), recon_lines.sku),
              product_name = EXCLUDED.product_name,
              category     = COALESCE(recon_lines.category, EXCLUDED.category),
              vendu_qty    = EXCLUDED.vendu_qty,
+             vendu_amount = EXCLUDED.vendu_amount,
              unit_price   = CASE WHEN EXCLUDED.unit_price > 0 THEN EXCLUDED.unit_price ELSE recon_lines.unit_price END,
              source_vendu = 'loyverse_import',
              updated_at   = NOW()`,
-          [dayId, key, it.sku ?? null, it.productName, it.category ?? null, it.quantity, it.unitPrice ?? 0]
+          [dayId, key, it.sku ?? null, it.productName, it.category ?? null, it.quantity, it.netSales ?? 0, it.unitPrice ?? 0]
         );
         await registerProduct(client, it);
         upserted++;
