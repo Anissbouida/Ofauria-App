@@ -20,6 +20,7 @@ export type ReconLineInput = {
   productName: string;
   category?: string | null;
   approQty?: number;
+  recuQty?: number;
   venduQty?: number;
   invenduQty?: number;
   unitPrice?: number;
@@ -128,20 +129,21 @@ export const reconciliationRepository = {
     const key = productKey(input.sku, input.productName);
     const r = await db.query(
       `INSERT INTO recon_lines
-         (recon_day_id, product_key, sku, product_name, category, appro_qty, vendu_qty, invendu_qty, unit_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (recon_day_id, product_key, sku, product_name, category, appro_qty, recu_qty, vendu_qty, invendu_qty, unit_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
          sku         = COALESCE(NULLIF(EXCLUDED.sku, ''), recon_lines.sku),
          product_name = EXCLUDED.product_name,
          category    = COALESCE(EXCLUDED.category, recon_lines.category),
          appro_qty   = EXCLUDED.appro_qty,
+         recu_qty    = EXCLUDED.recu_qty,
          invendu_qty = EXCLUDED.invendu_qty,
          unit_price  = EXCLUDED.unit_price,
          updated_at  = NOW()
        RETURNING *`,
       [
         dayId, key, input.sku ?? null, input.productName, input.category ?? null,
-        input.approQty ?? 0, input.venduQty ?? 0, input.invenduQty ?? 0, input.unitPrice ?? 0,
+        input.approQty ?? 0, input.recuQty ?? 0, input.venduQty ?? 0, input.invenduQty ?? 0, input.unitPrice ?? 0,
       ]
     );
     await registerProduct(db, input);

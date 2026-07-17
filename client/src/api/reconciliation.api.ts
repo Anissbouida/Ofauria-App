@@ -100,7 +100,7 @@ export const reconciliationApi = {
   close: (id: string, force = false) => api.post(`/reconciliation/days/${id}/close`, { force }).then(r => r.data.data),
   reopen: (id: string) => api.post(`/reconciliation/days/${id}/reopen`).then(r => r.data.data),
 
-  upsertLine: (dayId: string, data: { productName: string; sku?: string; category?: string; approQty?: number; invenduQty?: number; unitPrice?: number }) =>
+  upsertLine: (dayId: string, data: { productName: string; sku?: string; category?: string; approQty?: number; recuQty?: number; invenduQty?: number; unitPrice?: number }) =>
     api.post(`/reconciliation/days/${dayId}/lines`, data).then(r => r.data.data as ReconLine),
   bulkAppro: (dayId: string, rows: { sku?: string; productName: string; category?: string; approQty: number; unitPrice?: number }[]) =>
     api.post(`/reconciliation/days/${dayId}/bulk-appro`, { rows }).then(r => r.data.data as { upserted: number }),

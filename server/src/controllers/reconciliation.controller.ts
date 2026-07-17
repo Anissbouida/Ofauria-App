@@ -63,7 +63,7 @@ export const reconciliationController = {
 
   // ─── Lignes ────────────────────────────────────────────────────────────
 
-  /** Cree/maj une ligne. Body: { productName, sku?, category?, approQty?, invenduQty?, unitPrice? } */
+  /** Cree/maj une ligne. Body: { productName, sku?, category?, approQty?, recuQty?, invenduQty?, unitPrice? } */
   async upsertLine(req: AuthRequest, res: Response) {
     const b = req.body as Record<string, unknown>;
     const productName = String(b.productName ?? '').trim();
@@ -73,6 +73,7 @@ export const reconciliationController = {
       productName,
       category: (b.category as string) ?? null,
       approQty: num(b.approQty),
+      recuQty: num(b.recuQty),
       invenduQty: num(b.invenduQty),
       unitPrice: num(b.unitPrice),
     });

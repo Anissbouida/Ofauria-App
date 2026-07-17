@@ -1340,46 +1340,148 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
   );
 }
 
+/**
+ * Ajout d'un produit manquant a la journee : recherche dans le catalogue
+ * (recon_products) avec prefill SKU/categorie/prix, ou creation d'un nouveau
+ * produit (le serveur l'enregistre aussi au catalogue).
+ */
 function AddLineModal({ onClose, onSave, isLoading }: {
   onClose: () => void; onSave: (d: any) => void; isLoading: boolean;
 }) {
-  const [f, setF] = useState({ productName: '', sku: '', category: '', approQty: '', unitPrice: '' });
+  const [f, setF] = useState({ productName: '', sku: '', category: '', approQty: '', recuQty: '', unitPrice: '' });
+  const [catFilter, setCatFilter] = useState('');
+
+  const { data: products = [] } = useQuery({
+    queryKey: ['recon-products'],
+    queryFn: () => reconciliationApi.listProducts(),
+  });
+
+  const cats = useMemo(
+    () => [...new Set(products.map(p => p.category || 'Non classé'))].sort((a, b) => a.localeCompare(b, 'fr')),
+    [products],
+  );
+
+  const inCategory = useMemo(
+    () => catFilter ? products.filter(p => (p.category || 'Non classé') === catFilter) : products,
+    [products, catFilter],
+  );
+
+  const q = f.productName.trim().toLowerCase();
+  const matches = q ? inCategory.filter(p => p.product_name.toLowerCase().includes(q)) : inCategory;
+  const known = products.find(p => p.product_name.trim().toLowerCase() === q);
+  const isNew = q !== '' && !known;
+
+  const pickProduct = (p: ReconProduct) => setF(prev => ({
+    ...prev,
+    productName: p.product_name,
+    sku: p.sku || '',
+    category: p.category || '',
+    unitPrice: num(p.unit_price) > 0 ? String(p.unit_price) : prev.unitPrice,
+  }));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 440, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-          Ajouter un produit
+          Ajouter un produit à la journée
         </div>
         <form onSubmit={e => {
           e.preventDefault();
           if (!f.productName.trim()) return;
           onSave({
             productName: f.productName.trim(), sku: f.sku.trim() || undefined, category: f.category.trim() || undefined,
-            approQty: parseFloat(f.approQty) || 0, unitPrice: parseFloat(f.unitPrice) || 0,
+            approQty: parseFloat(f.approQty.replace(',', '.')) || 0,
+            recuQty: parseFloat(f.recuQty.replace(',', '.')) || 0,
+            unitPrice: parseFloat(f.unitPrice.replace(',', '.')) || 0,
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
           <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
+            <select className="input" value={catFilter}
+              onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, productName: '' })); }}>
+              <option value="">Toutes les catégories ({products.length})</option>
+              {cats.map(c => (
+                <option key={c} value={c}>
+                  {c} ({products.filter(p => (p.category || 'Non classé') === c).length})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Produit *</label>
-            <input className="input" autoFocus value={f.productName} onChange={e => setF({ ...f, productName: e.target.value })} required />
+            <input className="input" autoFocus required value={f.productName}
+              placeholder="Tape pour chercher…"
+              onChange={e => setF({ ...f, productName: e.target.value })} />
+            {/* Resultats de recherche cliquables (limites a 8) */}
+            {q !== '' && !known && matches.length > 0 && (
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+                {matches.slice(0, 8).map(p => (
+                  <button key={p.product_key} type="button"
+                    onClick={() => pickProduct(p)}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', width: '100%',
+                      padding: '6px 10px', border: 'none', background: 'transparent',
+                      textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
+                      borderBottom: '1px solid var(--theme-bg-separator)',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <span style={{ fontWeight: 500 }}>{p.product_name}</span>
+                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{p.category || 'Non classé'}</span>
+                  </button>
+                ))}
+                {matches.length > 8 && (
+                  <div style={{ padding: '4px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                    … {matches.length - 8} autre{matches.length - 8 > 1 ? 's' : ''} — affine la recherche
+                  </div>
+                )}
+              </div>
+            )}
+            {known && (
+              <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', marginTop: 3 }}>
+                <Check size={11} style={{ display: 'inline', verticalAlign: -1 }} /> Produit du catalogue — {known.category || 'Non classé'}
+              </div>
+            )}
+            {isNew && matches.length === 0 && (
+              <div style={{ fontSize: '0.6875rem', color: '#b26a00', marginTop: 3 }}>
+                Nouveau produit : il sera ajouté au catalogue.
+              </div>
+            )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>SKU</label>
-              <input className="input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
+          {isNew && matches.length === 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>SKU</label>
+                <input className="input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie du produit</label>
+                <input className="input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="day-add-categories"
+                  onChange={e => setF({ ...f, category: e.target.value })} />
+                <datalist id="day-add-categories">
+                  {cats.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
             </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
-              <input className="input" value={f.category} onChange={e => setF({ ...f, category: e.target.value })} />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Approvisionné</label>
-              <input type="number" step="0.001" className="input" value={f.approQty} onChange={e => setF({ ...f, approQty: e.target.value })} />
+              <input type="text" inputMode="decimal" className="input" value={f.approQty}
+                placeholder="0"
+                onChange={e => setF({ ...f, approQty: e.target.value })} />
             </div>
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire (DH)</label>
-              <input type="number" step="0.01" className="input" value={f.unitPrice} onChange={e => setF({ ...f, unitPrice: e.target.value })} />
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Reçu</label>
+              <input type="text" inputMode="decimal" className="input" value={f.recuQty}
+                placeholder="0"
+                onChange={e => setF({ ...f, recuQty: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix (DH)</label>
+              <input type="text" inputMode="decimal" className="input" value={f.unitPrice}
+                placeholder="0"
+                onChange={e => setF({ ...f, unitPrice: e.target.value })} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
