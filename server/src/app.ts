@@ -125,6 +125,10 @@ const ROUTES_WITH_LOCAL_JSON_PARSER = [
   // Contrôle des ventes : imports batch (catalogue Loyverse ~350 produits,
   // ventes du jour, appro en masse) — parser local elargi cote route.
   '/api/v1/reconciliation',
+  // Module Produits : import CSV Loyverse (centaines de lignes) et suppression
+  // en masse (centaines d'UUID) — parser local elargi cote route products.
+  '/api/v1/products/import',
+  '/api/v1/products/bulk-delete',
 ];
 const globalJsonParser = express.json({ limit: '10kb' });
 app.use((req, res, next) => {

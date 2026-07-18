@@ -17,6 +17,7 @@ import ProductionProfileTab from './ProductionProfileTab';
 import SemiFinisTab from './SemiFinisTab';
 import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
+import { mapLoyverseCsv } from './loyverse-csv';
 
 type ViewMode = 'grid' | 'table';
 
@@ -96,6 +97,8 @@ function CatalogueTab() {
   const [stockFilter, setStockFilter] = useState<'all' | 'available' | 'low' | 'out'>('all');
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -117,6 +120,64 @@ function CatalogueTab() {
       notify.error(msg || 'Erreur lors de la suppression');
     },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: productsApi.bulkDelete,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setSelectedIds(new Set());
+      if (result.failed.length === 0) {
+        notify.success(`${result.deleted} produit${result.deleted > 1 ? 's' : ''} supprimé${result.deleted > 1 ? 's' : ''}`);
+      } else {
+        notify.error(`${result.deleted} supprimé${result.deleted > 1 ? 's' : ''}, ${result.failed.length} échec${result.failed.length > 1 ? 's' : ''} (produits utilisés dans des ventes/commandes/plans)`);
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      notify.error(msg || 'Erreur lors de la suppression en masse');
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: productsApi.importProducts,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      let msg = `Import terminé : ${result.created} créé${result.created > 1 ? 's' : ''}`;
+      if (result.skipped > 0) msg += `, ${result.skipped} ignoré${result.skipped > 1 ? 's' : ''} (déjà existants)`;
+      if (result.errors.length > 0) {
+        msg += `, ${result.errors.length} erreur${result.errors.length > 1 ? 's' : ''}`;
+        console.warn('Erreurs import produits :', result.errors);
+      }
+      (result.errors.length > 0 ? notify.error : notify.success)(msg);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      notify.error(msg || 'Erreur lors de l\'import');
+    },
+  });
+
+  const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permet de re-selectionner le meme fichier
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const { items, ignored } = mapLoyverseCsv(text);
+      if (items.length === 0) {
+        notify.error('Aucun produit importable dans ce fichier');
+        return;
+      }
+      if (ignored.length > 0) {
+        console.warn('Lignes CSV ignorées :', ignored);
+        notify.error(`${ignored.length} ligne${ignored.length > 1 ? 's' : ''} ignorée${ignored.length > 1 ? 's' : ''} (prix « variable », doublons...) — détail en console`);
+      }
+      if (!confirm(`Importer ${items.length} produit${items.length > 1 ? 's' : ''} depuis « ${file.name} » ?\nLes produits déjà existants (même nom) seront ignorés.`)) return;
+      importMutation.mutate(items);
+    } catch (err) {
+      notify.error(err instanceof Error ? err.message : 'Fichier CSV illisible');
+    }
+  };
 
   const toggleMutation = useMutation({
     mutationFn: productsApi.toggleAvailability,
@@ -206,13 +267,58 @@ function CatalogueTab() {
     return arr;
   }, [filteredProducts, sortKey, sortDir]);
 
+  // ─── Selection multiple (vue liste) ───
+  const visibleIds = sortedProducts.map((p: Record<string, any>) => p.id as string);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const toggleSelectAll = () => {
+    setSelectedIds(prev => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        visibleIds.forEach(id => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleIds]);
+    });
+  };
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const handleBulkDelete = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    if (!confirm(`Supprimer définitivement ${n} produit${n > 1 ? 's' : ''} ?\nCette action est irréversible. Les produits utilisés dans des ventes/commandes/plans ne seront pas supprimés.`)) return;
+    bulkDeleteMutation.mutate([...selectedIds]);
+  };
+
   return (
     <>
-      {/* ══════ Action sub-bar (Nouveau produit + pager + view switcher) ══════ */}
+      {/* ══════ Action sub-bar (Nouveau produit + import + pager + view switcher) ══════ */}
       <div className="odoo-control-bar" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
         <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="odoo-btn-primary">
           <Plus size={14} /> Nouveau
         </button>
+        <button onClick={() => csvInputRef.current?.click()} className="odoo-btn-secondary"
+          disabled={importMutation.isPending} title="Importer des produits depuis un export CSV Loyverse">
+          <Upload size={14} /> {importMutation.isPending ? 'Import...' : 'Importer CSV'}
+        </button>
+        <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ display: 'none' }} />
+        {selectedIds.size > 0 && (
+          <>
+            <span className="odoo-pager" style={{ marginLeft: 8 }}>
+              <strong>{selectedIds.size}</strong> sélectionné{selectedIds.size > 1 ? 's' : ''}
+            </span>
+            <button onClick={handleBulkDelete} className="odoo-btn-danger" disabled={bulkDeleteMutation.isPending}>
+              <Trash2 size={14} /> {bulkDeleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+            </button>
+            <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary" title="Annuler la sélection">
+              <X size={14} />
+            </button>
+          </>
+        )}
         <div style={{ flex: 1 }} />
         <span className="odoo-pager">
           <strong>{filteredProducts.length}</strong> / {totalProducts}
@@ -401,6 +507,10 @@ function CatalogueTab() {
           <table className="odoo-table">
             <thead>
               <tr>
+                <th style={{ width: 28, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll}
+                    title="Tout sélectionner" style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                </th>
                 <th style={{ width: 24 }}></th>
                 <SortHeader label="Produit" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
@@ -414,7 +524,7 @@ function CatalogueTab() {
             </thead>
             <tbody>
               {sortedProducts.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                   Aucun produit trouvé
                 </td></tr>
               ) : sortedProducts.map((p: Record<string, any>) => {
@@ -426,6 +536,11 @@ function CatalogueTab() {
 
                 return (
                   <tr key={p.id as string} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selectedIds.has(p.id as string)}
+                        onChange={() => toggleSelect(p.id as string)}
+                        style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                    </td>
                     <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
@@ -470,32 +585,40 @@ function CatalogueTab() {
                       )}
                     </td>
                     <td>
-                      <div style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
-                        {p.sale_type === 'jour' && (
-                          <span className="odoo-tag odoo-tag-yellow" title="Vente du jour">JOUR</span>
-                        )}
-                        {p.sale_type === 'dlv' && (
-                          <span className="odoo-tag odoo-tag-green" title="Date limite de vente">DLV</span>
-                        )}
-                        {p.sale_type === 'commande' && (
-                          <span className="odoo-tag odoo-tag-blue" title="Sur commande">CMD</span>
-                        )}
-                        {Boolean(p.shelf_life_days) && (
-                          <span className="odoo-tag odoo-tag-grey" title={`DLV: ${p.shelf_life_days} jour(s) depuis production`}>DLV {String(p.shelf_life_days)}j</span>
-                        )}
-                        {Boolean(p.display_life_hours) && (
-                          <span className="odoo-tag odoo-tag-orange" title={`DDE: ${p.display_life_hours}h depuis transfert vitrine`}>DDE {String(p.display_life_hours)}h</span>
-                        )}
-                        {Boolean(p.is_recyclable) && (
-                          <span className="odoo-tag odoo-tag-blue" title="Recyclable">REC</span>
-                        )}
-                        {Boolean(p.is_reexposable) && (
-                          <span className="odoo-tag odoo-tag-purple" title="Re-exposable">RE</span>
-                        )}
-                        {!p.shelf_life_days && !p.sale_type && (
-                          <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>
-                        )}
-                      </div>
+                      {/* Audit P1.5 : un seul badge de synthese, derive de sale_type.
+                          Fini les cumuls contradictoires (JOUR + DLV nj + DDE nh).
+                          Details (RE / REC / DDE) en badges secondaires optionnels. */}
+                      {(() => {
+                        const shelfDays = Number(p.shelf_life_days) || 0;
+                        const displayHours = Number(p.display_life_hours) || 0;
+                        const saleType = (p.sale_type as string) || 'jour';
+                        return (
+                          <div style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {saleType === 'jour' && (
+                              <span className="odoo-tag odoo-tag-yellow" title="Vente du jour — invendu = perte ou recyclage">JOUR</span>
+                            )}
+                            {saleType === 'dlv' && (
+                              <span className="odoo-tag odoo-tag-green" title={`DLV — ${shelfDays > 0 ? `${shelfDays} j depuis production` : 'DLV non configurée'}`}>
+                                DLV{shelfDays > 0 ? ` ${shelfDays}j` : ''}
+                              </span>
+                            )}
+                            {saleType === 'commande' && (
+                              <span className="odoo-tag odoo-tag-blue" title="Sur commande — pas de stock vitrine">CMD</span>
+                            )}
+                            {saleType !== 'commande' && displayHours > 0 && (
+                              <span className="odoo-tag odoo-tag-orange" title={`DDE : ${displayHours} h depuis transfert vitrine`}>
+                                +DDE {displayHours}h
+                              </span>
+                            )}
+                            {saleType !== 'commande' && Boolean(p.is_reexposable) && (
+                              <span className="odoo-tag odoo-tag-purple" title={`Re-exposable${p.max_reexpositions ? ` (max ${p.max_reexpositions})` : ''}`}>RE</span>
+                            )}
+                            {saleType !== 'commande' && Boolean(p.is_recyclable) && (
+                              <span className="odoo-tag odoo-tag-blue" title="Recyclable">REC</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'inline-flex', gap: 2 }}>
@@ -563,11 +686,38 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     minProductionQuantity: (product?.min_production_quantity as string) || '0',
     shelfLifeDays: (product?.shelf_life_days as string) || '',
     displayLifeHours: (product?.display_life_hours as string) || '',
-    hasDLV: (product?.is_reexposable as boolean) || false,
+    // Audit P1.6 : renomme depuis 'hasDLV' (variable mensongere : c'etait en
+    // realite is_reexposable). Alignement stricte avec le champ DB.
+    isReexposable: (product?.is_reexposable as boolean) || false,
     isRecyclable: (product?.is_recyclable as boolean) || false,
+    // Audit P1.4 : plafond editable, defaut 1 quand reexposable.
+    maxReexpositions: String((product?.max_reexpositions as number | undefined) ?? ''),
     saleType: (product?.sale_type as string) || 'jour',
     recipeId: '',
   });
+
+  // Audit P1.1 : change de type = purge les champs incoherents cote UI.
+  // 'commande' n'a jamais de stock vitrine : on annule DLV/DDE/reexpose/recycle
+  // pour ne pas afficher (ni sauvegarder) des flags fantomes. La ceinture DB
+  // (mig 245 CHECK) rejette de toute facon les combos incoherents.
+  const setSaleType = (nextType: string) => {
+    setForm(prev => {
+      if (nextType === prev.saleType) return prev;
+      if (nextType === 'commande') {
+        return {
+          ...prev,
+          saleType: nextType,
+          shelfLifeDays: '',
+          displayLifeHours: '',
+          isReexposable: false,
+          isRecyclable: false,
+          maxReexpositions: '',
+        };
+      }
+      // jour ou dlv : on garde ce qui est saisi (au cas ou l'utilisateur alterne).
+      return { ...prev, saleType: nextType };
+    });
+  };
 
   // Fetch all recipes
   const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
@@ -771,6 +921,19 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       return;
     }
     const { recipeId, ...rest } = form;
+
+    // Audit P1.1 : purge finale cote client — le serveur (validator + CHECK
+    // mig 245) refera la meme, mais on evite un aller-retour d'erreur.
+    const saleType = rest.saleType || 'jour';
+    const isCommande = saleType === 'commande';
+    const isReexposable = isCommande ? false : Boolean(rest.isReexposable);
+    const isRecyclable = isCommande ? false : Boolean(rest.isRecyclable);
+    // max_reexpositions : entier positif si reexposable (defaut 1), sinon 0.
+    const maxReexpositionsRaw = parseInt(rest.maxReexpositions);
+    const maxReexpositions = isReexposable
+      ? (Number.isFinite(maxReexpositionsRaw) && maxReexpositionsRaw >= 1 ? maxReexpositionsRaw : 1)
+      : 0;
+
     onSave(
       {
         ...rest,
@@ -779,11 +942,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         responsibleUserId: rest.responsibleUserId || null,
         stockMinThreshold: parseFloat(rest.stockMinThreshold) || 0,
         minProductionQuantity: parseInt(rest.minProductionQuantity) || 0,
-        shelfLifeDays: parseInt(rest.shelfLifeDays) || null,
-        displayLifeHours: parseInt(rest.displayLifeHours) || null,
-        isReexposable: rest.hasDLV,
-        isRecyclable: rest.isRecyclable,
-        saleType: rest.saleType || 'jour',
+        shelfLifeDays: isCommande ? null : (parseInt(rest.shelfLifeDays) || null),
+        displayLifeHours: isCommande ? null : (parseInt(rest.displayLifeHours) || null),
+        isReexposable,
+        isRecyclable,
+        maxReexpositions,
+        saleType,
         ...(recipeId ? { recipeId } : {}),
       },
       imageFile,
@@ -1183,7 +1347,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                 </div>
 
-                {/* Type de vente */}
+                {/* Type de vente (audit P1.1 : pilote de l'onglet) */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Type de vente</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1193,7 +1357,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', color: 'blue', icon: '📋' },
                     ].map(opt => (
                       <button key={opt.value} type="button"
-                        onClick={() => setForm({ ...form, saleType: opt.value })}
+                        onClick={() => setSaleType(opt.value)}
                         className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center ${
                           form.saleType === opt.value
                             ? `border-${opt.color}-400 bg-${opt.color}-50 ring-1 ring-${opt.color}-200`
@@ -1207,62 +1371,127 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DLV — Duree limite de vie (jours)</label>
-                    <input type="number" step="1" min="0"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} placeholder="Ex: 3" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte a partir de la <strong>date de production</strong>, indep. du transfert vitrine</p>
+                {/* Bannière type=commande : rien d'autre à saisir */}
+                {form.saleType === 'commande' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="text-lg">📋</span>
+                      <div>
+                        <h4 className="text-sm font-semibold text-blue-800">Sur commande — pas de cycle de vie vitrine</h4>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                          Le produit n&apos;est jamais expose : ni DLV, ni DDE, ni ré-exposition, ni recyclage.
+                          Il est produit à la demande.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">DDE — Duree d&apos;exposition vitrine (heures)</label>
-                    <input type="number" step="1" min="0"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
-                    <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte a partir du <strong>transfert en vitrine</strong>. Echeance effective = MIN(DLV, DDE)</p>
-                  </div>
-                </div>
+                )}
 
-                {/* Re-exposable toggle */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-                        <Eye size={18} className="text-green-600" />
+                {/* Sections cycle de vie visibles uniquement pour jour/dlv */}
+                {form.saleType !== 'commande' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                          DLV — Duree limite de vie (jours) {form.saleType === 'dlv' && <span className="text-red-500">*</span>}
+                        </label>
+                        <input type="number" step="1" min="0"
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })}
+                          placeholder={form.saleType === 'dlv' ? 'Obligatoire (ex: 3)' : 'Optionnel — vide = jour même'}
+                          required={form.saleType === 'dlv'} />
+                        <p className="text-xs text-gray-400 mt-1.5 ml-1">
+                          {form.saleType === 'jour'
+                            ? 'Vente du jour : laisser vide (implicite = jour de production)'
+                            : 'Compte à partir de la date de production, indep. du transfert vitrine'}
+                        </p>
                       </div>
                       <div>
-                        <span className="text-sm font-semibold text-gray-900">Re-exposable</span>
-                        <p className="text-xs text-gray-400">Peut etre remis en vitrine le lendemain</p>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">DDE — Duree d&apos;exposition vitrine (heures)</label>
+                        <input type="number" step="1" min="0"
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
+                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte à partir du <strong>transfert en vitrine</strong>. Echeance effective = MIN(DLV, DDE)</p>
                       </div>
                     </div>
-                    <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.hasDLV ? 'bg-green-500' : 'bg-gray-300'}`}
-                      onClick={() => setForm({ ...form, hasDLV: !form.hasDLV })}>
-                      <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
-                        style={{ transform: form.hasDLV ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
-                    </div>
-                  </div>
-                </div>
 
-                {/* Recyclable toggle */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
-                        <span className="text-lg">♻️</span>
+                    {/* Re-exposable toggle + max_reexpositions (audit P1.4) */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+                            <Eye size={18} className="text-green-600" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-semibold text-gray-900">Re-exposable</span>
+                            <p className="text-xs text-gray-400">Peut être remis en vitrine le lendemain</p>
+                          </div>
+                        </div>
+                        <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isReexposable ? 'bg-green-500' : 'bg-gray-300'}`}
+                          onClick={() => {
+                            const next = !form.isReexposable;
+                            setForm({
+                              ...form,
+                              isReexposable: next,
+                              // Aligne max_reexpositions sur le toggle
+                              maxReexpositions: next
+                                ? (form.maxReexpositions && parseInt(form.maxReexpositions) >= 1 ? form.maxReexpositions : '1')
+                                : '',
+                            });
+                          }}>
+                          <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                            style={{ transform: form.isReexposable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-sm font-semibold text-gray-900">Recyclable</span>
-                        <p className="text-xs text-gray-400">Peut etre transforme en ingredient (chapelure, pudding...)</p>
+                      {form.isReexposable && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                            Nombre maximum de ré-expositions
+                          </label>
+                          <input type="number" step="1" min="1" max="10"
+                            className="w-40 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            value={form.maxReexpositions}
+                            onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
+                            placeholder="1" />
+                          <p className="text-xs text-gray-400 mt-1.5">
+                            Combien de fois le produit peut être re-exposé (J+1, J+2…) avant destruction/recyclage.
+                            Défaut : 1.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Recyclable toggle + gestion destinations (audit P1.3) */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
+                            <span className="text-lg">♻️</span>
+                          </div>
+                          <div>
+                            <span className="text-sm font-semibold text-gray-900">Recyclable</span>
+                            <p className="text-xs text-gray-400">Peut être transformé en ingrédient (chapelure, pudding…)</p>
+                          </div>
+                        </div>
+                        <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}
+                          onClick={() => setForm({ ...form, isRecyclable: !form.isRecyclable })}>
+                          <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                            style={{ transform: form.isRecyclable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                        </div>
                       </div>
+                      {form.isRecyclable && product && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <RecycleDestinationsPanel productId={product.id as string} />
+                        </div>
+                      )}
+                      {form.isRecyclable && !product && (
+                        <p className="mt-2 text-xs text-gray-500 italic">
+                          Enregistrez d&apos;abord le produit, puis rouvrez la fiche pour configurer les destinations de recyclage.
+                        </p>
+                      )}
                     </div>
-                    <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}
-                      onClick={() => setForm({ ...form, isRecyclable: !form.isRecyclable })}>
-                      <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
-                        style={{ transform: form.isRecyclable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1436,6 +1665,155 @@ function PricingTiersPanel({ productId }: { productId: string }) {
           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60">
           {saving ? 'Enregistrement...' : 'Enregistrer les paliers'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Destinations de recyclage (audit P1.3, mig 106+116) ───
+// Un produit recyclable peut avoir N ingredients cibles avec un rendement
+// (yield_ratio) chacun. Ex: baguette -> chapelure 0.7 (perte au sechage).
+// Le POS et la page Invendus consomment ces destinations.
+function RecycleDestinationsPanel({ productId }: { productId: string }) {
+  const queryClient = useQueryClient();
+  const { data: existingDests = [] } = useQuery({
+    queryKey: ['product-recycle-destinations', productId],
+    queryFn: () => productsApi.listRecycleDestinations(productId),
+  });
+  const { data: ingredients = [] } = useQuery({
+    queryKey: ['ingredients-for-recycle'],
+    queryFn: async () => {
+      const { ingredientsApi } = await import('../../api/inventory.api');
+      return ingredientsApi.list();
+    },
+  });
+
+  // Etat local : liste editable (ingredient_id, label, yield_ratio).
+  // On synchronise depuis l'API a l'ouverture.
+  type Row = { ingredientId: string; label: string; yieldRatio: string };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    const initial: Row[] = (existingDests as unknown as Record<string, unknown>[]).map(d => ({
+      ingredientId: (d.ingredient_id as string) || (d.ingredientId as string),
+      label: (d.label as string) || '',
+      yieldRatio: String(d.yield_ratio ?? d.yieldRatio ?? 1),
+    }));
+    setRows(initial);
+    setDirty(false);
+  }, [existingDests]);
+
+  const ingredientOptions = (ingredients as Record<string, unknown>[]).map(i => ({
+    id: i.id as string,
+    name: (i.name as string) || '',
+    unit: (i.unit as string) || '',
+  }));
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const payload = rows
+        .filter(r => r.ingredientId)
+        .map((r, i) => ({
+          ingredientId: r.ingredientId,
+          label: r.label.trim() || null,
+          displayOrder: i,
+          yieldRatio: parseFloat(r.yieldRatio) || 1,
+          isActive: true,
+        }));
+      return productsApi.replaceRecycleDestinations(productId, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-recycle-destinations', productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      notify.success('Destinations de recyclage enregistrées');
+      setDirty(false);
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Erreur';
+      notify.error(msg);
+    },
+  });
+
+  const addRow = () => {
+    setRows([...rows, { ingredientId: '', label: '', yieldRatio: '1' }]);
+    setDirty(true);
+  };
+  const removeRow = (idx: number) => {
+    setRows(rows.filter((_, i) => i !== idx));
+    setDirty(true);
+  };
+  const updateRow = (idx: number, patch: Partial<Row>) => {
+    setRows(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    setDirty(true);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+          Destinations de recyclage
+        </h5>
+        <button type="button" onClick={addRow}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md hover:bg-cyan-100">
+          <Plus size={12} /> Ajouter
+        </button>
+      </div>
+
+      {rows.length === 0 && (
+        <p className="text-xs text-gray-500 italic py-2">
+          Aucune destination. Ajoutez au moins un ingrédient cible pour rendre le recyclage opérationnel.
+        </p>
+      )}
+
+      {rows.map((row, idx) => (
+        <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-start">
+          <div className="col-span-5">
+            <select
+              value={row.ingredientId}
+              onChange={(e) => updateRow(idx, { ingredientId: e.target.value })}
+              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white">
+              <option value="">— Ingrédient cible —</option>
+              {ingredientOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.name}{opt.unit ? ` (${opt.unit})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-4">
+            <input type="text"
+              value={row.label}
+              onChange={(e) => updateRow(idx, { label: e.target.value })}
+              placeholder="Libellé (ex: Vers chapelure)"
+              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white" />
+          </div>
+          <div className="col-span-2">
+            <input type="number" step="0.01" min="0.01" max="2"
+              value={row.yieldRatio}
+              onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })}
+              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white"
+              title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" />
+          </div>
+          <div className="col-span-1 flex justify-end">
+            <button type="button" onClick={() => removeRow(idx)}
+              className="p-1 text-red-500 hover:bg-red-50 rounded-md" title="Supprimer">
+              <Trash2 size={12} />
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
+        <p className="text-[11px] text-gray-500">
+          Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte
+        </p>
+        {dirty && (
+          <button type="button"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+            className="px-3 py-1.5 text-xs font-semibold bg-cyan-600 text-white rounded-md hover:bg-cyan-700 disabled:opacity-50">
+            {mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        )}
       </div>
     </div>
   );

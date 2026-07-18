@@ -183,17 +183,46 @@ export const productController = {
       return;
     }
 
+    // Cycle de vie (audit P1.1/P1.2) : le validator a coerce les types.
+    // On applique la purge sur type=commande ici pour ne rien laisser fuir
+    // en INSERT (les CHECKs mig 245 sont la ceinture DB).
+    const saleType = (body.saleType as string) || 'jour';
+    const isCommande = saleType === 'commande';
+    const shelfLifeDays = isCommande ? null : (body.shelfLifeDays ?? null);
+    const displayLifeHours = isCommande ? null : (body.displayLifeHours ?? null);
+    const isReexposable = isCommande ? false : Boolean(body.isReexposable);
+    const isRecyclable = isCommande ? false : Boolean(body.isRecyclable);
+    // Normalise max_reexpositions : 1 quand reexposable & non renseigne, 0 sinon.
+    // Cote UI on affichera 1 par defaut mais si l'admin envoie 0 via un
+    // client tiers, on l'aligne pour ne pas violer la CHECK mig 245.
+    const maxReexpositions = isReexposable
+      ? Math.max(1, Number(body.maxReexpositions) || 1)
+      : 0;
+
     const data = { ...body, slug: slugify(body.name) };
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       const productResult = await client.query(
-        `INSERT INTO products (name, slug, category_id, description, price, cost_price, is_available, is_custom_orderable, preparation_time_min, responsible_user_id, sale_unit, price_per_kg)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-        [data.name, data.slug, data.categoryId, data.description || null, data.price,
-         data.costPrice || null, data.isAvailable ?? true, data.isCustomOrderable ?? false,
-         data.preparationTimeMin || null, data.responsibleUserId || null,
-         data.saleUnit || 'unit', data.pricePerKg ?? null]
+        `INSERT INTO products (
+           name, slug, category_id, description, price, cost_price,
+           is_available, is_custom_orderable, preparation_time_min,
+           responsible_user_id, sale_unit, price_per_kg,
+           sale_type, shelf_life_days, display_life_hours,
+           is_reexposable, is_recyclable, max_reexpositions
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                 $13, $14, $15, $16, $17, $18)
+         RETURNING *`,
+        [
+          data.name, data.slug, data.categoryId, data.description || null,
+          data.price, data.costPrice || null,
+          data.isAvailable ?? true, data.isCustomOrderable ?? false,
+          data.preparationTimeMin || null, data.responsibleUserId || null,
+          data.saleUnit || 'unit', data.pricePerKg ?? null,
+          saleType, shelfLifeDays, displayLifeHours,
+          isReexposable, isRecyclable, maxReexpositions,
+        ]
       );
       const product = productResult.rows[0];
 
@@ -214,8 +243,28 @@ export const productController = {
     // (colonne recipes.product_id), pas dans la table products. Le mapping de productRepository.update
     // n'inclut donc pas recipeId et le droppait silencieusement avant ce fix.
     const { recipeId, ...rest } = req.body;
-    const data = { ...rest };
-    if (data.name) data.slug = slugify(data.name);
+    const data: Record<string, unknown> = { ...rest };
+    if (data.name) data.slug = slugify(data.name as string);
+
+    // Cycle de vie (audit P1.1) : purge cote serveur quand saleType='commande'.
+    // Le formulaire client le fait deja, mais on redouble : rien ne doit sortir
+    // du controller avec des valeurs incoherentes vs la CHECK mig 245.
+    if (data.saleType === 'commande') {
+      data.shelfLifeDays = null;
+      data.displayLifeHours = null;
+      data.isReexposable = false;
+      data.isRecyclable = false;
+      data.maxReexpositions = 0;
+      data.recycleIngredientId = null;
+    }
+    // Cohere max_reexpositions avec isReexposable si les deux sont dans le payload.
+    if (data.isReexposable === true) {
+      const m = Number(data.maxReexpositions);
+      if (!isFinite(m) || m < 1) data.maxReexpositions = 1;
+    }
+    if (data.isReexposable === false && data.maxReexpositions !== undefined) {
+      data.maxReexpositions = 0;
+    }
 
     const productId = req.params.id;
 
@@ -275,6 +324,108 @@ export const productController = {
         throw err;
       }
     }
+  },
+
+  // ───── Suppression en masse ─────
+  // Chaque produit est supprime individuellement : un produit reference par
+  // des ventes/plans echoue (FK) sans bloquer les autres. On renvoie le detail.
+  async bulkDelete(req: AuthRequest, res: Response) {
+    const ids = req.body.ids as string[];
+    let deleted = 0;
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of ids) {
+      try {
+        await productRepository.delete(id);
+        deleted++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '';
+        failed.push({
+          id,
+          reason: msg.includes('introuvable')
+            ? 'Produit introuvable'
+            : (msg.includes('foreign key') || msg.includes('violates'))
+              ? 'Utilise dans des commandes, ventes ou plans — desactivez-le plutot'
+              : 'Erreur lors de la suppression',
+        });
+      }
+    }
+    res.json({ success: true, data: { deleted, failed } });
+  },
+
+  // ───── Import CSV (export Loyverse) ─────
+  // Le client envoie des lignes normalisees { name, category, price, ... }.
+  // Regles :
+  //   - produit deja existant (nom, insensible casse/espaces) -> ignore
+  //   - categorie inconnue -> creee a la volee (slug unique)
+  //   - pas de recette liee : catalogue seul, la recette se rattache ensuite
+  //     via le formulaire d'edition.
+  async importProducts(req: AuthRequest, res: Response) {
+    const items = req.body.items as Array<{
+      name: string; category?: string | null; price: number;
+      costPrice?: number | null; saleUnit?: 'unit' | 'weight'; isAvailable?: boolean;
+    }>;
+
+    const existingProducts = await db.query('SELECT LOWER(TRIM(name)) AS name, slug FROM products');
+    const existingNames = new Set<string>(existingProducts.rows.map(r => r.name as string));
+    const existingSlugs = new Set<string>(existingProducts.rows.map(r => r.slug as string));
+
+    const catRows = await db.query('SELECT id, name, slug FROM categories');
+    const catByName = new Map<string, number>(catRows.rows.map(r => [(r.name as string).trim().toLowerCase(), r.id as number]));
+    const catSlugs = new Set<string>(catRows.rows.map(r => r.slug as string));
+
+    const uniqueSlug = (base: string, taken: Set<string>) => {
+      let slug = base || 'produit';
+      let n = 2;
+      while (taken.has(slug)) slug = `${base}-${n++}`;
+      taken.add(slug);
+      return slug;
+    };
+
+    let created = 0;
+    let skipped = 0;
+    const errors: Array<{ name: string; reason: string }> = [];
+
+    for (const item of items) {
+      const name = item.name.trim();
+      const nameKey = name.toLowerCase();
+      if (existingNames.has(nameKey)) { skipped++; continue; }
+
+      try {
+        // Categorie : resolue par nom, creee si absente.
+        const catName = (item.category || '').trim() || 'Divers';
+        let categoryId = catByName.get(catName.toLowerCase());
+        if (!categoryId) {
+          const catSlug = uniqueSlug(slugify(catName) || 'categorie', catSlugs);
+          const ins = await db.query(
+            'INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING id',
+            [catName, catSlug]
+          );
+          categoryId = ins.rows[0].id as number;
+          catByName.set(catName.toLowerCase(), categoryId);
+        }
+
+        const slug = uniqueSlug(slugify(name), existingSlugs);
+        const isWeight = item.saleUnit === 'weight';
+        await db.query(
+          `INSERT INTO products (name, slug, category_id, price, cost_price, is_available, sale_unit, price_per_kg)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            name, slug, categoryId, item.price,
+            item.costPrice && item.costPrice > 0 ? item.costPrice : null,
+            item.isAvailable ?? true,
+            isWeight ? 'weight' : 'unit',
+            isWeight ? item.price : null,
+          ]
+        );
+        existingNames.add(nameKey);
+        created++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+        errors.push({ name, reason: msg });
+      }
+    }
+
+    res.json({ success: true, data: { created, skipped, errors } });
   },
   async toggleAvailability(req: AuthRequest, res: Response) {
     const product = await productRepository.toggleAvailability(req.params.id);
@@ -340,6 +491,145 @@ export const productController = {
     );
 
     res.json({ success: true, data: result.rows, total, page: p, limit: l });
+  },
+
+  // ───── Destinations de recyclage (audit P1.3, mig 106+116) ─────
+  // Multi-cibles avec yield_ratio (rendement produit -> ingredient).
+  // Le POS et la page Invendus lisent ces destinations pour proposer la
+  // conversion effective en stock ingredient lors du recyclage.
+  async listRecycleDestinations(req: AuthRequest, res: Response) {
+    const result = await db.query(
+      `SELECT prd.id, prd.product_id, prd.ingredient_id, prd.label,
+              prd.display_order, prd.is_active, prd.yield_ratio,
+              i.name as ingredient_name, i.unit as ingredient_unit
+       FROM product_recycle_destinations prd
+       JOIN ingredients i ON i.id = prd.ingredient_id
+       WHERE prd.product_id = $1
+       ORDER BY prd.display_order ASC, prd.created_at ASC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: result.rows });
+  },
+
+  async replaceRecycleDestinations(req: AuthRequest, res: Response) {
+    const productId = req.params.id;
+    const items = (req.body.destinations || []) as Array<{
+      ingredientId: string;
+      label?: string | null;
+      displayOrder?: number;
+      yieldRatio?: number;
+      isActive?: boolean;
+    }>;
+
+    // Refuse le combo is_recyclable=true + destinations vide (audit P1.3) :
+    // c'est ce toggle vide qu'on veut supprimer. Deux options :
+    //   - destinations vide : on autorise si le produit est deja is_recyclable=false
+    //     (l'admin fait le menage avant de decocher). Sinon on renvoie 400.
+    //   - destinations non vide : on force is_recyclable=true.
+    const productCheck = await db.query(
+      `SELECT is_recyclable, recycle_ingredient_id FROM products WHERE id = $1`,
+      [productId]
+    );
+    if (productCheck.rows.length === 0) {
+      res.status(404).json({ success: false, error: { message: 'Produit introuvable' } });
+      return;
+    }
+
+    // Deduplication cote serveur : la CHECK UNIQUE (product_id, ingredient_id)
+    // ferait echouer l'INSERT sinon.
+    const seen = new Set<string>();
+    for (const it of items) {
+      if (seen.has(it.ingredientId)) {
+        res.status(400).json({
+          success: false,
+          error: { message: 'Doublon d\'ingredient dans les destinations de recyclage' },
+        });
+        return;
+      }
+      seen.add(it.ingredientId);
+    }
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      // Verifie que tous les ingredients existent (evite ROLLBACK opaque sur FK).
+      if (items.length > 0) {
+        const ingredientIds = items.map(i => i.ingredientId);
+        const check = await client.query(
+          `SELECT id FROM ingredients WHERE id = ANY($1::uuid[])`,
+          [ingredientIds]
+        );
+        if (check.rows.length !== ingredientIds.length) {
+          await client.query('ROLLBACK');
+          res.status(400).json({
+            success: false,
+            error: { message: 'Un ou plusieurs ingredients sont introuvables' },
+          });
+          return;
+        }
+      }
+
+      // Remplacement complet (idempotent) : delete + insert.
+      await client.query(`DELETE FROM product_recycle_destinations WHERE product_id = $1`, [productId]);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(
+          `INSERT INTO product_recycle_destinations
+             (product_id, ingredient_id, label, display_order, is_active, yield_ratio)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            productId,
+            it.ingredientId,
+            (it.label ?? null) === '' ? null : (it.label ?? null),
+            it.displayOrder ?? i,
+            it.isActive ?? true,
+            it.yieldRatio ?? 1.0,
+          ]
+        );
+      }
+
+      // Synchronise is_recyclable + recycle_ingredient_id legacy sur le produit :
+      //  - destinations vide -> is_recyclable=false, legacy=null
+      //  - destinations non vide -> is_recyclable=true, legacy=1re destination
+      //    (compat avec le code qui lit encore recycle_ingredient_id).
+      if (items.length === 0) {
+        await client.query(
+          `UPDATE products
+              SET is_recyclable = false,
+                  recycle_ingredient_id = NULL,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [productId]
+        );
+      } else {
+        await client.query(
+          `UPDATE products
+              SET is_recyclable = true,
+                  recycle_ingredient_id = $2,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [productId, items[0].ingredientId]
+        );
+      }
+
+      await client.query('COMMIT');
+      const refreshed = await db.query(
+        `SELECT prd.id, prd.product_id, prd.ingredient_id, prd.label,
+                prd.display_order, prd.is_active, prd.yield_ratio,
+                i.name as ingredient_name, i.unit as ingredient_unit
+         FROM product_recycle_destinations prd
+         JOIN ingredients i ON i.id = prd.ingredient_id
+         WHERE prd.product_id = $1
+         ORDER BY prd.display_order ASC, prd.created_at ASC`,
+        [productId]
+      );
+      res.json({ success: true, data: refreshed.rows });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async lowStock(req: AuthRequest, res: Response) {

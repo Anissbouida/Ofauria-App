@@ -110,23 +110,58 @@ export const productRepository = {
       ? `COALESCE(pss.vitrine_quantity, 0) as stock_quantity, COALESCE(pss.stock_quantity, 0) as backroom_quantity, COALESCE(pss.stock_min_threshold, 0) as stock_min_threshold,`
       : `p.stock_quantity, p.stock_min_threshold,`;
 
+    // Meme LATERAL que findByCategory pour aligner la DLV/DDE affichee au POS
+    // (indispensable pour ne pas vendre un produit expire depuis Top Ventes).
+    const lotMetricsJoin = params.storeId
+      ? `LEFT JOIN LATERAL (
+           SELECT
+             MIN(pl.expires_at) FILTER (WHERE pl.expires_at IS NOT NULL) as nearest_dlv,
+             MIN(pl.display_expires_at) FILTER (WHERE pl.display_expires_at IS NOT NULL) as nearest_dde,
+             BOOL_OR(
+               (pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE)
+               AND (pl.display_expires_at IS NULL OR pl.display_expires_at > NOW())
+             ) as has_valid_lot
+           FROM product_lots pl
+           WHERE pl.product_id = p.id AND pl.store_id = pss.store_id
+             AND pl.status = 'active' AND pl.vitrine_qty > 0
+         ) lot_metrics ON true`
+      : '';
+    const lotMetricsCols = params.storeId
+      ? `lot_metrics.nearest_dlv, lot_metrics.nearest_dde,
+         (lot_metrics.has_valid_lot IS NOT NULL AND lot_metrics.has_valid_lot = false) as is_expired,`
+      : '';
+
     values.push(params.limit);
+    // AUDIT V1 : ajout de sale_unit + price_per_kg (sinon les produits au poids
+    // etaient traites comme unitaires cote client -> facturés a ~0 DH), plus les
+    // champs vitrine/DLV/reexposition/recyclage pour aligner sur findByCategory.
     const result = await db.query(
       `SELECT p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
-              p.image_url, p.is_available, p.sale_type,
+              p.image_url, p.is_available, p.is_custom_orderable, p.preparation_time_min,
+              p.responsible_user_id, p.min_production_quantity,
+              p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
+              p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
+              p.sale_unit, p.price_per_kg,
               ${stockColumns}
+              ${lotMetricsCols}
               c.name as category_name,
               SUM(si.quantity) as total_sold
        FROM sale_items si
        JOIN sales s ON s.id = si.sale_id
        JOIN products p ON p.id = si.product_id
        ${storeStockJoin}
+       ${lotMetricsJoin}
        LEFT JOIN categories c ON c.id = p.category_id
        ${where}
        AND p.is_available = true
        GROUP BY p.id, p.name, p.slug, p.category_id, p.description, p.price, p.cost_price,
-                p.image_url, p.is_available, p.sale_type, p.stock_quantity, p.stock_min_threshold,
-                ${params.storeId ? 'pss.vitrine_quantity, pss.stock_quantity, pss.stock_min_threshold,' : ''}
+                p.image_url, p.is_available, p.is_custom_orderable, p.preparation_time_min,
+                p.responsible_user_id, p.min_production_quantity,
+                p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
+                p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
+                p.sale_unit, p.price_per_kg,
+                p.stock_quantity, p.stock_min_threshold,
+                ${params.storeId ? 'pss.vitrine_quantity, pss.stock_quantity, pss.stock_min_threshold, lot_metrics.nearest_dlv, lot_metrics.nearest_dde, lot_metrics.has_valid_lot,' : ''}
                 c.name
        ORDER BY total_sold DESC
        LIMIT $${i}`,
@@ -213,6 +248,8 @@ export const productRepository = {
   async delete(id: string) {
     // Clean up all related records before hard delete
     await db.query('DELETE FROM sale_return_items WHERE sale_item_id IN (SELECT id FROM sale_items WHERE product_id = $1)', [id]);
+    // sale_return_items porte aussi une FK directe product_id (lignes sans sale_item_id)
+    await db.query('DELETE FROM sale_return_items WHERE product_id = $1', [id]);
     await db.query('DELETE FROM sale_items WHERE product_id = $1', [id]);
     await db.query('DELETE FROM order_items WHERE product_id = $1', [id]);
     await db.query('DELETE FROM daily_inventory_check_items WHERE product_id = $1', [id]);
@@ -223,6 +260,12 @@ export const productRepository = {
     await db.query('DELETE FROM production_transfer_items WHERE product_id = $1', [id]);
     await db.query('DELETE FROM replenishment_request_items WHERE product_id = $1', [id]);
     await db.query('DELETE FROM stock_deliveries WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM unsold_decisions WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM product_pipeline WHERE product_id = $1', [id]);
+    await db.query('DELETE FROM stock_semifini_frigo WHERE product_id = $1', [id]);
+    // Les lignes de facture sont des pieces comptables : on delie sans supprimer
+    // (product_id nullable), la facture reste intacte.
+    await db.query('UPDATE invoice_items SET product_id = NULL WHERE product_id = $1', [id]);
     await db.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1', [id]);
     const result = await db.query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
     if (!result.rows[0]) throw new Error('Produit introuvable');

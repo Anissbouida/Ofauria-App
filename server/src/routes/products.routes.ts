@@ -1,10 +1,18 @@
-import { Router } from 'express';
+import { Router, json as expressJson } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { productController } from '../controllers/product.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
+import { validate } from '../middleware/validate.middleware.js';
+import {
+  createProductSchema,
+  updateProductSchema,
+  replaceRecycleDestinationsSchema,
+  bulkDeleteProductsSchema,
+  importProductsSchema,
+} from '../validators/product.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,8 +36,15 @@ router.get('/top-selling', authenticate, productController.topSelling);
 router.get('/alerts/low-stock', authenticate, productController.lowStock);
 router.get('/:id/effective-deadline', authenticate, productController.effectiveDeadline);
 router.get('/:id', authenticate, productController.getById);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.create);
-router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.update);
+router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createProductSchema), productController.create);
+// Import CSV (export Loyverse) + suppression en masse.
+// Parser local elargi : ces deux routes sont exclues du parser global 10 Ko
+// (app.ts ROUTES_WITH_LOCAL_JSON_PARSER) car elles recoivent des centaines de
+// lignes/UUID d'un coup.
+const batchJsonParser = expressJson({ limit: '512kb' });
+router.post('/import', batchJsonParser, authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(importProductsSchema), productController.importProducts);
+router.post('/bulk-delete', batchJsonParser, authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteProductsSchema), productController.bulkDelete);
+router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(updateProductSchema), productController.update);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), productController.remove);
 router.patch('/:id/toggle-availability', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.toggleAvailability);
 router.post('/:id/image', authenticate, upload.single('image'), productController.uploadImage);
@@ -41,5 +56,8 @@ router.put('/:id/pricing-tiers', authenticate, authorize(...ROLE_GROUPS.ADMIN_MA
 // Overrides prix par canal (mig 173)
 router.get('/:id/channel-pricing', authenticate, productController.listChannelPricing);
 router.put('/:id/channel-pricing', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.replaceChannelPricing);
+// Destinations de recyclage (audit P1.3, mig 106)
+router.get('/:id/recycle-destinations', authenticate, productController.listRecycleDestinations);
+router.put('/:id/recycle-destinations', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(replaceRecycleDestinationsSchema), productController.replaceRecycleDestinations);
 
 export default router;
