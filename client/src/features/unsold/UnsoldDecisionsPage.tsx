@@ -15,16 +15,29 @@ import {
 
 /* ─── Types ─── */
 type Product = Record<string, any>;
+// Audit P2.11 : 4 destinations unifiees POS <-> Invendus. 'retour_stock'
+// etait deja suggere par le moteur (unsold-decision.repository) et cable au
+// POS depuis un moment, mais absent de cet ecran, forcant un override manuel.
+type Destination = 'reexpose' | 'retour_stock' | 'recycle' | 'waste';
 type Decision = {
   productId: string;
-  finalDestination: 'reexpose' | 'recycle' | 'waste';
+  finalDestination: Destination;
   overrideReason?: string;
   remainingQty: number;
 };
 
 type Tab = 'decide' | 'history' | 'dashboard';
 
-const DEST_CONFIG = {
+const DEST_CONFIG: Record<Destination, {
+  label: string;
+  icon: React.ReactNode;
+  bg: string;
+  text: string;
+  badge: string;
+  dot: string;
+  ring: string;
+  short: string;
+}> = {
   reexpose: {
     label: 'Vitrine J+1',
     icon: <ShieldCheck size={16} />,
@@ -32,14 +45,28 @@ const DEST_CONFIG = {
     text: 'text-green-800',
     badge: 'bg-green-100 text-green-700',
     dot: 'bg-green-500',
+    ring: 'ring-green-400',
+    short: 'Vitrine',
+  },
+  retour_stock: {
+    label: 'Retour reserve',
+    icon: <Package size={16} />,
+    bg: 'bg-emerald-50 border-emerald-300',
+    text: 'text-emerald-800',
+    badge: 'bg-emerald-100 text-emerald-700',
+    dot: 'bg-emerald-500',
+    ring: 'ring-emerald-400',
+    short: 'Reserve',
   },
   recycle: {
-    label: 'Recycler',
+    label: 'Valoriser',
     icon: <Recycle size={16} />,
     bg: 'bg-cyan-50 border-cyan-300',
     text: 'text-cyan-800',
     badge: 'bg-cyan-100 text-cyan-700',
     dot: 'bg-cyan-500',
+    ring: 'ring-cyan-400',
+    short: 'Valoriser',
   },
   waste: {
     label: 'Detruire',
@@ -48,6 +75,8 @@ const DEST_CONFIG = {
     text: 'text-red-800',
     badge: 'bg-red-100 text-red-700',
     dot: 'bg-red-500',
+    ring: 'ring-red-400',
+    short: 'Detruire',
   },
 };
 
@@ -170,17 +199,21 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
     return items;
   }, [products, search, filterDest, decisions]);
 
-  // Summary stats
+  // Summary stats — 4 destinations (audit P2.11)
   const summary = useMemo(() => {
-    const s = { reexpose: 0, recycle: 0, waste: 0, total: 0, totalCost: 0 };
+    const s: { reexpose: number; retour_stock: number; recycle: number; waste: number; total: number; totalCost: number } = {
+      reexpose: 0, retour_stock: 0, recycle: 0, waste: 0, total: 0, totalCost: 0,
+    };
     for (const p of products as Product[]) {
       const pid = p.product_id as string;
       const remaining = counts[pid] ?? (parseInt(String(p.current_stock)) || 0);
       if (remaining <= 0) continue;
       const dec = decisions[pid];
-      const dest = dec ? dec.finalDestination : (p.suggested_destination as string);
+      const dest = (dec ? dec.finalDestination : (p.suggested_destination as string)) as keyof typeof s;
       const cost = (parseFloat(String(p.cost_price)) || 0) * remaining;
-      s[dest as keyof typeof s] = (s[dest as keyof typeof s] as number || 0) + remaining;
+      if (dest === 'reexpose' || dest === 'retour_stock' || dest === 'recycle' || dest === 'waste') {
+        s[dest] += remaining;
+      }
       s.total += remaining;
       s.totalCost += cost;
     }
@@ -245,7 +278,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
     onError: () => setMsg({ type: 'error', text: 'Erreur lors de l\'enregistrement des decisions.' }),
   });
 
-  const handleDestinationChange = (pid: string, dest: 'reexpose' | 'recycle' | 'waste', product: Product) => {
+  const handleDestinationChange = (pid: string, dest: Destination, product: Product) => {
     const remaining = counts[pid] ?? (parseInt(String(product.current_stock)) || 0);
     setDecisions(prev => ({
       ...prev,
@@ -299,24 +332,18 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {/* Summary cards — audit P2.11 : 4 destinations alignees POS */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
           <div className="text-2xl font-bold text-gray-700">{summary.total}</div>
           <div className="text-xs text-gray-500 font-medium">Total invendus</div>
         </div>
-        <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.reexpose.bg}`}>
-          <div className={`text-2xl font-bold ${DEST_CONFIG.reexpose.text}`}>{summary.reexpose}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.reexpose.text}`}>{getDestLabel('reexpose')}</div>
-        </div>
-        <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.recycle.bg}`}>
-          <div className={`text-2xl font-bold ${DEST_CONFIG.recycle.text}`}>{summary.recycle}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.recycle.text}`}>{getDestLabel('recycle')}</div>
-        </div>
-        <div className={`border rounded-xl p-3 text-center ${DEST_CONFIG.waste.bg}`}>
-          <div className={`text-2xl font-bold ${DEST_CONFIG.waste.text}`}>{summary.waste}</div>
-          <div className={`text-xs font-medium ${DEST_CONFIG.waste.text}`}>{getDestLabel('waste')}</div>
-        </div>
+        {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => (
+          <div key={d} className={`border rounded-xl p-3 text-center ${DEST_CONFIG[d].bg}`}>
+            <div className={`text-2xl font-bold ${DEST_CONFIG[d].text}`}>{summary[d]}</div>
+            <div className={`text-xs font-medium ${DEST_CONFIG[d].text}`}>{getDestLabel(d) || DEST_CONFIG[d].label}</div>
+          </div>
+        ))}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
           <div className="text-2xl font-bold text-amber-700">{summary.totalCost.toFixed(2)}</div>
           <div className="text-xs text-amber-600 font-medium">Cout total (DH)</div>
@@ -335,7 +362,8 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
           className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-amber-500">
           <option value="">Toutes destinations</option>
           <option value="reexpose">Vitrine J+1</option>
-          <option value="recycle">Recyclage</option>
+          <option value="retour_stock">Retour reserve</option>
+          <option value="recycle">Valorisation</option>
           <option value="waste">Destruction</option>
         </select>
         <button onClick={() => refetch()} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
@@ -361,14 +389,14 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
             const currentStock = parseInt(String(p.current_stock)) || 0;
             const sold = parseInt(String(p.sold_qty)) || 0;
             const remaining = counts[pid] ?? currentStock;
-            const sugDest = p.suggested_destination as 'reexpose' | 'recycle' | 'waste';
+            const sugDest = p.suggested_destination as Destination;
             const sugReason = p.suggested_reason as string;
             const dec = decisions[pid];
             const finalDest = dec ? dec.finalDestination : sugDest;
             const isOverride = finalDest !== sugDest;
             const isExpanded = expandedProduct === pid;
-            const destConf = DEST_CONFIG[finalDest];
-            const sugConf = DEST_CONFIG[sugDest];
+            const destConf = DEST_CONFIG[finalDest] || DEST_CONFIG.waste;
+            const sugConf = DEST_CONFIG[sugDest] || DEST_CONFIG.waste;
             const unitCost = parseFloat(String(p.cost_price)) || 0;
 
             return (
@@ -415,32 +443,42 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                     </div>
                   </div>
 
-                  {/* Final decision */}
+                  {/* Final decision — audit P2.11 : 4 destinations comme au POS */}
                   <div className="col-span-3">
                     {remaining > 0 ? (
-                      <div className="flex items-center gap-1 justify-center">
-                        {(['reexpose', 'recycle', 'waste'] as const).map(d => {
+                      <div className="flex items-center gap-1 justify-center flex-wrap">
+                        {(['reexpose', 'retour_stock', 'recycle', 'waste'] as const).map(d => {
                           const dc = DEST_CONFIG[d];
                           const isActive = finalDest === d;
-                          // Disable reexpose if not reexposable and suggestion is not reexpose
-                          const canReexpose = p.is_reexposable || sugDest === 'reexpose';
-                          const canRecycle = p.is_recyclable && p.recycle_ingredient_id;
-                          const disabled = (d === 'reexpose' && !canReexpose) || (d === 'recycle' && !canRecycle);
+                          // Regles d'eligibilite alignees avec POSPage (audit P2.11).
+                          const canReexpose = Boolean(p.is_reexposable);
+                          const canRetourStock =
+                            (p.sale_type as string) === 'dlv' || ((p.shelf_life_days as number) ?? 0) > 1;
+                          const canRecycle = Boolean(p.is_recyclable) && Boolean(p.recycle_ingredient_id);
+                          const disabled =
+                            (d === 'reexpose' && !canReexpose) ||
+                            (d === 'retour_stock' && !canRetourStock) ||
+                            (d === 'recycle' && !canRecycle);
+                          const tipDisabled =
+                            d === 'reexpose' ? 'Remise en vente non autorisée'
+                            : d === 'retour_stock' ? 'DLC trop courte pour retour reserve'
+                            : d === 'recycle' ? 'Non valorisable'
+                            : '';
 
                           return (
                             <button key={d}
                               onClick={() => !disabled && handleDestinationChange(pid, d, p)}
-                              disabled={disabled as boolean}
-                              title={disabled ? (d === 'reexpose' ? 'Non re-exposable' : 'Non recyclable') : getDestLabel(d)}
+                              disabled={disabled}
+                              title={disabled ? tipDisabled : (getDestLabel(d) || dc.label)}
                               className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
                                 isActive
-                                  ? `${dc.bg} ${dc.text} ring-2 ring-offset-1 ${d === 'reexpose' ? 'ring-green-400' : d === 'recycle' ? 'ring-cyan-400' : 'ring-red-400'}`
+                                  ? `${dc.bg} ${dc.text} ring-2 ring-offset-1 ${dc.ring}`
                                   : disabled
                                     ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed'
                                     : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
                               }`}>
                               {dc.icon}
-                              <span className="hidden lg:inline">{d === 'reexpose' ? 'Vitrine' : d === 'recycle' ? 'Recycler' : 'Detruire'}</span>
+                              <span className="hidden lg:inline">{dc.short}</span>
                             </button>
                           );
                         })}
@@ -463,11 +501,11 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                       <div>
                         <span className="text-xs text-gray-400 block">Type de vente</span>
                         <span className="font-semibold text-gray-700">
-                          {p.sale_type === 'jour' ? 'Vente du jour' : p.sale_type === 'dlv' ? 'DLV multi-jours' : 'Sur commande'}
+                          {p.sale_type === 'jour' ? 'Vente du jour' : p.sale_type === 'dlv' ? 'Multi-jours (DLC)' : 'Sur commande'}
                         </span>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-400 block">DLV</span>
+                        <span className="text-xs text-gray-400 block">DLC</span>
                         <span className="font-semibold text-gray-700">{String(p.shelf_life_days || '-')} jour(s)</span>
                       </div>
                       <div>
@@ -481,7 +519,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                         </span>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-400 block">Recyclable</span>
+                        <span className="text-xs text-gray-400 block">Valorisable</span>
                         <span className={`font-semibold ${p.is_recyclable ? 'text-cyan-600' : 'text-gray-400'}`}>
                           {p.is_recyclable ? `Oui → ${p.recycle_ingredient_name || 'ingredient'}` : 'Non'}
                         </span>
@@ -496,7 +534,7 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
                       </div>
                       {p.expires_at as unknown as boolean && (
                         <div>
-                          <span className="text-xs text-gray-400 block">Expiration DLV</span>
+                          <span className="text-xs text-gray-400 block">Expiration DLC</span>
                           <span className={`font-semibold ${new Date(p.expires_at as string) <= new Date() ? 'text-red-600' : 'text-green-600'}`}>
                             {format(new Date(p.expires_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
                           </span>
@@ -630,7 +668,7 @@ function HistoryPanel() {
           className="px-3 py-2 rounded-lg border border-gray-200 text-sm">
           <option value="">Toutes destinations</option>
           <option value="reexpose">Vitrine J+1</option>
-          <option value="recycle">Recyclage</option>
+          <option value="recycle">Valorisation</option>
           <option value="waste">Destruction</option>
         </select>
         <span className="text-xs text-gray-400 ml-auto">{total} decision(s)</span>
@@ -779,7 +817,7 @@ function DashboardPanel() {
         </div>
         <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4 text-center">
           <div className="text-3xl font-bold text-cyan-700">{recycleRate}%</div>
-          <div className="text-xs text-cyan-600">Taux recyclage</div>
+          <div className="text-xs text-cyan-600">Taux valorisation</div>
           <div className="text-[10px] text-cyan-500">{destTotals.recycle.qty} unites</div>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
@@ -817,7 +855,7 @@ function DashboardPanel() {
             <div className="grid grid-cols-5 gap-2 px-4 py-2 bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase">
               <span className="col-span-2">Categorie</span>
               <span className="text-center">Vitrine</span>
-              <span className="text-center">Recycle</span>
+              <span className="text-center">Valorisé</span>
               <span className="text-center">Detruit</span>
             </div>
             {Object.entries(categoryMap).map(([cat, vals]) => {

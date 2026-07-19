@@ -283,9 +283,14 @@ export default function PlanDetailPage() {
     const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
     const planDate = new Date(plan.plan_date as string);
     const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-001`;
-    const isReexposable = item.is_reexposable as boolean;
-    const isRecyclable = item.is_recyclable as boolean;
-    const cycleLabel = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
+    // Audit P1.6 : libelle du cycle DERIVE du sale_type (source de verite),
+    // pas de is_reexposable seul (qui pouvait rendre 'DLV — Conservable' sur
+    // un produit sale_type='jour' non reexposable — trace physique erronee).
+    const saleType = (item.sale_type as string) || 'jour';
+    const cycleLabel =
+      saleType === 'dlv' ? (sld ? `DLC ${sld}j` : 'Multi-jours')
+      : saleType === 'commande' ? 'Sur commande'
+      : 'Vente du jour';
     return {
       productName: String(item.product_name || ''),
       lotNumber,
@@ -306,9 +311,12 @@ export default function PlanDetailPage() {
     const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : '—';
     const planDate = new Date(plan.plan_date as string);
     const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-${String(1).padStart(3, '0')}`;
-    const isReexposable = item.is_reexposable as boolean;
-    const isRecyclable = item.is_recyclable as boolean;
-    const cycleVie = isReexposable ? 'DLV — Conservable' : isRecyclable ? 'Recyclable' : 'Vente du jour';
+    // Audit P1.6 : libelle derive de sale_type (voir buildPrintPayload).
+    const saleType = (item.sale_type as string) || 'jour';
+    const cycleVie =
+      saleType === 'dlv' ? (sld ? `DLC ${sld}j` : 'Multi-jours')
+      : saleType === 'commande' ? 'Sur commande'
+      : 'Vente du jour';
     const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
     setPrintHtml(`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
@@ -367,7 +375,7 @@ export default function PlanDetailPage() {
     <span class="value">${plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : '—'}</span>
   </div>
 
-  <div class="cycle ${isReexposable ? 'dlv' : isRecyclable ? 'recyclable' : 'vdj'}">
+  <div class="cycle ${saleType === 'dlv' ? 'dlv' : saleType === 'commande' ? 'recyclable' : 'vdj'}">
     ${cycleVie}
   </div>
 
@@ -2081,10 +2089,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                           </td>
                           <td className="px-3 py-3 text-center whitespace-nowrap">
                             {isProduced ? (
-                              (item.is_reexposable as boolean) ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">DLV</span>
-                              ) : (item.is_recyclable as boolean) ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700">Recyclable</span>
+                              ((item.sale_type as string) || 'jour') === 'dlv' ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">Multi-jours (DLC)</span>
+                              ) : (item.sale_type as string) === 'commande' ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Sur commande</span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
                               )
@@ -2235,10 +2243,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       {isProduced ? (
-                        (item.is_reexposable as boolean) ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">DLV</span>
-                        ) : (item.is_recyclable as boolean) ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700">Recyclable</span>
+                        ((item.sale_type as string) || 'jour') === 'dlv' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">Multi-jours (DLC)</span>
+                        ) : (item.sale_type as string) === 'commande' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Sur commande</span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
                         )

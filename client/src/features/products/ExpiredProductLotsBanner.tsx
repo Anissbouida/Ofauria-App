@@ -61,7 +61,7 @@ export default function ExpiredProductLotsBanner() {
               {list.length} produit{list.length > 1 ? 's' : ''} à régulariser
             </p>
             <p className="text-xs text-red-700 mt-0.5">
-              {lotCount > 0 && <>{lotCount} lot{lotCount > 1 ? 's' : ''} expiré{lotCount > 1 ? 's' : ''} (DLC/DLV dépassée)</>}
+              {lotCount > 0 && <>{lotCount} lot{lotCount > 1 ? 's' : ''} expiré{lotCount > 1 ? 's' : ''} (DLC ou exposition dépassée)</>}
               {lotCount > 0 && orphanCount > 0 && ' · '}
               {orphanCount > 0 && <>{orphanCount} stock{orphanCount > 1 ? 's' : ''} non tracé{orphanCount > 1 ? 's' : ''} (sans lot actif)</>}
               {' '}— à envoyer aux pertes.
@@ -98,7 +98,7 @@ export default function ExpiredProductLotsBanner() {
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                           reason === 'dlv_expired' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
                         }`}>
-                          {reason === 'dlv_expired' ? 'DLV vitrine dépassée' : 'DLC expirée'}
+                          {reason === 'dlv_expired' ? 'Exposition vitrine dépassée' : 'DLC expirée'}
                         </span>
                       </>
                     )}
@@ -234,7 +234,7 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
             <div className="grid grid-cols-2 gap-2">
               {([
                 { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption' },
-                { v: 'dlv_expired', label: 'DLV dépassée', sub: 'Durée de vie vitrine' },
+                { v: 'dlv_expired', label: 'Exposition dépassée', sub: 'Durée d\'exposition vitrine' },
                 { v: 'damaged', label: 'Endommagé', sub: 'Casse, contamination' },
                 { v: 'quarantine_failed', label: 'Échec contrôle', sub: 'Non conforme' },
               ] as const).map(opt => (

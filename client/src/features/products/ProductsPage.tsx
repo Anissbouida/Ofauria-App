@@ -595,26 +595,26 @@ function CatalogueTab() {
                         return (
                           <div style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                             {saleType === 'jour' && (
-                              <span className="odoo-tag odoo-tag-yellow" title="Vente du jour — invendu = perte ou recyclage">JOUR</span>
+                              <span className="odoo-tag odoo-tag-yellow" title="Vente du jour — invendu = perte ou valorisation">JOUR</span>
                             )}
                             {saleType === 'dlv' && (
-                              <span className="odoo-tag odoo-tag-green" title={`DLV — ${shelfDays > 0 ? `${shelfDays} j depuis production` : 'DLV non configurée'}`}>
-                                DLV{shelfDays > 0 ? ` ${shelfDays}j` : ''}
+                              <span className="odoo-tag odoo-tag-green" title={`Multi-jours — ${shelfDays > 0 ? `DLC ${shelfDays} j depuis production` : 'DLC non configurée'}`}>
+                                DLC{shelfDays > 0 ? ` ${shelfDays}j` : ''}
                               </span>
                             )}
                             {saleType === 'commande' && (
                               <span className="odoo-tag odoo-tag-blue" title="Sur commande — pas de stock vitrine">CMD</span>
                             )}
                             {saleType !== 'commande' && displayHours > 0 && (
-                              <span className="odoo-tag odoo-tag-orange" title={`DDE : ${displayHours} h depuis transfert vitrine`}>
-                                +DDE {displayHours}h
+                              <span className="odoo-tag odoo-tag-orange" title={`Exposition max : ${displayHours} h depuis transfert vitrine`}>
+                                +Expo {displayHours}h
                               </span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_reexposable) && (
-                              <span className="odoo-tag odoo-tag-purple" title={`Re-exposable${p.max_reexpositions ? ` (max ${p.max_reexpositions})` : ''}`}>RE</span>
+                              <span className="odoo-tag odoo-tag-purple" title={`Remise en vente J+1${p.max_reexpositions ? ` (max ${p.max_reexpositions})` : ''}`}>RV</span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_recyclable) && (
-                              <span className="odoo-tag odoo-tag-blue" title="Recyclable">REC</span>
+                              <span className="odoo-tag odoo-tag-blue" title="Valorisable en production (rework)">VAL</span>
                             )}
                           </div>
                         );
@@ -1342,7 +1342,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <Clock size={20} className="text-purple-600 mt-0.5 shrink-0" />
                     <div>
                       <h3 className="text-sm font-semibold text-purple-800">Cycle de vie du produit</h3>
-                      <p className="text-xs text-purple-600 mt-0.5">DLV, type de vente, exposition et recyclage</p>
+                      <p className="text-xs text-purple-600 mt-0.5">DLC, type de vente, exposition et valorisation</p>
                     </div>
                   </div>
                 </div>
@@ -1352,8 +1352,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Type de vente</label>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou recyclage', color: 'amber', icon: '☀️' },
-                      { value: 'dlv', label: 'DLV', desc: 'Vendable sur plusieurs jours', color: 'green', icon: '📅' },
+                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou valorisation', color: 'amber', icon: '☀️' },
+                      { value: 'dlv', label: 'Multi-jours (DLC)', desc: 'Vendable sur plusieurs jours', color: 'green', icon: '📅' },
                       { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', color: 'blue', icon: '📋' },
                     ].map(opt => (
                       <button key={opt.value} type="button"
@@ -1379,7 +1379,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       <div>
                         <h4 className="text-sm font-semibold text-blue-800">Sur commande — pas de cycle de vie vitrine</h4>
                         <p className="text-xs text-blue-600 mt-0.5">
-                          Le produit n&apos;est jamais expose : ni DLV, ni DDE, ni ré-exposition, ni recyclage.
+                          Le produit n&apos;est jamais expose : ni DLC, ni exposition, ni remise en vente, ni valorisation.
                           Il est produit à la demande.
                         </p>
                       </div>
@@ -1393,7 +1393,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                          DLV — Duree limite de vie (jours) {form.saleType === 'dlv' && <span className="text-red-500">*</span>}
+                          DLC — Durée de vie (jours) {form.saleType === 'dlv' && <span className="text-red-500">*</span>}
                         </label>
                         <input type="number" step="1" min="0"
                           className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -1407,11 +1407,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">DDE — Duree d&apos;exposition vitrine (heures)</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Exposition max en vitrine (heures)</label>
                         <input type="number" step="1" min="0"
                           className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                           value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
-                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte à partir du <strong>transfert en vitrine</strong>. Echeance effective = MIN(DLV, DDE)</p>
+                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte à partir du <strong>transfert en vitrine</strong>. Échéance effective = MIN(DLC, exposition)</p>
                       </div>
                     </div>
 
@@ -1423,7 +1423,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                             <Eye size={18} className="text-green-600" />
                           </div>
                           <div>
-                            <span className="text-sm font-semibold text-gray-900">Re-exposable</span>
+                            <span className="text-sm font-semibold text-gray-900">Remise en vente J+1</span>
                             <p className="text-xs text-gray-400">Peut être remis en vitrine le lendemain</p>
                           </div>
                         </div>
@@ -1446,7 +1446,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       {form.isReexposable && (
                         <div className="mt-3 pt-3 border-t border-gray-100">
                           <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                            Nombre maximum de ré-expositions
+                            Nombre maximum de remises en vente
                           </label>
                           <input type="number" step="1" min="1" max="10"
                             className="w-40 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -1454,7 +1454,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                             onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
                             placeholder="1" />
                           <p className="text-xs text-gray-400 mt-1.5">
-                            Combien de fois le produit peut être re-exposé (J+1, J+2…) avant destruction/recyclage.
+                            Combien de fois le produit peut être remis en vente (J+1, J+2…) avant destruction/valorisation.
                             Défaut : 1.
                           </p>
                         </div>
@@ -1469,8 +1469,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                             <span className="text-lg">♻️</span>
                           </div>
                           <div>
-                            <span className="text-sm font-semibold text-gray-900">Recyclable</span>
-                            <p className="text-xs text-gray-400">Peut être transformé en ingrédient (chapelure, pudding…)</p>
+                            <span className="text-sm font-semibold text-gray-900">Valorisable en production</span>
+                            <p className="text-xs text-gray-400">Retraité en ingrédient — rework (chapelure, pudding…)</p>
                           </div>
                         </div>
                         <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}
@@ -1486,7 +1486,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       )}
                       {form.isRecyclable && !product && (
                         <p className="mt-2 text-xs text-gray-500 italic">
-                          Enregistrez d&apos;abord le produit, puis rouvrez la fiche pour configurer les destinations de recyclage.
+                          Enregistrez d&apos;abord le produit, puis rouvrez la fiche pour configurer les destinations de valorisation.
                         </p>
                       )}
                     </div>
@@ -1726,7 +1726,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-recycle-destinations', productId] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      notify.success('Destinations de recyclage enregistrées');
+      notify.success('Destinations de valorisation enregistrées');
       setDirty(false);
     },
     onError: (e: unknown) => {
@@ -1752,7 +1752,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-          Destinations de recyclage
+          Destinations de valorisation
         </h5>
         <button type="button" onClick={addRow}
           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md hover:bg-cyan-100">
@@ -1762,7 +1762,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
 
       {rows.length === 0 && (
         <p className="text-xs text-gray-500 italic py-2">
-          Aucune destination. Ajoutez au moins un ingrédient cible pour rendre le recyclage opérationnel.
+          Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.
         </p>
       )}
 
