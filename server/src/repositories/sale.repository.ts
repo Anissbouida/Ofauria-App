@@ -161,6 +161,8 @@ export const saleRepository = {
     sachetsSuggested?: number;
     sachetReason?: string;
     channelId?: string | null; // mig 172
+    cashAmount?: number; // mig 250 — ventilation paiement mixte
+    cardAmount?: number;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null }[];
   }) {
     const client = await db.getClient();
@@ -172,9 +174,9 @@ export const saleRepository = {
       const paymentStatus = data.paymentStatus || 'paid';
       // paid_at est NULL pour une vente impayee : sera renseigne lors de l'encaissement differe.
       // Pour une vente saisie a posteriori (special B2B), on prend la date fournie.
-      // channel_id (mig 172) est en $22 ; createdAt eventuel passe en $23.
-      const createdAtExpr = data.createdAt ? `$23` : 'NOW()';
-      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$23' : 'NOW()') : 'NULL';
+      // cash/card_amount (mig 250) en $23/$24 ; createdAt eventuel passe en $25.
+      const createdAtExpr = data.createdAt ? `$25` : 'NOW()';
+      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$25' : 'NOW()') : 'NULL';
       const insertValues: unknown[] = [
         saleNumber, data.customerId || null, data.userId, data.subtotal,
         data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
@@ -182,12 +184,13 @@ export const saleRepository = {
         paymentStatus, data.unpaidCustomerName || null, data.employeeId || null,
         data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null,
         data.channelId || null,
+        data.cashAmount ?? null, data.cardAmount ?? null,
       ];
       if (data.createdAt) insertValues.push(data.createdAt);
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, ${createdAtExpr}) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, cash_amount, card_amount, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, ${createdAtExpr}) RETURNING *`,
         insertValues
       );
 
@@ -861,7 +864,7 @@ export const saleRepository = {
   },
 };
 
-async function generateSaleNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
+export async function generateSaleNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
   // Advisory lock prevents concurrent transactions from reading the same max sequence
   await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
   const today = getLocalDateString();

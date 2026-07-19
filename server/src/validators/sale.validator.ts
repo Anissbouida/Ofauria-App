@@ -3,7 +3,9 @@ import { moneyAmount, positiveQuantity } from './product-loss.validator.js';
 
 const uuid = z.string().uuid('Identifiant UUID invalide');
 
-const PAYMENT_METHODS = ['cash', 'card', 'mobile', 'check', 'credit'] as const;
+// 'mixed' (mig 250) : reglement partage especes + carte, ventile via
+// cashAmount/cardAmount dont la somme doit valoir le total (verifie controller).
+const PAYMENT_METHODS = ['cash', 'card', 'mobile', 'check', 'credit', 'mixed'] as const;
 
 const saleItemSchema = z.object({
   productId: uuid,
@@ -47,6 +49,28 @@ export const checkoutSchema = z.object({
   ]).optional(),
   // Canal de vente (mig 172). Si absent, le controller resout le canal par defaut.
   channelId: uuid.optional().nullable(),
+  // Ventilation d'un paiement mixte (mig 250). Obligatoires quand
+  // paymentMethod='mixed' ; la coherence cashAmount+cardAmount=total est
+  // verifiee dans le controller (le total est calcule cote serveur).
+  cashAmount: z.coerce.number()
+    .finite('Montant especes invalide')
+    .min(0, 'Montant especes ne peut etre negatif')
+    .max(999999.99, 'Montant especes trop eleve')
+    .optional(),
+  cardAmount: z.coerce.number()
+    .finite('Montant carte invalide')
+    .min(0, 'Montant carte ne peut etre negatif')
+    .max(999999.99, 'Montant carte trop eleve')
+    .optional(),
+}).superRefine((data, ctx) => {
+  if (data.paymentMethod === 'mixed' && data.paymentStatus !== 'unpaid') {
+    if (data.cashAmount === undefined || data.cardAmount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'cashAmount et cardAmount sont requis pour un paiement mixte',
+      });
+    }
+  }
 });
 
 // Encaissement d'une vente a plus tard. 'credit' est exclu : c'est le marqueur

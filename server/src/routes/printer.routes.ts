@@ -6,8 +6,10 @@ import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
 
-// CRUD config — admin/manager
-router.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), printerController.list);
+// Lecture ouverte au groupe SALES : le POS liste les imprimantes du magasin
+// pour le selecteur "imprimante du poste" (parametres locaux du terminal).
+// Les mutations restent admin/manager.
+router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), printerController.list);
 router.post('/', authenticate, authorize(ROLES.ADMIN), printerController.create);
 router.put('/:id', authenticate, authorize(ROLES.ADMIN), printerController.update);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), printerController.remove);

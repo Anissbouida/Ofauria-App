@@ -283,6 +283,9 @@ export interface SaleRow {
   paid_at: string | null;
   created_at: string;
   store_id: string | null;
+  // mig 250 — ventilation d'un paiement mixte (payment_method='mixed')
+  cash_amount?: string | number | null;
+  card_amount?: string | number | null;
 }
 
 export async function fromSale(
@@ -313,12 +316,21 @@ export async function fromSale(
   }
 
   const isCash = s.payment_method === 'cash';
+  const isMixed = s.payment_method === 'mixed';
   const treasuryCode = isCash ? '5161' : '5141';
 
-  const lines: GeneratedLine[] = [
-    { account_code: treasuryCode, debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` },
-    { account_code: '7111',       debit: 0, credit: round2(subtotal), label: 'Vente du jour' },
-  ];
+  const lines: GeneratedLine[] = [];
+  if (isMixed) {
+    // Paiement mixte (mig 250) : la tresorerie se ventile entre caisse (5161)
+    // et banque (5141) selon les parts reellement encaissees.
+    const cashPart = parseFloat(String(s.cash_amount ?? 0)) || 0;
+    const cardPart = parseFloat(String(s.card_amount ?? 0)) || 0;
+    if (cashPart > 0) lines.push({ account_code: '5161', debit: round2(cashPart), credit: 0, label: `Vente ${s.sale_number} (especes)` });
+    if (cardPart > 0) lines.push({ account_code: '5141', debit: round2(cardPart), credit: 0, label: `Vente ${s.sale_number} (carte)` });
+  } else {
+    lines.push({ account_code: treasuryCode, debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
+  }
+  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal), label: 'Vente du jour' });
 
   if (tax > 0) {
     const tvaCode = tvaAccountForRate(computeTvaRate(subtotal, tax), 'collected');
@@ -330,8 +342,10 @@ export async function fromSale(
 
   // Date : paid_at en priorite (encaissement effectif), fallback created_at.
   const dateRaw = s.paid_at || s.created_at;
+  // Mixte : classe au journal caisse (des especes entrent physiquement en
+  // caisse), la ligne 5141 reste tracee dans la meme ecriture.
   return {
-    journal_code: isCash ? 'CA' : 'BQ',
+    journal_code: isCash || isMixed ? 'CA' : 'BQ',
     entry_date: toIsoDate(dateRaw),
     description: `Vente POS ${s.sale_number}`,
     source_kind: 'sale',

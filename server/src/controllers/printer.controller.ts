@@ -91,8 +91,11 @@ export const printerController = {
     }
 
     const settings = await settingsRepository.get();
-    const { cashGiven, changeAmount, openDrawer } = req.body as {
+    const { cashGiven, changeAmount, openDrawer, printerId } = req.body as {
       cashGiven?: number; changeAmount?: number; openDrawer?: boolean;
+      // Imprimante choisie par le poste (parametres locaux du terminal POS).
+      // Validee cote service (store + active + type receipt), fallback defaut.
+      printerId?: string;
     };
 
     const result = await printerService.printReceipt({
@@ -120,6 +123,8 @@ export const printerController = {
         })),
         cash_given: cashGiven,
         change_amount: changeAmount,
+        cash_part: sale.cash_amount != null ? parseFloat(sale.cash_amount) : null,
+        card_part: sale.card_amount != null ? parseFloat(sale.card_amount) : null,
       },
       company: {
         name: settings?.company_name || 'Ofauria',
@@ -131,6 +136,7 @@ export const printerController = {
       options: {
         openDrawer: openDrawer ?? settings?.receipt_open_drawer ?? false,
         numCopies: settings?.receipt_num_copies || 1,
+        printerId: typeof printerId === 'string' && printerId ? printerId : undefined,
       },
     });
 

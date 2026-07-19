@@ -114,8 +114,12 @@ export const cashRegisterRepository = {
         `SELECT
           COUNT(*) as total_sales,
           COALESCE(SUM(total), 0) as total_revenue,
-          COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_revenue,
-          COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_revenue,
+          COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total
+                            WHEN payment_method = 'mixed' THEN COALESCE(cash_amount, 0)
+                            ELSE 0 END), 0) as cash_revenue,
+          COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total
+                            WHEN payment_method = 'mixed' THEN COALESCE(card_amount, 0)
+                            ELSE 0 END), 0) as card_revenue,
           COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_revenue,
           COALESCE(SUM(CASE WHEN sale_type = 'standard' THEN total ELSE 0 END), 0) as standard_revenue,
           COALESCE(SUM(CASE WHEN sale_type = 'advance' THEN total ELSE 0 END), 0) as advance_revenue,

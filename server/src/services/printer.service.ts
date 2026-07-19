@@ -66,6 +66,22 @@ export const printerService = {
     return result.rows[0] || null;
   },
 
+  /**
+   * Resout l'imprimante a utiliser : celle choisie par le poste (printerId,
+   * parametres locaux du terminal POS) si elle est valide pour ce magasin,
+   * sinon l'imprimante ticket par defaut du magasin.
+   */
+  async resolvePrinter(storeId: string, printerId?: string): Promise<PrinterConfigRow | null> {
+    if (printerId) {
+      const chosen = await this.findById(printerId);
+      if (chosen && chosen.store_id === storeId && chosen.is_active && chosen.type === 'receipt') {
+        return chosen;
+      }
+      // Imprimante invalide/supprimee : retombe silencieusement sur le defaut.
+    }
+    return this.findDefault(storeId, 'receipt');
+  },
+
   async findById(id: string) {
     const result = await db.query(
       `SELECT * FROM printer_configs WHERE id = $1`,
@@ -93,6 +109,9 @@ export const printerService = {
       items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g'; display_unit?: 'g' | 'kg' | null }>;
       cash_given?: number;
       change_amount?: number;
+      // Ventilation d'un paiement mixte (mig 250)
+      cash_part?: number | null;
+      card_part?: number | null;
     };
     company: {
       name: string;
@@ -101,9 +120,9 @@ export const printerService = {
       receipt_footer?: string;
       receipt_extra_lines?: string;
     };
-    options?: { openDrawer?: boolean; numCopies?: number };
+    options?: { openDrawer?: boolean; numCopies?: number; printerId?: string };
   }): Promise<{ ok: true } | { ok: false; error: string }> {
-    const config = await this.findDefault(params.storeId, 'receipt');
+    const config = await this.resolvePrinter(params.storeId, params.options?.printerId);
     if (!config) {
       return { ok: false, error: 'Aucune imprimante par defaut configuree pour ce magasin' };
     }
@@ -185,9 +204,14 @@ export const printerService = {
         // ─── Paiement ───
         const payLabel: Record<string, string> = {
           cash: 'Especes', card: 'Carte bancaire', mobile: 'Mobile',
-          check: 'Cheque', credit: 'Credit (impaye)',
+          check: 'Cheque', credit: 'Credit (impaye)', mixed: 'Mixte',
         };
         printer.println(`Paye par : ${payLabel[params.sale.payment_method] || params.sale.payment_method}`);
+        // Paiement mixte (mig 250) : detail des deux parts.
+        if (params.sale.payment_method === 'mixed') {
+          if (params.sale.cash_part != null) printer.println(`  Especes : ${params.sale.cash_part.toFixed(2)} DH`);
+          if (params.sale.card_part != null) printer.println(`  Carte   : ${params.sale.card_part.toFixed(2)} DH`);
+        }
 
         if (params.sale.payment_method === 'cash' && params.sale.cash_given != null) {
           printer.println(`Donne    : ${params.sale.cash_given.toFixed(2)} DH`);
@@ -219,11 +243,111 @@ export const printerService = {
           copy === 0 &&
           params.options?.openDrawer &&
           config.open_drawer_on_cash &&
-          params.sale.payment_method === 'cash'
+          (params.sale.payment_method === 'cash' || params.sale.payment_method === 'mixed')
         ) {
           printer.openCashDrawer();
         }
       }
+
+      await printer.execute();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Erreur imprimante inconnue' };
+    }
+  },
+
+  /**
+   * Imprime le rapport de cloture (rapport Z ou passation) d'une session de
+   * caisse sur l'imprimante ticket par defaut du store. Meme contrat que
+   * printReceipt : { ok } ou { ok: false, error } pour laisser l'appelant
+   * gerer le fallback.
+   */
+  async printZReport(params: {
+    storeId: string;
+    session: {
+      close_type: string | null;
+      cashier_name?: string;
+      opened_at: string | Date;
+      closed_at?: string | Date | null;
+      opening_amount: number;
+      total_sales: number;
+      total_revenue: number;
+      cash_revenue: number;
+      card_revenue: number;
+      mobile_revenue: number;
+      total_advances: number;
+      total_orders: number;
+      expected_cash: number;
+      actual_amount?: number | null;
+      difference?: number | null;
+      notes?: string | null;
+    };
+    company: { name: string };
+    options?: { printerId?: string };
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
+    const config = await this.resolvePrinter(params.storeId, params.options?.printerId);
+    if (!config) {
+      return { ok: false, error: 'Aucune imprimante par defaut configuree pour ce magasin' };
+    }
+
+    const printer = buildPrinter(config);
+    try {
+      const isConnected = await printer.isPrinterConnected();
+      if (!isConnected) {
+        return { ok: false, error: `Imprimante injoignable (${config.connection_string})` };
+      }
+
+      const s = params.session;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const fmtDT = (v: string | Date) => {
+        const d = new Date(v);
+        return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      };
+      const dh = (v: number) => `${(v || 0).toFixed(2)} DH`;
+
+      printer.alignCenter();
+      printer.bold(true);
+      printer.setTextDoubleHeight();
+      printer.println(params.company.name);
+      printer.setTextNormal();
+      printer.println(s.close_type === 'passation' ? 'RAPPORT DE PASSATION' : 'RAPPORT Z — FIN DE JOURNEE');
+      printer.bold(false);
+      printer.drawLine();
+
+      printer.alignLeft();
+      if (s.cashier_name) printer.println(`Caissier  : ${s.cashier_name}`);
+      printer.println(`Ouverture : ${fmtDT(s.opened_at)}`);
+      if (s.closed_at) printer.println(`Fermeture : ${fmtDT(s.closed_at)}`);
+      printer.drawLine();
+
+      printer.leftRight('Fond de caisse', dh(s.opening_amount));
+      printer.leftRight(`Ventes (${s.total_sales || 0})`, dh(s.total_revenue));
+      printer.leftRight('  dont especes', dh(s.cash_revenue));
+      printer.leftRight('  dont carte', dh(s.card_revenue));
+      if ((s.mobile_revenue || 0) > 0) printer.leftRight('  dont mobile', dh(s.mobile_revenue));
+      if ((s.total_advances || 0) > 0) printer.leftRight('Avances commandes', dh(s.total_advances));
+      if ((s.total_orders || 0) > 0) printer.leftRight('Commandes en attente', String(s.total_orders));
+      printer.drawLine();
+
+      printer.leftRight('Especes attendues', dh(s.expected_cash));
+      if (s.actual_amount != null) {
+        printer.leftRight('Especes comptees', dh(s.actual_amount));
+        const diff = s.difference ?? (s.actual_amount - s.expected_cash);
+        printer.bold(true);
+        printer.leftRight('ECART', `${diff > 0 ? '+' : ''}${diff.toFixed(2)} DH`);
+        printer.bold(false);
+      }
+      printer.drawLine();
+
+      if (s.notes) {
+        printer.println(`Notes : ${s.notes}`);
+        printer.drawLine();
+      }
+
+      printer.alignCenter();
+      printer.println(`Imprime le ${fmtDT(new Date())}`);
+      printer.newLine();
+      printer.cut();
 
       await printer.execute();
       return { ok: true };

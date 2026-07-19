@@ -14,5 +14,6 @@ router.get('/:id/inventory', authenticate, authorize(...ROLE_GROUPS.CASH), cashR
 router.post('/open', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.open);
 router.post('/close', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.close);
 router.post('/:id/submit', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.submitAmount);
+router.post('/:id/print-z', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.printZ);
 
 export default router;

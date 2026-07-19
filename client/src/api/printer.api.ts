@@ -28,6 +28,8 @@ export const printersApi = {
 };
 
 export const salePrintApi = {
-  printSale: (saleId: string, opts?: { cashGiven?: number; changeAmount?: number; openDrawer?: boolean }) =>
+  // printerId : imprimante choisie par le poste (parametres locaux du terminal),
+  // absent = imprimante par defaut du magasin.
+  printSale: (saleId: string, opts?: { cashGiven?: number; changeAmount?: number; openDrawer?: boolean; printerId?: string }) =>
     api.post(`/sales/${saleId}/print`, opts || {}).then(r => r.data),
 };

@@ -27,7 +27,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Espèces', card: 'Carte bancaire',
+  cash: 'Espèces', card: 'Carte bancaire', mixed: 'Mixte',
 };
 
 type SalesView = 'receipt' | 'category' | 'product' | 'cashier' | 'payment';
@@ -402,9 +402,31 @@ export default function SalesPage() {
   // Vue receipt : on additionne les recettes manuelles au CA (cf. migration 149).
   // Vue summary (category/product/cashier/payment) : 'payment' inclut deja les
   // saisies manuelles cote backend ; les autres vues restent POS uniquement.
-  const salesGross = view === 'receipt'
-    ? sales.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total as string), 0)
+  //
+  // GARDE-FOU anti-double-comptage (audit C1) : quand une saisie manuelle
+  // existe pour un (store, jour), elle est AUTORITAIRE. Les ventes POS de
+  // ce meme jour sont exclues du CA pour eviter de comptabiliser deux fois.
+  // Meme regle que le journal-generator (fromSale) et le caisseRepository.getRegister.
+  const manualDayKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of manualEntriesData as Record<string, any>[]) {
+      // Cle par (store_id, entry_date) pour ne pas exclure les ventes d'un
+      // autre magasin sur le meme jour.
+      const day = (e.entry_date as string || '').slice(0, 10);
+      const sid = e.store_id as string | null;
+      if (day) s.add(`${sid || 'null'}::${day}`);
+    }
+    return s;
+  }, [manualEntriesData]);
+  const posGross = view === 'receipt'
+    ? (sales as Record<string, any>[]).reduce((sum, s) => {
+        const day = ((s.paid_at as string) || (s.created_at as string) || '').slice(0, 10);
+        const sid = (s.store_id as string | null);
+        if (manualDayKeys.has(`${sid || 'null'}::${day}`)) return sum;
+        return sum + parseFloat(s.total as string);
+      }, 0)
     : summary.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
+  const salesGross = posGross;
   const grossRevenue = view === 'receipt' ? salesGross + manualRevenue : salesGross;
   const totalRevenue = view === 'receipt' ? grossRevenue - totalRefunds : grossRevenue;
   const totalCount = view === 'receipt'

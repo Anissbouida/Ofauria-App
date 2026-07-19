@@ -9,4 +9,7 @@ export const cashRegisterApi = {
   close: (closeType?: string) => api.post('/cash-register/close', { closeType }).then(r => r.data.data),
   submitAmount: (id: string, data: { actualAmount: number; notes?: string }) => api.post(`/cash-register/${id}/submit`, data).then(r => r.data.data),
   getInventoryItems: (id: string) => api.get(`/cash-register/${id}/inventory`).then(r => r.data.data),
+  // Rapport Z / passation sur l'imprimante thermique du store.
+  // printerId optionnel : imprimante du poste (parametres locaux du terminal).
+  printZ: (id: string, printerId?: string) => api.post(`/cash-register/${id}/print-z`, printerId ? { printerId } : {}).then(r => r.data.data),
 };

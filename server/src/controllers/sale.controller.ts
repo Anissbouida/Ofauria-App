@@ -55,6 +55,7 @@ export const saleController = {
       paymentStatus = 'paid', unpaidCustomerName, employeeId: explicitEmployeeId,
       sachetsGiven, sachetsSuggested, sachetReason,
       channelId: explicitChannelId,
+      cashAmount, cardAmount,
     } = req.body;
 
     // Resolution du canal de vente : si non fourni, on prend le canal par defaut.
@@ -149,6 +150,23 @@ export const saleController = {
 
     const total = subtotal - discountAmount + taxAmount;
 
+    // Paiement mixte (mig 250) : la ventilation especes/carte doit couvrir
+    // exactement le total calcule cote serveur (tolerance centime d'arrondi).
+    // Le total client peut differer (prix par canal, paliers) — on refuse
+    // plutot que de stocker une ventilation incoherente.
+    const isMixed = paymentStatus !== 'unpaid' && paymentMethod === 'mixed';
+    if (isMixed) {
+      const mixedSum = Math.round(((cashAmount ?? 0) + (cardAmount ?? 0)) * 100) / 100;
+      const totalRounded = Math.round(total * 100) / 100;
+      if (Math.abs(mixedSum - totalRounded) >= 0.01) {
+        res.status(400).json({
+          success: false,
+          error: { message: `Ventilation mixte incoherente : especes + carte = ${mixedSum.toFixed(2)} DH, total = ${totalRounded.toFixed(2)} DH` },
+        });
+        return;
+      }
+    }
+
     // Paiement reporte : on exige un beneficiaire identifiable (client formel OU nom libre).
     // Sans ca, on ne saurait pas a qui reclamer plus tard.
     if (paymentStatus === 'unpaid' && !customerId && !(unpaidCustomerName && unpaidCustomerName.trim())) {
@@ -200,6 +218,8 @@ export const saleController = {
       sachetsSuggested: ss,
       sachetReason: sr,
       channelId,
+      cashAmount: isMixed ? Math.round(cashAmount * 100) / 100 : undefined,
+      cardAmount: isMixed ? Math.round(cardAmount * 100) / 100 : undefined,
     });
 
     res.status(201).json({ success: true, data: sale });

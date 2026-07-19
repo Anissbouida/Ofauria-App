@@ -18,7 +18,6 @@ export const caisseRepository = {
     // les caisses, comme pour employees/salary_advances.
     const storeFilterP = storeId ? ' AND (p.store_id = $3 OR p.store_id IS NULL)' : '';
     const storeFilterS = storeId ? ' AND store_id = $3' : '';
-    const storeFilterSales = storeId ? ' AND store_id = $3' : '';
     const baseParams = [startDate, endDate];
     const params = storeId ? [...baseParams, storeId] : baseParams;
 
@@ -48,9 +47,18 @@ export const caisseRepository = {
     );
 
     // Cash register sessions grouped by date (cashier-reported + system amounts)
+    //
+    // AUDIT C2/C4 : cash_caissiere = FLUX net de la session
+    // (actual_amount - opening_amount), pas le tiroir brut. Sinon :
+    //   - le fond de caisse etait recompte chaque jour comme une recette
+    //     (1 000 DH x 30 j = +30 000 DH fictifs au report) ;
+    //   - passation + fin_journee le meme jour empilaient le tiroir du matin.
+    // On clamp a 0 vers le bas cote UI, mais on garde le signe brut ici pour
+    // que la reconciliation reste juste (un tiroir final < ouverture = deficit
+    // de session).
     const sessions = await db.query(
       `SELECT TO_CHAR(DATE(closed_at AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as session_date,
-              COALESCE(SUM(actual_amount), 0) as cash_caissiere,
+              COALESCE(SUM(actual_amount - COALESCE(opening_amount, 0)), 0) as cash_caissiere,
               COALESCE(SUM(cash_revenue), 0) as cash_systeme,
               COALESCE(SUM(card_revenue), 0) as card_revenue,
               COALESCE(SUM(COALESCE(mobile_revenue, 0)), 0) as mobile_revenue,
@@ -68,7 +76,13 @@ export const caisseRepository = {
     // et exclue tant qu'elle n'est pas encaissee.
     // On UNION ALL les saisies manuelles (matin+soir, montants `_reel`) — le temps
     // que le POS soit adopte. Voir migration 149.
+    //
+    // GARDE-FOU anti-double-comptage (audit C1) : quand une saisie manuelle
+    // existe pour un (store, jour), elle est AUTORITAIRE. Les ventes POS de
+    // ce meme (store, jour) sont EXCLUES pour eviter de comptabiliser le CA
+    // deux fois. Meme regle que le journal-generator (fromSale l.306-313).
     const storeFilterManual = storeId ? ' AND store_id = $3' : '';
+    const salesStoreFilter = storeId ? ' AND s.store_id = $3' : '';
     const sales = await db.query(
       `SELECT sale_date,
               SUM(total_sales) as total_sales,
@@ -77,16 +91,25 @@ export const caisseRepository = {
               SUM(mobile_sales) as mobile_sales,
               SUM(sale_count) as sale_count
        FROM (
-         SELECT TO_CHAR(DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
-                COALESCE(SUM(total), 0) as total_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'mobile' THEN total ELSE 0 END), 0) as mobile_sales,
+         SELECT TO_CHAR(DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}'), 'YYYY-MM-DD') as sale_date,
+                COALESCE(SUM(s.total), 0) as total_sales,
+                COALESCE(SUM(CASE WHEN s.payment_method = 'cash' THEN s.total
+                                  WHEN s.payment_method = 'mixed' THEN COALESCE(s.cash_amount, 0)
+                                  ELSE 0 END), 0) as cash_sales,
+                COALESCE(SUM(CASE WHEN s.payment_method = 'card' THEN s.total
+                                  WHEN s.payment_method = 'mixed' THEN COALESCE(s.card_amount, 0)
+                                  ELSE 0 END), 0) as card_sales,
+                COALESCE(SUM(CASE WHEN s.payment_method = 'mobile' THEN s.total ELSE 0 END), 0) as mobile_sales,
                 COUNT(*) as sale_count
-         FROM sales
-         WHERE payment_status IS DISTINCT FROM 'unpaid'
-           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') BETWEEN $1 AND $2${storeFilterSales}
-         GROUP BY DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')
+         FROM sales s
+         WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+           AND DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}') BETWEEN $1 AND $2${salesStoreFilter}
+           AND NOT EXISTS (
+             SELECT 1 FROM manual_shift_entries mse
+             WHERE mse.store_id = s.store_id
+               AND mse.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')
+           )
+         GROUP BY DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')
          UNION ALL
          SELECT TO_CHAR(entry_date, 'YYYY-MM-DD') as sale_date,
                 COALESCE(matin_cash_reel,0)+COALESCE(matin_carte_reel,0)+COALESCE(soir_cash_reel,0)+COALESCE(soir_carte_reel,0) as total_sales,
@@ -141,8 +164,10 @@ export const caisseRepository = {
     const prevStoreFilterS = storeId ? ' AND store_id = $3' : '';
     const prevSessionParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
+    // Meme correction C2 sur le report : flux net (actual - opening) plutot
+    // que le stock brut du tiroir.
     const prevSessions = await db.query(
-      `SELECT COALESCE(SUM(actual_amount), 0) as cash_total
+      `SELECT COALESCE(SUM(actual_amount - COALESCE(opening_amount, 0)), 0) as cash_total
        FROM cash_register_sessions
        WHERE status = 'closed'
          AND DATE(closed_at AT TIME ZONE '${tz}') < $1
@@ -151,7 +176,10 @@ export const caisseRepository = {
     );
 
     // Previous sales totals (cash + card) from actual sales + saisies manuelles
+    // Meme garde-fou C1 : les ventes POS d'un jour deja couvert par une saisie
+    // manuelle sont exclues pour eviter le double-comptage.
     const prevSalesFilterS = storeId ? ' AND store_id = $3' : '';
+    const prevSalesFilterSAliased = storeId ? ' AND s.store_id = $3' : '';
     const prevSalesParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
     const prevSales = await db.query(
@@ -160,12 +188,21 @@ export const caisseRepository = {
         SUM(card_total) as card_total
        FROM (
          SELECT
-           COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END), 0) as cash_total,
-           COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END), 0) as card_total
-         FROM sales
-         WHERE payment_status IS DISTINCT FROM 'unpaid'
-           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') < $1
-           AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE '${tz}') >= $2${prevSalesFilterS}
+           COALESCE(SUM(CASE WHEN s.payment_method = 'cash' THEN s.total
+                             WHEN s.payment_method = 'mixed' THEN COALESCE(s.cash_amount, 0)
+                             ELSE 0 END), 0) as cash_total,
+           COALESCE(SUM(CASE WHEN s.payment_method = 'card' THEN s.total
+                             WHEN s.payment_method = 'mixed' THEN COALESCE(s.card_amount, 0)
+                             ELSE 0 END), 0) as card_total
+         FROM sales s
+         WHERE s.payment_status IS DISTINCT FROM 'unpaid'
+           AND DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}') < $1
+           AND DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}') >= $2${prevSalesFilterSAliased}
+           AND NOT EXISTS (
+             SELECT 1 FROM manual_shift_entries mse
+             WHERE mse.store_id = s.store_id
+               AND mse.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')
+           )
          UNION ALL
          SELECT
            COALESCE(SUM(COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0)), 0) as cash_total,

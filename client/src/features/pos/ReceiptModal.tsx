@@ -5,6 +5,7 @@ import { Printer, X } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 import { salePrintApi } from '../../api/printer.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { getTerminalSettings, getTerminalPrinterId, resolveTriState } from './terminal-settings';
 
 interface ReceiptItem {
   name: string;
@@ -32,6 +33,9 @@ interface ReceiptData {
   paymentMethod: string;
   cashGiven?: number;
   changeAmount?: number;
+  // Ventilation d'un paiement mixte (especes + carte)
+  cashPart?: number;
+  cardPart?: number;
   advanceAmount?: number;
   advanceDate?: string;
   orderTotal?: number;
@@ -41,6 +45,7 @@ interface ReceiptData {
 const paymentLabels: Record<string, string> = {
   cash: 'Especes',
   card: 'Carte bancaire',
+  mixed: 'Mixte (especes + carte)',
 };
 
 /** Pre-convert a logo URL to a base64 data URL for use in print windows */
@@ -90,6 +95,12 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
   const { settings } = useSettings();
   const [hasPrinted, setHasPrinted] = useState(false);
 
+  // Parametres locaux du POSTE (modal ⚙️ du POS) : surchargent les reglages
+  // globaux pour ce terminal uniquement.
+  const terminal = getTerminalSettings();
+  const effectiveAutoPrint = resolveTriState(terminal.autoPrint, !!settings.receiptAutoPrint);
+  const effectiveOpenDrawer = resolveTriState(terminal.openDrawer, !!settings.receiptOpenDrawer);
+
   const logoSrc = settings.logoUrl || '/images/logo-horizontal.png';
   const logoBase64 = useLogoBase64(logoSrc, settings.receiptShowLogo);
 
@@ -105,7 +116,8 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
         await salePrintApi.printSale(receipt.saleId, {
           cashGiven: receipt.cashGiven,
           changeAmount: receipt.changeAmount,
-          openDrawer: settings.receiptOpenDrawer && receipt.paymentMethod === 'cash',
+          openDrawer: effectiveOpenDrawer && (receipt.paymentMethod === 'cash' || receipt.paymentMethod === 'mixed'),
+          printerId: getTerminalPrinterId(),
         });
         notify.success('Ticket imprime');
         setHasPrinted(true);
@@ -190,18 +202,18 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
     }
     printWindow.close();
     setHasPrinted(true);
-  }, [receipt, settings, logoBase64]);
+  }, [receipt, settings, logoBase64, effectiveOpenDrawer]);
 
   // Auto-print when configured and this is a fresh receipt
   useEffect(() => {
-    if (settings.receiptAutoPrint && !hasPrinted && autoPrintTriggered && receiptRef.current) {
+    if (effectiveAutoPrint && !hasPrinted && autoPrintTriggered && receiptRef.current) {
       // Small delay to ensure logo base64 is ready and DOM is rendered
       const timer = setTimeout(() => {
         handlePrint();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.receiptAutoPrint, hasPrinted, autoPrintTriggered, handlePrint, logoBase64]);
+  }, [effectiveAutoPrint, hasPrinted, autoPrintTriggered, handlePrint, logoBase64]);
 
   const formattedDate = format(new Date(receipt.date), "dd MMMM yyyy 'a' HH:mm", { locale: fr });
   const fs = settings.receiptFontSize || 12;
@@ -367,6 +379,20 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
               <div style={{ fontSize: `${fs - 1}px`, textAlign: 'center', marginBottom: '4px' }}>
                 Paye par: <strong>{paymentLabels[receipt.paymentMethod] || receipt.paymentMethod}</strong>
               </div>
+              {receipt.paymentMethod === 'mixed' && receipt.cashPart !== undefined && receipt.cardPart !== undefined && (
+                <table style={{ width: '100%', margin: '4px 0' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Especes</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.cashPart.toFixed(2)} DH</td>
+                    </tr>
+                    <tr>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Carte</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.cardPart.toFixed(2)} DH</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
               {settings.receiptShowPaymentDetail && receipt.cashGiven !== undefined && (
                 <table style={{ width: '100%', margin: '4px 0' }}>
                   <tbody>
@@ -405,7 +431,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
         </div>
 
         {/* Auto-print indicator */}
-        {settings.receiptAutoPrint && hasPrinted && (
+        {effectiveAutoPrint && hasPrinted && (
           <div className="px-4 pb-3 text-center">
             <span className="text-xs text-green-600 font-medium">Impression automatique effectuee</span>
           </div>

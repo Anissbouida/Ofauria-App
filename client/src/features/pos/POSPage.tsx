@@ -18,13 +18,37 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
+import POSSettingsModal from './POSSettingsModal';
+import BarcodeScannerModal from './BarcodeScannerModal';
+import { getTerminalPrinterId, getTerminalSettings, type GridSize } from './terminal-settings';
+import { playPosSound } from './pos-sounds';
+
+// Dimensions de la grille produits selon la taille choisie dans les
+// parametres du poste (vignettes plus grandes = moins de produits a l'ecran,
+// plus facile au doigt sur petite tablette).
+const GRID_DIMS: Record<GridSize, { minPx: number; cardH: string }> = {
+  compact: { minPx: 96, cardH: 'h-[112px]' },
+  normal: { minPx: 120, cardH: 'h-[140px]' },
+  large: { minPx: 152, cardH: 'h-[172px]' },
+};
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import LossDeclarationModal from './LossDeclarationModal';
 import { useAuth } from '../../context/AuthContext';
 import { getApiErrorMessage } from '../../utils/api-error';
+
+// FLAG DE TEST : desactive les blocages UI de rupture (filtre catalogue,
+// bouton disabled, alerte "Max X en stock"). A combiner avec le flag serveur
+// POS_ALLOW_NEGATIVE_STOCK. NE PAS ACTIVER EN PRODUCTION.
+// Defaut : ON en dev (import.meta.env.DEV), OFF sinon. VITE_POS_ALLOW_NEGATIVE_STOCK
+// permet de forcer explicitement OFF (=off/false/0/no).
+const _viteEnv = (import.meta as { env?: Record<string, string | boolean | undefined> }).env || {};
+const _rawFlag = String(_viteEnv.VITE_POS_ALLOW_NEGATIVE_STOCK ?? '').toLowerCase();
+const ALLOW_NEGATIVE_STOCK = _rawFlag
+  ? ['1', 'true', 'yes', 'on'].includes(_rawFlag)
+  : Boolean(_viteEnv.DEV);
 
 interface CartItem {
   productId: string;
@@ -57,6 +81,9 @@ interface ReceiptData {
   paymentMethod: string;
   cashGiven?: number;
   changeAmount?: number;
+  // Ventilation d'un paiement mixte (especes + carte)
+  cashPart?: number;
+  cardPart?: number;
   advanceAmount?: number;
   advanceDate?: string;
   orderTotal?: number;
@@ -88,14 +115,37 @@ export default function POSPage() {
   const [search, setSearch] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  // Mode de reglement — memorise en localStorage pour pre-selectionner le
+  // dernier mode utilise a l'ouverture du modal Encaisser (UX : 1 clic).
+  // 'mixed' (mig 250) : reglement partage especes + carte. Jamais restaure
+  // depuis localStorage (une ventilation figee n'a pas de sens d'une vente a
+  // l'autre) — on ne persiste que cash/card.
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed'>(() => {
+    try {
+      const saved = localStorage.getItem('pos-last-payment-method');
+      if (saved === 'cash' || saved === 'card') return saved;
+    } catch { /* localStorage unavailable */ }
+    return 'cash';
+  });
+  // Ventilation du paiement mixte (saisie libre, chaines pour la frappe).
+  const [mixedCashInput, setMixedCashInput] = useState('');
+  const [mixedCardInput, setMixedCardInput] = useState('');
+  // Remise ticket : montant en DH ou pourcentage du sous-total.
+  const [discountInput, setDiscountInput] = useState('');
+  const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   // Canal de vente (mig 172) — par defaut le canal "boutique" du serveur
   const [channelId, setChannelId] = useState<string>('');
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
+  // Saisie libre du montant donne (chaine pour laisser l'utilisateur taper "50.5"
+  // sans lock intermediaire). Synchronise avec cashGiven au blur/confirm.
+  const [cashGivenInput, setCashGivenInput] = useState<string>('');
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState(false);
+  // Modal tunnel paiement (Encaisser) : mode + billet donne + rendu monnaie.
+  // Deplace hors du panneau panier pour un UX aligne aux POS classiques.
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [unpaidCustomerName, setUnpaidCustomerName] = useState('');
   // Sachets : la suggestion est recalculee a chaque changement de panier.
   // sachetsGiven garde la valeur saisie par la vendeuse (override possible).
@@ -211,6 +261,29 @@ export default function POSPage() {
 
   // Loss declaration state
   const [showLossModal, setShowLossModal] = useState(false);
+  // Parametres locaux du poste (modal ⚙️ : impression auto, tiroir, imprimante,
+  // sons, veille, taille grille, scanner). Relus a la fermeture du modal.
+  const [showPosSettings, setShowPosSettings] = useState(false);
+  const [terminalPrefs, setTerminalPrefs] = useState(getTerminalSettings());
+  const [showScanner, setShowScanner] = useState(false);
+
+  // Ecran toujours allume (Wake Lock). Re-acquisition au retour d'onglet :
+  // le navigateur relache le verrou quand la page passe en arriere-plan.
+  useEffect(() => {
+    if (!terminalPrefs.keepAwake) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } };
+    const acquire = async () => {
+      try { lock = await nav.wakeLock?.request('screen') ?? null; } catch { /* non supporte / refuse */ }
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') void acquire(); };
+    void acquire();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      void lock?.release().catch(() => { /* deja relache */ });
+    };
+  }, [terminalPrefs.keepAwake]);
 
   // Order form state
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -297,6 +370,14 @@ export default function POSPage() {
     queryFn: () => customersApi.list({ search: customerSearch, limit: '5' }),
     enabled: customerSearch.length >= 2,
   });
+  // Catalogue complet pour le scanner code-barres : le code scanne est matche
+  // sur products.sku, independamment de la categorie/recherche affichee.
+  const { data: scanCatalog } = useQuery({
+    queryKey: ['pos-scan-catalog'],
+    queryFn: () => productsApi.list({ isAvailable: 'true', limit: '2000', strictStore: 'true' }),
+    enabled: !!user?.storeId && showScanner,
+    staleTime: 60_000,
+  });
 
   // Canaux de vente actifs (mig 172) — pour le sélecteur en tête de transaction
   const { data: salesChannels = [] } = useQuery({
@@ -326,6 +407,15 @@ export default function POSPage() {
   });
   const unpaidSales: Record<string, any>[] = (deferredData || [])
     .filter((s: Record<string, any>) => s.payment_status === 'unpaid');
+
+  // Modal detail d'une vente impayee : ouvert au clic sur la ligne. Chargement
+  // paresseux des items via /sales/:id.
+  const [unpaidDetailsId, setUnpaidDetailsId] = useState<string | null>(null);
+  const { data: unpaidDetails, isLoading: unpaidDetailsLoading } = useQuery({
+    queryKey: ['sale-details', unpaidDetailsId],
+    queryFn: () => salesApi.getById(unpaidDetailsId as string),
+    enabled: !!unpaidDetailsId,
+  });
 
   // Encaissement d'une vente a plus tard depuis le POS (date = aujourd'hui,
   // rattachee a la session de caisse ouverte du caissier).
@@ -523,6 +613,13 @@ export default function POSPage() {
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la soumission')),
   });
 
+  // Rapport Z / passation sur l'imprimante thermique (totaux figes en base).
+  const printZMutation = useMutation({
+    mutationFn: () => cashRegisterApi.printZ(closeResult!.id as string, getTerminalPrinterId()),
+    onSuccess: () => notify.success('Rapport envoyé à l\'imprimante'),
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Impression du rapport impossible')),
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: salesApi.checkout,
     onSuccess: (sale: Record<string, any>) => {
@@ -546,20 +643,28 @@ export default function POSPage() {
           displayUnit: i.displayUnit,
         })),
         subtotal,
-        discountAmount: 0,
+        discountAmount,
         total,
         paymentMethod: effectivePaymentMethod,
         cashGiven: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
         changeAmount: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
+        cashPart: !isUnpaid && paymentMethod === 'mixed' ? mixedCash : undefined,
+        cardPart: !isUnpaid && paymentMethod === 'mixed' ? mixedCard : undefined,
       };
       setLastReceipt(receipt);
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
       setSachetsGiven(0); setSachetReason(''); setUserOverrode(false);
+      setDiscountInput(''); setMixedCashInput(''); setMixedCardInput('');
+      if (paymentMethod === 'mixed') setPaymentMethod('cash');
+      playPosSound('success');
       notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la vente')),
+    onError: (e: unknown) => {
+      playPosSound('error');
+      notify.error(getApiErrorMessage(e, 'Erreur lors de la vente'));
+    },
   });
 
   // Suggestion de sachets calculee cote serveur a partir du contenu du panier.
@@ -668,16 +773,18 @@ export default function POSPage() {
   });
 
   const products = (() => {
-    if (search) return (productsData?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
-    if (isTopCategory) return (topSellingData || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
+    // TEMP TEST : on affiche TOUS les produits, y compris ceux en rupture.
+    // Les cartes rupture sont grisees + badge "Rupture" (voir grille ci-dessous).
+    if (search) return (productsData?.data || []) as Record<string, any>[];
+    if (isTopCategory) return (topSellingData || []) as Record<string, any>[];
     if (isRecentCategory) {
-      const all = (allProductsForRecent?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
+      const all = (allProductsForRecent?.data || []) as Record<string, any>[];
       // Sort by recent order (preserve localStorage order)
       return recentProductIds
         .map(id => all.find((p: Record<string, any>) => p.id === id))
         .filter(Boolean) as Record<string, any>[];
     }
-    return (productsData?.data || []).filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0);
+    return (productsData?.data || []) as Record<string, any>[];
   })();
   // Subtotal :
   //   - unit : prix × nb pièces
@@ -686,7 +793,17 @@ export default function POSPage() {
     if (item.unit === 'g') return sum + (item.quantity / 1000) * item.price;
     return sum + item.price * item.quantity;
   }, 0);
-  const total = subtotal;
+  // Remise ticket : bornee a [0, sous-total]. Le serveur refait le meme
+  // controle (remise > sous-total rejetee).
+  const discountRaw = parseFloat(discountInput.replace(',', '.')) || 0;
+  const discountAmount = Math.round(
+    Math.min(subtotal, Math.max(0, discountType === 'percent' ? (subtotal * discountRaw) / 100 : discountRaw)) * 100
+  ) / 100;
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
+  // Paiement mixte : la somme des deux parts doit couvrir exactement le total.
+  const mixedCash = Math.round((parseFloat(mixedCashInput.replace(',', '.')) || 0) * 100) / 100;
+  const mixedCard = Math.round((parseFloat(mixedCardInput.replace(',', '.')) || 0) * 100) / 100;
+  const mixedOk = total > 0 && Math.abs(mixedCash + mixedCard - total) < 0.01;
 
   const orders = (ordersData?.data || []).filter((o: Record<string, any>) => {
     if (!orderSearch) return o.status !== 'completed' && o.status !== 'cancelled';
@@ -717,7 +834,8 @@ export default function POSPage() {
 
   const addToCart = (product: Record<string, any>) => {
     const stock = parseFloat(product.stock_quantity as string) || 0;
-    if (stock <= 0) return;
+    // FLAG DE TEST : quand ALLOW_NEGATIVE_STOCK, on ignore le stock <= 0.
+    if (stock <= 0 && !ALLOW_NEGATIVE_STOCK) return;
 
     // Produits au poids : on ouvre un modal pour saisir le grammage,
     // au lieu d'incrémenter par 1 (ça ne veut rien dire en grammes).
@@ -738,7 +856,7 @@ export default function POSPage() {
 
     const existing = cart.find(i => i.productId === product.id);
     if (existing) {
-      if (existing.quantity >= stock) { showStockAlert(product.id as string, stock); return; }
+      if (!ALLOW_NEGATIVE_STOCK && existing.quantity >= stock) { showStockAlert(product.id as string, stock); return; }
       setCart(cart.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i));
     } else {
       setCart([...cart, {
@@ -752,6 +870,7 @@ export default function POSPage() {
     }
     addToRecent(product.id as string);
     cartScrollTrigger.current++;
+    playPosSound('add');
   };
 
   const confirmWeight = () => {
@@ -762,7 +881,7 @@ export default function POSPage() {
     const weightG = weightInputUnit === 'kg' ? Math.round(raw * 1000) : Math.round(raw);
     const p = weightModal.product;
     const stock = parseFloat(p.stock_quantity as string) || 0;
-    if (weightG > stock) { showStockAlert(p.id as string, stock); return; }
+    if (weightG > stock && !ALLOW_NEGATIVE_STOCK) { showStockAlert(p.id as string, stock); return; }
     const pricePerKg = parseFloat((p.price_per_kg ?? p.price) as string);
     const existing = cart.find(i => i.productId === p.id);
     if (existing) {
@@ -783,6 +902,7 @@ export default function POSPage() {
     cartScrollTrigger.current++;
     setWeightModal(null);
     setWeightInput('');
+    playPosSound('add');
   };
 
   // Correction 1: Scroll to bottom on add
@@ -810,8 +930,8 @@ export default function POSPage() {
       setCart(prev => prev.filter(i => i.productId !== numpadItem.productId));
     } else {
       const stock = getProductStock(numpadItem.productId);
-      const finalQty = Math.min(qty, stock);
-      if (qty > stock) showStockAlert(numpadItem.productId, stock);
+      const finalQty = ALLOW_NEGATIVE_STOCK ? qty : Math.min(qty, stock);
+      if (qty > stock && !ALLOW_NEGATIVE_STOCK) showStockAlert(numpadItem.productId, stock);
       setCart(prev => prev.map(i => i.productId === numpadItem.productId ? { ...i, quantity: finalQty } : i));
     }
     closeNumpad();
@@ -822,7 +942,7 @@ export default function POSPage() {
       if (i.productId === productId) {
         const newQty = i.quantity + delta;
         if (newQty <= 0) return null!;
-        if (delta > 0) {
+        if (delta > 0 && !ALLOW_NEGATIVE_STOCK) {
           const stock = getProductStock(productId);
           if (newQty > stock) { showStockAlert(productId, stock); return i; }
         }
@@ -837,15 +957,37 @@ export default function POSPage() {
       notify.error('Indiquez un motif pour le sachet supplémentaire');
       return;
     }
+    // En especes, si un montant a ete saisi, il doit couvrir le total (garde-fou
+    // supplementaire au PaymentModal). Non bloquant si cashGiven est null (le
+    // caissier n'a pas voulu tracker le rendu monnaie).
+    if (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total) {
+      notify.error('Montant donné insuffisant');
+      return;
+    }
+    // Mixte : la ventilation doit couvrir exactement le total (le serveur
+    // re-verifie contre son propre total calculé).
+    if (paymentMethod === 'mixed' && !mixedOk) {
+      notify.error('Espèces + carte doivent égaler le total');
+      return;
+    }
+    // Memorise le dernier mode utilise pour pre-selectionner au prochain
+    // checkout ('mixed' exclu : sa ventilation n'est pas transposable).
+    if (paymentMethod !== 'mixed') {
+      try { localStorage.setItem('pos-last-payment-method', paymentMethod); } catch { /* noop */ }
+    }
     checkoutMutation.mutate({
       customerId: customerId || undefined,
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, displayUnit: i.displayUnit })),
       paymentMethod,
+      discountAmount,
+      cashAmount: paymentMethod === 'mixed' ? mixedCash : undefined,
+      cardAmount: paymentMethod === 'mixed' ? mixedCard : undefined,
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
       channelId: channelId || undefined,
     });
+    setShowPaymentModal(false);
   };
 
   const handleSaveUnpaid = () => {
@@ -864,6 +1006,7 @@ export default function POSPage() {
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, displayUnit: i.displayUnit })),
       paymentMethod: 'credit',
       paymentStatus: 'unpaid',
+      discountAmount,
       unpaidCustomerName: !customerId && unpaidCustomerName.trim() ? unpaidCustomerName.trim() : undefined,
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
@@ -874,6 +1017,22 @@ export default function POSPage() {
     setUnpaidCustomerName('');
   };
 
+
+  // Scanner : retrouve le produit par SKU et l'ajoute au panier.
+  // Retourne le nom du produit (feedback du modal) ou null si code inconnu.
+  const handleScanDetect = (code: string): string | null => {
+    const catalog = (scanCatalog?.data || []) as Record<string, any>[];
+    const scanned = catalog.find(p => typeof p.sku === 'string' && p.sku.trim() !== '' && p.sku.trim() === code.trim());
+    if (!scanned) {
+      playPosSound('error');
+      return null;
+    }
+    // Produit au poids : addToCart ouvre le modal de pesee — on ferme le
+    // scanner pour laisser la main a la saisie du grammage.
+    if (scanned.sale_unit === 'weight') setShowScanner(false);
+    addToCart(scanned);
+    return scanned.name as string;
+  };
 
   const isCashierRole = user && ['cashier', 'saleswoman'].includes(user.role);
 
@@ -992,7 +1151,7 @@ export default function POSPage() {
             className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
               posTab === 'unpaid' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}>
-            <Clock size={15} /> Impayés
+            <Clock size={15} /> Enregistrer
             {unpaidSales.length > 0 && (
               <span className="ml-0.5 bg-amber-500 text-white rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold">
                 {unpaidSales.length}
@@ -1025,6 +1184,10 @@ export default function POSPage() {
           <button onClick={() => setShowLossModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-orange-400 hover:bg-orange-50 hover:text-orange-600 transition-colors">
             <Trash2 size={17} />
             <span className="text-[9px] font-medium">Perte</span>
+          </button>
+          <button onClick={() => setShowPosSettings(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+            <Settings size={17} />
+            <span className="text-[9px] font-medium">Poste</span>
           </button>
           <button onClick={() => { setCloseStep('choose-type'); setShowCloseModal(true); }} disabled={closeMutation.isPending} className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${closeMutation.isPending ? 'text-red-600 bg-red-50 animate-pulse' : 'text-red-400 hover:bg-red-50 hover:text-red-500'}`}>
             {closeMutation.isPending ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" /> : <Lock size={17} />}
@@ -1104,18 +1267,25 @@ export default function POSPage() {
             </div>
 
             {/* Search */}
-            <div className="px-3 py-2 shrink-0">
-              <div className="relative">
+            <div className="px-3 py-2 shrink-0 flex items-center gap-2">
+              <div className="relative flex-1">
                 <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-10 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400" />
               </div>
+              {terminalPrefs.scanner && (
+                <button onClick={() => setShowScanner(true)}
+                  title="Scanner un code-barres"
+                  className="p-2 bg-white border border-gray-200 rounded-lg text-gray-500 hover:border-primary-300 hover:text-primary-600 transition-colors">
+                  <ScanLine size={18} />
+                </button>
+              )}
             </div>
 
             {/* Product Grid */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
-              <div className="grid gap-2 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-                {products.filter((p: Record<string, any>) => Number(p.stock_quantity || 0) > 0).map((p: Record<string, any>) => {
+              <div className="grid gap-2 content-start" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_DIMS[terminalPrefs.gridSize].minPx}px, 1fr))` }}>
+                {products.map((p: Record<string, any>) => {
                   const stock = parseFloat(p.stock_quantity as string) || 0;
                   const outOfStock = stock <= 0;
                   const isAlerted = stockAlert?.productId === p.id;
@@ -1131,12 +1301,11 @@ export default function POSPage() {
                   const ddeCriticalH = ddeMs ? (ddeMs - nowMs) / 3600000 : Infinity;
                   const minH = Math.min(dlvCriticalH, ddeCriticalH);
                   const isDeadlineSoon = !isExpired && minH < 24 && minH > 0;
-                  if (outOfStock) return null;
                   return (
-                    <button key={p.id as string} onClick={() => !outOfStock && !isExpired && addToCart(p)}
-                      disabled={outOfStock || isExpired}
-                      title={isExpired ? 'DLV ou DDE atteinte — vente bloquee' : ''}
-                      className={`rounded-xl p-2 text-left transition-all border flex flex-col relative h-[140px] ${
+                    <button key={p.id as string} onClick={() => (!outOfStock || ALLOW_NEGATIVE_STOCK) && !isExpired && addToCart(p)}
+                      disabled={(outOfStock && !ALLOW_NEGATIVE_STOCK) || isExpired}
+                      title={isExpired ? 'DLC ou exposition vitrine atteinte — vente bloquee' : ''}
+                      className={`rounded-xl p-2 text-left transition-all border flex flex-col relative ${GRID_DIMS[terminalPrefs.gridSize].cardH} ${
                         isExpired
                           ? 'bg-red-50 border-red-300 opacity-60 cursor-not-allowed'
                           : outOfStock
@@ -1149,7 +1318,7 @@ export default function POSPage() {
                       }`}>
                       {isExpired && (
                         <span className="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full z-10">
-                          DLV/DDE expiree
+                          DLC/exposition expiree
                         </span>
                       )}
                       {isDeadlineSoon && (
@@ -1347,24 +1516,8 @@ export default function POSPage() {
                     )}
 
                     <div className="flex-1" />
-
-                    {/* Payment method — only when cart has items */}
-                    {cart.length > 0 && (
-                      <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                        <button onClick={() => setPaymentMethod('cash')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                            paymentMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
-                          }`}>
-                          <Banknote size={14} /> Espèces
-                        </button>
-                        <button onClick={() => setPaymentMethod('card')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                            paymentMethod === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
-                          }`}>
-                          <CreditCard size={14} /> Carte
-                        </button>
-                      </div>
-                    )}
+                    {/* Le selecteur mode de reglement + billet donne sont deplaces dans
+                        PaymentModal (ouvert au clic sur "Encaisser"). */}
                   </div>
                 </div>
               )}
@@ -1394,45 +1547,7 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Cash change calculator — only when cash + cart has items + no numpad */}
-              {!numpadItem && paymentMethod === 'cash' && cart.length > 0 && (
-                <div className="px-4 py-2.5 border-b border-gray-100">
-                  {/* Correction 3: Hide quick bills when total > 200 DH */}
-                  {total <= 200 && (
-                    <>
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Billet donné</p>
-                      <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                        {[20, 50, 100, 200].map(amount => (
-                          <button key={amount} onClick={() => setCashGiven(cashGiven === amount ? null : amount)}
-                            className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-md text-sm font-bold transition-all ${
-                              cashGiven === amount
-                                ? 'bg-white text-primary-700 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                            }`}>
-                            <Banknote size={14} className={cashGiven === amount ? 'text-primary-600' : 'text-gray-400'} />
-                            <span>{amount}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {cashGiven !== null && cashGiven >= total && (
-                    <div className="mt-2 flex items-center justify-center gap-2 bg-green-50 rounded-xl py-2.5 px-3 ring-1 ring-green-200">
-                      <Banknote size={18} className="text-green-600" />
-                      <div className="text-center">
-                        <p className="text-[10px] font-medium text-green-600">Monnaie à rendre</p>
-                        <p className="text-lg font-bold text-green-700">{(cashGiven - total).toFixed(2)} DH</p>
-                      </div>
-                    </div>
-                  )}
-                  {cashGiven !== null && cashGiven < total && (
-                    <div className="mt-2 flex items-center justify-center gap-2 bg-red-50 rounded-xl py-2.5 px-3 ring-1 ring-red-200">
-                      <AlertTriangle size={16} className="text-red-500" />
-                      <p className="text-xs font-semibold text-red-600">Insuffisant — il manque {(total - cashGiven).toFixed(2)} DH</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Billet donne + rendu monnaie sont deplaces dans PaymentModal. */}
 
               {/* Sachets — visible des qu'il y a au moins 1 article et que le numpad est ferme */}
               {!numpadItem && cart.length > 0 && (
@@ -1520,10 +1635,17 @@ export default function POSPage() {
                       title="Sauvegarder sans encaissement (client paiera plus tard)"
                       className="flex flex-col items-center justify-center gap-1 px-3 py-3 bg-amber-50 text-amber-700 rounded-xl font-bold hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
                       <Clock size={18} />
-                      <span className="text-[10px] font-semibold">Plus tard</span>
+                      <span className="text-[10px] font-semibold">Enregistrer</span>
                     </button>
-                    <button onClick={handleCheckout}
-                      disabled={checkoutMutation.isPending || !sachetReasonOK || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)}
+                    <button onClick={() => {
+                      // Garde-fous prealables (sachet motif) avant d'ouvrir le tunnel paiement.
+                      if (!sachetReasonOK) { notify.error('Indiquez un motif pour le sachet supplémentaire'); return; }
+                      // Reinitialise le montant donne a chaque ouverture — le total a change.
+                      setCashGiven(null);
+                      setCashGivenInput('');
+                      setShowPaymentModal(true);
+                    }}
+                      disabled={checkoutMutation.isPending || !sachetReasonOK}
                       className="flex-1 flex flex-col items-center justify-center gap-1 py-3 bg-primary-50 text-primary-700 rounded-xl font-bold text-base hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
                       <ShoppingCart size={20} />
                       <span className="text-sm">{checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}</span>
@@ -1653,7 +1775,9 @@ export default function POSPage() {
                 : (s.unpaid_customer_name as string) || 'Client de passage';
               const ageDays = Math.max(0, Math.floor((Date.now() - new Date(s.created_at as string).getTime()) / 86400000));
               return (
-                <div key={s.id as string} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div key={s.id as string}
+                  onClick={() => setUnpaidDetailsId(s.id as string)}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4 cursor-pointer hover:border-primary-200 hover:shadow-md transition-all">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-mono text-sm font-semibold">{s.sale_number as string}</span>
@@ -1670,7 +1794,7 @@ export default function POSPage() {
                   <div className="text-right shrink-0">
                     <p className="font-bold text-lg">{parseFloat(s.total as string).toFixed(2)} DH</p>
                   </div>
-                  <button onClick={() => { setUnpaidPayMethod('cash'); setUnpaidPayTarget(s); }}
+                  <button onClick={(e) => { e.stopPropagation(); setUnpaidPayMethod('cash'); setUnpaidPayTarget(s); }}
                     className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0">
                     <Banknote size={18} />
                     <span className="text-[10px] font-semibold">Encaisser</span>
@@ -1717,6 +1841,115 @@ export default function POSPage() {
                 {payUnpaidMutation.isPending ? 'En cours...' : 'Encaisser'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal detail d'une vente impayee : n° vente + benef + date + items + total.
+          Ouvert au clic sur la carte (pas sur le bouton Encaisser). */}
+      {unpaidDetailsId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setUnpaidDetailsId(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            {/* En-tete */}
+            <div className="px-5 py-4 border-b bg-gray-50">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-mono text-sm font-semibold text-gray-800">
+                      {(unpaidDetails?.sale_number as string) || '...'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">Impayée</span>
+                  </div>
+                  {unpaidDetails && (
+                    <div className="flex flex-col gap-0.5 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <User size={12} />
+                        {(unpaidDetails.customer_first_name as string)
+                          ? `${unpaidDetails.customer_first_name} ${unpaidDetails.customer_last_name || ''}`
+                          : (unpaidDetails.unpaid_customer_name as string) || 'Client de passage'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        {format(new Date(unpaidDetails.created_at as string), 'dd MMM yyyy - HH:mm', { locale: fr })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <button type="button" onClick={() => setUnpaidDetailsId(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
+              </div>
+            </div>
+
+            {/* Liste des articles */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {unpaidDetailsLoading && (
+                <p className="text-center py-8 text-sm text-gray-400">Chargement des articles...</p>
+              )}
+              {!unpaidDetailsLoading && unpaidDetails && (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b">
+                      <th className="py-2 font-semibold">Article</th>
+                      <th className="py-2 font-semibold text-center">Qté</th>
+                      <th className="py-2 font-semibold text-right">Prix</th>
+                      <th className="py-2 font-semibold text-right">Sous-total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {((unpaidDetails.items || []) as Record<string, any>[]).map((it, idx) => {
+                      const qty = parseFloat(it.quantity as string) || 0;
+                      const unit = (it.unit as string) || 'unit';
+                      const displayUnit = (it.display_unit as string) || (unit === 'g' ? 'g' : null);
+                      const unitPrice = parseFloat(it.unit_price as string) || 0;
+                      const subtotal = parseFloat(it.subtotal as string) || 0;
+                      const qtyLabel = unit === 'g'
+                        ? (displayUnit === 'kg' ? `${(qty / 1000).toFixed(3)} kg` : `${qty} g`)
+                        : String(qty);
+                      const priceLabel = unit === 'g'
+                        ? `${unitPrice.toFixed(2)} / kg`
+                        : `${unitPrice.toFixed(2)}`;
+                      return (
+                        <tr key={idx} className="border-b border-gray-100 last:border-0">
+                          <td className="py-2 text-gray-700">{it.product_name as string}</td>
+                          <td className="py-2 text-center text-gray-600 tabular-nums">{qtyLabel}</td>
+                          <td className="py-2 text-right text-gray-600 tabular-nums">{priceLabel}</td>
+                          <td className="py-2 text-right font-semibold text-gray-800 tabular-nums">{subtotal.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Pied : total + actions */}
+            {unpaidDetails && (
+              <div className="border-t bg-gray-50 px-5 py-3">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-gray-500">Total dû</span>
+                  <span className="text-xl font-bold text-primary-700">
+                    {parseFloat(unpaidDetails.total as string).toFixed(2)} DH
+                  </span>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setUnpaidDetailsId(null)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100">
+                    Fermer
+                  </button>
+                  <button type="button"
+                    onClick={() => {
+                      setUnpaidPayMethod('cash');
+                      setUnpaidPayTarget(unpaidDetails);
+                      setUnpaidDetailsId(null);
+                    }}
+                    className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 flex items-center gap-2">
+                    <Banknote size={16} /> Encaisser
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2193,7 +2426,7 @@ export default function POSPage() {
                       </div>
                       <div>
                         <div className="font-bold text-amber-900">Fin de journee</div>
-                        <div className="text-xs text-amber-600 mt-0.5">Inventaire + decisions produits (vitrine, recyclage, perte)</div>
+                        <div className="text-xs text-amber-600 mt-0.5">Inventaire + decisions produits (vitrine, valorisation, perte)</div>
                       </div>
                     </div>
                   </button>
@@ -2218,7 +2451,7 @@ export default function POSPage() {
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Produits expires en vitrine</h2>
                     <p className="text-sm text-gray-600 mt-1">
-                      {expiredItems.length} produit(s) ont leur DLC ou DLV depassee. Ils doivent etre detruits avant la fermeture journee.
+                      {expiredItems.length} produit(s) ont leur DLC ou exposition vitrine depassee. Ils doivent etre detruits avant la fermeture journee.
                     </p>
                   </div>
                 </div>
@@ -2240,7 +2473,7 @@ export default function POSPage() {
                           <span className="font-medium text-gray-800">{it.product_name as string}</span>
                           <span className="text-right font-bold">{qty}</span>
                           <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium text-center">
-                            {reason === 'dlc_expiree' ? 'DLC' : 'DLV'} expiree
+                            {reason === 'dlc_expiree' ? 'DLC expiree' : 'Exposition depassee'}
                           </span>
                           <span className="text-right text-gray-700">{(qty * cost).toFixed(2)} DH</span>
                         </div>
@@ -2250,7 +2483,7 @@ export default function POSPage() {
                 </div>
 
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
-                  En confirmant, ces produits seront <strong>retires de la vitrine</strong>, enregistres dans les <strong>pertes</strong> avec motif &quot;DLC/DLV expiree&quot;, et la fermeture journee pourra continuer.
+                  En confirmant, ces produits seront <strong>retires de la vitrine</strong>, enregistres dans les <strong>pertes</strong> avec motif &quot;DLC/exposition expiree&quot;, et la fermeture journee pourra continuer.
                 </div>
 
                 <div className="flex gap-3">
@@ -2488,7 +2721,7 @@ export default function POSPage() {
                   const destConf: Record<string, { label: string; Icon: typeof Check; accent: string; bg: string }> = {
                     reexpose:     { label: 'Vitrine J+1',    Icon: Check,         accent: '#28a745', bg: '#e9f7ef' },
                     retour_stock: { label: 'Retour réserve', Icon: ArrowLeftRight, accent: '#1e7e34', bg: '#dff4e3' },
-                    recycle:      { label: 'Recycler',       Icon: RotateCcw,     accent: '#1f6391', bg: '#e8f3fc' },
+                    recycle:      { label: 'Valoriser',      Icon: RotateCcw,     accent: '#1f6391', bg: '#e8f3fc' },
                     waste:        { label: 'Détruire',       Icon: Trash2,        accent: '#dc3545', bg: '#fdf0ed' },
                   };
                   const filteredItems = inventoryItems.filter((it) => {
@@ -2580,13 +2813,16 @@ export default function POSPage() {
                                     inventoryDestinations[pid] = sugDest;
                                   }
 
+                                  // discrepancy = theoreticalRemaining - counted.
+                                  // > 0 = manquant (perte/casse/vol) -> danger (rouge)
+                                  // < 0 = surplus (anomalie de saisie) -> warning (orange)
                                   const rowClass = !hasBeenCounted ? 'row-warning'
                                     : closeType !== 'passation' && finalDest === 'waste' ? 'row-danger'
-                                    : discrepancy !== 0 ? (discrepancy < 0 ? 'row-danger' : 'row-warning') : '';
+                                    : discrepancy !== 0 ? (discrepancy > 0 ? 'row-danger' : 'row-warning') : '';
 
                                   const dotClass = !hasBeenCounted ? 'warning'
                                     : closeType !== 'passation' && finalDest === 'waste' ? 'danger'
-                                    : discrepancy !== 0 ? (discrepancy < 0 ? 'danger' : 'warning') : 'ok';
+                                    : discrepancy !== 0 ? (discrepancy > 0 ? 'danger' : 'warning') : 'ok';
 
                                   return (
                                     <tr key={pid} className={rowClass} style={{ cursor: 'default' }}>
@@ -2686,7 +2922,7 @@ export default function POSPage() {
                                         textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
                                         color: !hasBeenCounted ? '#856404'
                                           : closeType === 'passation' ? (counted > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)')
-                                          : discrepancy !== 0 ? (discrepancy < 0 ? '#dc3545' : '#b85d1a') : 'var(--odoo-text-light)',
+                                          : discrepancy !== 0 ? (discrepancy > 0 ? '#dc3545' : '#b85d1a') : 'var(--odoo-text-light)',
                                       }}>
                                         {!hasBeenCounted ? '—'
                                           : closeType === 'passation' ? counted
@@ -2707,9 +2943,9 @@ export default function POSPage() {
                                                   (d === 'reexpose' && !canReexpose) ||
                                                   (d === 'retour_stock' && !canRetourStock) ||
                                                   (d === 'recycle' && !canRecycle);
-                                                const tipDisabled = d === 'reexpose' ? 'Non ré-exposable'
-                                                  : d === 'retour_stock' ? 'DLV trop courte pour retour réserve'
-                                                  : d === 'recycle' ? 'Non recyclable' : '';
+                                                const tipDisabled = d === 'reexpose' ? 'Remise en vente non autorisée'
+                                                  : d === 'retour_stock' ? 'DLC trop courte pour retour réserve'
+                                                  : d === 'recycle' ? 'Non valorisable' : '';
                                                 return (
                                                   <button key={d}
                                                     onClick={() => !disabled && setInventoryDestinations(prev => ({ ...prev, [pid]: d }))}
@@ -2756,7 +2992,7 @@ export default function POSPage() {
                                               </select>
                                             </div>
                                           )}
-                                          {closeType === 'fin_journee' && discrepancy < 0 && (
+                                          {closeType === 'fin_journee' && discrepancy > 0 && (
                                             <div style={{ marginTop: 4 }}>
                                               <select
                                                 value={inventoryMotifs[pid] || ''}
@@ -2769,7 +3005,7 @@ export default function POSPage() {
                                                   color: inventoryMotifs[pid] ? 'var(--odoo-text)' : '#721c24',
                                                   fontWeight: inventoryMotifs[pid] ? 400 : 500, outline: 'none',
                                                 }}>
-                                                <option value="">Motif d'écart obligatoire ({Math.abs(discrepancy)} manquant)</option>
+                                                <option value="">Motif d'écart obligatoire ({discrepancy} manquant)</option>
                                                 <option value="casse">Casse non déclarée</option>
                                                 <option value="vol">Vol / disparition</option>
                                                 <option value="erreur_declaration">Erreur de déclaration ant.</option>
@@ -2821,7 +3057,7 @@ export default function POSPage() {
                   }
 
                   return totalDiscrepancy !== 0 ? (
-                    <div className={`odoo-alert ${totalDiscrepancy > 0 ? 'warning' : 'danger'}`} style={{ borderTop: '1px solid var(--odoo-border)' }}>
+                    <div className={`odoo-alert ${totalDiscrepancy > 0 ? 'danger' : 'warning'}`} style={{ borderTop: '1px solid var(--odoo-border)' }}>
                       <AlertTriangle size={16} className="flex-shrink-0" />
                       <div>
                         {totalDiscrepancy > 0
@@ -2847,7 +3083,23 @@ export default function POSPage() {
                         return c !== undefined && c > 0 && !inventoryDestinations[pid] && !(it.suggested_destination);
                       }).length
                     : 0;
-                  const cannotValidate = uncountedCount > 0 || missingDestination > 0;
+                  // Motif obligatoire cote serveur (unsold-decision.controller) des qu'un
+                  // produit a un manquant (discrepancy > 0). On l'exige aussi cote client
+                  // pour eviter un 400 systematique au submit.
+                  const missingMotif = closeType === 'fin_journee'
+                    ? inventoryItems.filter(it => {
+                        const pid = it.product_id as string;
+                        const c = inventoryQtys[pid];
+                        if (c === undefined) return false;
+                        const initial = parseInt(it.initial_stock as string) || 0;
+                        const replenished = parseInt(it.replenished_today_qty as string) || 0;
+                        const sold = parseInt(it.sold_qty as string) || 0;
+                        const theoretical = Math.max(0, parseInt(it.current_stock as string) || (initial + replenished - sold));
+                        const disc = theoretical - c;
+                        return disc > 0 && !(inventoryMotifs[pid] || '').trim();
+                      }).length
+                    : 0;
+                  const cannotValidate = uncountedCount > 0 || missingDestination > 0 || missingMotif > 0;
                   return (
                 <>
                 {uncountedCount > 0 && (
@@ -2856,6 +3108,15 @@ export default function POSPage() {
                     <div>
                       <span className="odoo-alert-title">{uncountedCount} / {totalItems} produit(s) pas encore compté(s).</span>{' '}
                       Saisissez une quantité (0 si aucun en vitrine) pour chaque produit avant de valider.
+                    </div>
+                  </div>
+                )}
+                {missingMotif > 0 && (
+                  <div className="odoo-alert danger">
+                    <AlertTriangle size={16} className="flex-shrink-0" />
+                    <div>
+                      <span className="odoo-alert-title">{missingMotif} produit(s) avec écart sans motif.</span>{' '}
+                      Sélectionnez un motif d'écart pour chaque produit manquant avant de valider.
                     </div>
                   </div>
                 )}
@@ -3246,6 +3507,12 @@ export default function POSPage() {
                     </div>
                   )}
                 </div>
+                <button onClick={() => printZMutation.mutate()}
+                  disabled={printZMutation.isPending}
+                  className="w-full py-3 mb-2 rounded-xl border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                  <Printer size={18} />
+                  {printZMutation.isPending ? 'Impression...' : (closeType === 'passation' ? 'Imprimer le rapport de passation' : 'Imprimer le rapport Z')}
+                </button>
                 <button onClick={() => {
                   setShowCloseModal(false);
                   setCloseResult(null);
@@ -3283,6 +3550,16 @@ export default function POSPage() {
           onClose={() => setShowLossModal(false)}
           sessionId={activeSession?.id}
         />
+      )}
+
+      {/* Parametres du poste (locaux au terminal) */}
+      {showPosSettings && (
+        <POSSettingsModal onClose={() => { setShowPosSettings(false); setTerminalPrefs(getTerminalSettings()); }} />
+      )}
+
+      {/* Scanner code-barres camera */}
+      {showScanner && (
+        <BarcodeScannerModal onDetect={handleScanDetect} onClose={() => setShowScanner(false)} />
       )}
 
       {/* Transfers Confirmation Modal */}
@@ -3629,6 +3906,217 @@ export default function POSPage() {
                 disabled={checkoutMutation.isPending || (!customerId && unpaidCustomerName.trim().length === 0)}
                 className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed">
                 {checkoutMutation.isPending ? 'En cours...' : 'Sauvegarder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal — tunnel paiement (Encaisser). Ouvert par le bouton
+          Encaisser du panneau panier. Contient : selecteur mode (Especes/Carte/
+          Mobile), saisie billet donne (quick + libre), rendu monnaie, actions.
+          Enter = confirmer si conditions OK, Escape = annuler. */}
+      {showPaymentModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPaymentModal(false); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.stopPropagation(); setShowPaymentModal(false); }
+            if (e.key === 'Enter' && !checkoutMutation.isPending) {
+              const insufficient = (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)
+                || (paymentMethod === 'mixed' && !mixedOk);
+              if (!insufficient) { e.preventDefault(); handleCheckout(); }
+            }
+          }}
+          tabIndex={-1}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+            {/* Total en tete */}
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total à encaisser</p>
+              <p className="text-4xl font-bold text-primary-600">{total.toFixed(2)} <span className="text-2xl">DH</span></p>
+              {discountAmount > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Sous-total {subtotal.toFixed(2)} DH — remise <span className="font-semibold text-amber-600">−{discountAmount.toFixed(2)} DH</span>
+                </p>
+              )}
+            </div>
+
+            {/* Remise ticket : montant DH ou % du sous-total */}
+            <div className="px-6 pt-4">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Remise (optionnelle)</p>
+              <div className="flex items-center gap-2">
+                <input type="text" inputMode="decimal"
+                  value={discountInput}
+                  placeholder="0"
+                  onChange={(e) => setDiscountInput(e.target.value.replace(/[^\d.,]/g, '').slice(0, 8))}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+                />
+                <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+                  <button type="button" onClick={() => setDiscountType('amount')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>DH</button>
+                  <button type="button" onClick={() => setDiscountType('percent')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'percent' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>%</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Selecteur mode de reglement — 3 boutons segmentes (Especes / Carte / Mixte) */}
+            <div className="px-6 pt-4">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Mode de règlement</p>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { key: 'cash' as const, label: 'Espèces', Icon: Banknote, accent: 'green' },
+                  { key: 'card' as const, label: 'Carte', Icon: CreditCard, accent: 'blue' },
+                  { key: 'mixed' as const, label: 'Mixte', Icon: Coins, accent: 'sky' },
+                ]).map(({ key, label, Icon, accent }) => {
+                  const active = paymentMethod === key;
+                  const activeCls = accent === 'green'
+                    ? 'border-green-500 bg-green-50 text-green-700'
+                    : accent === 'sky'
+                      ? 'border-sky-500 bg-sky-50 text-sky-700'
+                      : 'border-blue-500 bg-blue-50 text-blue-700';
+                  return (
+                    <button key={key} type="button"
+                      onClick={() => setPaymentMethod(key)}
+                      className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 transition-all ${
+                        active ? activeCls : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                      }`}>
+                      <Icon size={20} />
+                      <span className="text-xs font-semibold">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section especes : billet donne + rendu monnaie */}
+            {paymentMethod === 'cash' && (
+              <div className="px-6 pt-4">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Billet donné</p>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[5, 10, 20, 50, 100, 200, 500, 1000].map(amount => {
+                    const active = cashGiven === amount;
+                    return (
+                      <button key={amount} type="button"
+                        onClick={() => { setCashGiven(amount); setCashGivenInput(String(amount)); }}
+                        className={`py-2 rounded-lg border font-bold text-sm transition-all ${
+                          active ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                        }`}>
+                        {amount}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Saisie libre — utile pour les billets composes / gros montants */}
+                <div className="flex items-center gap-2">
+                  <input type="number" inputMode="decimal" min="0" step="0.01"
+                    value={cashGivenInput}
+                    placeholder="Ou saisir un montant libre"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCashGivenInput(v);
+                      const parsed = parseFloat(v);
+                      setCashGiven(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+                    }}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+                    autoFocus
+                  />
+                  <span className="text-sm font-semibold text-gray-500">DH</span>
+                </div>
+                {/* Rendu monnaie / alerte insuffisant */}
+                {cashGiven !== null && cashGiven >= total && (
+                  <div className="mt-3 flex items-center justify-between bg-green-50 rounded-xl py-3 px-4 ring-1 ring-green-200">
+                    <span className="text-sm font-semibold text-green-700">Monnaie à rendre</span>
+                    <span className="text-xl font-bold text-green-700">{(cashGiven - total).toFixed(2)} DH</span>
+                  </div>
+                )}
+                {cashGiven !== null && cashGiven < total && (
+                  <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-xl py-2.5 px-3 ring-1 ring-red-200">
+                    <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-red-600">Insuffisant — il manque {(total - cashGiven).toFixed(2)} DH</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info carte : rien de plus a saisir, juste confirmer */}
+            {paymentMethod === 'card' && (
+              <div className="px-6 pt-4">
+                <div className="bg-blue-50 rounded-xl py-3 px-4 ring-1 ring-blue-200 flex items-center gap-2">
+                  <CreditCard size={18} className="text-blue-600" />
+                  <p className="text-xs text-gray-700">Passez la carte au TPE puis confirmez.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Section mixte : ventilation especes / carte. La saisie d'une
+                part complete automatiquement l'autre avec le restant. */}
+            {paymentMethod === 'mixed' && (
+              <div className="px-6 pt-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Banknote size={16} className="text-green-600 flex-shrink-0" />
+                  <input type="text" inputMode="decimal"
+                    value={mixedCashInput}
+                    placeholder="Part espèces"
+                    autoFocus
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^\d.,]/g, '').slice(0, 8);
+                      setMixedCashInput(v);
+                      const parsed = parseFloat(v.replace(',', '.'));
+                      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= total) {
+                        setMixedCardInput((Math.round((total - parsed) * 100) / 100).toString());
+                      }
+                    }}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+                  />
+                  <span className="text-sm font-semibold text-gray-500 w-8">DH</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard size={16} className="text-blue-600 flex-shrink-0" />
+                  <input type="text" inputMode="decimal"
+                    value={mixedCardInput}
+                    placeholder="Part carte"
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^\d.,]/g, '').slice(0, 8);
+                      setMixedCardInput(v);
+                      const parsed = parseFloat(v.replace(',', '.'));
+                      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= total) {
+                        setMixedCashInput((Math.round((total - parsed) * 100) / 100).toString());
+                      }
+                    }}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+                  />
+                  <span className="text-sm font-semibold text-gray-500 w-8">DH</span>
+                </div>
+                {mixedOk ? (
+                  <div className="flex items-center justify-between bg-sky-50 rounded-xl py-2.5 px-3 ring-1 ring-sky-200">
+                    <span className="text-xs font-semibold text-sky-700">Espèces {mixedCash.toFixed(2)} + Carte {mixedCard.toFixed(2)}</span>
+                    <span className="text-sm font-bold text-sky-700">= {total.toFixed(2)} DH</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-amber-50 rounded-xl py-2.5 px-3 ring-1 ring-amber-200">
+                    <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
+                    <p className="text-xs font-semibold text-amber-700">
+                      La somme doit égaler {total.toFixed(2)} DH (actuel : {(mixedCash + mixedCard).toFixed(2)} DH)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="p-6 flex gap-3">
+              <button type="button" onClick={() => setShowPaymentModal(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button type="button" onClick={handleCheckout}
+                disabled={checkoutMutation.isPending
+                  || (paymentMethod === 'cash' && cashGiven !== null && cashGiven < total)
+                  || (paymentMethod === 'mixed' && !mixedOk)}
+                className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
+                {checkoutMutation.isPending ? 'En cours...' : 'Confirmer'}
               </button>
             </div>
           </div>

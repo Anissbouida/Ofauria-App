@@ -65,7 +65,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg,
+              p.sale_unit, p.price_per_kg, p.sku,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
@@ -141,7 +141,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg,
+              p.sale_unit, p.price_per_kg, p.sku,
               ${stockColumns}
               ${lotMetricsCols}
               c.name as category_name,
