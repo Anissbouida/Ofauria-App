@@ -15,13 +15,22 @@ const positiveQuantity = z.coerce.number()
 
 const uuid = z.string().uuid('Identifiant UUID invalide');
 
-const LOSS_TYPES = ['production', 'casse', 'non_vendu', 'perime', 'recyclage', 'vitrine'] as const;
+// N9 — Aligner strictement Zod avec les CHECK DB (mig 068, 107, 252).
+// Avant : Zod acceptait 'casse'/'non_vendu' (obsoletes) et un reason texte
+// libre -> le CHECK DB rejetait au POST -> 500 au lieu de 400.
+const LOSS_TYPES = ['production', 'vitrine', 'perime', 'recyclage'] as const;
+const LOSS_REASONS = [
+  'brule', 'rate', 'machine', 'matiere_defectueuse', 'erreur_humaine',
+  'chute', 'casse', 'qualite_non_conforme', 'retour_client', 'perime',
+  'invendu_fin_journee', 'invendu_vitrine', 'recycle', 'autre',
+  'dlc_expiree', 'dlv_expiree', 'ecart_inventaire', 'ecart_ouverture',
+] as const;
 
 export const createProductLossSchema = z.object({
   productId: uuid,
   quantity: positiveQuantity,
   lossType: z.enum(LOSS_TYPES),
-  reason: z.string().trim().min(1, 'Raison requise').max(200),
+  reason: z.enum(LOSS_REASONS),
   reasonNote: z.string().trim().max(1000).optional(),
   productionPlanId: uuid.optional(),
   photoUrl: z.string().trim().max(500).optional(),

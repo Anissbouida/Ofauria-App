@@ -192,6 +192,21 @@ export const unsoldDecisionRepository = {
            AND rr2.status IN ('closed', 'closed_with_discrepancy', 'transferred', 'preparing', 'acknowledged', 'partially_received')
          GROUP BY ri2.product_id
       ),
+      -- N10 — Pertes deja declarees dans la fenetre (LossDeclarationModal,
+      -- destroy-expired, ecarts precedents). Sans ce terme, l'initial_stock
+      -- derive current + sold - replen sous-estimait la vitrine de depart,
+      -- et le clamp GREATEST(0,...) masquait le signe negatif -> l'ecart
+      -- inventaire re-comptabilisait des pertes deja tracees.
+      losses_window AS (
+        SELECT pl.product_id, SUM(pl.quantity)::int as lost_qty
+          FROM product_losses pl
+         WHERE pl.store_id = $1
+           AND (
+             ($2::timestamptz IS NOT NULL AND pl.created_at >= $2::timestamptz)
+             OR ($2::timestamptz IS NULL AND DATE(pl.created_at AT TIME ZONE '${tz}') = DATE(NOW() AT TIME ZONE '${tz}'))
+           )
+         GROUP BY pl.product_id
+      ),
       relevant_products AS (
         SELECT pss.product_id, COALESCE(pss.vitrine_quantity, 0)::int as current_stock
           FROM product_store_stock pss
@@ -200,6 +215,8 @@ export const unsoldDecisionRepository = {
         SELECT st.product_id, 0 FROM sales_window st
         UNION
         SELECT rt.product_id, 0 FROM replen_window rt
+        UNION
+        SELECT lw.product_id, 0 FROM losses_window lw
       )
       SELECT
         rp.product_id,
@@ -223,7 +240,13 @@ export const unsoldDecisionRepository = {
         MAX(rp.current_stock) as current_stock,
         COALESCE(st.sold_qty, 0)::int as sold_qty,
         COALESCE(rt.replenished_qty, 0)::int as replenished_today_qty,
-        GREATEST(0, MAX(rp.current_stock) + COALESCE(st.sold_qty, 0) - COALESCE(rt.replenished_qty, 0))::int as initial_stock,
+        COALESCE(lw.lost_qty, 0)::int as lost_qty,
+        -- N10 — Formule complete : initial = current + sold + pertes - approv.
+        -- Le GREATEST reste comme garde-fou (initial < 0 signalerait un ecart
+        -- deja incoherent avant le comptage, on evite les negatifs cote UI)
+        -- mais devient tres rare puisqu'on inclut desormais les pertes deja
+        -- declarees dans la fenetre (loss modal, destroy-expired, ecarts).
+        GREATEST(0, MAX(rp.current_stock) + COALESCE(st.sold_qty, 0) + COALESCE(lw.lost_qty, 0) - COALESCE(rt.replenished_qty, 0))::int as initial_stock,
         COALESCE(pdt.current_reexposition_count, 0) as reexposition_count,
         pdt.display_expires_at,
         pdt.produced_at,
@@ -236,6 +259,7 @@ export const unsoldDecisionRepository = {
       LEFT JOIN ingredients ri ON ri.id = p.recycle_ingredient_id
       LEFT JOIN sales_window st ON st.product_id = rp.product_id
       LEFT JOIN replen_window rt ON rt.product_id = rp.product_id
+      LEFT JOIN losses_window lw ON lw.product_id = rp.product_id
       LEFT JOIN LATERAL (
         -- Priorise la ligne la plus recente AVEC produced_at + expires_at remplis
         -- (les lignes "fantomes" creees par les reexpositions n'ont pas ces infos
@@ -261,7 +285,7 @@ export const unsoldDecisionRepository = {
       GROUP BY rp.product_id, p.name, p.image_url, p.cost_price, p.price,
                c.name, c.slug, p.shelf_life_days, p.display_life_hours,
                p.is_reexposable, p.is_recyclable, p.recycle_ingredient_id, p.max_reexpositions,
-               p.sale_type, ri.name, st.sold_qty, rt.replenished_qty,
+               p.sale_type, ri.name, st.sold_qty, rt.replenished_qty, lw.lost_qty,
                pdt.current_reexposition_count, pdt.display_expires_at, pdt.produced_at,
                pdt.expires_at, pdt.status, rd.destinations
       ORDER BY c.name, p.name
@@ -686,6 +710,10 @@ export const unsoldDecisionRepository = {
         // Si la qty physiquement comptee est inferieure au theorique (initial - sold),
         // le manquant est un ecart vitrine (vol/casse/erreur). On le passe en perte
         // type 'vitrine' avec motif 'ecart_inventaire' + note. Aucun effet en passation.
+        // N10 — Le surplus (compte > theorique) est traite plus bas : on ne peut
+        // pas le mettre en perte (positif) mais on regularise le stock et on
+        // trace la transaction. Sans ca, la vitrine reelle divergeait
+        // silencieusement du stock systeme.
         if (discrepancy > 0 && data.closeType === 'fin_journee') {
           // Decrement vitrine pour les unites manquantes (sortent du systeme)
           await client.query(
@@ -722,6 +750,27 @@ export const unsoldDecisionRepository = {
              unitCost, unitCost * discrepancy,
              data.decidedBy, data.storeId,
              ecartFefo[0]?.lotId ?? null]
+          );
+        }
+
+        // ─── N10 — Surplus : compte > theorique ─────────────────────────────
+        // Regularise la vitrine a la hausse et trace en transaction 'adjust'.
+        // Pas de product_losses (c'est un excedent, pas une perte). En passation
+        // on ne modifie rien (comptage contradictoire uniquement).
+        if (discrepancy < 0 && data.closeType === 'fin_journee') {
+          const surplus = -discrepancy;
+          await client.query(
+            `UPDATE product_store_stock
+                SET vitrine_quantity = vitrine_quantity + $1, updated_at = NOW()
+              WHERE product_id = $2 AND store_id = $3`,
+            [surplus, d.productId, data.storeId]
+          );
+          await client.query(
+            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+             VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+            [d.productId, surplus,
+             `Surplus inventaire fin de journee: ${d.productName} +${surplus} (motif: ${d.discrepancyMotif || 'non precise'})`,
+             data.decidedBy, data.storeId]
           );
         }
       }

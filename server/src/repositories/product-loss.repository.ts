@@ -74,8 +74,84 @@ export const productLossRepository = {
     return result.rows[0];
   },
 
-  async remove(id: string) {
-    await db.query('DELETE FROM product_losses WHERE id = $1', [id]);
+  async findById(id: string) {
+    const result = await db.query(
+      `SELECT pl.*, p.name AS product_name
+         FROM product_losses pl
+         JOIN products p ON p.id = pl.product_id
+        WHERE pl.id = $1`,
+      [id]
+    );
+    return result.rows[0] || null;
+  },
+
+  /**
+   * N9 — Suppression avec restitution du stock et trace de reversal.
+   * Avant, remove() etait un simple DELETE : la vitrine restait deficitaire,
+   * la perte disparaissait des rapports sans laisser de trace -> effacement
+   * d'audit possible par un manager. Desormais, pour les pertes qui ont
+   * consomme la vitrine (vitrine/perime/recyclage), on re-credite avant de
+   * supprimer, et on logue la reversal en product_stock_transactions.
+   * Les pertes de production n'ont pas touche au stock produit (elles ont
+   * consomme des ingredients cote plan de production), on se contente
+   * d'un DELETE avec log de la suppression.
+   */
+  async remove(id: string, actorId: string): Promise<{ ok: boolean; reason?: string; loss?: Record<string, unknown> }> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const found = await client.query(
+        `SELECT id, product_id, quantity, loss_type, reason, store_id, source_product_lot_id
+           FROM product_losses WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (found.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return { ok: false, reason: 'not_found' };
+      }
+      const loss = found.rows[0];
+      const qty = parseFloat(String(loss.quantity)) || 0;
+      const storeId = loss.store_id as string | null;
+
+      // Restitution vitrine pour les types qui l'avaient decrementee.
+      // production = ingredients consommes, pas de stock produit a restituer.
+      if (['vitrine', 'perime', 'recyclage'].includes(loss.loss_type) && storeId && qty > 0) {
+        await client.query(
+          `UPDATE product_store_stock
+              SET vitrine_quantity = vitrine_quantity + $1, updated_at = NOW()
+            WHERE product_id = $2 AND store_id = $3`,
+          [qty, loss.product_id, storeId]
+        );
+        // Miroir sur le lot d'origine si connu (source_product_lot_id).
+        // Sinon on laisse le lot inchange : impossible de savoir a quel lot
+        // restituer la quantite (piste : chaine de retour lots — future work).
+        if (loss.source_product_lot_id) {
+          await client.query(
+            `UPDATE product_lots
+                SET vitrine_qty = vitrine_qty + $1,
+                    wasted_qty = GREATEST(0, wasted_qty - $1)
+              WHERE id = $2`,
+            [qty, loss.source_product_lot_id]
+          );
+        }
+        await client.query(
+          `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+           VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+          [loss.product_id, qty,
+           `Reversal suppression perte ${loss.loss_type}/${loss.reason} (id=${id})`,
+           actorId, storeId]
+        );
+      }
+
+      await client.query('DELETE FROM product_losses WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return { ok: true, loss };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async stats(filters: { month: number; year: number; storeId?: string }) {

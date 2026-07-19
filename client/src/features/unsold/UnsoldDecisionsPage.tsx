@@ -232,7 +232,15 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
           const pid = p.product_id as string;
           const remaining = counts[pid] ?? (parseInt(String(p.current_stock)) || 0);
           const sold = parseInt(String(p.sold_qty)) || 0;
-          const initial = remaining + sold;
+          // N8 — Avant : initial = remaining + sold -> discrepancy = 0 par
+          // construction (initial - sold - remaining), l'ecart d'inventaire
+          // etait donc impossible a signaler depuis cet ecran. Correction :
+          // initial_stock (carryover) + replenished_today_qty (approvs de
+          // la fenetre), meme formule que le POS (POSPage.tsx). Discrepancy
+          // reelle = (initial + replenished) - sold - remaining.
+          const initialFromCarryover = parseInt(String(p.initial_stock)) || 0;
+          const replenished = parseInt(String(p.replenished_today_qty)) || 0;
+          const initial = initialFromCarryover + replenished;
           const dec = decisions[pid];
           const finalDest = dec ? dec.finalDestination : (p.suggested_destination as string);
           const isOverride = finalDest !== (p.suggested_destination as string);

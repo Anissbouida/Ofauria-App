@@ -112,7 +112,15 @@ export const productLossController = {
   },
 
   async remove(req: AuthRequest, res: Response) {
-    await productLossRepository.remove(req.params.id);
+    const result = await productLossRepository.remove(req.params.id, req.user!.userId);
+    if (!result.ok) {
+      if (result.reason === 'not_found') {
+        res.status(404).json({ success: false, error: { message: 'Perte non trouvee' } });
+        return;
+      }
+      res.status(400).json({ success: false, error: { message: result.reason || 'Suppression refusee' } });
+      return;
+    }
     res.json({ success: true, data: null });
   },
 };
