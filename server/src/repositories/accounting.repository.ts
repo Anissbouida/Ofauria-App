@@ -182,6 +182,14 @@ export const caisseRepository = {
     const prevSalesFilterSAliased = storeId ? ' AND s.store_id = $3' : '';
     const prevSalesParams = storeId ? [startDate, sinceDate, storeId] : [startDate, sinceDate];
 
+    // C3 — Segmenter les 3 sources pour eviter le double-comptage :
+    //   1. Sessions POS closes : cash_flow (actual - opening) — deja calcule
+    //      dans prevSessionCash.
+    //   2. Saisies manuelles : cash/card reel des shifts saisis.
+    //   3. Ventes POS sans session ni saisie manuelle (cas rare : session
+    //      supprimee, cheval de bataille legacy) : cash/card des ventes.
+    // Avant : la ternaire prevSessionCash > 0 ? prevSessionCash : prevSalesCash
+    // ignorait 30 j de saisies manuelles des qu'UNE session de test existait.
     const prevSales = await db.query(
       `SELECT
         SUM(cash_total) as cash_total,
@@ -203,6 +211,15 @@ export const caisseRepository = {
              WHERE mse.store_id = s.store_id
                AND mse.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')
            )
+           -- C3 — Aussi exclure les jours qui ont deja une session close : sinon
+           -- prevSessionCash (cash_flow) + prevSalesCash (cash_sales) comptent
+           -- le meme tiroir deux fois pour ces jours-la.
+           AND NOT EXISTS (
+             SELECT 1 FROM cash_register_sessions crs
+             WHERE crs.status = 'closed'
+               AND crs.store_id = s.store_id
+               AND DATE(crs.closed_at AT TIME ZONE '${tz}') = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')
+           )
          UNION ALL
          SELECT
            COALESCE(SUM(COALESCE(matin_cash_reel,0)+COALESCE(soir_cash_reel,0)), 0) as cash_total,
@@ -221,9 +238,9 @@ export const caisseRepository = {
     const prevSalesCash = parseFloat(prevSales.rows[0].cash_total);
     const prevCardSales = parseFloat(prevSales.rows[0].card_total);
 
-    // Use session amounts when available, otherwise use cash sales
-    // (for months without cash register sessions, cash caissière = cash système)
-    const prevCash = prevSessionCash > 0 ? prevSessionCash : prevSalesCash;
+    // C3 — Somme des 3 sources complementaires (garanties disjointes par les
+    // NOT EXISTS de prevSales : sessions | manual | POS-sans-l'un-ni-l'autre).
+    const prevCash = prevSessionCash + prevSalesCash;
     const anchorCash = anchor ? parseFloat(anchor.cash_net) : 0;
     const anchorCard = anchor ? parseFloat(anchor.card_cumul) : 0;
 

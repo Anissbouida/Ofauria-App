@@ -3150,7 +3150,9 @@ export default function POSPage() {
                           const finalDest = closeType === 'passation'
                             ? (inventoryDestinations[pid] || 'reexpose')
                             : (inventoryDestinations[pid] || sugDest);
-                          const isOvr = finalDest !== sugDest;
+                          // is_override est calcule cote serveur (finalDestination !==
+                          // suggestedDestination). Pas besoin du flag ici, plus de
+                          // motif auto-rempli non plus.
 
                           return {
                             productId: pid,
@@ -3164,7 +3166,13 @@ export default function POSPage() {
                             suggestedDestination: sugDest,
                             suggestedReason: (it.suggested_reason as string) || '',
                             finalDestination: finalDest,
-                            overrideReason: isOvr ? 'Decision operateur' : undefined,
+                            // 3.3 — Ne PAS remplir avec 'Decision operateur' en
+                            // dur : la colonne override_reason etait toujours
+                            // remplie mais sans info utile pour le dashboard.
+                            // L'UI ne propose pas encore de champ de saisie
+                            // (P4) : on laisse NULL, l'info « override » est
+                            // portee par is_override.
+                            overrideReason: undefined,
                             shelfLifeDays: it.shelf_life_days as number | undefined,
                             displayLifeHours: it.display_life_hours as number | undefined,
                             isReexposable: it.is_reexposable as boolean | undefined,

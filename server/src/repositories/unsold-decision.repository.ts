@@ -364,7 +364,11 @@ export const unsoldDecisionRepository = {
     // is_reexposable, is_recyclable, destinations recyclage configurees).
     // On skip en passation : les destinations y sont neutralisees a 'reexpose'
     // par le controller et aucun effet stock n'est applique.
+    // Bonus 3.3 — On profite du chargement pour re-resoudre le unit_cost cote
+    // serveur (products.cost_price). Avant, unit_cost etait fourni par le
+    // client, laissant la porte ouverte a une valorisation truquee des pertes.
     const productIds = Array.from(new Set(data.decisions.map((d) => d.productId)));
+    const serverUnitCost = new Map<string, number>();
     const productMeta = new Map<string, {
       is_reexposable: boolean;
       is_recyclable: boolean;
@@ -375,6 +379,14 @@ export const unsoldDecisionRepository = {
       recycle_destinations: string[];
       recycle_yields: Map<string, number>;
     }>();
+    if (productIds.length > 0) {
+      const costRes = await db.query(
+        `SELECT id, COALESCE(cost_price, 0)::float AS cost_price
+           FROM products WHERE id = ANY($1::uuid[])`,
+        [productIds]
+      );
+      for (const r of costRes.rows) serverUnitCost.set(r.id, r.cost_price);
+    }
     if (productIds.length > 0 && data.closeType !== 'passation') {
       const prod = await db.query(
         `SELECT p.id, p.is_reexposable, p.is_recyclable,
@@ -469,7 +481,10 @@ export const unsoldDecisionRepository = {
       for (const d of data.decisions) {
         const discrepancy = (d.initialQty - d.soldQty) - d.remainingQty;
         const isOverride = d.finalDestination !== d.suggestedDestination;
-        const unitCost = d.unitCost || 0;
+        // 3.3 — unit_cost source de verite = products.cost_price serveur.
+        // Le client peut envoyer une valeur (utile en fallback / offline) mais
+        // le serveur ecrase avec sa valeur si elle est definie.
+        const unitCost = serverUnitCost.get(d.productId) ?? (d.unitCost || 0);
         const totalCost = unitCost * d.remainingQty;
 
         // Inserer la decision

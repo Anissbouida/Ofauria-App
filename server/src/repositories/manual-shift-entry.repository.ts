@@ -88,17 +88,27 @@ export const manualShiftEntryRepository = {
 
     // Comptabilisation : (re)genere l'ecriture des ventes du jour. SAVEPOINT-like
     // isolation via try/catch propre — la saisie reste enregistree si la compta
-    // echoue (regenerable via le backfill). Hors transaction db simple.
+    // echoue (regenerable via le backfill).
+    //
+    // C11 — Avant : simple console.error, saisie enregistree, ledger
+    // desynchronise sans signal a l'operateur -> divergence CA du mois.
+    // Desormais : on renseigne ledger_status/ledger_error sur la ligne pour
+    // que l'UI puisse afficher l'echec, ET on remonte l'erreur dans le retour
+    // pour que le controller reponde en 207 (multi-status) au lieu de 200.
     if (FLAGS.LEDGER_AUTOGEN && entry?.id) {
       const client = await db.getClient();
       try {
         await client.query('BEGIN');
         await regenerateShiftEntry(client, entry.id, params.userId);
         await client.query('COMMIT');
+        entry.ledger_status = 'ok';
       } catch (err) {
         await client.query('ROLLBACK');
+        const msg = err instanceof Error ? err.message : String(err);
         // eslint-disable-next-line no-console
-        console.error('[ledger] generation echec saisie shift', entry.id, err instanceof Error ? err.message : err);
+        console.error('[ledger] generation echec saisie shift', entry.id, msg);
+        entry.ledger_status = 'failed';
+        entry.ledger_error = msg;
       } finally {
         client.release();
       }
@@ -121,9 +131,12 @@ export const manualShiftEntryRepository = {
         await client.query(`DELETE FROM manual_shift_entries WHERE id = $1`, [id]);
         // La saisie manuelle n'est plus autoritaire ce jour-la : re-comptabiliser
         // les ventes POS du jour (qui etaient supprimees au profit du manuel).
+        // C7 — DATE en local (Africa/Casablanca) pour matcher entry_date
+        // saisie en local ; sinon les ventes 00h-01h sont ratees et le
+        // ledger reste desynchronise apres suppression de la saisie manuelle.
         const posSales = await client.query(
           `SELECT id FROM sales WHERE store_id = $1 AND payment_status = 'paid'
-             AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
+             AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE 'Africa/Casablanca') = $2::date`,
           [storeId, entryDate]
         );
         for (const ps of posSales.rows) {

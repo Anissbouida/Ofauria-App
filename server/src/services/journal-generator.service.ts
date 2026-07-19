@@ -306,11 +306,20 @@ export async function fromSale(
   // physiquement compte). Si une saisie manuelle existe pour ce jour/magasin,
   // elle comptabilise deja le CA reel -> on n'emet PAS d'ecriture pour la vente
   // POS (qui correspond au montant "systeme" theorique, deja couvert).
+  //
+  // C7 — Le calcul de la date en LOCAL (Casablanca UTC+1) est fait par
+  // Postgres et non par JS. Avant, toIsoDate() prenait les composantes UTC
+  // (getUTC*) : une vente encaissee a 00h30 local (= 23h30 UTC la veille)
+  // etait rattachee au jour UTC (la veille) alors que entry_date manuelle
+  // est en local (aujourd'hui) -> le NOT EXISTS ratait -> double comptage
+  // ledger. Meme fix cote regenerateShiftEntry (voir plus bas).
   if (s.store_id) {
-    const day = toIsoDate(s.paid_at || s.created_at);
     const shift = await client.query(
-      `SELECT 1 FROM manual_shift_entries WHERE store_id = $1 AND entry_date = $2::date LIMIT 1`,
-      [s.store_id, day]
+      `SELECT 1 FROM manual_shift_entries
+         WHERE store_id = $1
+           AND entry_date = DATE(COALESCE($2::timestamptz, $3::timestamptz) AT TIME ZONE 'Africa/Casablanca')
+         LIMIT 1`,
+      [s.store_id, s.paid_at, s.created_at]
     );
     if (shift.rows.length > 0) return null;
   }
@@ -1051,11 +1060,13 @@ export async function regenerateShiftEntry(
 
   // La saisie manuelle est autoritaire : reverser les ecritures POS de ce
   // jour/magasin (elles seraient un double comptage du CA).
+  // C7 — DATE en local (Africa/Casablanca) pour matcher les entry_date
+  // saisies en local, et aligner avec la garde de fromSale.
   const day = toIsoDate(row.entry_date);
   const posSales = await client.query(
     `SELECT id FROM sales
-     WHERE store_id = $1 AND payment_status = 'paid'
-       AND DATE(COALESCE(paid_at, created_at)) = $2::date`,
+      WHERE store_id = $1 AND payment_status = 'paid'
+        AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE 'Africa/Casablanca') = $2::date`,
     [row.store_id, day]
   );
   for (const ps of posSales.rows) {
