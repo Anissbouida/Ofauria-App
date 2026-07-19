@@ -105,15 +105,33 @@ export const unsoldDecisionController = {
       }
     }
 
-    const result = await unsoldDecisionRepository.saveDecisions({
-      storeId,
-      sessionId,
-      decidedBy: req.user!.userId,
-      closeType,
-      decisions,
-      notes,
-    });
-    res.json({ success: true, data: result });
+    try {
+      const result = await unsoldDecisionRepository.saveDecisions({
+        storeId,
+        sessionId,
+        decidedBy: req.user!.userId,
+        closeType,
+        decisions,
+        notes,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const code = (err as Error & { code?: string }).code;
+      if (code === 'UNSOLD_DECISIONS_ALREADY_SAVED') {
+        // Idempotence : le client peut avoir retente ; on renvoie 409 avec un
+        // code exploitable pour laisser le POS enchainer sur l'etape suivante
+        // sans dupliquer les effets stock.
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'UNSOLD_DECISIONS_ALREADY_SAVED',
+            message: 'Decisions deja enregistrees pour cette session',
+          },
+        });
+        return;
+      }
+      throw err;
+    }
   },
 
   /** GET /unsold-decisions — historique */

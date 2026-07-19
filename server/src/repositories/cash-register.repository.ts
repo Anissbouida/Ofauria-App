@@ -133,11 +133,22 @@ export const cashRegisterRepository = {
         [sessionId]
       );
 
-      // Calculate refunds for this session (cash given back to customers)
+      // C9 — Ne soustraire du tiroir QUE les remboursements cash. Avant, un
+      // retour d'une vente carte reduisait expected_cash comme s'il etait
+      // sorti du tiroir -> deficit artificiel. On s'appuie sur le
+      // payment_method de la vente d'origine (source de verite serveur),
+      // car sale_returns lui-meme ne stocke pas le mode de remboursement
+      // dans toutes les versions du schema.
       const refundsResult = await client.query(
-        `SELECT COALESCE(SUM(refund_amount), 0) as total_refunds
-         FROM sale_returns
-         WHERE session_id = $1 AND type = 'return'`,
+        `SELECT COALESCE(SUM(sr.refund_amount), 0) AS total_refunds
+           FROM sale_returns sr
+           JOIN sales s ON s.id = sr.sale_id
+          WHERE sr.session_id = $1
+            AND sr.type = 'return'
+            AND (
+              s.payment_method = 'cash'
+              OR (s.payment_method = 'mixed' AND COALESCE(s.cash_amount, 0) > 0)
+            )`,
         [sessionId]
       );
 
@@ -172,8 +183,14 @@ export const cashRegisterRepository = {
           total_sales = $1, total_revenue = $2,
           cash_revenue = $3, card_revenue = $4, mobile_revenue = $5,
           expected_cash = $6, total_advances = $7, total_orders = $8,
-          close_type = $10
-        WHERE id = $9`,
+          close_type = $10,
+          -- C6 — Marquer l'entree en phase de comptage : le controller
+          -- sale.controller.ts refuse desormais les ventes tant que
+          -- closing_started_at IS NOT NULL. Sans ce flag, toute vente
+          -- encaissee entre close() et submit() gonflait le tiroir sans
+          -- que expected_cash le reflete -> faux excedent au submit.
+          closing_started_at = COALESCE(closing_started_at, NOW())
+        WHERE id = $9 AND status = 'open'`,
         [parseInt(stats.total_sales), netTotalRevenue,
          netCashRevenue, parseFloat(stats.card_revenue), parseFloat(stats.mobile_revenue),
          expectedCash, totalAdvances, totalOrders, sessionId, closeType]
@@ -204,6 +221,21 @@ export const cashRegisterRepository = {
     const session = await this.findById(sessionId);
     if (!session) return null;
 
+    // C5 — Interdire la reecriture apres cloture. Avant ce fix une caissiere
+    // pouvait « corriger » son ecart indefiniment via ce meme endpoint.
+    if (session.status === 'closed') {
+      const err = new Error('Session deja cloturee — ecart non modifiable');
+      (err as Error & { code?: string }).code = 'SESSION_ALREADY_CLOSED';
+      throw err;
+    }
+    // Il faut avoir appele close() (qui pose expected_cash + closing_started_at)
+    // avant submit(). Sinon on stockait un difference=NaN.
+    if (session.expected_cash == null) {
+      const err = new Error('close() doit avoir ete appele avant submit()');
+      (err as Error & { code?: string }).code = 'SESSION_NOT_IN_CLOSING';
+      throw err;
+    }
+
     const expectedCash = parseFloat(session.expected_cash);
     const difference = actualAmount - expectedCash;
 
@@ -211,10 +243,10 @@ export const cashRegisterRepository = {
       `UPDATE cash_register_sessions SET
         actual_amount = $1, difference = $2, notes = $3,
         status = 'closed', closed_at = NOW()
-      WHERE id = $4 RETURNING *`,
+      WHERE id = $4 AND status = 'open' RETURNING *`,
       [actualAmount, difference, notes || null, sessionId]
     );
 
-    return result.rows[0];
+    return result.rows[0] || null;
   },
 };

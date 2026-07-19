@@ -180,6 +180,19 @@ export const saleController = {
       res.status(400).json({ success: false, error: { message: 'Vous devez ouvrir la caisse avant de vendre' } });
       return;
     }
+    // C6 — La session est en phase de comptage (close() appele mais submit()
+    // pas encore). Toute vente ici gonflerait le tiroir sans etre comptee
+    // dans expected_cash -> faux excedent. Refus explicite.
+    if (activeSession.closing_started_at) {
+      res.status(409).json({
+        success: false,
+        error: {
+          code: 'SESSION_IN_CLOSING',
+          message: 'Session en cours de fermeture — ventes bloquees jusqu\'a la validation du comptage.',
+        },
+      });
+      return;
+    }
 
     // Pour une vente impayee, on force payment_method='credit' jusqu'a l'encaissement
     // (le mode reel sera renseigne lors du pay).

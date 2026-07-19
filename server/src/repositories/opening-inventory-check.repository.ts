@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { productLotRepository } from './product-lot.repository.js';
 
 export type OpeningCheckStatus = 'pending' | 'awaiting_validation' | 'validated' | 'rejected';
 export type MissingReason =
@@ -164,20 +165,110 @@ export const openingInventoryCheckRepository = {
   }) {
     const newStatus: OpeningCheckStatus = params.action === 'approve' ? 'validated' : 'rejected';
 
-    const result = await db.query(
-      `UPDATE daily_inventory_checks
-       SET status = $1, validated_by = $2, validated_at = NOW(),
-           rejection_reason = $3
-       WHERE id = $4 AND check_type = 'opening' AND status = 'awaiting_validation'
-       RETURNING *`,
-      [newStatus, params.validatedBy, params.rejectionReason || null, params.checkId]
-    );
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    if (result.rows.length === 0) {
-      throw new Error('Check opening introuvable ou déjà validé/rejeté.');
+      const result = await client.query(
+        `UPDATE daily_inventory_checks
+         SET status = $1, validated_by = $2, validated_at = NOW(),
+             rejection_reason = $3
+         WHERE id = $4 AND check_type = 'opening' AND status = 'awaiting_validation'
+         RETURNING *`,
+        [newStatus, params.validatedBy, params.rejectionReason || null, params.checkId]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error('Check opening introuvable ou déjà validé/rejeté.');
+      }
+      const check = result.rows[0];
+
+      // N5 — Repercuter l'ecart approuve sur le stock. Avant ce fix un « 5
+      // manquants (vol) » approuve restait invisible : ni vitrine, ni lots,
+      // ni perte -> le manquant reapparaissait en ecart chaque fermeture.
+      // Sur 'reject' on ne touche a rien (le stock reste tel quel, la
+      // situation devra etre re-traitee).
+      if (params.action === 'approve') {
+        const items = await client.query(
+          `SELECT dici.product_id, dici.product_name, dici.expected_qty, dici.found_qty,
+                  dici.missing_reason, p.cost_price
+             FROM daily_inventory_check_items dici
+             JOIN products p ON p.id = dici.product_id
+            WHERE dici.check_id = $1 AND dici.discrepancy IS DISTINCT FROM 0`,
+          [params.checkId]
+        );
+        for (const item of items.rows) {
+          const expected = parseInt(item.expected_qty) || 0;
+          const found = parseInt(item.found_qty) || 0;
+          const missing = expected - found; // > 0 = manquant, < 0 = surplus
+          if (missing === 0) continue;
+          const unitCost = parseFloat(String(item.cost_price)) || 0;
+
+          if (missing > 0) {
+            // Manquant : consommer les lots FEFO (includeExpired car ces
+            // reexposes ont potentiellement une DLV limite) puis passer en
+            // perte 'vitrine' avec le motif rempli par le controleur matinal.
+            const fefo = await productLotRepository.planFefoVitrineConsumption(
+              client, item.product_id, check.store_id, missing, { includeExpired: true }
+            );
+            for (const step of fefo) {
+              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+            }
+            await client.query(
+              `UPDATE product_store_stock
+                  SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
+                WHERE product_id = $2 AND store_id = $3`,
+              [missing, item.product_id, check.store_id]
+            );
+            await client.query(
+              `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+               VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
+              [item.product_id, -missing,
+               `Ecart controle ouverture: ${item.product_name} -${missing} (motif ${item.missing_reason || 'non_precise'})`,
+               params.validatedBy, check.store_id]
+            );
+            await client.query(
+              `INSERT INTO product_losses
+                 (product_id, quantity, loss_type, reason, reason_note,
+                  unit_cost, total_cost, ingredients_consumed,
+                  declared_by, store_id, source_product_lot_id)
+               VALUES ($1, $2, 'vitrine', 'ecart_ouverture', $3, $4, $5, true, $6, $7, $8)`,
+              [item.product_id, missing,
+               `Controle d'ouverture: ${item.missing_reason || 'motif non precise'} (${item.product_name})`,
+               unitCost, unitCost * missing,
+               params.validatedBy, check.store_id, fefo[0]?.lotId ?? null]
+            );
+          } else {
+            // Surplus (found > expected) : on regularise a la hausse cote
+            // vitrine, on trace en transaction 'adjust'. Pas d'impact lots
+            // (impossible de savoir de quel lot vient le surplus) — la
+            // divergence est absorbee par un correctif manuel si besoin.
+            const surplus = -missing;
+            await client.query(
+              `UPDATE product_store_stock
+                  SET vitrine_quantity = vitrine_quantity + $1, updated_at = NOW()
+                WHERE product_id = $2 AND store_id = $3`,
+              [surplus, item.product_id, check.store_id]
+            );
+            await client.query(
+              `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+               VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+              [item.product_id, surplus,
+               `Surplus controle ouverture: ${item.product_name} +${surplus}`,
+               params.validatedBy, check.store_id]
+            );
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+      return check;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    return result.rows[0];
   },
 
   async findById(id: string) {

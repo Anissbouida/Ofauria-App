@@ -128,10 +128,16 @@ export const unsoldDecisionRepository = {
    * Charge les invendus avec suggestion automatique pour chaque produit.
    * Appele quand l'operateur ouvre l'ecran de decisions invendus.
    *
-   * Fenetre de comptabilisation :
-   *   - Si une session de caisse est ouverte pour le store -> depuis opened_at jusqu'a maintenant
-   *     (gere proprement les shifts qui chevauchent minuit)
-   *   - Sinon fallback -> journee locale courante
+   * Fenetre de comptabilisation — TOUJOURS cloisonnee par shift, quel que
+   * soit closeType (passation OU fin_journee). Depuis :
+   *   - la derniere fermeture (peu importe son type), OU
+   *   - l'ouverture de la session courante,
+   *   - avec un cap glissant de 24h pour eviter d'aberrer si la session est
+   *     restee ouverte plus d'une journee.
+   *
+   * closeType est accepte pour compat avec l'API mais volontairement ignore :
+   * chaque shift ne repond que de son propre appro et de son propre comptage,
+   * sans cumuler les shifts anterieurs deja cloturures.
    *
    * Couverture :
    *   - Produits avec stock magasin > 0 (vitrine theorique)
@@ -140,12 +146,6 @@ export const unsoldDecisionRepository = {
    */
   async getUnsoldWithSuggestions(storeId: string, closeType?: string) {
     const tz = getUserTimezone();
-    // Fenetre d'analyse : TOUJOURS cloisonnee par shift.
-    //   -> depuis la derniere fermeture (peu importe son type) OU l'ouverture de la session courante.
-    //   On veut voir ce qui s'est passe DANS LE SHIFT COURANT uniquement (approvisionnement,
-    //   ventes, comptage vitrine du moment), peu importe que ce soit une passation ou une
-    //   fin de journee. Chaque shift ne compte que son propre approv et sa propre passation
-    //   recue, sans cumuler les shifts anterieurs deja cloturres.
     void closeType;
     const windowResult = await db.query(
       `SELECT
@@ -316,11 +316,112 @@ export const unsoldDecisionRepository = {
     }[];
     notes?: string;
   }) {
+    // ─── Idempotence (N3) : refuser un batch sur une session qui a deja des ────
+    // decisions. Sans ce garde, un retry reseau ou un usage combine POS +
+    // UnsoldDecisionsPage rejouait tous les effets stock (double decrement
+    // vitrine, doubles pertes, double recyclage). L'unicite DB (mig 251)
+    // protege en dernier recours mais on preferer un 409 explicite.
+    if (data.sessionId) {
+      const existing = await db.query(
+        `SELECT COUNT(*)::int AS n FROM unsold_decisions WHERE session_id = $1`,
+        [data.sessionId]
+      );
+      if ((existing.rows[0]?.n ?? 0) > 0) {
+        const err = new Error('Decisions deja enregistrees pour cette session');
+        (err as Error & { code?: string }).code = 'UNSOLD_DECISIONS_ALREADY_SAVED';
+        throw err;
+      }
+    }
+
+    // ─── Re-validation serveur des destinations (F3) ─────────────────────────
+    // Les gardes du client (boutons desactives) peuvent etre contournees ou
+    // divergent du moteur de suggestion. On recharge la fiche produit et on
+    // rejette toute destination incompatible avec ses regles metier (DLC/DLV,
+    // is_reexposable, is_recyclable, destinations recyclage configurees).
+    // On skip en passation : les destinations y sont neutralisees a 'reexpose'
+    // par le controller et aucun effet stock n'est applique.
+    const productIds = Array.from(new Set(data.decisions.map((d) => d.productId)));
+    const productMeta = new Map<string, {
+      is_reexposable: boolean;
+      is_recyclable: boolean;
+      display_life_hours: number;
+      shelf_life_days: number;
+      sale_type: string;
+      recycle_ingredient_id: string | null;
+      recycle_destinations: string[];
+      recycle_yields: Map<string, number>;
+    }>();
+    if (productIds.length > 0 && data.closeType !== 'passation') {
+      const prod = await db.query(
+        `SELECT p.id, p.is_reexposable, p.is_recyclable,
+                COALESCE(p.display_life_hours, 0) AS display_life_hours,
+                COALESCE(p.shelf_life_days, 0)   AS shelf_life_days,
+                p.sale_type, p.recycle_ingredient_id
+           FROM products p
+          WHERE p.id = ANY($1::uuid[])`,
+        [productIds]
+      );
+      const dests = await db.query(
+        `SELECT product_id, ingredient_id, COALESCE(yield_ratio, 1)::float AS yield_ratio
+           FROM product_recycle_destinations
+          WHERE product_id = ANY($1::uuid[]) AND is_active = true`,
+        [productIds]
+      );
+      const destByProduct = new Map<string, { id: string; yield: number }[]>();
+      for (const r of dests.rows) {
+        const arr = destByProduct.get(r.product_id) || [];
+        arr.push({ id: r.ingredient_id, yield: r.yield_ratio });
+        destByProduct.set(r.product_id, arr);
+      }
+      for (const r of prod.rows) {
+        const rdests = destByProduct.get(r.id) || [];
+        productMeta.set(r.id, {
+          is_reexposable: r.is_reexposable === true,
+          is_recyclable: r.is_recyclable === true,
+          display_life_hours: parseInt(String(r.display_life_hours)) || 0,
+          shelf_life_days: parseInt(String(r.shelf_life_days)) || 0,
+          sale_type: r.sale_type || 'jour',
+          recycle_ingredient_id: r.recycle_ingredient_id || null,
+          recycle_destinations: rdests.map((x) => x.id),
+          recycle_yields: new Map(rdests.map((x) => [x.id, x.yield])),
+        });
+      }
+      for (const d of data.decisions) {
+        if ((d.remainingQty ?? 0) <= 0) continue;
+        const meta = productMeta.get(d.productId);
+        if (!meta) continue;
+        const dest = d.finalDestination;
+        if (dest === 'reexpose' && !meta.is_reexposable) {
+          throw new Error(`Reexposition interdite pour ${d.productName} (produit non reexposable)`);
+        }
+        if (dest === 'retour_stock') {
+          const dlcOk = !d.expiresAt || (new Date(d.expiresAt).getTime() - Date.now()) / 3_600_000 > 24;
+          if (meta.display_life_hours <= 24 || !dlcOk) {
+            throw new Error(`Retour reserve interdit pour ${d.productName} (DLC/DLV trop courte)`);
+          }
+        }
+        if (dest === 'recycle') {
+          const chosen = d.recycleIngredientId || meta.recycle_ingredient_id;
+          if (!meta.is_recyclable || !chosen) {
+            throw new Error(`Recyclage interdit pour ${d.productName} (destination non configuree)`);
+          }
+          const allowed = new Set(meta.recycle_destinations);
+          if (meta.recycle_ingredient_id) allowed.add(meta.recycle_ingredient_id);
+          if (!allowed.has(chosen)) {
+            throw new Error(`Destination de recyclage non autorisee pour ${d.productName}`);
+          }
+        }
+      }
+    }
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
 
-      // 1. Creer l'inventaire check si pas encore fait
+      // 1. Creer l'inventaire check si pas encore fait.
+      // N6 — check_type discriminant : 'passation' pour un changement de shift
+      // (le trigger opening ne doit pas s'en emouvoir), 'closing' pour la
+      // fermeture journee (declenche le controle d'ouverture du lendemain).
       let checkId = data.checkId;
       if (!checkId) {
         let totalReplenished = 0, totalSold = 0, totalRemaining = 0, totalDiscrepancy = 0;
@@ -330,11 +431,12 @@ export const unsoldDecisionRepository = {
           totalRemaining += d.remainingQty;
           totalDiscrepancy += (d.initialQty - d.soldQty - d.remainingQty);
         }
+        const checkType = data.closeType === 'passation' ? 'passation' : 'closing';
         const checkResult = await client.query(`
-          INSERT INTO daily_inventory_checks (store_id, session_id, checked_by, total_replenished, total_sold, total_remaining, total_discrepancy, notes)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO daily_inventory_checks (store_id, session_id, checked_by, total_replenished, total_sold, total_remaining, total_discrepancy, notes, check_type, status, validated_by, validated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'validated', $3, NOW())
           RETURNING id
-        `, [data.storeId, data.sessionId || null, data.decidedBy, totalReplenished, totalSold, totalRemaining, totalDiscrepancy, data.notes || null]);
+        `, [data.storeId, data.sessionId || null, data.decidedBy, totalReplenished, totalSold, totalRemaining, totalDiscrepancy, data.notes || null, checkType]);
         checkId = checkResult.rows[0].id;
       }
 
@@ -413,6 +515,11 @@ export const unsoldDecisionRepository = {
 
             let recycledIngredientLotId: string | null = null;
             if (d.recycleIngredientId) {
+              // N11 — yield_ratio : 0.7 pour baguette->chapelure (perte au sechage).
+              // Avant ce fix on ajoutait 1 unite d'ingredient pour 1 produit recycle,
+              // surevaluant le stock d'ingredient et faussant le cout de revient.
+              const yieldRatio = productMeta.get(d.productId)?.recycle_yields?.get(d.recycleIngredientId) ?? 1;
+              const recycledQty = d.remainingQty * yieldRatio;
               // Lock inventory row before increment
               await client.query(
                 `SELECT id FROM inventory WHERE ingredient_id = $1 AND store_id = $2 FOR UPDATE`,
@@ -421,7 +528,7 @@ export const unsoldDecisionRepository = {
               await client.query(
                 `UPDATE inventory SET current_quantity = current_quantity + $1, updated_at = NOW()
                  WHERE ingredient_id = $2 AND store_id = $3`,
-                [d.remainingQty, d.recycleIngredientId, data.storeId]
+                [recycledQty, d.recycleIngredientId, data.storeId]
               );
 
               // Phase 1 — Cree un ingredient_lot dedie au lot recycle pour preserver
@@ -442,9 +549,9 @@ export const unsoldDecisionRepository = {
                  RETURNING id`,
                 [
                   d.recycleIngredientId, recLotNumber, sourceLotNumber,
-                  d.remainingQty, unitCost,
+                  recycledQty, unitCost,
                   dlcResiduelle, data.storeId,
-                  `Recyclage de ${d.productName} (lot ${sourceLotNumber}) x${d.remainingQty}`,
+                  `Recyclage de ${d.productName} (lot ${sourceLotNumber}) x${d.remainingQty} @ yield ${yieldRatio}`,
                   primaryLotId,
                 ]
               );
@@ -453,8 +560,8 @@ export const unsoldDecisionRepository = {
               await client.query(
                 `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
                  VALUES ($1, 'recycle', $2, $3, $4, $5, $6)`,
-                [d.recycleIngredientId, d.remainingQty,
-                 `Recyclage invendu: ${d.productName} x${d.remainingQty}`,
+                [d.recycleIngredientId, recycledQty,
+                 `Recyclage invendu: ${d.productName} x${d.remainingQty} (yield ${yieldRatio})`,
                  data.decidedBy, data.storeId, recycledIngredientLotId]
               );
             }
@@ -540,16 +647,30 @@ export const unsoldDecisionRepository = {
             // PAS d'ecriture dans product_losses (le retour n'est pas une perte).
 
           } else if (d.finalDestination === 'reexpose') {
-            // Increment reexposition counter, stock reste en vitrine
-            const reexCount = d.currentReexpositionCount ?? 0;
-            await client.query(
-              `INSERT INTO product_display_tracking (product_id, store_id, current_reexposition_count, first_displayed_at, last_reexposed_at, status)
-               VALUES ($1, $2, $3, NOW(), NOW(), 'active')
-               ON CONFLICT (product_id, store_id, first_displayed_at) DO UPDATE
-               SET current_reexposition_count = product_display_tracking.current_reexposition_count + 1,
-                   last_reexposed_at = NOW(), updated_at = NOW()`,
-              [d.productId, data.storeId, reexCount + 1]
+            // F1 — Le compteur de reexposition ne s'incrementait jamais :
+            // l'INSERT ON CONFLICT (product_id, store_id, first_displayed_at)
+            // avec first_displayed_at=NOW() ne matchait jamais, chaque J+1
+            // creait une ligne fantome sans produced_at/expires_at que la
+            // requete de suggestion ignorait au profit de la ligne d'origine.
+            // Fix : UPDATE en priorite la ligne active existante (une seule
+            // par (product, store) grace au filtre status='active'), fallback
+            // INSERT si le produit n'a jamais eu de tracker.
+            const upd = await client.query(
+              `UPDATE product_display_tracking
+                  SET current_reexposition_count = COALESCE(current_reexposition_count, 0) + 1,
+                      last_reexposed_at = NOW(),
+                      updated_at = NOW()
+                WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
+              [d.productId, data.storeId]
             );
+            if (upd.rowCount === 0) {
+              await client.query(
+                `INSERT INTO product_display_tracking
+                   (product_id, store_id, current_reexposition_count, first_displayed_at, last_reexposed_at, status)
+                 VALUES ($1, $2, 1, NOW(), NOW(), 'active')`,
+                [d.productId, data.storeId]
+              );
+            }
           }
 
           // Memoriser le lot principal sur la decision pour audit
@@ -814,49 +935,52 @@ export const unsoldDecisionRepository = {
    * indique DLC ou DLV depassee. La pire (la plus ancienne) est remontee pour affichage.
    */
   async getExpiredItems(storeId: string) {
-    // Source de verite : product_lots (lots actifs avec vitrine_qty > 0).
-    // On evite product_display_tracking qui peut contenir des lignes orphelines
-    // 'active' qui n'ont pas ete sync avec les lots (faux positifs).
+    // F2 — Somme SEULEMENT les vitrine_qty des lots effectivement expires.
+    // Avant : on remontait pss.vitrine_quantity (total du produit) + le pire
+    // lot -> le POS envoyait quantity = totalVitrine a destroyExpired, et
+    // ecrasait le stock frais du meme produit. Correction : quantite exacte
+    // agregee sur les seuls lots DLC/DLV depassee.
     const result = await db.query(`
       SELECT
-        p.id as product_id,
-        p.name as product_name,
-        p.image_url as product_image,
+        p.id AS product_id,
+        p.name AS product_name,
+        p.image_url AS product_image,
         p.cost_price,
         p.shelf_life_days,
         p.display_life_hours,
-        c.name as category_name,
-        pss.vitrine_quantity::numeric as vitrine_qty,
-        worst.expires_at,
-        worst.display_expires_at,
-        worst.produced_at,
-        worst.first_displayed_at,
+        c.name AS category_name,
+        agg.expired_qty::numeric AS vitrine_qty,
+        agg.worst_expires_at AS expires_at,
+        agg.worst_display_expires_at AS display_expires_at,
+        agg.worst_produced_at AS produced_at,
+        agg.worst_first_displayed_at AS first_displayed_at,
         CASE
-          WHEN worst.expires_at IS NOT NULL AND worst.expires_at <= CURRENT_DATE THEN 'dlc_expiree'
-          WHEN worst.display_expires_at IS NOT NULL AND worst.display_expires_at <= NOW() THEN 'dlv_expiree'
+          WHEN agg.worst_expires_at IS NOT NULL AND agg.worst_expires_at <= CURRENT_DATE THEN 'dlc_expiree'
+          WHEN agg.worst_display_expires_at IS NOT NULL AND agg.worst_display_expires_at <= NOW() THEN 'dlv_expiree'
           ELSE NULL
-        END as expiry_reason
-      FROM product_store_stock pss
-      JOIN products p ON p.id = pss.product_id
-      LEFT JOIN categories c ON c.id = p.category_id
-      JOIN LATERAL (
-        -- Pire lot expire en vitrine (DLC depassee OU DLV/DDE depassee)
-        SELECT pl.expires_at, pl.display_expires_at, pl.produced_at, pl.first_displayed_at
+        END AS expiry_reason
+      FROM (
+        SELECT
+          pl.product_id,
+          pl.store_id,
+          SUM(pl.vitrine_qty)::numeric AS expired_qty,
+          MIN(pl.expires_at) AS worst_expires_at,
+          MIN(pl.display_expires_at) AS worst_display_expires_at,
+          MIN(pl.produced_at) AS worst_produced_at,
+          MIN(pl.first_displayed_at) AS worst_first_displayed_at
         FROM product_lots pl
-        WHERE pl.product_id = pss.product_id
-          AND pl.store_id = pss.store_id
+        WHERE pl.store_id = $1
           AND pl.status = 'active'
           AND pl.vitrine_qty > 0
           AND (
             (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
             OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
           )
-        ORDER BY pl.expires_at ASC NULLS LAST,
-                 pl.display_expires_at ASC NULLS LAST
-        LIMIT 1
-      ) worst ON true
-      WHERE pss.store_id = $1
-        AND COALESCE(pss.vitrine_quantity, 0) > 0
+        GROUP BY pl.product_id, pl.store_id
+      ) agg
+      JOIN products p ON p.id = agg.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE agg.expired_qty > 0
       ORDER BY c.name, p.name
     `, [storeId]);
     return result.rows;
@@ -882,36 +1006,71 @@ export const unsoldDecisionRepository = {
       for (const item of data.items) {
         if (item.quantity <= 0) continue;
         const unitCost = item.unitCost ?? 0;
-        const totalCost = unitCost * item.quantity;
         const productName = item.productName ?? 'Produit';
+
+        // N4/F2 — FEFO strict sur les lots expires uniquement (aucun lot frais
+        // ne doit etre consomme). On borne la destruction a la quantite
+        // reellement expiree, sans jamais depasser ce que les lots offrent.
+        const expiredLots = await client.query(
+          `SELECT id, vitrine_qty, expires_at, display_expires_at
+             FROM product_lots
+            WHERE product_id = $1 AND store_id = $2
+              AND status = 'active' AND vitrine_qty > 0
+              AND (
+                (expires_at IS NOT NULL AND expires_at <= CURRENT_DATE)
+                OR (display_expires_at IS NOT NULL AND display_expires_at <= NOW())
+              )
+            ORDER BY expires_at ASC NULLS LAST,
+                     display_expires_at ASC NULLS LAST,
+                     produced_at ASC, id
+            FOR UPDATE`,
+          [item.productId, data.storeId]
+        );
+
+        let remaining = item.quantity;
+        const consumedLots: { lotId: string; qty: number }[] = [];
+        for (const lot of expiredLots.rows) {
+          if (remaining <= 0) break;
+          const take = Math.min(parseFloat(String(lot.vitrine_qty)), remaining);
+          if (take > 0) {
+            consumedLots.push({ lotId: lot.id, qty: take });
+            remaining -= take;
+          }
+        }
+        const actualQty = item.quantity - remaining;
+        if (actualQty <= 0) continue; // aucun lot expire trouve, on skip
+        const totalCost = unitCost * actualQty;
+
+        // Miroir sur product_lots : marquer les lots comme wasted
+        for (const step of consumedLots) {
+          await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+        }
+        const primaryLotId = consumedLots[0]?.lotId ?? null;
 
         await client.query(
           `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
            WHERE product_id = $2 AND store_id = $3`,
-          [item.quantity, item.productId, data.storeId]
+          [actualQty, item.productId, data.storeId]
         );
 
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
            VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
-          [item.productId, -item.quantity, `Destruction DLV/DLC: ${productName} x${item.quantity}`, data.decidedBy, data.storeId]
+          [item.productId, -actualQty, `Destruction DLV/DLC: ${productName} x${actualQty}`, data.decidedBy, data.storeId]
         );
 
         await client.query(
-          `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
-           VALUES ($1, $2, 'perime', $3, $4, $5, $6, true, $7, $8)`,
-          [item.productId, item.quantity, item.reason || 'perime',
+          `INSERT INTO product_losses
+             (product_id, quantity, loss_type, reason, reason_note,
+              unit_cost, total_cost, ingredients_consumed, declared_by, store_id,
+              source_product_lot_id)
+           VALUES ($1, $2, 'perime', $3, $4, $5, $6, true, $7, $8, $9)`,
+          [item.productId, actualQty, item.reason || 'perime',
            `Destruction ${item.reason === 'dlc_expiree' ? 'DLC' : 'DLV'} expiree: ${productName}`,
-           unitCost, totalCost, data.decidedBy, data.storeId]
+           unitCost, totalCost, data.decidedBy, data.storeId, primaryLotId]
         );
 
-        await client.query(
-          `UPDATE product_display_tracking SET status = 'wasted', updated_at = NOW()
-           WHERE product_id = $1 AND store_id = $2 AND status = 'active'`,
-          [item.productId, data.storeId]
-        );
-
-        destroyed.push({ productId: item.productId, quantity: item.quantity, reason: item.reason });
+        destroyed.push({ productId: item.productId, quantity: actualQty, reason: item.reason });
       }
       await client.query('COMMIT');
       return { destroyed, count: destroyed.length };

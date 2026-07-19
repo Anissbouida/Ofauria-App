@@ -520,11 +520,11 @@ export default function POSPage() {
   const closeMutation = useMutation({
     mutationFn: async (type: 'passation' | 'fin_journee') => {
       const data = await cashRegisterApi.close(type);
-      // Load unsold items with intelligent suggestions
+      // Load unsold items with intelligent suggestions.
+      // La fenetre serveur est TOUJOURS cloisonnee par shift (cf. repo
+      // getUnsoldWithSuggestions), closeType n'est propage que pour info :
+      // chaque shift ne compte que son propre appro et son propre restant.
       let invItems: Record<string, any>[] = [];
-      // Propage closeType pour que le backend ajuste la fenetre : en fin_journee on veut
-      // toutes les ventes/approvs depuis la derniere fin_journee (ignorer les passations
-      // intermediaires), pas juste depuis la derniere fermeture de shift.
       try { invItems = await unsoldDecisionApi.suggestions(type) || []; } catch { /* no items */ }
       return { data, invItems, type };
     },
@@ -533,11 +533,11 @@ export default function POSPage() {
       setCloseType(type);
       if (invItems.length > 0) {
         setInventoryItems(invItems);
-        // Passation & fin de journee : pre-remplir a 0 par defaut.
-        // Hypothese realiste : tout est vendu, la caissiere ajuste seulement ce qui reste en vitrine.
-        const qtys: Record<string, number> = {};
-        for (const it of invItems) qtys[it.product_id as string] = 0;
-        setInventoryQtys(qtys);
+        // N7 — Ne PAS pre-remplir les comptages : le pre-remplissage a 0
+        // rendait la garde « produits non comptes » inoperante (tout etait
+        // deja « compte a 0 » en un clic). Le comptage physique doit etre
+        // explicite : chaque ligne demarre en warning jusqu'a saisie.
+        setInventoryQtys({});
         setInventoryDestinations({});
         setCloseStep('inventory');
         setInventoryDone(false);
@@ -2807,11 +2807,14 @@ export default function POSPage() {
                                   const sugDest = (it.suggested_destination as string) || 'waste';
                                   const sugReason = (it.suggested_reason as string) || '';
                                   const finalDest = inventoryDestinations[pid] || sugDest;
-                                  const isOverride = finalDest !== sugDest;
-
-                                  if (counted > 0 && !inventoryDestinations[pid]) {
-                                    inventoryDestinations[pid] = sugDest;
-                                  }
+                                  // F4 — Ne PAS muter inventoryDestinations pendant le render.
+                                  // Avant : l'objet etait ecrit sur place -> chaque ligne finissait
+                                  // avec une destination "manuellement choisie" (meme en passation),
+                                  // le calcul isOverride comparait a la neutralisation serveur -> le
+                                  // dashboard voyait un taux d'override artificiel proche de 100 %.
+                                  // La destination finale est calculee au moment de la sauvegarde
+                                  // (dans le handler du bouton Valider), c'est suffisant.
+                                  const isOverride = !!inventoryDestinations[pid] && finalDest !== sugDest;
 
                                   // discrepancy = theoreticalRemaining - counted.
                                   // > 0 = manquant (perte/casse/vol) -> danger (rouge)
@@ -3196,10 +3199,21 @@ export default function POSPage() {
                       setInventoryDone(true);
                       setCloseStep('input');
                     } catch (err: unknown) {
+                      // N3 — Cas d'idempotence : les decisions ont deja ete
+                      // sauvegardees pour cette session (retry reseau, double-clic).
+                      // On enchaine vers le comptage du tiroir sans rejouer les
+                      // effets stock cote serveur.
+                      const errResp = (err as { response?: { status?: number; data?: { error?: { code?: string; message?: string } } } })?.response;
+                      if (errResp?.status === 409 && errResp.data?.error?.code === 'UNSOLD_DECISIONS_ALREADY_SAVED') {
+                        notify.success('Decisions deja enregistrees — passage au comptage');
+                        setInventoryDone(true);
+                        setCloseStep('input');
+                        return;
+                      }
                       // Erreur reelle cote serveur : on affiche le message et on NE progresse PAS vers input —
                       // l'audit de shift doit rester consistent, on laisse la caissiere reessayer ou corriger.
                       console.error('Erreur sauvegarde invendus:', err);
-                      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Erreur lors de l\'enregistrement';
+                      const msg = errResp?.data?.error?.message || 'Erreur lors de l\'enregistrement';
                       notify.error(msg);
                       return;
                     }
