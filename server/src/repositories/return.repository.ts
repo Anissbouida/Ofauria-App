@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { adjustVitrineStock } from './product-stock.helper.js';
 import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { generateSaleNumber } from './sale.repository.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -101,6 +102,7 @@ export const returnRepository = {
     refundAmount: number;
     items: { saleItemId: string; productId: string; quantity: number; unitPrice: number; subtotal: number }[];
     exchangeProducts?: { saleItemId: string; newProductId: string; quantity: number }[];
+    exchangePaymentMethod?: 'cash' | 'card' | 'mobile';
   }) {
     const client = await db.getClient();
     try {
@@ -129,28 +131,32 @@ export const returnRepository = {
 
         exchangeTotal = exchangeItems.reduce((sum, it) => sum + it.subtotal, 0);
 
-        // Generate a sale number for the exchange sale (advisory lock prevents race)
-        await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
-        const tz = getUserTimezone();
-        const today = getLocalDateString();
-        const saleCountResult = await client.query(
-          `SELECT COUNT(*) FROM sales WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
-        );
-        const saleSeq = parseInt(saleCountResult.rows[0].count, 10) + 1;
-        const exchangeSaleNumber = `VNT-${today}-${String(saleSeq).padStart(4, '0')}`;
+        // AUDIT V4 : la generation par COUNT(*)+1 causait des collisions
+        // apres tout hard-delete. On reutilise le meme generateur MAX+advisory
+        // que le checkout POS (sale.repository.generateSaleNumber).
+        const exchangeSaleNumber = await generateSaleNumber(client);
 
-        // Determine payment: difference between exchange total and refund
-        const priceDiff = exchangeTotal - data.refundAmount;
+        // AUDIT V3 : le total de la vente d'echange = ce que le client paie
+        // effectivement (max 0, priceDiff). L'ancien code enregistrait
+        // total=exchangeTotal (valeur des articles neufs) -> CA du jour et
+        // expected_cash surevalues du montant du retour.
+        // Le detail des articles neufs reste dans sale_items pour la tracabilite.
+        const priceDiff = Math.round((exchangeTotal - data.refundAmount) * 100) / 100;
+        const saleTotal = Math.max(0, priceDiff);
+        // Mode de reglement : plus de 'cash' en dur — on prend celui passe
+        // par le controller (par defaut cash cote validator).
+        const paymentMethod = data.exchangePaymentMethod || 'cash';
 
         const exchangeSaleResult = await client.query(
           `INSERT INTO sales (sale_number, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id)
-           VALUES ($1, $2, $3, 0, 0, $4, 'cash', $5, $6, $7) RETURNING *`,
+           VALUES ($1, $2, $3, 0, 0, $4, $5, $6, $7, $8) RETURNING *`,
           [
             exchangeSaleNumber,
             data.userId,
-            exchangeTotal,
-            exchangeTotal,
-            `Echange - Retour ${returnNumber}${priceDiff > 0 ? ` - Client paie ${priceDiff.toFixed(2)} DH` : priceDiff < 0 ? ` - Rendre ${Math.abs(priceDiff).toFixed(2)} DH au client` : ''}`,
+            saleTotal,
+            saleTotal,
+            paymentMethod,
+            `Echange - Retour ${returnNumber} - Articles neufs ${exchangeTotal.toFixed(2)} DH, avoir retour ${data.refundAmount.toFixed(2)} DH${priceDiff > 0 ? ` - Client paie ${priceDiff.toFixed(2)} DH` : priceDiff < 0 ? ` - Rendre ${Math.abs(priceDiff).toFixed(2)} DH au client` : ''}`,
             data.sessionId || null,
             data.storeId || null,
           ]
@@ -158,7 +164,9 @@ export const returnRepository = {
 
         exchangeSaleId = exchangeSaleResult.rows[0].id;
 
-        // Insert exchange sale items
+        // Insert exchange sale items (prix unitaires reels des articles neufs,
+        // pour la tracabilite produit — le total de vente ci-dessus reste egal
+        // au complement encaisse).
         for (const item of exchangeItems) {
           await client.query(
             `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)

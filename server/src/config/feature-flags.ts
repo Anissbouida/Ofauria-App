@@ -37,11 +37,26 @@ export const FLAGS = {
 
   /** Mode shadow : double calcul, sert legacy, logue les divergences. */
   LEDGER_SHADOW_MODE: parseFlag(process.env.LEDGER_SHADOW_MODE, false),
+
+  /**
+   * TEMPORAIRE / TEST : autorise le POS a vendre en rupture de stock.
+   * Quand ON, adjustVitrineStock accepte des ventes qui feraient passer
+   * vitrine_quantity en negatif au lieu de renvoyer 409 INSUFFICIENT_VITRINE_STOCK.
+   * A COMBINER avec VITE_POS_ALLOW_NEGATIVE_STOCK cote client pour retirer
+   * les blocages UI (filtre rupture, bouton disabled, alerte "Max X en stock").
+   * NE PAS ACTIVER EN PRODUCTION — sinon le stock derive silencieusement.
+   * Defaut : ON en dev, OFF en production (isDev).
+   */
+  POS_ALLOW_NEGATIVE_STOCK: parseFlag(process.env.POS_ALLOW_NEGATIVE_STOCK, isDev),
 } as const;
 
 // Log au demarrage pour visibilite
-if (FLAGS.LEDGER_AUTOGEN || FLAGS.LEDGER_BACKED_DEBTS || FLAGS.LEDGER_SHADOW_MODE) {
+if (FLAGS.LEDGER_AUTOGEN || FLAGS.LEDGER_BACKED_DEBTS || FLAGS.LEDGER_SHADOW_MODE || FLAGS.POS_ALLOW_NEGATIVE_STOCK) {
   // eslint-disable-next-line no-console
-  console.log('[feature-flags] LEDGER_AUTOGEN=%s LEDGER_BACKED_DEBTS=%s LEDGER_SHADOW_MODE=%s',
-    FLAGS.LEDGER_AUTOGEN, FLAGS.LEDGER_BACKED_DEBTS, FLAGS.LEDGER_SHADOW_MODE);
+  console.log('[feature-flags] LEDGER_AUTOGEN=%s LEDGER_BACKED_DEBTS=%s LEDGER_SHADOW_MODE=%s POS_ALLOW_NEGATIVE_STOCK=%s',
+    FLAGS.LEDGER_AUTOGEN, FLAGS.LEDGER_BACKED_DEBTS, FLAGS.LEDGER_SHADOW_MODE, FLAGS.POS_ALLOW_NEGATIVE_STOCK);
+}
+if (FLAGS.POS_ALLOW_NEGATIVE_STOCK) {
+  // eslint-disable-next-line no-console
+  console.warn('[feature-flags] ⚠ POS_ALLOW_NEGATIVE_STOCK actif — ventes en rupture autorisees (mode test uniquement).');
 }

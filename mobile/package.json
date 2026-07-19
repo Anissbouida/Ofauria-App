@@ -4,7 +4,7 @@
   "private": true,
   "description": "Application mobile Android Ofauria (Capacitor)",
   "scripts": {
-    "build": "cd ../client && npm run build && cd ../mobile && npx cap sync",
+    "build": "cd ../client && npm run build:mobile && cd ../mobile && npx cap sync",
     "open": "npx cap open android",
     "run:android": "npx cap run android",
     "sync": "npx cap sync",

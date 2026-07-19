@@ -47,21 +47,39 @@ export const returnController = {
 
   /** Create a return or exchange */
   async create(req: AuthRequest, res: Response) {
-    const { originalSaleId, type, reason, items, exchangeProducts } = req.body;
-
-    if (!originalSaleId || !type || !items?.length) {
-      res.status(400).json({ success: false, error: { message: 'Donnees incompletes' } });
-      return;
-    }
-
-    if (type === 'exchange' && (!exchangeProducts || !exchangeProducts.length)) {
-      res.status(400).json({ success: false, error: { message: 'Produits de remplacement requis pour un echange' } });
-      return;
-    }
+    // Le body est deja valide/normalise par validate(createReturnSchema).
+    // items = [{ saleItemId, quantity }] uniquement — unit_price/subtotal
+    // sont resolus cote serveur depuis sale_items (audit V2 : jamais faire
+    // confiance au montant envoye par le client).
+    const { originalSaleId, type, reason, items, exchangeProducts, exchangePaymentMethod } = req.body as {
+      originalSaleId: string;
+      type: 'return' | 'exchange';
+      reason?: string;
+      items: { saleItemId: string; quantity: number }[];
+      exchangeProducts?: { saleItemId: string; newProductId: string; quantity: number }[];
+      exchangePaymentMethod?: 'cash' | 'card' | 'mobile';
+    };
 
     const sale = await saleRepository.findById(originalSaleId);
     if (!sale) {
       res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      return;
+    }
+
+    // V6 : le retour doit se faire dans le magasin d'origine de la vente.
+    // Sinon une caissiere du magasin B pourrait rembourser un ticket du magasin A
+    // sur sa propre caisse (fraude directe) + re-crediter la vitrine du mauvais store.
+    const userStoreId = req.user!.storeId;
+    const saleStoreId = (sale as Record<string, unknown>).store_id as string | null;
+    if (!userStoreId) {
+      res.status(403).json({ success: false, error: { message: 'Utilisateur sans magasin — retour impossible' } });
+      return;
+    }
+    if (saleStoreId && saleStoreId !== userStoreId) {
+      res.status(403).json({
+        success: false,
+        error: { message: 'Cette vente appartient a un autre magasin. Le retour doit se faire dans le magasin d\'origine.' },
+      });
       return;
     }
 
@@ -72,39 +90,59 @@ export const returnController = {
       return;
     }
 
-    // Check that returned quantities don't exceed returnable quantities
+    // Recupere les quantites deja retournees et resout unit_price/product_id
+    // pour CHAQUE saleItemId depuis sale_items. Tout ce qui vient du client
+    // apres saleItemId+quantity est ignore.
     const returnedQtys = await returnRepository.getReturnedQuantities(originalSaleId);
     const saleItems = (sale.items || []) as Record<string, unknown>[];
 
+    const resolvedItems: {
+      saleItemId: string; productId: string; quantity: number;
+      unitPrice: number; subtotal: number;
+    }[] = [];
+
     for (const item of items) {
-      const saleItem = saleItems.find((si: Record<string, unknown>) => si.id === item.saleItemId);
+      const saleItem = saleItems.find((si) => si.id === item.saleItemId);
       if (!saleItem) {
         res.status(400).json({ success: false, error: { message: `Article ${item.saleItemId} non trouve dans la vente` } });
         return;
       }
       const alreadyReturned = returnedQtys[item.saleItemId] || 0;
-      const maxReturnable = (saleItem.quantity as number) - alreadyReturned;
-      if (item.quantity > maxReturnable) {
+      const originalQty = parseFloat(String(saleItem.quantity)) || 0;
+      const maxReturnable = originalQty - alreadyReturned;
+      if (item.quantity > maxReturnable + 1e-6) {
         res.status(400).json({
           success: false,
-          error: { message: `L'article "${(saleItem as Record<string, unknown>).product_name}" a deja ete retourne (${alreadyReturned}/${saleItem.quantity}). Maximum retournable: ${maxReturnable}` }
+          error: { message: `L'article "${saleItem.product_name}" a deja ete retourne (${alreadyReturned}/${originalQty}). Maximum retournable: ${maxReturnable}` }
         });
         return;
       }
+      // Prix pris depuis sale_items uniquement — le remboursement equivaut au
+      // prorata du prix effectivement paye pour cette ligne.
+      const unitPrice = parseFloat(String(saleItem.unit_price)) || 0;
+      const subtotal = Math.round(unitPrice * item.quantity * 100) / 100;
+      resolvedItems.push({
+        saleItemId: item.saleItemId,
+        productId: saleItem.product_id as string,
+        quantity: item.quantity,
+        unitPrice,
+        subtotal,
+      });
     }
 
-    const refundAmount = items.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
+    const refundAmount = Math.round(resolvedItems.reduce((sum, it) => sum + it.subtotal, 0) * 100) / 100;
 
     const result = await returnRepository.create({
       originalSaleId,
       userId: req.user!.userId,
       sessionId: activeSession.id,
-      storeId: req.user!.storeId,
+      storeId: userStoreId,
       type,
       reason,
       refundAmount,
-      items,
+      items: resolvedItems,
       exchangeProducts: type === 'exchange' ? exchangeProducts : undefined,
+      exchangePaymentMethod,
     });
 
     res.status(201).json({ success: true, data: result });

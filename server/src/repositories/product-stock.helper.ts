@@ -5,6 +5,7 @@
  */
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
+import { FLAGS } from '../config/feature-flags.js';
 
 /** Decrement (or increment) stock and return the new value */
 export async function adjustProductStock(
@@ -74,7 +75,13 @@ export async function adjustVitrineStock(
   // For decrements (sales), lock the row and validate stock first.
   // OWASP A04-3 : on refuse explicitement la vente si stock insuffisant,
   // au lieu de clamp a 0 silencieusement (empeche les ventes fantomes).
-  if (change < 0) {
+  //
+  // FLAG DE TEST : POS_ALLOW_NEGATIVE_STOCK autorise les ventes en rupture
+  // (utile en pre-prod pour tester le flux sans devoir alimenter la vitrine).
+  // Quand actif : ni check bloquant, ni clamp a 0 => vitrine_quantity peut
+  // passer en negatif. NE PAS ACTIVER EN PRODUCTION.
+  const allowNegative = FLAGS.POS_ALLOW_NEGATIVE_STOCK;
+  if (change < 0 && !allowNegative) {
     const lockResult = await client.query(
       `SELECT vitrine_quantity FROM product_store_stock
        WHERE product_id = $1 AND store_id = $2
@@ -92,11 +99,18 @@ export async function adjustVitrineStock(
     }
   }
 
+  // Si allowNegative, on retire le GREATEST(..., 0) pour laisser passer le
+  // stock en negatif. Sinon on garde le clamp historique (double garde-fou
+  // avec le check ci-dessus).
+  const clampedInsert = allowNegative ? '0 + $3' : 'GREATEST(0 + $3, 0)';
+  const clampedUpdate = allowNegative
+    ? 'product_store_stock.vitrine_quantity + $3'
+    : 'GREATEST(product_store_stock.vitrine_quantity + $3, 0)';
   const result = await client.query(
     `INSERT INTO product_store_stock (product_id, store_id, stock_quantity, vitrine_quantity)
-     VALUES ($1, $2, 0, GREATEST(0 + $3, 0))
+     VALUES ($1, $2, 0, ${clampedInsert})
      ON CONFLICT (product_id, store_id)
-     DO UPDATE SET vitrine_quantity = GREATEST(product_store_stock.vitrine_quantity + $3, 0), updated_at = NOW()
+     DO UPDATE SET vitrine_quantity = ${clampedUpdate}, updated_at = NOW()
      RETURNING vitrine_quantity`,
     [productId, storeId, change],
   );
