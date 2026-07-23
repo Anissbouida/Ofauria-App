@@ -5,7 +5,7 @@ import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package, RotateCcw, Save,
+  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
@@ -28,6 +28,40 @@ function ecartColor(e: number) {
   if (e < -0.0001) return '#b71c1c';  // manque (a expliquer)
   if (e > 0.0001) return '#b26a00';   // surplus (vendu plus que recu)
   return '#0e7c3a';
+}
+
+// Palette badge : tinte plus soutenue au-dela du seuil "gros ecart" (defaut 20 DH).
+type EcartTone = 'ok' | 'neg' | 'pos';
+function ecartTone(v: number): EcartTone {
+  if (v < -0.5) return 'neg';
+  if (v > 0.5) return 'pos';
+  return 'ok';
+}
+function ecartTheme(v: number, strong = false) {
+  const tone = ecartTone(v);
+  if (tone === 'neg') return { fg: '#b71c1c', bg: strong ? '#fbd5d5' : '#fdecec', border: '#e53935' };
+  if (tone === 'pos') return { fg: '#8a4b00', bg: strong ? '#ffddb0' : '#fff4e0', border: '#e69138' };
+  return { fg: '#0e7c3a', bg: '#e9f7ef', border: '#66bb6a' };
+}
+
+/** Chip d'ecart : icone directionnelle + valeur signee, fond colore. */
+function EcartBadge({ value, format, strong, minWidth = 62 }: { value: number; format: (n: number) => string; strong?: boolean; minWidth?: number }) {
+  const tone = ecartTone(value);
+  const t = ecartTheme(value, strong);
+  const Icon = tone === 'neg' ? TrendingDown : tone === 'pos' ? TrendingUp : Minus;
+  const sign = value > 0.0001 ? '+' : '';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 999,
+      background: t.bg, color: t.fg,
+      fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '0.75rem',
+      minWidth, justifyContent: 'flex-end', lineHeight: 1.4,
+    }}>
+      <Icon size={12} strokeWidth={2.5} />
+      {sign}{format(value)}
+    </span>
+  );
 }
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
@@ -1240,6 +1274,40 @@ function DayView() {
         )}
       </div>
 
+      {/* Résumé rapide — compte de lignes par tone d'écart */}
+      {lines.length > 0 && (() => {
+        const c = lines.reduce((a, l) => {
+          const t = ecartTone(num(l.ecart_value));
+          a[t]++;
+          return a;
+        }, { ok: 0, neg: 0, pos: 0 } as Record<EcartTone, number>);
+        const Chip = ({ tone, label, count }: { tone: EcartTone; label: string; count: number }) => {
+          const t = ecartTheme(tone === 'neg' ? -1 : tone === 'pos' ? 1 : 0);
+          const Icon = tone === 'neg' ? TrendingDown : tone === 'pos' ? TrendingUp : Check;
+          return (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', borderRadius: 6,
+              background: t.bg, color: t.fg,
+              border: `1px solid ${t.border}`,
+              fontSize: '0.75rem', fontWeight: 600,
+              opacity: count === 0 ? 0.5 : 1,
+            }}>
+              <Icon size={14} strokeWidth={2.5} />
+              <span>{label}</span>
+              <strong style={{ fontSize: '0.875rem', fontFamily: 'ui-monospace, monospace' }}>{count}</strong>
+            </div>
+          );
+        };
+        return (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Chip tone="neg" label="Manque à expliquer" count={c.neg} />
+            <Chip tone="pos" label="Surplus / stock antérieur" count={c.pos} />
+            <Chip tone="ok" label="OK" count={c.ok} />
+          </div>
+        );
+      })()}
+
       {/* Grille */}
       {isLoading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
@@ -1268,6 +1336,9 @@ function DayView() {
                 </td></tr>
               ) : groupedLines.map(({ cat, items }) => {
                 const isCollapsed = collapsed.has(cat);
+                const catEcartVal = items.reduce((s, l) => s + num(l.ecart_value), 0);
+                const catTheme = ecartTheme(catEcartVal, Math.abs(catEcartVal) >= 50);
+                const catBg = ecartTone(catEcartVal) === 'ok' ? 'var(--theme-bg-sidebar, #f5f5f5)' : catTheme.bg;
                 return (
                 <Fragment key={cat}>
                   <tr
@@ -1278,25 +1349,28 @@ function DayView() {
                     })}
                     style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <td colSpan={7} style={{
-                      background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
+                      background: catBg, fontWeight: 700,
                       color: 'var(--theme-accent)', fontSize: '0.75rem',
                       textTransform: 'uppercase', letterSpacing: 0.5,
+                      borderLeft: `3px solid ${ecartTone(catEcartVal) === 'ok' ? 'transparent' : catTheme.border}`,
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
                     </td>
                     <td colSpan={2} style={{
-                      background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700,
-                      textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem',
-                      color: ecartColor(items.reduce((s, l) => s + num(l.ecart_value), 0)),
+                      background: catBg, fontWeight: 700,
+                      textAlign: 'right', padding: '4px 8px',
                     }}>
-                      {nf(items.reduce((s, l) => s + num(l.ecart_value), 0))} DH
+                      <EcartBadge value={catEcartVal} format={v => `${nf(v)} DH`} strong={Math.abs(catEcartVal) >= 50} minWidth={90} />
                     </td>
                   </tr>
                   {!isCollapsed && items.map(l => {
                 const eQty = num(l.ecart_qty), eVal = num(l.ecart_value);
+                const isSignificant = Math.abs(eVal) >= 20;
+                const rowTheme = ecartTheme(eVal, isSignificant);
+                const rowBorder = isSignificant ? rowTheme.border : 'transparent';
                 return (
                   <tr key={l.id}>
-                    <td>
+                    <td style={{ borderLeft: `3px solid ${rowBorder}` }}>
                       <span style={{ fontWeight: 500 }}>{l.product_name}</span>
                       {l.source_vendu === 'loyverse_import' && (
                         <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6 }}>Loyverse</span>
@@ -1313,11 +1387,11 @@ function DayView() {
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'venduQty', 'vendu_qty')}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'invenduQty', 'invendu_qty')}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'unitPrice', 'unit_price')}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: ecartColor(eQty) }}>
-                      {eQty > 0 ? '+' : ''}{qf(eQty)}
+                    <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                      <EcartBadge value={eQty} format={qf} minWidth={54} />
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(eVal) }}>
-                      {eVal > 0 ? '+' : ''}{nf(eVal)}
+                    <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                      <EcartBadge value={eVal} format={nf} strong={isSignificant} minWidth={72} />
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {!locked && (
@@ -1341,8 +1415,12 @@ function DayView() {
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.vendu)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.invendu)}</td>
                   <td></td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: ecartColor(totals.ecartQty) }}>{qf(totals.ecartQty)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: ecartColor(totals.ecartVal) }}>{nf(totals.ecartVal)} DH</td>
+                  <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                    <EcartBadge value={totals.ecartQty} format={qf} strong minWidth={62} />
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                    <EcartBadge value={totals.ecartVal} format={v => `${nf(v)} DH`} strong minWidth={96} />
+                  </td>
                   <td></td>
                 </tr>
                 <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
