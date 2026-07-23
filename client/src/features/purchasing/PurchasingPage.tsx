@@ -8,7 +8,7 @@ import {
   Plus, Pencil, Truck, FileText, Banknote,
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
-  Loader2, Search, Coins, ArrowDownRight, Filter, ArrowUpDown, ArrowUp, ArrowDown,
+  Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
   Clock, CheckCircle2, Scale,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
@@ -40,10 +40,10 @@ const MANUAL_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 // Onglets de filtrage par statut pour les factures reçues (clé '' = toutes)
+// 'pending' regroupe désormais les factures non réglées ET partiellement réglées.
 const INVOICE_STATUS_TABS: Array<{ key: string; label: string; icon: typeof FileText; color: string }> = [
   { key: '', label: 'Toutes', icon: Receipt, color: '#6b7280' },
   { key: 'pending', label: 'Non réglées', icon: Clock, color: '#b45309' },
-  { key: 'partial', label: 'Partiellement réglées', icon: ArrowDownRight, color: '#1d4ed8' },
   { key: 'paid', label: 'Réglées', icon: CheckCircle2, color: '#15803d' },
   { key: 'overdue', label: 'En retard', icon: AlertTriangle, color: '#dc2626' },
   { key: 'disputed', label: 'En litige', icon: Scale, color: '#7c3aed' },
@@ -513,7 +513,12 @@ function ReceivedInvoicesSection() {
   const displayedInvoices = useMemo(() => {
     let list = invoicesList;
     if (statusFilter) {
-      list = list.filter(inv => inv.status === statusFilter);
+      // 'pending' regroupe non réglées + partiellement réglées
+      if (statusFilter === 'pending') {
+        list = list.filter(inv => inv.status === 'pending' || inv.status === 'partial');
+      } else {
+        list = list.filter(inv => inv.status === statusFilter);
+      }
     }
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
@@ -631,7 +636,11 @@ function ReceivedInvoicesSection() {
       <div className="odoo-search-panel">
         {INVOICE_STATUS_TABS.map((tab) => {
           const Icon = tab.icon;
-          const count = tab.key === '' ? invoicesList.length : (statusCounts[tab.key] || 0);
+          const count = tab.key === ''
+            ? invoicesList.length
+            : tab.key === 'pending'
+              ? (statusCounts['pending'] || 0) + (statusCounts['partial'] || 0)
+              : (statusCounts[tab.key] || 0);
           const active = statusFilter === tab.key;
           return (
             <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
