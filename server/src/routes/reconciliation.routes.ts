@@ -18,6 +18,7 @@ router.use(authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER));
 // Journees
 router.get('/days', asyncHandler(reconciliationController.listDays));
 router.get('/days/:id', asyncHandler(reconciliationController.getDay));
+router.get('/days/:id/export.xlsx', asyncHandler(reconciliationController.exportDay));
 router.post('/days', asyncHandler(reconciliationController.openDay));
 router.post('/days/:id/close', asyncHandler(reconciliationController.close));
 router.post('/days/:id/reopen', asyncHandler(reconciliationController.reopen));

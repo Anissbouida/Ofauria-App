@@ -141,6 +141,19 @@ export const reconciliationApi = {
   resetSales: (dayId: string) =>
     api.post(`/reconciliation/days/${dayId}/reset-sales`).then(r => r.data.data as { reset: number }),
 
+  /** Télécharge le classeur xlsx détaillé de la journée (déclenche un download). */
+  exportDayXlsx: async (dayId: string, businessDate: string) => {
+    const resp = await api.get(`/reconciliation/days/${dayId}/export.xlsx`, { responseType: 'blob' });
+    const url = URL.createObjectURL(resp.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `journee-${String(businessDate).slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   suggest: (date: string) =>
     api.get('/reconciliation/suggest', { params: { date } }).then(r => r.data.data as SuggestResult),
 

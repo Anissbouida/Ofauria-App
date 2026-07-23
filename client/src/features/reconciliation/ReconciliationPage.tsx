@@ -1180,6 +1180,11 @@ function DayView() {
     />
   );
 
+  const exportMut = useMutation({
+    mutationFn: () => reconciliationApi.exportDayXlsx(day!.id, day!.business_date),
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur export'),
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Bandeau explicatif */}
@@ -1223,6 +1228,11 @@ function DayView() {
         </button>
         <button className="odoo-btn-secondary" disabled={!day || locked} onClick={() => setShowAdd(true)}>
           <Plus size={14} /> Produit
+        </button>
+        <button className="odoo-btn-secondary" disabled={!day || lines.length === 0 || exportMut.isPending}
+          onClick={() => exportMut.mutate()}
+          title="Télécharger la journée au format Excel : synthèse par catégorie, détail commenté, écarts significatifs">
+          {exportMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export Excel
         </button>
         {day && (locked
           ? <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'open' })}><Unlock size={14} /> Rouvrir</button>
