@@ -492,6 +492,12 @@ export const reconciliationRepository = {
     await db.query(`DELETE FROM recon_products WHERE id = $1`, [id]);
   },
 
+  /** Vide entierement le catalogue produits. Historique des journees conserve. */
+  async clearProducts() {
+    const { rowCount } = await db.query(`DELETE FROM recon_products`);
+    return { deleted: rowCount ?? 0 };
+  },
+
   /** Import en masse dans le catalogue (CSV Loyverse « Importer le catalogue »). */
   async bulkUpsertProducts(rows: { sku?: string | null; productName: string; category?: string | null; unitPrice?: number }[]) {
     const client = await db.getClient();

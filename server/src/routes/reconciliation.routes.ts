@@ -42,6 +42,7 @@ router.delete('/slots/:id', asyncHandler(reconciliationController.deleteSlot));
 router.get('/products', asyncHandler(reconciliationController.listProducts));
 router.post('/products', asyncHandler(reconciliationController.upsertProduct));
 router.post('/products/bulk', asyncHandler(reconciliationController.bulkProducts));
+router.delete('/products', asyncHandler(reconciliationController.clearProducts));
 router.delete('/products/:id', asyncHandler(reconciliationController.deleteProduct));
 
 // Traductions darija (nom produit → écriture arabe)

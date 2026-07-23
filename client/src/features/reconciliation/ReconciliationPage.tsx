@@ -2048,6 +2048,12 @@ function CatalogView() {
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur import'),
   });
 
+  const clearMut = useMutation({
+    mutationFn: () => reconciliationApi.clearProducts(),
+    onSuccess: (r) => { invalidate(); notify.success(`Catalogue vidé (${r.deleted} produit(s) supprimé(s))`); },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+  });
+
   const categories = useMemo(
     () => [...new Set(products.map(p => p.category).filter(Boolean))].sort() as string[],
     [products],
@@ -2086,6 +2092,16 @@ function CatalogView() {
         <div style={{ flex: 1 }} />
         <input ref={fileRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
           onChange={e => { if (e.target.files?.length) importMut.mutate(Array.from(e.target.files)); e.target.value = ''; }} />
+        <button className="odoo-btn-secondary" disabled={products.length === 0 || clearMut.isPending}
+          title="Supprime tous les produits du catalogue avant un réimport propre. L'historique des journées est conservé."
+          style={{ color: '#b71c1c', borderColor: '#e5b4b4' }}
+          onClick={() => {
+            if (window.confirm(`Vider le catalogue ?\n\n${products.length} produit(s) seront supprimés.\nL'historique des journées passées est conservé.\n\nÀ utiliser avant un réimport propre du catalogue Loyverse.`)) {
+              clearMut.mutate();
+            }
+          }}>
+          {clearMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Vider le catalogue
+        </button>
         <button className="odoo-btn-secondary" disabled={importMut.isPending} onClick={() => fileRef.current?.click()}>
           {importMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Importer le catalogue
         </button>

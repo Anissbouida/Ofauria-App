@@ -271,6 +271,11 @@ export const reconciliationController = {
     res.json({ success: true });
   },
 
+  async clearProducts(_req: AuthRequest, res: Response) {
+    const result = await reconciliationRepository.clearProducts();
+    res.json({ success: true, data: result });
+  },
+
   /** Body: { rows: [{ sku?, productName, category?, unitPrice? }] } */
   async bulkProducts(req: AuthRequest, res: Response) {
     const { rows } = req.body as { rows?: { sku?: string; productName: string; category?: string; unitPrice?: number }[] };

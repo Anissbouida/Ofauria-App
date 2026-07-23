@@ -177,6 +177,8 @@ export const reconciliationApi = {
     api.post('/reconciliation/products/bulk', { rows }).then(r => r.data.data as { upserted: number }),
   deleteProduct: (id: string) =>
     api.delete(`/reconciliation/products/${id}`).then(r => r.data),
+  clearProducts: () =>
+    api.delete(`/reconciliation/products`).then(r => r.data.data as { deleted: number }),
 
   listDarija: () =>
     api.get('/reconciliation/darija').then(r => r.data.data as DarijaEntry[]),
