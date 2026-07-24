@@ -81,11 +81,15 @@ const odooModalHeaderStyle: CSSProperties = {
 type POItem = {
   id: string;
   ingredient_id: string;
+  packaging_id?: string | null;
+  kind?: 'ingredient' | 'consumable';
   ingredient_name: string;
   ingredient_unit: string;
   quantity_ordered: string;
   quantity_delivered: string;
   unit_price: string;
+  // Categorie de l'article (feuille expense_categories), pour affichage.
+  item_category_id?: string | null;
   // Contenant par defaut de l'ingredient : permet de saisir la reception par contenant
   // (ex : 3 seaux de 5 kg = 15 kg).
   container_size?: string | null;
@@ -615,6 +619,7 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
               <th className="text-left px-3 py-2">Ingrédient</th>
+              <th className="text-left px-3 py-2">Catégorie</th>
               <th className="text-right px-3 py-2">Qté commandée</th>
               <th className="text-right px-3 py-2">Qté livrée</th>
               <th className="text-right px-3 py-2">Prix unit.</th>
@@ -632,6 +637,14 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
                 <tr key={item.id} className="hover:bg-gray-50/50">
                   <td className="px-3 py-2 font-medium text-gray-700">
                     {item.ingredient_name} <span className="text-gray-400 text-xs">({item.ingredient_unit})</span>
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    <CategoryQuickEdit
+                      kind={(item.kind as 'ingredient' | 'consumable') || (item.packaging_id ? 'consumable' : 'ingredient')}
+                      refId={item.packaging_id || item.ingredient_id}
+                      categoryId={item.item_category_id ?? null}
+                      itemName={item.ingredient_name}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right text-gray-600">{ordered}</td>
                   <td className="px-3 py-2 text-right">
@@ -700,6 +713,148 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
   );
 }
 
+/* ═══ Category quick-edit — corrige la categorie d'un article depuis le BC ═══ */
+/**
+ * Affiche la categorie d'un article (tag + racine) avec un crayon pour la
+ * corriger sans quitter le BC. La correction met a jour le REFERENTIEL
+ * (ingredients.category_id / packaging_items.category_id), pas seulement la
+ * ligne : c'est la source des categories de charges.
+ *
+ * Changement de type (ingredient <-> consommable) :
+ *  - ingredient -> consommable : possible si allowConvert (creation BC), via
+ *    la conversion Economat existante (transfert stock + suppression des
+ *    lignes BC non facturees) — confirmation explicite demandee.
+ *  - consommable -> ingredient : pas de conversion inverse, renvoi Economat.
+ */
+function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, onSaved }: {
+  kind: 'ingredient' | 'consumable';
+  refId: string;
+  categoryId: string | null;
+  /** Nom de l'article, affiche dans l'en-tete de la mini-fenetre de correction. */
+  itemName?: string;
+  allowConvert?: boolean;
+  onSaved?: (categoryId: string, changed?: { kind: 'consumable'; refId: string }) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { resolve, tagClass, kindOf } = useStockCategories();
+  const [editing, setEditing] = useState(false);
+  const [selectedId, setSelectedId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const cat = resolve(categoryId);
+
+  const save = async () => {
+    if (!selectedId) { notify.error('Choisissez une catégorie'); return; }
+    const newKind = kindOf(selectedId);
+    setSaving(true);
+    try {
+      let changed: { kind: 'consumable'; refId: string } | undefined;
+      if (newKind === kind) {
+        if (kind === 'ingredient') await ingredientsApi.update(refId, { categoryId: selectedId });
+        else await packagingApi.update(refId, { category_id: selectedId });
+        notify.success('Catégorie de l\'article corrigée');
+      } else if (kind === 'ingredient' && allowConvert) {
+        const catName = resolve(selectedId)?.path || 'consommable';
+        if (!window.confirm(
+          `Cette catégorie (${catName}) transforme l'article en CONSOMMABLE.\n\n` +
+          `Le stock sera transféré vers les Consommables, et l'article sera retiré ` +
+          `des ingrédients ainsi que des lignes de BC non facturées. Continuer ?`
+        )) { setSaving(false); return; }
+        const resp = await ingredientsApi.convertToConsumable(refId, selectedId);
+        changed = { kind: 'consumable', refId: resp.packagingId as string };
+        notify.success('Article converti en consommable');
+      } else {
+        notify.error(kind === 'consumable'
+          ? 'Reclasser un consommable en ingrédient se fait depuis l\'Économat (Consommables)'
+          : 'Cette catégorie change le type de l\'article : faites la conversion depuis l\'Économat');
+        setSaving(false);
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['packaging-items'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      onSaved?.(selectedId, changed);
+      setEditing(false);
+    } catch (err: unknown) {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la correction de la catégorie');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        {cat ? (
+          // Chemin hierarchique complet : "Racine › Sous-categorie › " en
+          // texte attenue, feuille en tag colore (meme palette que l'Economat).
+          <span className="flex items-center flex-wrap" style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', columnGap: 4, rowGap: 2 }}>
+            {cat.path.split(' / ').slice(0, -1).map((seg, i) => (
+              <Fragment key={i}>{seg} <span style={{ opacity: 0.6 }}>›</span> </Fragment>
+            ))}
+            <span className={`odoo-tag ${tagClass(categoryId)}`} style={{ fontSize: '0.6875rem' }}>{cat.typeName}</span>
+          </span>
+        ) : (
+          <span style={{ fontSize: '0.75rem', color: '#b85d1a', fontWeight: 600 }}>Sans catégorie</span>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); setSelectedId(categoryId || ''); setEditing(true); }}
+          title="Corriger la catégorie de l'article"
+          className="hover:bg-gray-100"
+          style={{ padding: 3, borderRadius: 4, color: 'var(--odoo-text-muted)', flexShrink: 0 }}>
+          <Pencil size={11} />
+        </button>
+      </div>
+
+      {/* Mini-fenetre superposee : evite de deformer le tableau (le selecteur
+          en cascade est trop haut pour une cellule). zIndex 60 > modal BC (50). */}
+      {editing && (
+        <ModalBackdrop onClose={() => !saving && setEditing(false)}
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4"
+          style={{ zIndex: 60 }}>
+          <div className="odoo-scope w-full" style={{ ...odooModalPanelStyle, maxWidth: 560 }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between" style={odooModalHeaderStyle}>
+              <div className="flex items-center gap-3">
+                <Pencil size={16} style={{ color: '#fff' }} />
+                <div>
+                  <h3 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Corriger la catégorie</h3>
+                  {itemName && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{itemName}</p>}
+                </div>
+              </div>
+              <button onClick={() => !saving && setEditing(false)} className="hover:bg-white/20"
+                style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: '1.25rem' }} className="space-y-4">
+              {cat && (
+                <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+                  Catégorie actuelle : <span style={{ fontWeight: 600, color: 'var(--odoo-text)' }}>{cat.path}</span>
+                </p>
+              )}
+              <CategoryCascadeSelector value={selectedId} onChange={setSelectedId} rootIds={PURCHASABLE_ROOT_IDS} />
+              <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+                La correction s'applique à l'article dans le référentiel : Économat, prochains BC et charges en profitent aussitôt.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2"
+              style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
+              <button onClick={() => setEditing(false)} disabled={saving} className="odoo-btn-secondary">Annuler</button>
+              <button onClick={save} disabled={saving || !selectedId} className="odoo-btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                {saving ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+    </>
+  );
+}
+
 /* ═══ Create PO Modal ═══ */
 function CreatePOModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -708,8 +863,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState('');
   const [searchIngredient, setSearchIngredient] = useState('');
   // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
-  // (packaging_items). kind decide la table cible cote serveur.
-  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; quantityOrdered: number; unitPrice: number | null }[]>([]);
+  // (packaging_items). kind decide la table cible cote serveur. categoryId =
+  // categorie de l'article, affichee pour reperer les erreurs de classement
+  // AVANT l'achat (elle sera figee sur la ligne de facture cote serveur).
+  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null }[]>([]);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
   const [newIng, setNewIng] = useState({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
 
@@ -717,7 +874,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
   const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
   const { entries: unitEntries } = useReferentiel('units');
-  const { kindOf } = useStockCategories();
+  const { kindOf, resolve } = useStockCategories();
 
   // Type d'article cree a la volee, deduit de la categorie choisie.
   const newKind = kindOf(newIng.categoryId);
@@ -741,6 +898,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       refId: created.id as string,
       name: created.name as string,
       unit: created.unit as string,
+      categoryId: (created.category_id as string) || null,
       quantityOrdered: 1,
       unitPrice: cost > 0 ? cost : null,
     }]);
@@ -764,15 +922,24 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   const handleCreateIngredient = () => {
     if (!newIng.name.trim()) { notify.error('Saisissez le nom de l\'article'); return; }
-    const payload = {
-      name: newIng.name.trim(),
-      unit: newIng.unit,
-      categoryId: newIng.categoryId || null,
-      unitCost: newIng.unitCost ? parseFloat(newIng.unitCost) : 0,
-    };
+    const name = newIng.name.trim();
+    const cost = newIng.unitCost ? parseFloat(newIng.unitCost) : 0;
     // Routage par categorie : consommable -> packaging_items, sinon ingredients.
-    if (newKind === 'consumable') createConsumableMutation.mutate(payload);
-    else createIngredientMutation.mutate(payload);
+    // ATTENTION aux conventions de payload : l'API packaging attend du
+    // snake_case (category_id/unit_cost), l'API ingredients du camelCase.
+    if (newKind === 'consumable') {
+      createConsumableMutation.mutate({
+        name, unit: newIng.unit,
+        category_id: newIng.categoryId || null,
+        unit_cost: cost,
+      });
+    } else {
+      createIngredientMutation.mutate({
+        name, unit: newIng.unit,
+        categoryId: newIng.categoryId || null,
+        unitCost: cost,
+      });
+    }
   };
 
   // Articles deja ajoutes (cle composite kind:id pour ne pas confondre les tables).
@@ -794,6 +961,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       refId: p.id as string,
       name: p.name as string,
       unit: p.unit as string,
+      categoryId: (p.category_id as string) || null,
       quantityOrdered: 1,
       unitPrice: cost > 0 ? cost : null,
     }]);
@@ -828,10 +996,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
-        style={odooModalPanelStyle}>
+      {/* Quasi plein ecran : le BC est le flux de saisie principal, on lui donne
+          toute la place (tableau articles + recherche). Corps scrollable entre
+          en-tete et pied fixes. */}
+      <div className="odoo-scope w-full flex flex-col" onClick={(e) => e.stopPropagation()}
+        style={{ ...odooModalPanelStyle, maxWidth: '95vw', height: '92vh' }}>
         {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between z-10" style={odooModalHeaderStyle}>
+        <div className="flex items-center justify-between shrink-0" style={odooModalHeaderStyle}>
           <div className="flex items-center gap-3">
             <ShoppingBag size={16} style={{ color: '#fff' }} />
             <div>
@@ -842,7 +1013,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
-        <div style={{ padding: '1.25rem' }} className="space-y-5">
+        <div style={{ padding: '1.25rem' }} className="space-y-5 flex-1 overflow-y-auto min-h-0">
           {/* Supplier + Date */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1">
@@ -881,17 +1052,26 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             </div>
             {searchIngredient && filteredProducts.length > 0 && (
               <div style={{ marginTop: 4, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 192, overflowY: 'auto' }}>
-                {filteredProducts.slice(0, 10).map(p => (
-                  <button key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
-                    className="w-full text-left text-sm flex items-center justify-between hover:bg-gray-50"
-                    style={{ padding: '0.5rem 0.75rem' }}>
-                    <span className="font-medium">
-                      {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
-                      {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
-                    </span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
-                  </button>
-                ))}
+                {filteredProducts.slice(0, 10).map(p => {
+                  const catPath = resolve(p.category_id as string | null)?.path;
+                  return (
+                    <button key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
+                      className="w-full text-left text-sm flex items-center justify-between hover:bg-gray-50"
+                      style={{ padding: '0.5rem 0.75rem' }}>
+                      <span>
+                        <span className="font-medium">
+                          {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
+                          {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                        </span>
+                        {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
+                        <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
+                          {catPath || 'Sans catégorie'}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
             {searchIngredient && filteredProducts.length === 0 && !showNewIngredient && (
@@ -960,6 +1140,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 <thead>
                   <tr>
                     <th>Ingrédient</th>
+                    <th>Catégorie</th>
                     <th style={{ textAlign: 'right', width: 128 }}>Quantité</th>
                     <th style={{ textAlign: 'right', width: 128 }}>Prix unit. (DH)</th>
                     <th style={{ textAlign: 'right', width: 112 }}>Sous-total</th>
@@ -973,6 +1154,15 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                         <span className="font-medium">{item.name}</span>
                         <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>
                         {item.kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                      </td>
+                      <td>
+                        <CategoryQuickEdit
+                          kind={item.kind} refId={item.refId} categoryId={item.categoryId}
+                          itemName={item.name} allowConvert
+                          onSaved={(catId, changed) => setItems(prev => prev.map((it, i) =>
+                            i === idx ? { ...it, categoryId: catId, ...(changed ? { kind: changed.kind, refId: changed.refId } : {}) } : it
+                          ))}
+                        />
                       </td>
                       <td>
                         <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
@@ -1018,7 +1208,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 flex justify-between items-center"
+        <div className="flex justify-between items-center shrink-0"
           style={{ backgroundColor: 'var(--odoo-bg)', borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
           <div>
             {items.length > 0 && (
