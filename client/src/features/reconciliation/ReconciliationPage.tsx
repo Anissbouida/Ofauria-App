@@ -1077,9 +1077,17 @@ type EditField = 'approQty' | 'recuQty' | 'venduQty' | 'invenduQty' | 'unitPrice
  * DayView) : sinon React recree son type a chaque rendu et remonte l'input,
  * ce qui fait perdre le focus a chaque frappe.
  */
-function NumCell({ value, locked, onDraft, onCommit }: {
+// Teintes par colonne pour distinguer visuellement Appro / Reçu / Vendu.
+const COL_TINTS = {
+  appro: { bg: '#e8f1fb', input: '#f4f9ff', text: '#1565c0', border: '#bbdefb' },
+  recu:  { bg: '#f3ebf9', input: '#faf5ff', text: '#6a1b9a', border: '#e1bee7' },
+  vendu: { bg: '#e6f4ea', input: '#f3fbf5', text: '#2e7d32', border: '#c8e6c9' },
+} as const;
+
+function NumCell({ value, locked, onDraft, onCommit, tint }: {
   value: string; locked: boolean;
   onDraft: (v: string) => void; onCommit: (raw: string) => void;
+  tint?: { input: string; border: string };
 }) {
   return (
     <input
@@ -1090,7 +1098,8 @@ function NumCell({ value, locked, onDraft, onCommit }: {
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       style={{
         width: 74, textAlign: 'right', padding: '3px 6px', fontFamily: 'ui-monospace, monospace',
-        border: '1px solid var(--theme-bg-separator)', borderRadius: 3, background: locked ? '#f5f5f5' : '#fff',
+        border: `1px solid ${tint?.border || 'var(--theme-bg-separator)'}`, borderRadius: 3,
+        background: locked ? '#f5f5f5' : (tint?.input || '#fff'),
       }}
     />
   );
@@ -1205,10 +1214,11 @@ function DayView() {
     updateLineMut.mutate({ lineId: l.id, patch: { [field]: value } });
   };
 
-  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine) => (
+  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine, tint?: { input: string; border: string }) => (
     <NumCell
       value={edits[l.id]?.[field] ?? String(l[serverField] ?? '')}
       locked={locked}
+      tint={tint}
       onDraft={v => setEdits(s => ({ ...s, [l.id]: { ...s[l.id], [field]: v } }))}
       onCommit={raw => { if (edits[l.id]?.[field] !== undefined) commit(l, field, raw); }}
     />
@@ -1319,9 +1329,9 @@ function DayView() {
             <thead>
               <tr>
                 <th>Produit</th>
-                <th style={{ textAlign: 'right' }}>Appro</th>
-                <th style={{ textAlign: 'right' }}>Reçu</th>
-                <th style={{ textAlign: 'right' }}>Vendu</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
                 <th style={{ textAlign: 'right' }}>Invendu</th>
                 <th style={{ textAlign: 'right' }}>Prix (DH)</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
@@ -1377,14 +1387,14 @@ function DayView() {
                       )}
                       {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{numCell(l, 'approQty', 'appro_qty')}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      {numCell(l, 'recuQty', 'recu_qty')}
+                    <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro)}</td>
+                    <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
+                      {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
                       {num(l.recu_qty) > 0 && num(l.recu_qty) !== num(l.appro_qty) && (
                         <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>≠ appro</div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{numCell(l, 'venduQty', 'vendu_qty')}</td>
+                    <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu)}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'invenduQty', 'invendu_qty')}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'unitPrice', 'unit_price')}</td>
                     <td style={{ textAlign: 'right', padding: '4px 8px' }}>
@@ -1410,9 +1420,9 @@ function DayView() {
               <tfoot>
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
                   <td>Total ({lines.length})</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.appro)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : undefined }}>{qf(totals.recu)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.vendu)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : COL_TINTS.recu.text }}>{qf(totals.recu)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{qf(totals.vendu)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(totals.invendu)}</td>
                   <td></td>
                   <td style={{ textAlign: 'right', padding: '4px 8px' }}>
@@ -1425,9 +1435,9 @@ function DayView() {
                 </tr>
                 <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
                   <td>Montants (DH)</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.approVal)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.recuVal)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.venduVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>{nf(totals.recuVal)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{nf(totals.venduVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(totals.invenduVal)}</td>
                   <td></td>
                   <td></td>
