@@ -642,20 +642,22 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input type="date" value={date} onChange={e => { setDate(e.target.value); touchedRef.current.clear(); setRemoved(new Set()); }}
-          className="odoo-input" style={{ width: 160 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <input type="date" value={date} onChange={e => { setDate(e.target.value); touchedRef.current.clear(); setRemoved(new Set()); }}
+            className="odoo-input" style={{ width: 160 }} />
+          {fiche?.savedAt && (
+            <span className="odoo-tag odoo-tag-green" style={{ fontSize: '0.6875rem', alignSelf: 'flex-start' }}
+              title={fiche.savedBy ? `Enregistrée par ${fiche.savedBy}` : undefined}>
+              <Check size={11} /> Enregistrée{fiche.savedBy ? ` par ${fiche.savedBy}` : ''} le{' '}
+              {format(new Date(fiche.savedAt), 'd MMM à HH:mm', { locale: fr })}
+            </span>
+          )}
+        </div>
         <input className="odoo-input" placeholder="Rechercher un produit…" value={search}
           onChange={e => setSearch(e.target.value)} style={{ width: 200 }} />
         {refLabel && (
           <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
             Basé sur <strong>{refLabel}</strong>
-          </span>
-        )}
-        {fiche?.savedAt && (
-          <span className="odoo-tag odoo-tag-green" style={{ fontSize: '0.6875rem' }}
-            title={fiche.savedBy ? `Enregistrée par ${fiche.savedBy}` : undefined}>
-            <Check size={11} /> Enregistrée{fiche.savedBy ? ` par ${fiche.savedBy}` : ''} le{' '}
-            {format(new Date(fiche.savedAt), 'd MMM à HH:mm', { locale: fr })}
           </span>
         )}
         {data && !data.referenceDate && data.products.length > 0 && (
