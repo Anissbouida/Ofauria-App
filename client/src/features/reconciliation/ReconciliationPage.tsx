@@ -1395,9 +1395,14 @@ function DayView() {
                     <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro)}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
                       {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
-                      {num(l.recu_qty) > 0 && num(l.recu_qty) !== num(l.appro_qty) && (
-                        <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>≠ appro</div>
-                      )}
+                      {num(l.recu_qty) > 0 && num(l.recu_qty) !== num(l.appro_qty) && (() => {
+                        const diff = num(l.recu_qty) - num(l.appro_qty);
+                        return (
+                          <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>
+                            {diff > 0 ? '+' : ''}{qf(diff)}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu)}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.invendu.bg }}>{numCell(l, 'invenduQty', 'invendu_qty', COL_TINTS.invendu)}</td>
@@ -1426,7 +1431,17 @@ function DayView() {
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
                   <td>Total ({lines.length})</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : COL_TINTS.recu.text }}>{qf(totals.recu)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : COL_TINTS.recu.text }}>
+                    {qf(totals.recu)}
+                    {totals.recu > 0 && totals.recu !== totals.appro && (() => {
+                      const diff = totals.recu - totals.appro;
+                      return (
+                        <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>
+                          {diff > 0 ? '+' : ''}{qf(diff)}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{qf(totals.vendu)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{qf(totals.invendu)}</td>
                   <td></td>
