@@ -1240,9 +1240,9 @@ function DayView() {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Écart = Vendu + Invendu − Reçu.</strong> Négatif = manque à expliquer (perte / vol / erreur),
+          <strong>Écart = Vendu + Reste − Reçu.</strong> Négatif = manque à expliquer (perte / vol / erreur),
           positif = surplus. Si le reçu n'est pas saisi, l'appro sert de base de calcul.
-          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir l'invendu compté.
+          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir le reste compté.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>
       </div>
@@ -1260,9 +1260,9 @@ function DayView() {
         <input ref={fileRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
           onChange={e => { if (e.target.files?.length) importMut.mutate(Array.from(e.target.files)); e.target.value = ''; }} />
         <button className="odoo-btn-secondary" disabled={!day || locked || resetSalesMut.isPending || totals.vendu === 0}
-          title="Remet vendu et montant vendu à 0 sur toutes les lignes (appro, reçu et invendu conservés) avant un réimport propre"
+          title="Remet vendu et montant vendu à 0 sur toutes les lignes (appro, reçu et reste conservés) avant un réimport propre"
           onClick={() => {
-            if (window.confirm('Remettre toutes les ventes du jour à zéro ?\n\nAppro, reçu et invendu sont conservés. À utiliser avant un réimport Loyverse propre.')) {
+            if (window.confirm('Remettre toutes les ventes du jour à zéro ?\n\nAppro, reçu et reste sont conservés. À utiliser avant un réimport Loyverse propre.')) {
               resetSalesMut.mutate();
             }
           }}>
@@ -1337,7 +1337,7 @@ function DayView() {
                 <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
                 <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
                 <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>Invendu</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>Reste</th>
                 <th style={{ textAlign: 'right' }}>Prix (DH)</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
                 <th style={{ textAlign: 'right' }}>Écart (DH)</th>
@@ -1351,9 +1351,15 @@ function DayView() {
                 </td></tr>
               ) : groupedLines.map(({ cat, items }) => {
                 const isCollapsed = collapsed.has(cat);
+                const catAppro = items.reduce((s, l) => s + num(l.appro_qty), 0);
+                const catRecu = items.reduce((s, l) => s + num(l.recu_qty), 0);
+                const catVendu = items.reduce((s, l) => s + num(l.vendu_qty), 0);
+                const catInvendu = items.reduce((s, l) => s + num(l.invendu_qty), 0);
+                const catEcartQty = items.reduce((s, l) => s + num(l.ecart_qty), 0);
                 const catEcartVal = items.reduce((s, l) => s + num(l.ecart_value), 0);
                 const catTheme = ecartTheme(catEcartVal, Math.abs(catEcartVal) >= 50);
                 const catBg = ecartTone(catEcartVal) === 'ok' ? 'var(--theme-bg-sidebar, #f5f5f5)' : catTheme.bg;
+                const catCellBase = { background: catBg, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'ui-monospace, monospace', padding: '4px 8px' };
                 return (
                 <Fragment key={cat}>
                   <tr
@@ -1363,7 +1369,7 @@ function DayView() {
                       return next;
                     })}
                     style={{ cursor: 'pointer', userSelect: 'none' }}>
-                    <td colSpan={7} style={{
+                    <td style={{
                       background: catBg, fontWeight: 700,
                       color: 'var(--theme-accent)', fontSize: '0.75rem',
                       textTransform: 'uppercase', letterSpacing: 0.5,
@@ -1371,12 +1377,18 @@ function DayView() {
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
                     </td>
-                    <td colSpan={2} style={{
-                      background: catBg, fontWeight: 700,
-                      textAlign: 'right', padding: '4px 8px',
-                    }}>
+                    <td style={{ ...catCellBase, color: COL_TINTS.appro.text }}>{qf(catAppro)}</td>
+                    <td style={{ ...catCellBase, color: catRecu > 0 && catRecu !== catAppro ? '#b26a00' : COL_TINTS.recu.text }}>{qf(catRecu)}</td>
+                    <td style={{ ...catCellBase, color: COL_TINTS.vendu.text }}>{qf(catVendu)}</td>
+                    <td style={{ ...catCellBase, color: COL_TINTS.invendu.text }}>{qf(catInvendu)}</td>
+                    <td style={{ background: catBg }}></td>
+                    <td style={{ ...catCellBase }}>
+                      <EcartBadge value={catEcartQty} format={qf} strong={Math.abs(catEcartVal) >= 50} minWidth={54} />
+                    </td>
+                    <td style={{ ...catCellBase }}>
                       <EcartBadge value={catEcartVal} format={v => `${nf(v)} DH`} strong={Math.abs(catEcartVal) >= 50} minWidth={90} />
                     </td>
+                    <td style={{ background: catBg }}></td>
                   </tr>
                   {!isCollapsed && items.map(l => {
                 const eQty = num(l.ecart_qty), eVal = num(l.ecart_value);
@@ -1528,7 +1540,7 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 10, background: '#fff' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
             Une ligne par produit — colonnes Excel dans l'ordre :{' '}
-            <strong>Nom · Quantité · Prix(opt) · SKU(opt) · Catégorie(opt)</strong>. Le vendu et l'invendu déjà saisis
+            <strong>Nom · Quantité · Prix(opt) · SKU(opt) · Catégorie(opt)</strong>. Le vendu et le reste déjà saisis
             sont préservés.
           </div>
           <textarea
@@ -2280,7 +2292,7 @@ function ReportView() {
   }, { appro: 0, vendu: 0, invendu: 0, ecartVal: 0 }), [rows]);
 
   const handleExport = () => {
-    const headers = ['Produit', 'Categorie', 'Appro', 'Vendu', 'Invendu', 'Ecart (u)', 'Ecart (DH)', 'Jours'];
+    const headers = ['Produit', 'Categorie', 'Appro', 'Vendu', 'Reste', 'Ecart (u)', 'Ecart (DH)', 'Jours'];
     const data = (rows as ReconReportRow[]).map(r => [
       r.product_name, r.category || '', qf(num(r.appro_qty)), qf(num(r.vendu_qty)),
       qf(num(r.invendu_qty)), qf(num(r.ecart_qty)), nf(num(r.ecart_value)), r.days_count,
@@ -2307,7 +2319,7 @@ function ReportView() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           {([
             ['Appro (u)', qf(totals.appro)], ['Vendu (u)', qf(totals.vendu)],
-            ['Invendu (u)', qf(totals.invendu)], ['Écart total (DH)', nf(totals.ecartVal)],
+            ['Reste (u)', qf(totals.invendu)], ['Écart total (DH)', nf(totals.ecartVal)],
           ] as [string, string][]).map(([lbl, val], i) => (
             <div key={lbl} style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
               <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{lbl}</div>
@@ -2334,7 +2346,7 @@ function ReportView() {
                 <th className="hidden md:table-cell">Catégorie</th>
                 <th style={{ textAlign: 'right' }}>Appro</th>
                 <th style={{ textAlign: 'right' }}>Vendu</th>
-                <th style={{ textAlign: 'right' }}>Invendu</th>
+                <th style={{ textAlign: 'right' }}>Reste</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
                 <th style={{ textAlign: 'right' }}>Écart (DH)</th>
                 <th style={{ textAlign: 'right' }}>Jours</th>
