@@ -234,35 +234,42 @@ function printBonSection(
   function buildTableRows(
     groups: { cat: string; products: SuggestProduct[] }[],
     qtyKey: (p: SuggestProduct) => string,
+    withTransf: boolean,
   ): string {
     let rows = '';
     let hasAny = false;
+    const colSpan = withTransf ? 5 : 4;
     for (const { cat, products } of groups) {
       const active = products.filter(p => num(slotQty[qtyKey(p)]) > 0);
       if (active.length === 0) continue;
       hasAny = true;
-      rows += `<tr class="cat-row"><td colspan="5">${esc(cat)}</td></tr>`;
+      rows += `<tr class="cat-row"><td colspan="${colSpan}">${esc(cat)}</td></tr>`;
       for (const p of active) {
         const dj = darijaOf(p.product_name);
-        rows += `<tr><td>${esc(p.product_name)}</td><td class="qty">${esc(slotQty[qtyKey(p)] || '')}</td><td></td><td></td><td class="darija">${esc(dj)}</td></tr>`;
+        rows += `<tr><td>${esc(p.product_name)}</td><td class="qty">${esc(slotQty[qtyKey(p)] || '')}</td><td></td>${withTransf ? '<td></td>' : ''}<td class="darija">${esc(dj)}</td></tr>`;
       }
     }
     return hasAny ? rows : '';
   }
 
-  function buildPage(section: string, slotLabel: string | null, jour: string, dateFmt: string, chef: string, rows: string, copie: string): string {
+  function buildPage(section: string, slotLabel: string | null, jour: string, dateFmt: string, chef: string, rows: string, copie: string, withTransf: boolean): string {
     const title = slotLabel
       ? `${esc(section)} &mdash; ${esc(slotLabel)}`
       : esc(section);
+    const transfCol = withTransf ? '<col style="width:68px">' : '';
+    const transfTh = withTransf ? '<th>TRANSF.</th>' : '';
+    const transfTd = withTransf ? '<td></td>' : '';
+    // Copie Production (sans TRANSF.) : la colonne a remplir s'appelle APPRO ; copie Magasin : RECU.
+    const col3Th = withTransf ? 'RE&Ccedil;U' : 'APPRO';
     return `<div class="section">
       <div class="header">${title}</div>
       <div class="sub-header">Commande Magasin &mdash; ${jour} ${dateFmt}</div>
       <div class="copy-tag"><span>${esc(copie)}</span></div>
       <table>
-        <colgroup><col style="width:36%"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:auto"></colgroup>
-        <thead><tr><th style="text-align:left">PRODUIT</th><th>QT&Eacute;</th><th>RE&Ccedil;U</th><th>TRANSF.</th><th style="text-align:right">بالدارجة</th></tr></thead>
+        <colgroup><col style="width:36%"><col style="width:90px"><col style="width:68px">${transfCol}<col style="width:auto"></colgroup>
+        <thead><tr><th style="text-align:left">PRODUIT</th><th>COMMANDE</th><th>${col3Th}</th>${transfTh}<th style="text-align:right">بالدارجة</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td><td></td></tr></tfoot>
+        <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td>${transfTd}<td></td></tr></tfoot>
       </table>
       <div class="signatures">
         <div class="sig-box"><strong>${chef} (Production)</strong><br>Nom :<br>Signature :</div>
@@ -326,21 +333,22 @@ function printBonSection(
           return { cat, products, slotNum: matchSlot.slot_number };
         }).filter(Boolean) as { cat: string; products: SuggestProduct[]; slotNum: number }[];
 
-        const rows = buildTableRows(
-          slotGroups.map(g => ({ cat: g.cat, products: g.products })),
-          p => `${p.product_key}__${slot.slot_number}`,
-        );
-        if (!rows) continue;
+        const slotKey = (p: SuggestProduct) => `${p.product_key}__${slot.slot_number}`;
+        const flatGroups = slotGroups.map(g => ({ cat: g.cat, products: g.products }));
+        // Deux exemplaires par bon : production (sans colonne TRANSF.) et magasin.
+        const rowsProd = buildTableRows(flatGroups, slotKey, false);
+        if (!rowsProd) continue;
+        const rowsMag = buildTableRows(flatGroups, slotKey, true);
 
-        // Deux exemplaires par bon : un pour la production, un pour le magasin.
-        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rows, 'Copie Production'));
-        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rows, 'Copie Magasin'));
+        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsProd, 'Copie Production', false));
+        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsMag, 'Copie Magasin', true));
       }
     } else {
-      const rows = buildTableRows(groups, p => `${p.product_key}__total`);
-      if (rows) {
-        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rows, 'Copie Production'));
-        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rows, 'Copie Magasin'));
+      const totalKey = (p: SuggestProduct) => `${p.product_key}__total`;
+      const rowsProd = buildTableRows(groups, totalKey, false);
+      if (rowsProd) {
+        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rowsProd, 'Copie Production', false));
+        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, buildTableRows(groups, totalKey, true), 'Copie Magasin', true));
       }
     }
 
