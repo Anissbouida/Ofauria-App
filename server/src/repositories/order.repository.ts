@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { getLocalDateString } from '../utils/timezone.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 
 export const orderRepository = {
@@ -215,12 +215,17 @@ export const orderRepository = {
     const runner = client ?? db;
     // Advisory lock prevents concurrent orders from generating the same number
     await runner.query(`SELECT pg_advisory_xact_lock(hashtext('order_number'))`);
-    const tz = getUserTimezone();
     const today = getLocalDateString();
+    // La sequence derive du plus grand numero deja emis pour le prefixe du jour,
+    // pas d'un COUNT sur created_at : une commande saisie retroactivement porte
+    // un created_at passe et sortirait du comptage, ce qui regenererait le meme
+    // numero (violation de orders_order_number_key).
     const result = await runner.query(
-      `SELECT COUNT(*) FROM orders WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
+      `SELECT COALESCE(MAX(SUBSTRING(order_number FROM '[0-9]+$')::int), 0) + 1 AS seq
+       FROM orders WHERE order_number LIKE $1`,
+      [`CMD-${today}-%`]
     );
-    const seq = parseInt((result.rows[0] as Record<string, string>).count, 10) + 1;
+    const seq = parseInt((result.rows[0] as Record<string, string>).seq, 10);
     return `CMD-${today}-${String(seq).padStart(4, '0')}`;
   },
 
