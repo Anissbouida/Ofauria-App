@@ -11,6 +11,7 @@ import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportR
 import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
+import { useAuth } from '../../context/AuthContext';
 
 /** Rapprochement journalier (ISOLE, TEMPORAIRE) : vendu + invendu - recu = ecart (negatif = manque ; repli appro si recu non saisi). */
 
@@ -1155,6 +1156,9 @@ function NumCell({ value, locked, onDraft, onCommit, tint }: {
 
 function DayView() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // L'appro est la reference du rapprochement : seul l'admin peut la modifier.
+  const canEditAppro = user?.role === 'admin';
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [showAdd, setShowAdd] = useState(false);
@@ -1262,10 +1266,10 @@ function DayView() {
     updateLineMut.mutate({ lineId: l.id, patch: { [field]: value } });
   };
 
-  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine, tint?: ColTint) => (
+  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine, tint?: ColTint, extraLocked = false) => (
     <NumCell
       value={edits[l.id]?.[field] ?? String(l[serverField] ?? '')}
-      locked={locked}
+      locked={locked || extraLocked}
       tint={tint}
       onDraft={v => setEdits(s => ({ ...s, [l.id]: { ...s[l.id], [field]: v } }))}
       onCommit={raw => { if (edits[l.id]?.[field] !== undefined) commit(l, field, raw); }}
@@ -1447,7 +1451,7 @@ function DayView() {
                       )}
                       {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro)}</td>
+                    <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro, !canEditAppro)}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
                       {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
                       {num(l.recu_qty) > 0 && num(l.recu_qty) !== num(l.appro_qty) && (() => {

@@ -15,6 +15,11 @@ function storeOf(req: AuthRequest): string | null {
   return req.user!.storeId ?? null;
 }
 
+/** L'appro est la reference du rapprochement : seul l'admin peut l'ecrire. */
+function isAdmin(req: AuthRequest): boolean {
+  return req.user?.role === 'admin';
+}
+
 export const reconciliationController = {
   // ─── Journees ──────────────────────────────────────────────────────────
 
@@ -99,6 +104,10 @@ export const reconciliationController = {
   /** Edition inline d'une ligne. Body: { approQty?, recuQty?, venduQty?, invenduQty?, unitPrice? } */
   async updateLine(req: AuthRequest, res: Response) {
     const b = req.body as Record<string, unknown>;
+    if (num(b.approQty) !== undefined && !isAdmin(req)) {
+      res.status(403).json({ success: false, error: { message: "Seul un administrateur peut modifier l'appro" } });
+      return;
+    }
     const line = await reconciliationRepository.updateLine(req.params.lineId, {
       approQty: num(b.approQty),
       recuQty: num(b.recuQty),
