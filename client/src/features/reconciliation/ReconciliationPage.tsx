@@ -719,6 +719,7 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>+</button>
         </div>
         <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
         <button className="odoo-btn-secondary" onClick={() => setShowAddProduct(true)}>
           <Plus size={14} /> Produit
         </button>
@@ -775,6 +776,7 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             ? <><Loader2 size={14} className="animate-spin" /> Validation…</>
             : <><Check size={14} /> Valider l'appro ({activeCount})</>}
         </button>
+        </div>
       </div>
 
       {isLoading ? (
