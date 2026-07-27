@@ -120,6 +120,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [viewDetail, setViewDetail] = useState<Record<string, any> | null>(null);
   const [searchEmp, setSearchEmp] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -287,7 +288,10 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
       : <ArrowDown size={13} className="text-teal-600 ml-1 inline" />;
   };
 
+  const inactiveCount = employees.length - activeCount;
   const filteredEmp = employees.filter((e: Record<string, any>) => {
+    if (statusFilter === 'active' && !e.is_active) return false;
+    if (statusFilter === 'inactive' && e.is_active) return false;
     if (!searchEmp) return true;
     const s = searchEmp.toLowerCase();
     return (e.first_name as string).toLowerCase().includes(s) || (e.last_name as string).toLowerCase().includes(s) || (e.cin as string || '').toLowerCase().includes(s);
@@ -391,6 +395,17 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
 
       {/* Search panel + action */}
       <div className="odoo-search-panel">
+        <div className="odoo-view-switcher">
+          <button onClick={() => setStatusFilter('active')} className={statusFilter === 'active' ? 'active' : ''}>
+            Actifs <span style={{ opacity: 0.6, marginLeft: 4 }}>({activeCount})</span>
+          </button>
+          <button onClick={() => setStatusFilter('inactive')} className={statusFilter === 'inactive' ? 'active' : ''}>
+            Inactifs <span style={{ opacity: 0.6, marginLeft: 4 }}>({inactiveCount})</span>
+          </button>
+          <button onClick={() => setStatusFilter('all')} className={statusFilter === 'all' ? 'active' : ''}>
+            Tous <span style={{ opacity: 0.6, marginLeft: 4 }}>({employees.length})</span>
+          </button>
+        </div>
         <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
         <input type="text" placeholder="Rechercher employé, CIN..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
           className="odoo-search-input" style={{ flex: 1 }} />
