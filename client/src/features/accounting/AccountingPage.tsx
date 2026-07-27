@@ -3322,10 +3322,16 @@ function ChequesTab() {
             <X size={11} /> Reinitialiser
           </button>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
-          {groups.length !== filtered.length
-            ? `${groups.length} cheques · ${filtered.length} paiements${filtered.length !== data.length ? ` (sur ${data.length})` : ''}`
-            : filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
+        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <span>
+            {groups.length !== filtered.length
+              ? `${groups.length} cheques · ${filtered.length} paiements${filtered.length !== data.length ? ` (sur ${data.length})` : ''}`
+              : filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
+          </span>
+          <span style={{ fontWeight: 700, color: 'var(--theme-text-primary)', fontFamily: 'ui-monospace, monospace' }}
+            title="Total des montants des cheques affiches">
+            Total : {n(groups.reduce((s, g) => s + g.totalAmount, 0))} DH
+          </span>
         </span>
       </div>
 
