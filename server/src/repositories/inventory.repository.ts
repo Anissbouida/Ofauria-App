@@ -174,7 +174,9 @@ export const inventoryRepository = {
    *   - Ingredients : ingredient_lots (chaque reception/achat cree exactement un lot
    *     avec quantity_received + unit_cost + received_at). On EXCLUT les lots
    *     d'ajustement positif (lot_number 'ADJ-%') qui ne sont pas des achats.
-   *   - Emballages : packaging_stock_transactions (entrees type reception/restock).
+   *   - Emballages : packaging_stock_transactions (entrees type reception/restock,
+   *     plus les ajustements lies a un BC — corrections admin d'une qty livree
+   *     erronee — pour que le montant reflete la quantite corrigee, pas la saisie).
    *
    * La table `ingredients` ne contient que des matieres premieres alimentaires
    * (emballages et equipements sont des tables distinctes) : aucun filtre de
@@ -231,8 +233,8 @@ export const inventoryRepository = {
          JOIN packaging_items pi ON pi.id = pst.packaging_id
          WHERE (${from} IS NULL OR pst.created_at::date >= ${from})
            AND (${to}   IS NULL OR pst.created_at::date <= ${to})
-           AND pst.quantity_change > 0
-           AND pst.type IN ('reception', 'restock')
+           AND ((pst.type IN ('reception', 'restock') AND pst.quantity_change > 0)
+                OR (pst.type = 'adjustment' AND pst.reference_type = 'purchase_order'))
            ${packStore}
        ),
        u AS (SELECT * FROM ing UNION ALL SELECT * FROM pack)
