@@ -176,6 +176,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#000}
 .section:last-child{page-break-after:auto}
 .header{text-align:center;font-size:15pt;font-weight:bold;margin-bottom:2px;text-transform:capitalize;background:#222;color:#fff;padding:6px 8px;letter-spacing:1px}
 .sub-header{text-align:center;font-size:9.5pt;color:#555;margin:5px 0 7px}
+.copy-tag{text-align:center;margin:4px 0 7px}
+.copy-tag span{display:inline-block;border:1.5px solid #000;padding:2px 14px;font-size:9.5pt;font-weight:700;letter-spacing:1px;text-transform:uppercase}
 table{width:100%;border-collapse:collapse;margin-bottom:8px}
 th,td{border:1px solid #444;padding:4px 7px;font-size:10.5pt;vertical-align:middle}
 th{background:#e0e0e0;text-align:center;font-size:10pt;font-weight:700;text-transform:uppercase}
@@ -232,42 +234,71 @@ function printBonSection(
   function buildTableRows(
     groups: { cat: string; products: SuggestProduct[] }[],
     qtyKey: (p: SuggestProduct) => string,
-    withReste: boolean,
   ): string {
     let rows = '';
     let hasAny = false;
-    const colSpan = withReste ? 6 : 5;
     for (const { cat, products } of groups) {
       const active = products.filter(p => num(slotQty[qtyKey(p)]) > 0);
       if (active.length === 0) continue;
       hasAny = true;
-      rows += `<tr class="cat-row"><td colspan="${colSpan}">${esc(cat)}</td></tr>`;
+      rows += `<tr class="cat-row"><td colspan="5">${esc(cat)}</td></tr>`;
       for (const p of active) {
         const dj = darijaOf(p.product_name);
-        rows += `<tr><td>${esc(p.product_name)}</td><td class="qty">${esc(slotQty[qtyKey(p)] || '')}</td><td></td><td></td>${withReste ? '<td></td>' : ''}<td class="darija">${esc(dj)}</td></tr>`;
+        rows += `<tr><td>${esc(p.product_name)}</td><td class="qty">${esc(slotQty[qtyKey(p)] || '')}</td><td></td><td></td><td class="darija">${esc(dj)}</td></tr>`;
       }
     }
     return hasAny ? rows : '';
   }
 
-  function buildPage(section: string, slotLabel: string | null, jour: string, dateFmt: string, chef: string, rows: string, withReste: boolean): string {
+  function buildPage(section: string, slotLabel: string | null, jour: string, dateFmt: string, chef: string, rows: string, copie: string): string {
     const title = slotLabel
       ? `${esc(section)} &mdash; ${esc(slotLabel)}`
       : esc(section);
-    const restCol = withReste ? '<col style="width:68px">' : '';
-    const restTh = withReste ? '<th>RESTE</th>' : '';
-    const restTd = withReste ? '<td></td>' : '';
     return `<div class="section">
       <div class="header">${title}</div>
       <div class="sub-header">Commande Magasin &mdash; ${jour} ${dateFmt}</div>
+      <div class="copy-tag"><span>${esc(copie)}</span></div>
       <table>
-        <colgroup><col style="width:36%"><col style="width:68px"><col style="width:68px"><col style="width:68px">${restCol}<col style="width:auto"></colgroup>
-        <thead><tr><th style="text-align:left">PRODUIT</th><th>QT&Eacute;</th><th>RE&Ccedil;U</th><th>TRANSF.</th>${restTh}<th style="text-align:right">بالدارجة</th></tr></thead>
+        <colgroup><col style="width:36%"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:auto"></colgroup>
+        <thead><tr><th style="text-align:left">PRODUIT</th><th>QT&Eacute;</th><th>RE&Ccedil;U</th><th>TRANSF.</th><th style="text-align:right">بالدارجة</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td>${restTd}<td></td></tr></tfoot>
+        <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td><td></td></tr></tfoot>
       </table>
       <div class="signatures">
         <div class="sig-box"><strong>${chef} (Production)</strong><br>Nom :<br>Signature :</div>
+        <div class="sig-box"><strong>Responsable Magasin</strong><br>Nom :<br>Signature :</div>
+      </div>
+    </div>`;
+  }
+
+  /** Fiche globale de fin de journee : tous les produits commandes de la journee
+      (total tous creneaux), avec colonne vide RESTE a remplir par la vendeuse. */
+  function buildRestePage(section: string, groups: { cat: string; products: SuggestProduct[] }[], jour: string, dateFmt: string): string {
+    let rows = '';
+    let hasAny = false;
+    for (const { cat, products } of groups) {
+      const active = products.filter(p => num(slotQty[`${p.product_key}__total`]) > 0);
+      if (active.length === 0) continue;
+      hasAny = true;
+      rows += `<tr class="cat-row"><td colspan="3">${esc(cat)}</td></tr>`;
+      for (const p of active) {
+        const dj = darijaOf(p.product_name);
+        rows += `<tr><td>${esc(p.product_name)}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
+      }
+    }
+    if (!hasAny) return '';
+    return `<div class="section">
+      <div class="header">${esc(section)} &mdash; RESTE FIN DE JOURN&Eacute;E</div>
+      <div class="sub-header">Produits command&eacute;s de la journ&eacute;e &mdash; ${jour} ${dateFmt} &mdash; noter le reste non vendu</div>
+      <div class="copy-tag"><span>Copie Magasin</span></div>
+      <table>
+        <colgroup><col style="width:44%"><col style="width:110px"><col style="width:auto"></colgroup>
+        <thead><tr><th style="text-align:left">PRODUIT</th><th>RESTE</th><th style="text-align:right">بالدارجة</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td></tr></tfoot>
+      </table>
+      <div class="signatures">
+        <div class="sig-box"><strong>Vendeuse (Magasin)</strong><br>Nom :<br>Signature :</div>
         <div class="sig-box"><strong>Responsable Magasin</strong><br>Nom :<br>Signature :</div>
       </div>
     </div>`;
@@ -286,12 +317,8 @@ function printBonSection(
     const hasSlots = slotList.length > 0;
     const chef = SECTION_CHEF[section] || `Chef ${section}`;
 
-    const isLastSection = section === orderedSections[orderedSections.length - 1];
-
     if (hasSlots) {
-      for (let si = 0; si < slotList.length; si++) {
-        const slot = slotList[si];
-        const isLastSlot = isLastSection && si === slotList.length - 1;
+      for (const slot of slotList) {
         const slotGroups = groups.map(({ cat, products }) => {
           const catSlots = slotsByCategory[cat] || [];
           const matchSlot = catSlots.find(s => s.slot_number === slot.slot_number);
@@ -302,17 +329,23 @@ function printBonSection(
         const rows = buildTableRows(
           slotGroups.map(g => ({ cat: g.cat, products: g.products })),
           p => `${p.product_key}__${slot.slot_number}`,
-          isLastSlot,
         );
         if (!rows) continue;
 
-        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rows, isLastSlot));
+        // Deux exemplaires par bon : un pour la production, un pour le magasin.
+        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rows, 'Copie Production'));
+        pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rows, 'Copie Magasin'));
       }
     } else {
-      const rows = buildTableRows(groups, p => `${p.product_key}__total`, isLastSection);
-      if (!rows) continue;
-      pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rows, isLastSection));
+      const rows = buildTableRows(groups, p => `${p.product_key}__total`);
+      if (rows) {
+        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rows, 'Copie Production'));
+        pages.push(buildPage(section, null, jourSemaine, dateFormatted, chef, rows, 'Copie Magasin'));
+      }
     }
+
+    const restePage = buildRestePage(section, groups, jourSemaine, dateFormatted);
+    if (restePage) pages.push(restePage);
   }
 
   if (pages.length === 0) { notify.error('Aucun produit avec quantité > 0'); return; }
