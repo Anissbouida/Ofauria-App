@@ -3106,16 +3106,49 @@ function ChequesTab() {
     setMethodFilter('all');
   };
 
-  // Compteurs globaux (toujours sur l'ensemble des cheques, peu importe le filtre)
+  // Sous-ensemble pour les KPIs : on applique les filtres "contextuels"
+  // (beneficiaire, methode, periode d'echeance, recherche texte) mais PAS
+  // le statut ni la fenetre pipeline — sinon cliquer "En attente" mettrait
+  // "Encaisses" a zero. Ainsi les cartes reagissent aux filtres de la barre
+  // sans se contredire entre elles.
+  const dataForKpis = useMemo(() => {
+    const fromDate = dueFromDate ? parseLocalDate(dueFromDate) : null;
+    const toDate = dueToDate ? parseLocalDate(dueToDate) : null;
+    const q = searchTerm.trim().toLowerCase();
+    return data.filter(c => {
+      if (supplierFilter !== 'all') {
+        const name = c.supplier_name || c.employee_name || c.category_name || '';
+        if (name !== supplierFilter) return false;
+      }
+      if (methodFilter !== 'all' && c.payment_method !== methodFilter) return false;
+      if (fromDate || toDate) {
+        const dueStr = c.check_date || c.invoice_due_date;
+        if (!dueStr) return false;
+        const due = parseLocalDate(dueStr.slice(0, 10));
+        if (fromDate && due < fromDate) return false;
+        if (toDate && due > toDate) return false;
+      }
+      if (q) {
+        const hay = [
+          c.supplier_name, c.employee_name, c.category_name,
+          c.check_number, c.invoice_number, c.purchase_order_number,
+          c.description, c.reference,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [data, supplierFilter, methodFilter, dueFromDate, dueToDate, searchTerm]);
+
   const counts = useMemo(() => {
     const acc = { pending: 0, cashed: 0, overdue: 0, totalPending: 0, totalCashed: 0 };
-    data.forEach(c => {
+    dataForKpis.forEach(c => {
       if (c.status === 'cashed') { acc.cashed++; acc.totalCashed += parseFloat(c.amount) || 0; }
       else { acc.pending++; acc.totalPending += parseFloat(c.amount) || 0; }
       if (c.status === 'overdue') acc.overdue++;
     });
     return acc;
-  }, [data]);
+  }, [dataForKpis]);
 
   // Decoupage des cheques en attente par fenetre d'echeance — meme logique
   // que le Pilotage (uncashedChecks). Sert au bandeau pipeline.
@@ -3127,7 +3160,7 @@ function ChequesTab() {
       next30d: 0, next30dCount: 0,
       later: 0, laterCount: 0,
     };
-    data.filter(c => c.status !== 'cashed').forEach(c => {
+    dataForKpis.filter(c => c.status !== 'cashed').forEach(c => {
       const amt = parseFloat(c.amount) || 0;
       // L'echeance effective doit utiliser la meme priorite que :
       //   - le statut calcule par le backend (COALESCE(check_date, invoice_due_date))
@@ -3148,7 +3181,7 @@ function ChequesTab() {
       }
     });
     return acc;
-  }, [data]);
+  }, [dataForKpis]);
 
   const fmtDate = (iso: string | null) => {
     if (!iso) return '—';
