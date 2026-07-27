@@ -1459,31 +1459,34 @@ export const invoiceRepository = {
          -- d'effet, on garde tel quel.
          --
          -- Si plusieurs paiements partiels, on prend le plus tardif (celui
-         -- qui a cloture la facture).
-         SELECT
+         -- qui a cloture la facture). DISTINCT ON garde aussi la METHODE de
+         -- ce dernier paiement (cash/check/transfer...) pour que l'UI puisse
+         -- afficher et filtrer les lignes par mode de paiement.
+         SELECT DISTINCT ON (p.invoice_id)
            p.invoice_id,
-           MAX(
+           CASE
+             WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
+             ELSE p.payment_date
+           END AS effective_date,
+           p.payment_method
+         FROM payments p
+         WHERE p.invoice_id IS NOT NULL
+           -- Exclut les paiements non concretises (cheques pas encore encaisses).
+           -- Une facture status=paid dont le seul paiement est un cheque en
+           -- attente n'a alors aucune ligne ici -> exclue des charges
+           -- (logique tresorerie stricte).
+           AND (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
+           AND (
              CASE
                WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
                ELSE p.payment_date
              END
-           ) AS effective_date
-         FROM payments p
-         JOIN invoices inv ON inv.id = p.invoice_id
-         WHERE p.invoice_id IS NOT NULL
-           -- Exclut les paiements non concretises (cheques pas encore encaisses).
-           -- Sans cette ligne, une facture status=paid avec uniquement un
-           -- cheque en attente apparaitrait dans les charges avec un MAX(NULL).
-           AND (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
-         GROUP BY p.invoice_id
-         -- Une facture "paid" qui n'a que des cheques en attente sera
-         -- exclue ici (HAVING MAX retourne NULL -> filtre downstream).
-         HAVING MAX(
+           ) IS NOT NULL
+         ORDER BY p.invoice_id,
            CASE
              WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at
              ELSE p.payment_date
-           END
-         ) IS NOT NULL
+           END DESC
        ),
        ii_lines AS (
          -- Ratio TTC/HT par facture : reparti au prorata sur chaque ligne pour
@@ -1495,10 +1498,14 @@ export const invoiceRepository = {
            inv.id                                      AS invoice_id,
            inv.invoice_number                          AS invoice_number,
            pi.effective_date                           AS payment_date,
+           pi.payment_method                           AS payment_method,
            inv.status                                  AS invoice_status,
            inv.supplier_id                             AS supplier_id,
            inv.category_id                             AS invoice_category_id,
            ii.category_id                              AS line_category_id,
+           -- Categorie propre a l'ARTICLE (ingredient ou emballage) : repli
+           -- intermediaire entre la categorie de ligne et celle de la facture.
+           COALESCE(ing.category_id, pkg.category_id)  AS item_category_id,
            'invoice_item'::text                        AS line_source,
            inv.purchase_order_id                       AS invoice_po_id,
            ii.ingredient_id                            AS ingredient_id,
@@ -1512,6 +1519,7 @@ export const invoiceRepository = {
          JOIN invoices inv ON inv.id = ii.invoice_id
          JOIN paid_invoices pi ON pi.invoice_id = inv.id
          LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = ii.packaging_id
          LEFT JOIN products p ON p.id = ii.product_id
          ${where}
        ),
@@ -1521,10 +1529,12 @@ export const invoiceRepository = {
            inv.id                                                  AS invoice_id,
            inv.invoice_number                                      AS invoice_number,
            pi.effective_date                                       AS payment_date,
+           pi.payment_method                                       AS payment_method,
            inv.status                                              AS invoice_status,
            inv.supplier_id                                         AS supplier_id,
            inv.category_id                                         AS invoice_category_id,
            rvi.category_id                                         AS line_category_id,
+           COALESCE(ing.category_id, pkg.category_id)              AS item_category_id,
            'reception_item'::text                                  AS line_source,
            inv.purchase_order_id                                   AS invoice_po_id,
            rvi.ingredient_id                                       AS ingredient_id,
@@ -1550,6 +1560,7 @@ export const invoiceRepository = {
        )
        SELECT
          al.id, al.invoice_id, al.invoice_number, al.payment_date,
+         al.payment_method,
          al.invoice_status, al.supplier_id, al.ingredient_id,
          al.designation, al.ingredient_category,
          al.quantity, al.unit_price, al.amount,
@@ -1560,8 +1571,9 @@ export const invoiceRepository = {
          s.name                AS supplier_name,
          po.order_number       AS purchase_order_number,
          -- category_id (effective) : categorie propre a la ligne si definie,
-         -- sinon repli sur celle de la facture. Sert de root a la cascade UI.
-         COALESCE(al.line_category_id, al.invoice_category_id) AS category_id,
+         -- sinon celle de l'ARTICLE (ingredient/emballage), sinon repli sur
+         -- celle de la facture. Sert de root a la cascade UI.
+         COALESCE(al.line_category_id, al.item_category_id, al.invoice_category_id) AS category_id,
          -- Description : sert d'etiquette dans la colonne Designation cote UI.
          CONCAT(
            al.designation,
@@ -1574,7 +1586,9 @@ export const invoiceRepository = {
          --   - si une categorie de ligne a ete choisie explicitement, on
          --     affiche cette feuille (le choix de l'utilisateur prime) ;
          --   - sinon on prefere la categorie de l'ingredient (farines /
-         --     produits_laitiers / ...) plutot que celle de la facture.
+         --     produits_laitiers / ...), puis celle de l'article emballage,
+         --     et en dernier recours celle de la facture (ec suit la meme
+         --     cascade que category_id, donc ec.name = feuille effective).
          COALESCE(
            CASE WHEN al.line_category_id IS NOT NULL THEN ec.name END,
            al.ingredient_category,
@@ -1583,7 +1597,7 @@ export const invoiceRepository = {
        FROM all_lines al
        LEFT JOIN suppliers s ON s.id = al.supplier_id
        LEFT JOIN purchase_orders po ON po.id = al.invoice_po_id
-       LEFT JOIN expense_categories ec ON ec.id = COALESCE(al.line_category_id, al.invoice_category_id)
+       LEFT JOIN expense_categories ec ON ec.id = COALESCE(al.line_category_id, al.item_category_id, al.invoice_category_id)
        ORDER BY al.payment_date DESC, al.invoice_number, al.sort_at`,
       values
     );
@@ -1791,6 +1805,7 @@ export const paymentRepository = {
     purchaseOrderId?: string; checkNumber?: string; checkDate?: string; checkAttachmentUrl?: string;
     withholdingTypeId?: string | null; withholdingAmount?: number | null;
     avoirAmount?: number | null;
+    sessionId?: string; // Section 4.3 — paid-out/paid-in rattache a une session ouverte
   }) {
     // ─── Cas simple : pas de facture liee ───────────────────────────────
     if (!data.invoiceId) {
@@ -1800,14 +1815,16 @@ export const paymentRepository = {
         const result = await db.query(
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
+            session_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
           [data.reference || null, data.type, data.categoryId || null, null,
            data.supplierId || null, data.employeeId || null, data.amount,
            data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
            data.storeId || null, data.purchaseOrderId || null,
            data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
-           data.withholdingTypeId || null, data.withholdingAmount ?? null]
+           data.withholdingTypeId || null, data.withholdingAmount ?? null,
+           data.sessionId || null]
         );
         return result.rows[0];
       }
@@ -1818,14 +1835,16 @@ export const paymentRepository = {
         const result = await client.query(
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
+            session_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
           [data.reference || null, data.type, data.categoryId || null, null,
            data.supplierId || null, data.employeeId || null, data.amount,
            data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
            data.storeId || null, data.purchaseOrderId || null,
            data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
-           data.withholdingTypeId || null, data.withholdingAmount ?? null]
+           data.withholdingTypeId || null, data.withholdingAmount ?? null,
+           data.sessionId || null]
         );
         await client.query('SAVEPOINT ledger_gen');
         try {

@@ -2210,7 +2210,16 @@ function ChargesTab() {
     [invoiceLines, otherPayments]
   );
 
-  const grandTotal = useMemo(() => outgoing.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [outgoing]);
+  // Base des cartes de stats : suit le filtre methode (ex : « Espèces » →
+  // Total sorties = sorties cash uniquement). Les lignes de facture portent
+  // desormais la methode du paiement qui a clôture la facture (cash / cheque
+  // encaisse / virement), remontee par findLineExpenses.
+  const statBase = useMemo(
+    () => filterMethod === 'all' ? outgoing : outgoing.filter(p => ((p.payment_method as string) || '') === filterMethod),
+    [outgoing, filterMethod]
+  );
+
+  const grandTotal = useMemo(() => statBase.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [statBase]);
 
   // Category tree helpers
   const catMap = useMemo(() => {
@@ -2251,16 +2260,17 @@ function ChargesTab() {
   }, [categories, outgoing]);
 
 
-  // Top 3 root categories by total for stat cards
+  // Top 3 root categories by total for stat cards (suit le filtre methode)
   const topCats = useMemo(() => rootCatsWithPayments
     .map(rc => ({
       ...rc,
-      total: (outgoing.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(rc.id))
+      total: (statBase.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(rc.id))
         .reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0)),
     }))
+    .filter(rc => rc.total > 0 || filterMethod === 'all')
     .sort((a, b) => b.total - a.total)
     .slice(0, 3),
-  [rootCatsWithPayments, outgoing]);
+  [rootCatsWithPayments, statBase, filterMethod]);
 
   // Leaf categories available for the current root filter
   const availableLeaves = useMemo(() => {
@@ -2385,9 +2395,9 @@ function ChargesTab() {
       {/* Stat tiles: total + top 3 categories */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
+          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties{filterMethod !== 'all' ? ` — ${getPaymentLabel(filterMethod)}` : ''}</div>
           <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(grandTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{outgoing.length} opération{outgoing.length > 1 ? 's' : ''}</div>
+          <div className="odoo-stat-card-sub">{statBase.length} opération{statBase.length > 1 ? 's' : ''}</div>
         </div>
         {topCats.map(tc => (
           <div key={tc.id} className="odoo-stat-card">
