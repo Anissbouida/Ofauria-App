@@ -134,6 +134,7 @@ const PRINT_SECTIONS: Record<string, string> = {
   'PÂTISSERIE CLASSIQUE': 'PÂTISSERIE',
   'PÂTISSERIE PREMIUM': 'PÂTISSERIE',
   'CAKE ET MUFFINS': 'PÂTISSERIE',
+  'ENTREMETS': 'PÂTISSERIE',
   'BAGUETTE': 'BOULANGERIE',
   'BAGUETTE TRADITION': 'BOULANGERIE',
   'PAIN ROND': 'BOULANGERIE',
@@ -157,7 +158,7 @@ function getSectionName(category: string): string {
     if (upper === key.toUpperCase()) return section;
   }
   if (upper.includes('VIENNOIS')) return 'VIENNOISERIE';
-  if (upper.includes('PÂTISS') || upper.includes('CAKE') || upper.includes('COOKIE') || upper.includes('MACARON') || upper.includes('MUFFIN') || upper.includes('ÉCLAIR') || upper.includes('FINANCIER') || upper.includes('BROWNI')) return 'PÂTISSERIE';
+  if (upper.includes('PÂTISS') || upper.includes('ENTREMET') || upper.includes('CAKE') || upper.includes('COOKIE') || upper.includes('MACARON') || upper.includes('MUFFIN') || upper.includes('ÉCLAIR') || upper.includes('FINANCIER') || upper.includes('BROWNI')) return 'PÂTISSERIE';
   if (upper.includes('BAGUETTE') || upper.includes('PAIN') || upper.includes('BAG ')) return 'BOULANGERIE';
   if (upper.includes('BELDI') || upper.includes('BARQUETTE') || upper.includes('FEKKAS') || upper.includes('GHRIBA') || upper.includes('SABLÉ')) return 'BELDI';
   if (upper.includes('SALÉ') || upper.includes('MSEMEN') || upper.includes('HARCHA') || upper.includes('HARSHA')) return 'SALÉ';
