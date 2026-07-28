@@ -345,6 +345,16 @@ function printBonSection(
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsProd, 'Copie Production', false));
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsMag, 'Copie Magasin', true));
       }
+      // Catégories de la section sans créneau configuré (ex. ENTREMETS) : elles
+      // n'ont qu'une quantité totale — bon unique sur la journée, sinon elles
+      // n'apparaîtraient que sur la fiche Reste.
+      const noSlotGroups = groups.filter(({ cat }) => (slotsByCategory[cat] || []).length === 0);
+      const totalKey = (p: SuggestProduct) => `${p.product_key}__total`;
+      const rowsProdTotal = buildTableRows(noSlotGroups, totalKey, false);
+      if (rowsProdTotal) {
+        pages.push(buildPage(section, 'JOURNÉE', jourSemaine, dateFormatted, chef, rowsProdTotal, 'Copie Production', false));
+        pages.push(buildPage(section, 'JOURNÉE', jourSemaine, dateFormatted, chef, buildTableRows(noSlotGroups, totalKey, true), 'Copie Magasin', true));
+      }
     } else {
       const totalKey = (p: SuggestProduct) => `${p.product_key}__total`;
       const rowsProd = buildTableRows(groups, totalKey, false);
