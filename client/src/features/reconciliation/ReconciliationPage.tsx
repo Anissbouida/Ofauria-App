@@ -13,7 +13,7 @@ import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 import { useAuth } from '../../context/AuthContext';
 
-/** Rapprochement journalier (ISOLE, TEMPORAIRE) : vendu + invendu - recu = ecart (negatif = manque ; repli appro si recu non saisi). */
+/** Rapprochement journalier (ISOLE, TEMPORAIRE) : vendu + invendu - recu = ecart (negatif = manque ; l'appro n'entre pas dans le calcul). */
 
 function nf(v: number, dec = 2) {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -1301,7 +1301,7 @@ function DayView() {
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
           <strong>Écart = Vendu + Reste − Reçu.</strong> Négatif = manque à expliquer (perte / vol / erreur),
-          positif = surplus. Si le reçu n'est pas saisi, l'appro sert de base de calcul.
+          positif = surplus. L'écart se calcule uniquement sur le reçu saisi — l'appro n'entre pas dans le calcul.
           Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir le reste compté.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>

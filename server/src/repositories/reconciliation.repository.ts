@@ -4,7 +4,7 @@ import { db } from '../config/database.js';
  * Module Rapprochement journalier (ISOLE, TEMPORAIRE).
  *
  * Bilan produit par jour : vendu + invendu - recu = ecart (mig 247 ;
- * negatif = manque, repli sur l'appro quand le recu n'est pas saisi).
+ * negatif = manque ; l'appro n'entre pas dans le calcul, mig 257).
  *  - approvisionne : saisi manuellement (ce qui part au magasin) ;
  *  - recu : confirme par la caissiere a la reception ;
  *  - vendu : importe du CSV Loyverse (item-sales-summary) ;
