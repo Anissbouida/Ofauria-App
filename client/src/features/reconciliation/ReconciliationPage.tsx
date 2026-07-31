@@ -1476,7 +1476,7 @@ function DayView() {
                         );
                       })()}
                     </td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu)}</td>
+                    <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu, l.source_vendu === 'loyverse_import')}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.invendu.bg }}>{numCell(l, 'invenduQty', 'invendu_qty', COL_TINTS.invendu)}</td>
                     <td style={{ textAlign: 'right' }}>{numCell(l, 'unitPrice', 'unit_price')}</td>
                     <td style={{ textAlign: 'right', padding: '4px 8px' }}>
