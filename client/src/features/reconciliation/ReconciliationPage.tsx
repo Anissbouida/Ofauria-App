@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
@@ -208,6 +208,313 @@ tfoot td{font-weight:bold;border-top:2px solid #000}
 
 const SECTION_ORDER = ['VIENNOISERIE', 'SALÉ', 'PÂTISSERIE', 'BOULANGERIE', 'BELDI'];
 
+// ─── Capacité chariot four (BOULANGERIE) ─────────────────────────
+// 1 chariot = 18 plaques. Une plaque contient N pièces selon la catégorie
+// (baguette: 10, pain rond: 20). Le total baguette+pain d'un même créneau
+// (= une cuisson) ne doit pas dépasser 18 plaques. Constantes en dur : module
+// jetable, à déplacer en ref_entries si le paramétrage devient utile.
+const OVEN_CAPACITY_PLAQUES = 18;
+const CATEGORY_PIECES_PAR_PLAQUE: Record<string, number> = {
+  'BAGUETTE': 10,
+  'BAGUETTE TRADITION': 10,
+  'PAIN ROND': 20,
+  'PAIN SANDWICH': 20,
+};
+function piecesParPlaque(category: string | null | undefined): number {
+  if (!category) return 0;
+  return CATEGORY_PIECES_PAR_PLAQUE[category.toUpperCase()] || 0;
+}
+
+/** Clé de regroupement horaire d'un créneau : les bons d'une même section se
+ *  regroupent par heure réelle, pas par numéro de créneau — le n°1 peut être
+ *  6h30 pour BAGUETTE mais 9h30 pour BAGUETTE TRADITION. */
+function slotTimeKey(s: SupplySlot): string {
+  return s.target_time ? s.target_time.slice(0, 5) : s.label.trim().toUpperCase();
+}
+
+type ChariotItem = { name: string; qty: number };
+type Chariot = { plaques: number; items: ChariotItem[] };
+
+/** Plan de cuisson d'un créneau : chariots de 18 plaques max. Les plaques se
+ *  comptent PAR FAMILLE : les variétés d'une même catégorie partagent les
+ *  plaques (ex. 4 variétés de tradition à 5 pièces = 2 plaques mélangées). */
+function packSlotChariots(
+  products: SuggestProduct[],
+  slotQty: Record<string, string>,
+  slotNumOf: (p: SuggestProduct) => number | undefined,
+): Chariot[] {
+  const byCat = new Map<string, { pcs: number; qty: number; items: ChariotItem[] }>();
+  for (const p of products) {
+    const pcs = piecesParPlaque(p.category);
+    if (pcs === 0) continue;
+    const sn = slotNumOf(p);
+    if (sn === undefined) continue;
+    const q = num(slotQty[`${p.product_key}__${sn}`]);
+    if (q <= 0) continue;
+    const cat = p.category || '';
+    if (!byCat.has(cat)) byCat.set(cat, { pcs, qty: 0, items: [] });
+    const e = byCat.get(cat)!;
+    e.qty += q;
+    e.items.push({ name: p.product_name, qty: q });
+  }
+  const groups = [...byCat.values()]
+    .map(e => ({ ...e, plaques: Math.ceil(e.qty / e.pcs) }))
+    .sort((a, b) => b.plaques - a.plaques);
+
+  const chariots: Chariot[] = [];
+  let cur: Chariot = { plaques: 0, items: [] };
+  for (const g of groups) {
+    let plaquesLeft = g.plaques;
+    const queue = g.items.map(i => ({ ...i }));
+    while (plaquesLeft > 0) {
+      if (cur.plaques >= OVEN_CAPACITY_PLAQUES) {
+        chariots.push(cur);
+        cur = { plaques: 0, items: [] };
+      }
+      const take = Math.min(plaquesLeft, OVEN_CAPACITY_PLAQUES - cur.plaques);
+      // Dernier lot de la famille : embarque tout le reliquat (plaque partielle).
+      let qtyTake = take === plaquesLeft
+        ? queue.reduce((t, i) => t + i.qty, 0)
+        : take * g.pcs;
+      while (qtyTake > 0 && queue.length > 0) {
+        const it = queue[0];
+        const t = Math.min(it.qty, qtyTake);
+        cur.items.push({ name: it.name, qty: t });
+        it.qty -= t;
+        qtyTake -= t;
+        if (it.qty <= 0) queue.shift();
+      }
+      cur.plaques += take;
+      plaquesLeft -= take;
+    }
+  }
+  if (cur.plaques > 0) chariots.push(cur);
+  return chariots;
+}
+
+/** Optimisation des fournées : le four ne doit jamais tourner à moitié vide.
+ *  1. Le total de chaque famille par cuisson est arrondi à la plaque entière
+ *     (les variétés partagent les plaques).
+ *  2. Fournées de la journée = ceil(total plaques / 18) ; chaque cuisson vise
+ *     des chariots PLEINS (18 plaques) ; la cuisson la plus chargée absorbe
+ *     l'unique fournée partielle.
+ *  3. Les plaques sont déplacées entre cuissons (famille la plus chargée l'abord)
+ *     pour atteindre ces cibles. Les produits « touched » (saisis à la main)
+ *     comptent dans les charges mais ne sont jamais modifiés. */
+function optimizeFournees(
+  products: SuggestProduct[],
+  slotQty: Record<string, string>,
+  slotsByCategory: Record<string, SupplySlot[]>,
+  touched?: Set<string>,
+): Record<string, string> {
+  const next = { ...slotQty };
+  const bou = products.filter(p => piecesParPlaque(p.category) > 0);
+  if (bou.length === 0) return next;
+  const isMovable = (p: SuggestProduct) => !touched || !touched.has(p.product_key);
+  const cats = [...new Set(bou.map(p => p.category || ''))]
+    .filter(c => (slotsByCategory[c] || []).length > 0);
+  // Cuissons = heures réelles : deux catégories peuvent partager la même heure.
+  const timeInfo = new Map<string, string>();
+  const snOf = new Map<string, number>(); // `${cat}|${timeKey}` → slot_number
+  for (const cat of cats) {
+    for (const s of slotsByCategory[cat] || []) {
+      const tk = slotTimeKey(s);
+      if (!timeInfo.has(tk)) timeInfo.set(tk, s.target_time || '99:99');
+      snOf.set(`${cat}|${tk}`, s.slot_number);
+    }
+  }
+  const timeKeys = [...timeInfo.keys()]
+    .sort((a, b) => timeInfo.get(a)!.localeCompare(timeInfo.get(b)!));
+  if (timeKeys.length === 0) return next;
+
+  const prodsOf = (cat: string) => bou.filter(p => (p.category || '') === cat);
+  const qtyAt = (p: SuggestProduct, sn: number) => num(next[`${p.product_key}__${sn}`]);
+  const setQty = (p: SuggestProduct, sn: number, v: number) => { next[`${p.product_key}__${sn}`] = String(v); };
+  const catTotal = (cat: string, tk: string) => {
+    const sn = snOf.get(`${cat}|${tk}`);
+    return sn === undefined ? 0 : prodsOf(cat).reduce((t, p) => t + qtyAt(p, sn), 0);
+  };
+  /** Écart entre la quantité d'une famille sur une cuisson et sa part théorique
+   *  selon les % du paramétrage. Positif = la famille dépasse sa part (candidate
+   *  au délestage), négatif = en dessous (candidate au remplissage). Préserve
+   *  le profil horaire voulu : baguettes dominantes au petit-déjeuner, etc. */
+  const devFromShare = (cat: string, tk: string) => {
+    const catSlots = slotsByCategory[cat] || [];
+    const s = catSlots.find(x => slotTimeKey(x) === tk);
+    if (!s) return 0;
+    const totPct = catSlots.reduce((t, x) => t + num(x.default_pct), 0) || 100;
+    const dayTotal = timeKeys.reduce((t, k) => t + catTotal(cat, k), 0);
+    return catTotal(cat, tk) - dayTotal * num(s.default_pct) / totPct;
+  };
+
+  // 1. Quantification PAR PRODUIT : chaque ligne de cuisson est un multiple de
+  // plaque entière (10/20/30… baguettes, 20/40/60… pains) — jamais 97 ou 42 —
+  // avec minimum une plaque par ligne. Le total du jour est converti en
+  // plaques (arrondi, min 1) puis les plaques sont réparties sur les créneaux
+  // selon leurs % (plus fort reste) ; une plaque unique va au créneau principal.
+  for (const cat of cats) {
+    const pcs = piecesParPlaque(cat);
+    const catSlots = slotsByCategory[cat] || [];
+    if (catSlots.length === 0) continue;
+    const totalPct = catSlots.reduce((t, s) => t + num(s.default_pct), 0);
+    const mainSlot = [...catSlots].sort((a, b) => num(b.default_pct) - num(a.default_pct))[0];
+    for (const p of prodsOf(cat)) {
+      if (!isMovable(p)) continue;
+      const total = catSlots.reduce((t, s) => t + qtyAt(p, s.slot_number), 0);
+      if (total <= 0) continue;
+      const plaques = Math.max(1, Math.round(total / pcs));
+      const alloc = new Map<number, number>();
+      if (plaques === 1) {
+        alloc.set(mainSlot.slot_number, 1);
+      } else {
+        const shares = catSlots.map(s =>
+          plaques * (totalPct > 0 ? num(s.default_pct) / totalPct : 1 / catSlots.length));
+        const baseAlloc = shares.map(x => Math.floor(x));
+        let remP = plaques - baseAlloc.reduce((a, b) => a + b, 0);
+        shares
+          .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+          .sort((a, b) => b.frac - a.frac)
+          .forEach(o => { if (remP > 0) { baseAlloc[o.i] += 1; remP -= 1; } });
+        catSlots.forEach((s, i) => alloc.set(s.slot_number, baseAlloc[i]));
+      }
+      for (const s of catSlots) setQty(p, s.slot_number, (alloc.get(s.slot_number) || 0) * pcs);
+    }
+  }
+
+  // 1bis. Plafond par famille : une famille ne dépasse jamais un chariot plein
+  // par cuisson (18 plaques = 180 baguettes / 360 pains) — pas de baguettes
+  // orphelines sur le chariot des pains. L'excédent part vers la cuisson de la
+  // même famille ayant le plus de marge.
+  for (const cat of cats) {
+    const pcs = piecesParPlaque(cat);
+    const catSlots = slotsByCategory[cat] || [];
+    if (catSlots.length < 2) continue;
+    const capQty = OVEN_CAPACITY_PLAQUES * pcs;
+    for (const tk of timeKeys) {
+      const sn = snOf.get(`${cat}|${tk}`);
+      if (sn === undefined) continue;
+      let capGuard = 60;
+      while (catTotal(cat, tk) > capQty && capGuard-- > 0) {
+        const others = catSlots
+          .map(s => ({ s, tk2: slotTimeKey(s) }))
+          .filter(o => o.tk2 !== tk && catTotal(cat, o.tk2) + pcs <= capQty)
+          // La cuisson la plus en dessous de sa part % reçoit d'abord.
+          .sort((a, b) => devFromShare(cat, a.tk2) - devFromShare(cat, b.tk2));
+        const dest = others[0];
+        if (!dest) break;
+        // Une plaque ENTIÈRE d'un seul produit : les multiples restent intacts.
+        const donor = prodsOf(cat)
+          .filter(p => isMovable(p) && qtyAt(p, sn) >= pcs)
+          .sort((a, b) => qtyAt(b, sn) - qtyAt(a, sn))[0];
+        if (!donor) break;
+        setQty(donor, sn, qtyAt(donor, sn) - pcs);
+        setQty(donor, dest.s.slot_number, qtyAt(donor, dest.s.slot_number) + pcs);
+      }
+    }
+  }
+
+  // 2. Charges (plaques par famille, variétés mélangées) et cibles par cuisson.
+  const loadOf = (tk: string) => cats.reduce((t, cat) => {
+    const q = catTotal(cat, tk);
+    return q > 0 ? t + Math.ceil(q / piecesParPlaque(cat)) : t;
+  }, 0);
+  const loads = timeKeys.map(loadOf);
+  const totalPlaques = loads.reduce((a, b) => a + b, 0);
+  if (totalPlaques === 0) return next;
+  const fournees = Math.ceil(totalPlaques / OVEN_CAPACITY_PLAQUES);
+  // Règle métier : les cuissons du petit-déjeuner (les 2 premières) font UNE
+  // fournée maximum — le matin c'est la baguette fraîche, pas la production de
+  // masse. Les fournées supplémentaires partent en réassort de mi-journée /
+  // après-midi (cf. planification manuelle du chef : 11h30 à 2 chariots).
+  const morningIdx = new Set<number>(
+    timeKeys.length > 2 ? timeKeys.slice(0, 2).map((_, i) => i) : [],
+  );
+  const base = loads.map((l, i) => {
+    const f = Math.floor(l / OVEN_CAPACITY_PLAQUES);
+    return morningIdx.has(i) ? Math.min(1, f) : f;
+  });
+  let rem = fournees - base.reduce((a, b) => a + b, 0);
+  loads
+    .map((l, i) => ({ i, frac: l % OVEN_CAPACITY_PLAQUES }))
+    .sort((a, b) => b.frac - a.frac)
+    .forEach(o => {
+      if (rem > 0 && !(morningIdx.has(o.i) && base[o.i] >= 1)) { base[o.i] += 1; rem -= 1; }
+    });
+  // Reliquat (tout le monde plafonné) : sur les cuissons hors matin.
+  while (rem > 0) {
+    let idx = -1;
+    for (let i = 0; i < timeKeys.length; i++) {
+      if (morningIdx.has(i)) continue;
+      if (idx === -1 || base[i] < base[idx]) idx = i;
+    }
+    if (idx === -1) break;
+    base[idx] += 1;
+    rem -= 1;
+  }
+  const targets = base.map(f => f * OVEN_CAPACITY_PLAQUES);
+  const partial = targets.reduce((a, b) => a + b, 0) - totalPlaques;
+  if (partial > 0) {
+    // La fournée partielle va sur une cuisson hors matin (la plus chargée) ;
+    // à défaut, n'importe laquelle.
+    let idx = -1;
+    for (let i = 0; i < timeKeys.length; i++) {
+      if (morningIdx.has(i)) continue;
+      if (targets[i] >= partial && (idx === -1 || loads[i] > loads[idx])) idx = i;
+    }
+    if (idx === -1) {
+      for (let i = 0; i < timeKeys.length; i++) {
+        if (targets[i] >= partial && (idx === -1 || loads[i] > loads[idx])) idx = i;
+      }
+    }
+    if (idx >= 0) targets[idx] -= partial;
+  }
+
+  // 3. Rééquilibrage : déplace une plaque à la fois de la cuisson excédentaire
+  // vers la déficitaire, via la famille la plus chargée couvrant les deux.
+  let guard = 500;
+  while (guard-- > 0) {
+    const cur = timeKeys.map(loadOf);
+    let from = -1, to = -1;
+    for (let i = 0; i < timeKeys.length; i++) {
+      if (from === -1 && cur[i] > targets[i]) from = i;
+      if (to === -1 && cur[i] < targets[i]) to = i;
+    }
+    if (from === -1 || to === -1) break;
+    const tkFrom = timeKeys[from], tkTo = timeKeys[to];
+    const cands = cats
+      .filter(cat => snOf.has(`${cat}|${tkFrom}`) && snOf.has(`${cat}|${tkTo}`)
+        // Plafond famille à destination : jamais plus d'un chariot plein.
+        && catTotal(cat, tkTo) + piecesParPlaque(cat) <= OVEN_CAPACITY_PLAQUES * piecesParPlaque(cat)
+        // Donneur = une plaque ENTIÈRE d'un seul produit (multiples intacts).
+        && prodsOf(cat).some(p => isMovable(p) && qtyAt(p, snOf.get(`${cat}|${tkFrom}`)!) >= piecesParPlaque(cat)))
+      // Priorité à la famille qui dépasse le plus sa part % sur la cuisson
+      // source ET qui est le plus en dessous sur la destination — le profil
+      // horaire (baguettes au petit-déjeuner…) est préservé.
+      .sort((a, b) =>
+        (devFromShare(b, tkFrom) - devFromShare(b, tkTo)) / piecesParPlaque(b)
+        - (devFromShare(a, tkFrom) - devFromShare(a, tkTo)) / piecesParPlaque(a));
+    const cat = cands[0];
+    if (!cat) break; // Rien de déplaçable entre ces cuissons : best effort.
+    const pcs = piecesParPlaque(cat);
+    const snFrom = snOf.get(`${cat}|${tkFrom}`)!;
+    const snTo = snOf.get(`${cat}|${tkTo}`)!;
+    const donor = prodsOf(cat)
+      .filter(p => isMovable(p) && qtyAt(p, snFrom) >= pcs)
+      .sort((a, b) => qtyAt(b, snFrom) - qtyAt(a, snFrom))[0];
+    if (!donor) break;
+    setQty(donor, snFrom, qtyAt(donor, snFrom) - pcs);
+    setQty(donor, snTo, qtyAt(donor, snTo) + pcs);
+  }
+
+  // 4. Totaux par produit recalculés.
+  for (const p of bou) {
+    const sns = (slotsByCategory[p.category || ''] || []).map(s => s.slot_number);
+    if (sns.length === 0) continue;
+    next[`${p.product_key}__total`] = String(sns.reduce((t, sn) => t + qtyAt(p, sn), 0));
+  }
+  return next;
+}
+
 function printBonSection(
   date: string,
   grouped: Record<string, SuggestProduct[]>,
@@ -316,27 +623,33 @@ function printBonSection(
   const pages: string[] = [];
   for (const section of orderedSections) {
     const groups = bySection[section];
-    const allSlots = new Map<number, SupplySlot>();
+    const allSlots = new Map<string, SupplySlot>();
     for (const { cat } of groups) {
       for (const s of (slotsByCategory[cat] || [])) {
-        if (!allSlots.has(s.slot_number)) allSlots.set(s.slot_number, s);
+        const k = slotTimeKey(s);
+        if (!allSlots.has(k)) allSlots.set(k, s);
       }
     }
-    const slotList = [...allSlots.values()].sort((a, b) => a.sort_order - b.sort_order || a.slot_number - b.slot_number);
+    const slotList = [...allSlots.values()].sort((a, b) =>
+      (a.target_time || '99:99').localeCompare(b.target_time || '99:99') || a.sort_order - b.sort_order || a.slot_number - b.slot_number);
     const hasSlots = slotList.length > 0;
     const chef = SECTION_CHEF[section] || `Chef ${section}`;
 
     if (hasSlots) {
       for (const slot of slotList) {
-        const slotGroups = groups.map(({ cat, products }) => {
-          const catSlots = slotsByCategory[cat] || [];
-          const matchSlot = catSlots.find(s => s.slot_number === slot.slot_number);
-          if (!matchSlot) return null;
-          return { cat, products, slotNum: matchSlot.slot_number };
-        }).filter(Boolean) as { cat: string; products: SuggestProduct[]; slotNum: number }[];
+        const k = slotTimeKey(slot);
+        // Le numéro de créneau correspondant à cette heure varie par catégorie :
+        // on résout la clé de quantité produit par produit.
+        const slotNumByProduct = new Map<string, number>();
+        const flatGroups: { cat: string; products: SuggestProduct[] }[] = [];
+        for (const { cat, products } of groups) {
+          const matchSlot = (slotsByCategory[cat] || []).find(s => slotTimeKey(s) === k);
+          if (!matchSlot) continue;
+          for (const p of products) slotNumByProduct.set(p.product_key, matchSlot.slot_number);
+          flatGroups.push({ cat, products });
+        }
 
-        const slotKey = (p: SuggestProduct) => `${p.product_key}__${slot.slot_number}`;
-        const flatGroups = slotGroups.map(g => ({ cat: g.cat, products: g.products }));
+        const slotKey = (p: SuggestProduct) => `${p.product_key}__${slotNumByProduct.get(p.product_key)}`;
         // Deux exemplaires par bon : production (sans colonne TRANSF.) et magasin.
         const rowsProd = buildTableRows(flatGroups, slotKey, false);
         if (!rowsProd) continue;
@@ -400,7 +713,8 @@ ${pages.join('')}
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
   const qc = useQueryClient();
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  // La fiche de besoin prépare la production du LENDEMAIN : date par défaut J+1.
+  const [date, setDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
   const [slotQty, setSlotQty] = useState<Record<string, string>>({});
   const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -513,7 +827,9 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           init[`${p.product_key}__total`] = String(total);
         }
       }
-      return init;
+      // Boulangerie : quantités arrondies à la plaque par famille et cuissons
+      // à chariots pleins (18 plaques), une seule fournée partielle par jour.
+      return optimizeFournees(data.products, init, slotsByCategory, touchedRef.current);
     });
   }, [data, slotsByCategory, riskPct, catRiskPct]);
 
@@ -620,6 +936,35 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
     () => allProducts.filter(p => num(slotQty[`${p.product_key}__total`]) > 0).length,
     [allProducts, slotQty],
   );
+
+  /** Plan de cuisson par créneau boulangerie : plaques totales + dispatching
+   *  baguette/pain en chariots de 18 plaques. */
+  const bouCuissons = useMemo(() => {
+    // Regroupement par heure réelle (slotTimeKey), pas par numéro de créneau :
+    // deux catégories peuvent avoir des horaires différents pour le même n°.
+    const slotMap = new Map<string, { label: string; time: string | null }>();
+    for (const [cat, catSlots] of Object.entries(slotsByCategory)) {
+      if (piecesParPlaque(cat) === 0) continue;
+      for (const s of catSlots) {
+        const k = slotTimeKey(s);
+        if (!slotMap.has(k)) slotMap.set(k, { label: s.label, time: s.target_time || null });
+      }
+    }
+    if (slotMap.size === 0) return [];
+    const bouProds = allProducts.filter(p => piecesParPlaque(p.category) > 0);
+    return Array.from(slotMap.entries())
+      .map(([k, info]) => {
+        const slotNumOf = (p: SuggestProduct) =>
+          (slotsByCategory[p.category || 'Non classé'] || []).find(s => slotTimeKey(s) === k)?.slot_number;
+        const chariots = packSlotChariots(bouProds, slotQty, slotNumOf);
+        const plaques = chariots.reduce((s, c) => s + c.plaques, 0);
+        return { key: k, ...info, plaques, chariots };
+      })
+      .filter(c => c.plaques > 0)
+      .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+  }, [slotsByCategory, allProducts, slotQty]);
+
+  const [showCuissonPlan, setShowCuissonPlan] = useState(false);
 
   /** Lignes de la fiche courante (quantités par créneau + produits retirés). */
   const buildFicheLines = (): ReconFicheLineInput[] =>
@@ -789,6 +1134,83 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         </button>
         </div>
       </div>
+
+      {bouCuissons.length > 0 && (
+        <div style={{
+          border: '1px solid var(--theme-bg-separator)', borderRadius: 6,
+          padding: '8px 12px', background: 'var(--theme-bg-sidebar, #f5f5f5)',
+          fontSize: '0.75rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
+            onClick={() => setShowCuissonPlan(v => !v)}
+            title="Cliquez pour afficher le plan de cuisson détaillé (dispatching par chariot)">
+            <strong style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Package size={13} /> {showCuissonPlan ? '▾' : '▸'} Cuissons boulangerie
+            </strong>
+            <span style={{ color: 'var(--theme-text-muted)' }}>
+              1 chariot = {OVEN_CAPACITY_PLAQUES} plaques par cuisson · baguette 10/plaque · pain 20/plaque
+            </span>
+            <div style={{ flex: 1 }} />
+            {bouCuissons.map(c => (
+              <span key={c.key}
+                title={`${c.plaques} plaques à cuire → ${c.chariots.length} fournée(s) de ${OVEN_CAPACITY_PLAQUES} plaques max — cliquez pour le détail`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '3px 8px', borderRadius: 4, fontWeight: 600,
+                  fontFamily: 'ui-monospace, monospace',
+                  background: 'var(--theme-bg-card, #fff)', color: 'var(--theme-text-primary)',
+                  border: '1px solid var(--theme-bg-separator)',
+                }}>
+                <span style={{ opacity: 0.7 }}>{c.label}{c.time ? ` · ${c.time.slice(0, 5)}` : ''}</span>
+                <span>{c.plaques} pl</span>
+                <span style={{
+                  padding: '0 6px', borderRadius: 3, fontWeight: 700,
+                  background: c.chariots.length > 1 ? '#fff4e0' : '#e9f7ef',
+                  color: c.chariots.length > 1 ? '#8a4b00' : '#0e7c3a',
+                }}>
+                  {c.chariots.length} chariot{c.chariots.length > 1 ? 's' : ''}
+                </span>
+              </span>
+            ))}
+          </div>
+          {showCuissonPlan && (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+              {bouCuissons.map(c => (
+                <div key={c.key} style={{ flex: '1 1 260px', minWidth: 240 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                    {c.label}{c.time ? ` · ${c.time.slice(0, 5)}` : ''} — {c.plaques} plaques
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {c.chariots.map((ch, i) => (
+                      <div key={i} style={{
+                        background: 'var(--theme-bg-card, #fff)',
+                        border: '1px solid var(--theme-bg-separator)', borderRadius: 4,
+                        padding: '5px 8px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: 2 }}>
+                          <span>Chariot {i + 1}</span>
+                          <span style={{ fontFamily: 'ui-monospace, monospace',
+                            color: ch.plaques === OVEN_CAPACITY_PLAQUES ? '#8a4b00' : '#0e7c3a' }}>
+                            {ch.plaques}/{OVEN_CAPACITY_PLAQUES} pl
+                          </span>
+                        </div>
+                        {ch.items.map((it, j) => (
+                          <div key={j} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span>{it.name}</span>
+                            <span style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>
+                              {it.qty} pcs
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
