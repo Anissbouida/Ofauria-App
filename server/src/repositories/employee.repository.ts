@@ -853,7 +853,8 @@ export const payrollRepository = {
         // 'double' = deux shifts le meme jour : couvre 1 jour calendaire et
         // ajoute 1 jour supplementaire au brut (taux journalier base/26).
         `SELECT
-          COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos')) as present_days,
+          COUNT(*) FILTER (WHERE status IN ('present', 'late')) as work_days,
+          COUNT(*) FILTER (WHERE status = 'repos') as repos_days,
           COUNT(*) FILTER (WHERE status = 'double') as double_days,
           COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
           COALESCE(SUM(overtime_minutes), 0) as total_overtime
@@ -864,9 +865,11 @@ export const payrollRepository = {
       );
       const a = att.rows[0];
       const baseSalary = parseFloat(emp.monthly_salary);
+      const workDays = parseInt(a.work_days);
+      const reposDays = parseInt(a.repos_days);
       const doubleDays = parseInt(a.double_days);
       const halfDays = parseInt(a.half_days);
-      const workedDays = parseInt(a.present_days) + 2 * doubleDays + 0.5 * halfDays;
+      const workedDays = workDays + 2 * doubleDays + 0.5 * halfDays;
       const overtimeHours = parseFloat(a.total_overtime) / 60;
       const dailyRate = baseSalary / 26;
       const seniorityYears = parseInt(emp.seniority_years) || 0;
@@ -874,12 +877,9 @@ export const payrollRepository = {
       const cimrRate = parseFloat(emp.cimr_rate) || 0;
 
       // ═══ ETAPE 1 : Salaire brut ═══
-      // Base pointage (regle metier 07/2026, alignee sur la quinzaine) :
-      // toute journee non couverte par un pointage reel sur la base de 26
-      // jours est retenue au taux journalier. Un jour 'absent' pointe et un
-      // jour sans pointage produisent la meme retenue ; mois pointe complet
-      // (presents + repos >= 26) = salaire plein.
-      const coveredDays = parseInt(a.present_days) + doubleDays + 0.5 * halfDays;
+      // coveredDays = jours travaillés + repos (repos = couvert mais pas travaillé).
+      // Toute journée non couverte sur base 26 est retenue au taux journalier.
+      const coveredDays = workDays + reposDays + doubleDays + 0.5 * halfDays;
       const absentDays = Math.max(0, 26 - coveredDays);
       const absenceDeduction = r2(absentDays * dailyRate);
       // Prime d'anciennete sur le salaire effectivement gagne (base moins
