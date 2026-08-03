@@ -53,7 +53,7 @@ export const createEmployeeSchema = z.object({
   emergencyContactPhone: z.string().max(50).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   defaultShiftCode: z.string().max(20).nullable().optional(),
-  payFrequency: z.enum(['monthly', 'weekly']).default('monthly'),
+  payFrequency: z.enum(['monthly', 'weekly', 'biweekly']).default('monthly'),
   weeklySalary: nullableNumber((n) => n.nonnegative('Salaire hebdo >= 0')),
   seniorityYears: nullableNumber((n) => n.int().nonnegative()),
   nbDependents: nullableNumber((n) => n.int().min(0).max(20)),
@@ -149,6 +149,22 @@ export const updateWeeklyPayrollSchema = z.object({
   netAmount: nullableNumber((n) => n.nonnegative()),
   notes: z.string().max(2000).nullable().optional(),
 }).strict('Champ non autorise');
+
+// ─── Biweekly payroll (quinzaine 1-15 / 16-fin de mois) ──────────────────
+// refDate : n'importe quelle date de la quinzaine visee — le serveur la
+// rabat sur les bornes calendaires (quinzaineBounds).
+export const generateBiweeklyPayrollSchema = z.object({
+  refDate: isoDate,
+});
+
+export const updateBiweeklyPayrollSchema = updateWeeklyPayrollSchema;
+
+// Modes alignes sur le CHECK db de biweekly_payroll ('cash','bank','check')
+// — le markPaidSchema generique accepte 'bank_transfer' que la table refuse.
+export const biweeklyMarkPaidSchema = z.object({
+  paymentMethod: z.enum(['cash', 'bank', 'check']).default('cash'),
+  advanceDeduction: nullableNumber((n) => n.nonnegative()).default(0),
+});
 
 // ─── Salary advances ─────────────────────────────────────────────────────
 // Note : amount est REQUIS et > 0. Le helper nullableNumber accepte null mais

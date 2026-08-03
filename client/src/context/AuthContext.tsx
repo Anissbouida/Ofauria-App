@@ -20,6 +20,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Build mobile (Capacitor) : le WebView est sur https://localhost et l'API sur
+// un autre domaine (Cloud Run). Le cookie d'auth SameSite=Strict est rejete
+// par Chrome dans ce cas cross-site. On stocke alors le token en localStorage
+// et on s'appuie sur le fallback Bearer de client.ts. Sur web (proxy Vite),
+// VITE_API_URL est absent -> cookie HttpOnly comme avant.
+const IS_MOBILE_BUILD = !!import.meta.env.VITE_API_URL;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { refreshSettings } = useSettings();
   const [user, setUser] = useState<User | null>(null);
@@ -119,6 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Le backend pose le cookie HttpOnly. On garde le user en memoire,
     // pas de token stocke cote client.
     const result = await authApi.login(data);
+    if (IS_MOBILE_BUILD && result.token) {
+      localStorage.setItem('ofauria_token', result.token);
+    }
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();
@@ -126,6 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithPin = async (pinCode: string) => {
     const result = await authApi.pinLogin(pinCode);
+    if (IS_MOBILE_BUILD && result.token) {
+      localStorage.setItem('ofauria_token', result.token);
+    }
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();

@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { caisseRepository, supplierRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
+import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
@@ -627,6 +628,20 @@ export const paymentController = {
   },
   async create(req: AuthRequest, res: Response) {
     const data = { ...req.body, createdBy: req.user!.userId, storeId: req.user!.storeId };
+
+    // Section 4.3 — Paid-out : si un paiement cash est cree pendant qu'une
+    // session de caisse est ouverte pour l'utilisateur courant, on l'y
+    // rattache pour que cash-register.close() le deduise du montant attendu
+    // du tiroir. Sinon la depense creait un « manquant » artificiel a la
+    // cloture. On skip quand la session est deja en phase de comptage
+    // (closing_started_at posé) pour rester coherent avec le blocage des
+    // ventes (C6).
+    if (data.paymentMethod === 'cash' && !data.sessionId) {
+      const openSession = await cashRegisterRepository.findOpenSession(req.user!.userId);
+      if (openSession && !openSession.closing_started_at) {
+        data.sessionId = openSession.id;
+      }
+    }
 
     // ─── BC OBLIGATOIRE — DESACTIVE TEMPORAIREMENT ───────────────────
     // Pour reactiver : passer ENFORCE_PO_REQUIREMENT a true.

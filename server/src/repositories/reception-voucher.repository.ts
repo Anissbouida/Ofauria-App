@@ -100,6 +100,7 @@ export async function createInvoiceFromPo(
   const poItemDetails = await client.query(
     `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
             COALESCE(ing.name, pkg.name) as ingredient_name,
+            COALESCE(ing.category_id, pkg.category_id) AS line_category_id,
             COALESCE(
               (SELECT rvi.unit_price FROM reception_voucher_items rvi
                WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
@@ -119,6 +120,9 @@ export async function createInvoiceFromPo(
     return {
       ingredientId: (it.ingredient_id as string | null) ?? null,
       packagingId: (it.packaging_id as string | null) ?? null,
+      // Categorie figee au moment de l'achat (celle de l'article), pour que
+      // la ligne garde sa categorie meme si l'article est reclasse plus tard.
+      categoryId: (it.line_category_id as string | null) ?? null,
       description: it.ingredient_name as string,
       quantity: qty,
       unitPrice: price,
@@ -174,9 +178,9 @@ export async function createInvoiceFromPo(
 
   for (const item of invoiceItems) {
     await client.query(
-      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, description, quantity, unit_price, subtotal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [invoice.id, item.ingredientId, item.packagingId, item.description, item.quantity, item.unitPrice, item.subtotal]
+      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, category_id, description, quantity, unit_price, subtotal)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [invoice.id, item.ingredientId, item.packagingId, item.categoryId, item.description, item.quantity, item.unitPrice, item.subtotal]
     );
   }
 

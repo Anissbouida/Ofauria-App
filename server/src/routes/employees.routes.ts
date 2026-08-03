@@ -1,5 +1,5 @@
 import { Router, json as expressJson } from 'express';
-import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController, salaryAdvanceController } from '../controllers/employee.controller.js';
+import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController, biweeklyPayrollController, salaryAdvanceController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -10,6 +10,7 @@ import {
   createLeaveSchema,
   generatePayrollSchema, updatePayrollSchema, markPaidSchema,
   generateWeeklyPayrollSchema, updateWeeklyPayrollSchema,
+  generateBiweeklyPayrollSchema, updateBiweeklyPayrollSchema, biweeklyMarkPaidSchema,
   createAdvanceSchema, updateAdvanceSchema,
   createScheduleSchema, updateScheduleSchema, bulkWeekScheduleSchema,
 } from '../validators/employees.validator.js';
@@ -91,3 +92,12 @@ weeklyPayrollRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MAN
 weeklyPayrollRouter.post('/:id/pay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(markPaidSchema), asyncHandler(weeklyPayrollController.markPaid));
 weeklyPayrollRouter.post('/:id/unpay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(weeklyPayrollController.unmarkPaid));
 weeklyPayrollRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(weeklyPayrollController.remove));
+
+// Biweekly payroll (paie par quinzaine calendaire : 1-15 / 16-fin de mois)
+export const biweeklyPayrollRouter = Router();
+biweeklyPayrollRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(biweeklyPayrollController.list));
+biweeklyPayrollRouter.post('/generate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(generateBiweeklyPayrollSchema), asyncHandler(biweeklyPayrollController.generate));
+biweeklyPayrollRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(updateBiweeklyPayrollSchema), asyncHandler(biweeklyPayrollController.update));
+biweeklyPayrollRouter.post('/:id/pay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(biweeklyMarkPaidSchema), asyncHandler(biweeklyPayrollController.markPaid));
+biweeklyPayrollRouter.post('/:id/unpay', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(biweeklyPayrollController.unmarkPaid));
+biweeklyPayrollRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(biweeklyPayrollController.remove));

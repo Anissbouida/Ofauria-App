@@ -4,6 +4,8 @@ import { productLossRepository } from '../repositories/product-loss.repository.j
 import { productRepository } from '../repositories/product.repository.js';
 import { db } from '../config/database.js';
 import { adjustProductStock, adjustVitrineStock } from '../repositories/product-stock.helper.js';
+import { fromProductLoss, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
+import { FLAGS } from '../config/feature-flags.js';
 
 export const productLossController = {
   async list(req: AuthRequest, res: Response) {
@@ -100,6 +102,24 @@ export const productLossController = {
       // For production losses: ingredients were consumed but no product was made
       // The ingredient deduction is already handled by the production process itself
       // We just record the loss for accounting purposes
+
+      // Section 3.3 — Ecriture comptable de la perte (6114/3421).
+      // Skip pour 'production' (les ingredients ont deja ete valorises cote
+      // plan de production). Non bloquant : SAVEPOINT propre pour ne pas
+      // faire echouer la creation de la perte si le ledger fail.
+      if (FLAGS.LEDGER_AUTOGEN && lossType !== 'production') {
+        await client.query('SAVEPOINT loss_ledger');
+        try {
+          const entry = await fromProductLoss(client, lossResult.rows[0]);
+          if (entry) await persistEntry(client, entry, { userId: req.user!.userId });
+          await client.query('RELEASE SAVEPOINT loss_ledger');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT loss_ledger');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec perte produit', lossResult.rows[0].id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+      }
 
       await client.query('COMMIT');
       res.status(201).json({ success: true, data: lossResult.rows[0] });

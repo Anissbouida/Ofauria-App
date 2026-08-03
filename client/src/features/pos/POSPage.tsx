@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
@@ -18,7 +18,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import POSSettingsModal from './POSSettingsModal';
@@ -113,6 +113,17 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('__top__');
   const [search, setSearch] = useState('');
+  // Recherche debouncee : la requete API ne part que 300 ms apres la derniere
+  // frappe (sinon une requete HTTP par caractere tape).
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Les produits en rupture sont relegues en fin de grille, replies par defaut.
+  const [showRuptures, setShowRuptures] = useState(false);
+  useEffect(() => { setShowRuptures(false); }, [selectedCategory, debouncedSearch]);
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   // Mode de reglement — memorise en localStorage pour pre-selectionner le
@@ -340,21 +351,24 @@ export default function POSPage() {
 
   const isTopCategory = selectedCategory === '__top__';
   const isRecentCategory = selectedCategory === '__recent__';
-  const { data: productsData } = useQuery({
-    queryKey: ['pos-products', { categoryId: selectedCategory, search, isAvailable: 'true' }],
-    queryFn: () => productsApi.list({ categoryId: (isTopCategory || isRecentCategory) ? '' : selectedCategory, search, isAvailable: 'true', limit: '500', strictStore: 'true' }),
-    enabled: !!activeSession && !!user?.storeId && ((!isTopCategory && !isRecentCategory) || !!search),
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['pos-products', { categoryId: selectedCategory, search: debouncedSearch, isAvailable: 'true' }],
+    queryFn: () => productsApi.list({ categoryId: (isTopCategory || isRecentCategory) ? '' : selectedCategory, search: debouncedSearch, isAvailable: 'true', limit: '500', strictStore: 'true' }),
+    enabled: !!activeSession && !!user?.storeId && ((!isTopCategory && !isRecentCategory) || !!debouncedSearch),
   });
   // Fetch all products for recent tab (filter client-side by recent IDs)
-  const { data: allProductsForRecent } = useQuery({
+  const { data: allProductsForRecent, isLoading: recentLoading } = useQuery({
     queryKey: ['pos-products-recent'],
     queryFn: () => productsApi.list({ isAvailable: 'true', limit: '500', strictStore: 'true' }),
-    enabled: !!activeSession && !!user?.storeId && isRecentCategory && !search,
+    enabled: !!activeSession && !!user?.storeId && isRecentCategory && !debouncedSearch,
   });
-  const { data: topSellingData } = useQuery({
+  const { data: topSellingData, isLoading: topLoading } = useQuery({
     queryKey: ['pos-top-selling'],
     queryFn: () => productsApi.topSelling({ limit: '50', days: '30' }),
-    enabled: !!activeSession && !!user?.storeId && isTopCategory && !search,
+    // Toujours charge (pas seulement sur l'onglet Top ventes) : sert aussi a
+    // trier les grilles de categorie par ventes des 30 derniers jours.
+    enabled: !!activeSession && !!user?.storeId,
+    staleTime: 5 * 60_000,
   });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
   // Catalogue complet pour le panneau "Ajouter un produit manquant" de la modal de fermeture.
@@ -378,6 +392,24 @@ export default function POSPage() {
     enabled: !!user?.storeId && showScanner,
     staleTime: 60_000,
   });
+
+  // Cache global des produits deja vus (toutes listes confondues). Le stock
+  // d'une ligne du panier reste lisible meme si le produit n'est plus dans la
+  // liste affichee (ex : changement de categorie apres l'ajout au panier —
+  // sinon "Max 0 en stock" et bouton + grise a tort).
+  const productCacheRef = useRef<Map<string, Record<string, any>>>(new Map());
+  useEffect(() => {
+    const lists: (Record<string, any>[] | undefined)[] = [
+      productsData?.data,
+      allProductsForRecent?.data,
+      topSellingData as Record<string, any>[] | undefined,
+      allCatalogForClose?.data,
+      scanCatalog?.data,
+    ];
+    for (const list of lists) {
+      for (const p of list || []) productCacheRef.current.set(p.id as string, p);
+    }
+  }, [productsData, allProductsForRecent, topSellingData, allCatalogForClose, scanCatalog]);
 
   // Canaux de vente actifs (mig 172) — pour le sélecteur en tête de transaction
   const { data: salesChannels = [] } = useQuery({
@@ -654,6 +686,11 @@ export default function POSPage() {
       setLastReceipt(receipt);
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Rafraichit le stock affiche sur les cartes produit : sans invalidation,
+      // les quantites vitrine restent figees apres la vente.
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products-recent'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-top-selling'] });
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
       setSachetsGiven(0); setSachetReason(''); setUserOverrode(false);
       setDiscountInput(''); setMixedCashInput(''); setMixedCardInput('');
@@ -772,10 +809,10 @@ export default function POSPage() {
     },
   });
 
-  const products = (() => {
-    // TEMP TEST : on affiche TOUS les produits, y compris ceux en rupture.
-    // Les cartes rupture sont grisees + badge "Rupture" (voir grille ci-dessous).
-    if (search) return (productsData?.data || []) as Record<string, any>[];
+  const products = useMemo(() => {
+    // On garde TOUS les produits, y compris ceux en rupture : les ruptures
+    // sont relegues dans une section repliee en fin de grille (voir plus bas).
+    if (debouncedSearch) return (productsData?.data || []) as Record<string, any>[];
     if (isTopCategory) return (topSellingData || []) as Record<string, any>[];
     if (isRecentCategory) {
       const all = (allProductsForRecent?.data || []) as Record<string, any>[];
@@ -785,7 +822,52 @@ export default function POSPage() {
         .filter(Boolean) as Record<string, any>[];
     }
     return (productsData?.data || []) as Record<string, any>[];
-  })();
+  }, [debouncedSearch, productsData, topSellingData, allProductsForRecent, recentProductIds, isTopCategory, isRecentCategory]);
+
+  // Rang de vente 30 j (issu du top 50) : sert a mettre les produits les plus
+  // vendus en tete des grilles de categorie, le reste en alphabetique.
+  const topRank = useMemo(() => {
+    const m = new Map<string, number>();
+    ((topSellingData || []) as Record<string, any>[]).forEach((p, i) => m.set(p.id as string, i));
+    return m;
+  }, [topSellingData]);
+
+  // Grille en deux sections : vendables d'abord, ruptures repliees a la fin.
+  // Un produit expire (DLC/exposition) reste dans la section principale : il
+  // est bloque a la vente mais doit rester visible (la vendeuse doit le
+  // retirer de la vitrine).
+  const { sellableProducts, ruptureProducts } = useMemo(() => {
+    const sellable: Record<string, any>[] = [];
+    const ruptures: Record<string, any>[] = [];
+    for (const p of products) {
+      const stock = parseFloat(p.stock_quantity as string) || 0;
+      if (stock <= 0 && p.is_expired !== true) ruptures.push(p);
+      else sellable.push(p);
+    }
+    // Top ventes (deja trie par ventes) et Recents (ordre de recence) gardent
+    // leur ordre ; les autres vues (categorie, Tous, recherche) sont triees
+    // par ventes 30 j puis nom.
+    if (debouncedSearch || (!isTopCategory && !isRecentCategory)) {
+      const byRankThenName = (a: Record<string, any>, b: Record<string, any>) => {
+        const ra = topRank.get(a.id as string) ?? Infinity;
+        const rb = topRank.get(b.id as string) ?? Infinity;
+        if (ra !== rb) return ra - rb;
+        return String(a.name).localeCompare(String(b.name), 'fr');
+      };
+      sellable.sort(byRankThenName);
+      ruptures.sort(byRankThenName);
+    }
+    return { sellableProducts: sellable, ruptureProducts: ruptures };
+  }, [products, topRank, debouncedSearch, isTopCategory, isRecentCategory]);
+
+  // Etat de chargement de la grille (skeleton) selon la source affichee.
+  const gridLoading = debouncedSearch
+    ? productsLoading
+    : isTopCategory
+      ? topLoading
+      : isRecentCategory
+        ? recentLoading
+        : productsLoading;
   // Subtotal :
   //   - unit : prix × nb pièces
   //   - g    : (poids_g / 1000) × prix/kg
@@ -828,7 +910,10 @@ export default function POSPage() {
   };
 
   const getProductStock = (productId: string) => {
-    const p = products.find((p: Record<string, any>) => p.id === productId);
+    // Cache global plutot que la liste affichee : le stock d'une ligne du
+    // panier reste correct meme apres un changement de categorie/recherche.
+    const p = productCacheRef.current.get(productId)
+      || products.find((p: Record<string, any>) => p.id === productId);
     return p ? parseFloat(p.stock_quantity as string) || 0 : 0;
   };
 
@@ -1032,6 +1117,113 @@ export default function POSPage() {
     if (scanned.sale_unit === 'weight') setShowScanner(false);
     addToCart(scanned);
     return scanned.name as string;
+  };
+
+  // Raccourcis clavier globaux (onglet Vente) : F2 = focus recherche,
+  // F9 = ouvrir l'encaissement, Echap = fermer le numpad quantite.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (posTab !== 'sell') return;
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+      if (e.key === 'Escape' && numpadItem) {
+        closeNumpad();
+        return;
+      }
+      if (e.key === 'F9') {
+        if (cart.length === 0 || checkoutMutation.isPending) return;
+        if (showPaymentModal || showUnpaidModal || weightModal || receiptData || showScanner || numpadItem) return;
+        if (!sachetReasonOK) { notify.error('Indiquez un motif pour le sachet supplémentaire'); return; }
+        e.preventDefault();
+        // Meme preparation que le bouton Encaisser : montant donne remis a zero.
+        setCashGiven(null);
+        setCashGivenInput('');
+        setShowPaymentModal(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [posTab, cart.length, sachetReasonOK, showPaymentModal, showUnpaidModal, weightModal, receiptData, showScanner, numpadItem, closeNumpad, checkoutMutation.isPending]);
+
+  // Carte produit de la grille — partagee entre la section "disponibles" et la
+  // section "ruptures" repliee.
+  const renderProductCard = (p: Record<string, any>) => {
+    const stock = parseFloat(p.stock_quantity as string) || 0;
+    const outOfStock = stock <= 0;
+    const isAlerted = stockAlert?.productId === p.id;
+    const threshold = parseFloat(p.stock_min_threshold as string) || 0;
+    const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
+    // Phase A — DLV/DDE expiree : produit non vendable, on grise + bloque l'add to cart
+    const isExpired = p.is_expired === true;
+    // Phase C — DLV/DDE proche (< 24h) : badge orange warning
+    const nowMs = Date.now();
+    const dlvMs = p.nearest_dlv ? new Date(p.nearest_dlv as string).getTime() : null;
+    const ddeMs = p.nearest_dde ? new Date(p.nearest_dde as string).getTime() : null;
+    const dlvCriticalH = dlvMs ? (dlvMs - nowMs) / 3600000 : Infinity;
+    const ddeCriticalH = ddeMs ? (ddeMs - nowMs) / 3600000 : Infinity;
+    const minH = Math.min(dlvCriticalH, ddeCriticalH);
+    const isDeadlineSoon = !isExpired && minH < 24 && minH > 0;
+    return (
+      <button key={p.id as string} onClick={() => (!outOfStock || ALLOW_NEGATIVE_STOCK) && !isExpired && addToCart(p)}
+        disabled={(outOfStock && !ALLOW_NEGATIVE_STOCK) || isExpired}
+        title={isExpired ? 'DLC ou exposition vitrine atteinte — vente bloquee' : ''}
+        className={`rounded-xl p-2 text-left transition-all border flex flex-col relative ${GRID_DIMS[terminalPrefs.gridSize].cardH} ${
+          isExpired
+            ? 'bg-red-50 border-red-300 opacity-60 cursor-not-allowed'
+            : outOfStock
+            ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
+            : isAlerted
+              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+              : isLowStock
+                ? 'bg-white border-red-200 hover:shadow-lg hover:border-red-300 hover:scale-[1.02] active:scale-[0.98]'
+                : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
+        }`}>
+        {isExpired && (
+          <span className="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full z-10">
+            DLC/exposition expiree
+          </span>
+        )}
+        {isDeadlineSoon && (
+          <span className="absolute top-1 left-1 text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full z-10">
+            {Math.round(minH)}h restant
+          </span>
+        )}
+        {isLowStock && !isExpired && (
+          <span className="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full z-10 flex items-center gap-0.5">
+            <AlertTriangle size={9} /> {stock}
+          </span>
+        )}
+        {/* Stock vitrine visible en un coup d'oeil (produits vendables sans alerte) */}
+        {!outOfStock && !isLowStock && !isExpired && (
+          <span className="absolute top-1 right-1 text-[9px] font-bold text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-full z-10" title="Stock vitrine">
+            {p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(1).replace(/\.0$/, '')} kg` : `×${Math.floor(stock)}`}
+          </span>
+        )}
+        {outOfStock && (
+          <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
+        )}
+        {isAlerted && (
+          <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
+            <span className="bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg">
+              {stockAlert?.message}
+            </span>
+          </span>
+        )}
+        <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+          {p.image_url ? (
+            <img src={serverUrl(p.image_url as string)} alt="" loading="lazy" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
+          ) : (
+            <span className="text-3xl">🥖</span>
+          )}
+        </div>
+        <span className="font-medium text-xs line-clamp-2 leading-tight mt-1.5">{p.name as string}</span>
+        <span className={`font-bold text-sm mt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
+      </button>
+    );
   };
 
   const isCashierRole = user && ['cashier', 'saleswoman'].includes(user.role);
@@ -1270,8 +1462,17 @@ export default function POSPage() {
             <div className="px-3 py-2 shrink-0 flex items-center gap-2">
               <div className="relative flex-1">
                 <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400" />
+                <input ref={searchInputRef} type="text" placeholder="Rechercher un produit..." value={search} onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setSearch(''); (e.target as HTMLInputElement).blur(); }
+                    // Entree avec un seul produit vendable affiche : ajout direct.
+                    if (e.key === 'Enter' && debouncedSearch && sellableProducts.length === 1 && sellableProducts[0].is_expired !== true) {
+                      addToCart(sellableProducts[0]);
+                      setSearch('');
+                    }
+                  }}
+                  className="w-full pl-10 pr-12 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400" />
+                <kbd className="hidden md:block absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 pointer-events-none">F2</kbd>
               </div>
               {terminalPrefs.scanner && (
                 <button onClick={() => setShowScanner(true)}
@@ -1282,78 +1483,50 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Product Grid */}
+            {/* Product Grid — disponibles d'abord, ruptures repliees a la fin */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
-              <div className="grid gap-2 content-start" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_DIMS[terminalPrefs.gridSize].minPx}px, 1fr))` }}>
-                {products.map((p: Record<string, any>) => {
-                  const stock = parseFloat(p.stock_quantity as string) || 0;
-                  const outOfStock = stock <= 0;
-                  const isAlerted = stockAlert?.productId === p.id;
-                  const threshold = parseFloat(p.stock_min_threshold as string) || 0;
-                  const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
-                  // Phase A — DLV/DDE expiree : produit non vendable, on grise + bloque l'add to cart
-                  const isExpired = p.is_expired === true;
-                  // Phase C — DLV/DDE proche (< 24h) : badge orange warning
-                  const nowMs = Date.now();
-                  const dlvMs = p.nearest_dlv ? new Date(p.nearest_dlv as string).getTime() : null;
-                  const ddeMs = p.nearest_dde ? new Date(p.nearest_dde as string).getTime() : null;
-                  const dlvCriticalH = dlvMs ? (dlvMs - nowMs) / 3600000 : Infinity;
-                  const ddeCriticalH = ddeMs ? (ddeMs - nowMs) / 3600000 : Infinity;
-                  const minH = Math.min(dlvCriticalH, ddeCriticalH);
-                  const isDeadlineSoon = !isExpired && minH < 24 && minH > 0;
-                  return (
-                    <button key={p.id as string} onClick={() => (!outOfStock || ALLOW_NEGATIVE_STOCK) && !isExpired && addToCart(p)}
-                      disabled={(outOfStock && !ALLOW_NEGATIVE_STOCK) || isExpired}
-                      title={isExpired ? 'DLC ou exposition vitrine atteinte — vente bloquee' : ''}
-                      className={`rounded-xl p-2 text-left transition-all border flex flex-col relative ${GRID_DIMS[terminalPrefs.gridSize].cardH} ${
-                        isExpired
-                          ? 'bg-red-50 border-red-300 opacity-60 cursor-not-allowed'
-                          : outOfStock
-                          ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
-                          : isAlerted
-                            ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
-                            : isLowStock
-                              ? 'bg-white border-red-200 hover:shadow-lg hover:border-red-300 hover:scale-[1.02] active:scale-[0.98]'
-                              : 'bg-white border-gray-100 hover:shadow-lg hover:border-primary-300 hover:scale-[1.02] active:scale-[0.98]'
-                      }`}>
-                      {isExpired && (
-                        <span className="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full z-10">
-                          DLC/exposition expiree
-                        </span>
+              {gridLoading ? (
+                <div className="grid gap-2 content-start" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_DIMS[terminalPrefs.gridSize].minPx}px, 1fr))` }}>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div key={i} className={`rounded-xl bg-gray-200/60 animate-pulse ${GRID_DIMS[terminalPrefs.gridSize].cardH}`} />
+                  ))}
+                </div>
+              ) : sellableProducts.length === 0 && ruptureProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <Search size={32} className="mb-2 text-gray-300" />
+                  <p className="text-sm">
+                    {debouncedSearch
+                      ? <>Aucun produit pour « {debouncedSearch} »</>
+                      : isRecentCategory
+                        ? 'Aucun produit récent — les derniers articles vendus apparaîtront ici'
+                        : 'Aucun produit dans cette catégorie'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-2 content-start" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_DIMS[terminalPrefs.gridSize].minPx}px, 1fr))` }}>
+                    {sellableProducts.map(renderProductCard)}
+                  </div>
+                  {ruptureProducts.length > 0 && (
+                    <>
+                      <button onClick={() => setShowRuptures(v => !v)}
+                        className="w-full flex items-center gap-2 my-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-gray-600 transition-colors">
+                        <span className="flex-1 h-px bg-gray-200" />
+                        <ChevronRight size={13} className={`transition-transform ${showRuptures ? 'rotate-90' : ''}`} />
+                        <span>En rupture</span>
+                        <span className="bg-gray-200 text-gray-500 rounded-full px-2 py-0.5">{ruptureProducts.length}</span>
+                        <span className="font-medium normal-case tracking-normal text-gray-300">— {showRuptures ? 'masquer' : 'afficher'}</span>
+                        <span className="flex-1 h-px bg-gray-200" />
+                      </button>
+                      {showRuptures && (
+                        <div className="grid gap-2 content-start" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_DIMS[terminalPrefs.gridSize].minPx}px, 1fr))` }}>
+                          {ruptureProducts.map(renderProductCard)}
+                        </div>
                       )}
-                      {isDeadlineSoon && (
-                        <span className="absolute top-1 left-1 text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full z-10">
-                          {Math.round(minH)}h restant
-                        </span>
-                      )}
-                      {isLowStock && !isExpired && (
-                        <span className="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full z-10 flex items-center gap-0.5">
-                          <AlertTriangle size={9} /> {stock}
-                        </span>
-                      )}
-                      {outOfStock && (
-                        <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
-                      )}
-                      {isAlerted && (
-                        <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
-                          <span className="bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-lg">
-                            {stockAlert?.message}
-                          </span>
-                        </span>
-                      )}
-                      <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
-                        {p.image_url ? (
-                          <img src={serverUrl(p.image_url as string)} alt="" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
-                        ) : (
-                          <span className="text-3xl">🥖</span>
-                        )}
-                      </div>
-                      <span className="font-medium text-xs line-clamp-2 leading-tight mt-1.5">{p.name as string}</span>
-                      <span className={`font-bold text-sm mt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
-                    </button>
-                  );
-                })}
-              </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -1404,7 +1577,10 @@ export default function POSPage() {
                           {isWeight ? (
                             <button
                               onClick={() => {
-                                const p = (products as Record<string, any>[]).find(p => p.id === item.productId);
+                                // Cache global en secours : le produit peut ne plus
+                                // etre dans la liste affichee (autre categorie).
+                                const p = (products as Record<string, any>[]).find(p => p.id === item.productId)
+                                  || productCacheRef.current.get(item.productId);
                                 if (p) addToCart(p);
                               }}
                               className="px-3 h-8 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs font-semibold transition-colors">
@@ -1440,8 +1616,9 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Cart footer — contextual: elements appear only when relevant */}
-            <div className="border-t border-gray-200 shrink-0">
+            {/* Cart footer — contextual: elements appear only when relevant.
+                relative : ancre du numpad quantite affiche en overlay au-dessus. */}
+            <div className="border-t border-gray-200 shrink-0 relative">
 
               {/* Customer search — only visible when toggled */}
               {showCustomerSearch && (
@@ -1522,9 +1699,10 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Correction 2: Numpad overlay — replaces payment section when active */}
+              {/* Numpad quantite — overlay flottant au-dessus du pied de panier :
+                  le total et le bouton Encaisser restent visibles pendant la saisie. */}
               {numpadItem && (
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <div className="absolute bottom-full left-2 right-2 mb-1.5 z-30 px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-2xl">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-gray-600 truncate">{numpadItem.name}</p>
                     <button onClick={closeNumpad} className="text-gray-400 hover:text-gray-600 text-xs font-medium">Annuler</button>
@@ -1549,8 +1727,8 @@ export default function POSPage() {
 
               {/* Billet donne + rendu monnaie sont deplaces dans PaymentModal. */}
 
-              {/* Sachets — visible des qu'il y a au moins 1 article et que le numpad est ferme */}
-              {!numpadItem && cart.length > 0 && (
+              {/* Sachets — visible des qu'il y a au moins 1 article */}
+              {cart.length > 0 && (
                 <div className="px-4 py-2.5 border-b border-gray-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1611,8 +1789,8 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Totals + Actions — only when cart has items and numpad is closed */}
-              {!numpadItem && cart.length > 0 ? (
+              {/* Totals + Actions — only when cart has items */}
+              {cart.length > 0 ? (
                 <>
                   <div className="px-4 py-3 space-y-1">
                     <div className="flex justify-between text-sm text-gray-500">
@@ -1648,7 +1826,10 @@ export default function POSPage() {
                       disabled={checkoutMutation.isPending || !sachetReasonOK}
                       className="flex-1 flex flex-col items-center justify-center gap-1 py-3 bg-primary-50 text-primary-700 rounded-xl font-bold text-base hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
                       <ShoppingCart size={20} />
-                      <span className="text-sm">{checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}</span>
+                      <span className="text-sm flex items-center gap-1.5">
+                        {checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}
+                        <kbd className="hidden md:inline-block text-[9px] font-bold bg-primary-100 border border-primary-200 rounded px-1 py-px text-primary-500">F9</kbd>
+                      </span>
                     </button>
                   </div>
                 </>

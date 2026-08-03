@@ -1,5 +1,33 @@
 import { db } from '../config/database.js';
-import { getUserTimezone } from '../utils/timezone.js';
+import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromClosureDiff, persistEntry } from '../services/journal-generator.service.js';
+
+/**
+ * Z-report — numerotation sequentielle inviolable (section 4.3).
+ * Pattern : Z-YYYYMMDD-nnnn (nnnn zero-padded, sequence par jour local).
+ * Advisory lock pour eviter les collisions sous concurrence, meme approche
+ * que generateSaleNumber (sale.repository.ts).
+ */
+async function generateClosureNumber(
+  client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }
+) {
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('closure_number'))`);
+  const today = getLocalDateString();
+  const prefix = `Z-${today.replace(/-/g, '')}-`;
+  const result = await client.query(
+    `SELECT closure_number FROM cash_register_sessions
+      WHERE closure_number LIKE $1
+      ORDER BY closure_number DESC LIMIT 1`,
+    [prefix + '%']
+  );
+  let seq = 1;
+  if (result.rows.length > 0) {
+    const lastSeq = parseInt(result.rows[0].closure_number.split('-').pop() || '0', 10);
+    seq = lastSeq + 1;
+  }
+  return `${prefix}${String(seq).padStart(4, '0')}`;
+}
 
 export const cashRegisterRepository = {
   async findOpenSession(userId: string) {
@@ -175,8 +203,41 @@ export const cashRegisterRepository = {
       const netCashRevenue = grossCashRevenue - totalRefunds;
       const netTotalRevenue = parseFloat(stats.total_revenue) - totalRefunds;
 
-      // Expected cash = opening + net cash sales (advances already included in sales)
-      const expectedCash = openingAmount + netCashRevenue;
+      // Section 4.3 — Paid-out : depenses reglees en cash depuis le tiroir
+      // pendant le shift. Sans ce terme, une facture fournisseur payee au
+      // guichet creait un « manquant » de meme montant a la cloture.
+      const paidOutResult = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS paid_out
+           FROM payments
+          WHERE session_id = $1
+            AND payment_method = 'cash'
+            AND type != 'income'
+            AND (payment_method NOT IN ('check', 'traite') OR cashed_at IS NOT NULL)`,
+        [sessionId]
+      );
+      const paidOut = parseFloat(paidOutResult.rows[0].paid_out) || 0;
+      const paidInResult = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS paid_in
+           FROM payments
+          WHERE session_id = $1
+            AND payment_method = 'cash'
+            AND type = 'income'`,
+        [sessionId]
+      );
+      const paidIn = parseFloat(paidInResult.rows[0].paid_in) || 0;
+
+      // Expected cash = fond + ventes cash net + entrees cash - depenses cash
+      const expectedCash = openingAmount + netCashRevenue + paidIn - paidOut;
+
+      // Section 4.3 — Z-report : generer un numero de cloture sequentiel
+      // immuable, seulement s'il n'existe pas deja (idempotent en cas
+      // de re-close avant submit).
+      const existingCn = await client.query(
+        `SELECT closure_number FROM cash_register_sessions WHERE id = $1`,
+        [sessionId]
+      );
+      const closureNumber = existingCn.rows[0]?.closure_number
+        || await generateClosureNumber(client);
 
       await client.query(
         `UPDATE cash_register_sessions SET
@@ -184,6 +245,7 @@ export const cashRegisterRepository = {
           cash_revenue = $3, card_revenue = $4, mobile_revenue = $5,
           expected_cash = $6, total_advances = $7, total_orders = $8,
           close_type = $10,
+          closure_number = COALESCE(closure_number, $11),
           -- C6 — Marquer l'entree en phase de comptage : le controller
           -- sale.controller.ts refuse desormais les ventes tant que
           -- closing_started_at IS NOT NULL. Sans ce flag, toute vente
@@ -193,22 +255,36 @@ export const cashRegisterRepository = {
         WHERE id = $9 AND status = 'open'`,
         [parseInt(stats.total_sales), netTotalRevenue,
          netCashRevenue, parseFloat(stats.card_revenue), parseFloat(stats.mobile_revenue),
-         expectedCash, totalAdvances, totalOrders, sessionId, closeType]
+         expectedCash, totalAdvances, totalOrders, sessionId, closeType,
+         closureNumber]
       );
 
       await client.query('COMMIT');
 
-      // Return updated session enriched with sale type breakdown
+      // Section 4.3 — Blind count : ne PAS renvoyer expected_cash ni
+      // cash_revenue au client cote close(). Sinon la caissiere voit le
+      // montant attendu avant de compter le tiroir -> comptage biaise. On
+      // renvoie un payload minimal : id / closure_number / close_type + le
+      // breakdown non monetaire (nombres de ventes). submit() recevra le
+      // montant compte a l'aveugle et re-verrouillera la session.
       const sessionData = await this.findById(sessionId);
-      if (sessionData) {
-        sessionData.standard_revenue = parseFloat(stats.standard_revenue);
-        sessionData.standard_count = parseInt(stats.standard_count);
-        sessionData.advance_revenue = parseFloat(stats.advance_revenue);
-        sessionData.advance_count = parseInt(stats.advance_count);
-        sessionData.delivery_revenue = parseFloat(stats.delivery_revenue);
-        sessionData.delivery_count = parseInt(stats.delivery_count);
-      }
-      return sessionData;
+      if (!sessionData) return null;
+      const blindData = {
+        id: sessionData.id,
+        closure_number: sessionData.closure_number,
+        close_type: sessionData.close_type,
+        opened_at: sessionData.opened_at,
+        standard_count: parseInt(stats.standard_count),
+        advance_count: parseInt(stats.advance_count),
+        delivery_count: parseInt(stats.delivery_count),
+        total_sales: parseInt(stats.total_sales),
+        total_orders: totalOrders,
+        // Info : le fond d'ouverture est deja affiche a l'operateur, l'y
+        // laisser lui evite d'aller le chercher. Rien de sensible ici.
+        opening_amount: sessionData.opening_amount,
+        // Guides operationnels (nombre de billets a compter…), pas de montants.
+      };
+      return blindData;
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -217,13 +293,18 @@ export const cashRegisterRepository = {
     }
   },
 
-  async submitActualAmount(sessionId: string, actualAmount: number, notes?: string) {
+  async submitActualAmount(
+    sessionId: string,
+    actualAmount: number,
+    notes?: string,
+    differenceReason?: string,
+  ) {
     const session = await this.findById(sessionId);
     if (!session) return null;
 
     // C5 — Interdire la reecriture apres cloture. Avant ce fix une caissiere
     // pouvait « corriger » son ecart indefiniment via ce meme endpoint.
-    if (session.status === 'closed') {
+    if (session.status === 'closed' || session.locked_at) {
       const err = new Error('Session deja cloturee — ecart non modifiable');
       (err as Error & { code?: string }).code = 'SESSION_ALREADY_CLOSED';
       throw err;
@@ -239,14 +320,66 @@ export const cashRegisterRepository = {
     const expectedCash = parseFloat(session.expected_cash);
     const difference = actualAmount - expectedCash;
 
-    const result = await db.query(
-      `UPDATE cash_register_sessions SET
-        actual_amount = $1, difference = $2, notes = $3,
-        status = 'closed', closed_at = NOW()
-      WHERE id = $4 AND status = 'open' RETURNING *`,
-      [actualAmount, difference, notes || null, sessionId]
-    );
+    // Section 4.3 — Motif obligatoire si l'ecart depasse le seuil de
+    // tolerance (5 DH, arrondi de rendu-monnaie). Sans motif, l'ecart etait
+    // absorbe silencieusement dans le CA -> impossible de tracer les manques.
+    const DISCREPANCY_THRESHOLD = 5;
+    if (Math.abs(difference) > DISCREPANCY_THRESHOLD && !differenceReason) {
+      const err = new Error(`Motif d'ecart obligatoire (ecart de ${difference.toFixed(2)} DH > seuil ${DISCREPANCY_THRESHOLD} DH)`);
+      (err as Error & { code?: string }).code = 'DIFFERENCE_REASON_REQUIRED';
+      throw err;
+    }
+    const validReasons = ['rendu_monnaie', 'vol', 'erreur_comptage', 'depense_hors_paidout', 'autre'];
+    if (differenceReason && !validReasons.includes(differenceReason)) {
+      const err = new Error(`Motif d'ecart invalide : ${differenceReason}`);
+      (err as Error & { code?: string }).code = 'DIFFERENCE_REASON_INVALID';
+      throw err;
+    }
 
-    return result.rows[0] || null;
+    // locked_at pose la cloture inviolable : les endpoints qui updaten la
+    // session doivent verifier locked_at IS NULL. Le Z-report devient Z-final.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const updated = await client.query(
+        `UPDATE cash_register_sessions SET
+          actual_amount = $1, difference = $2, notes = $3,
+          difference_reason = $5,
+          status = 'closed', closed_at = NOW(),
+          locked_at = NOW()
+        WHERE id = $4 AND status = 'open' AND locked_at IS NULL RETURNING *`,
+        [actualAmount, difference, notes || null, sessionId, differenceReason || null]
+      );
+      const row = updated.rows[0];
+      if (!row) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      // Section 4.3 — Ecart de caisse comptabilise (658/758) au lieu d'etre
+      // silencieusement absorbe dans le CA. SAVEPOINT non bloquant : la
+      // cloture reste valide meme si la generation ledger echoue (backfill
+      // possible via /accounting endpoints).
+      if (FLAGS.LEDGER_AUTOGEN && Math.abs(difference) > 5) {
+        await client.query('SAVEPOINT closure_ledger');
+        try {
+          const entry = await fromClosureDiff(client, row);
+          if (entry) await persistEntry(client, entry, { userId: session.user_id });
+          await client.query('RELEASE SAVEPOINT closure_ledger');
+        } catch (genErr) {
+          await client.query('ROLLBACK TO SAVEPOINT closure_ledger');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] generation echec ecart caisse', row.id,
+            genErr instanceof Error ? genErr.message : genErr);
+        }
+      }
+      await client.query('COMMIT');
+      return row;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };

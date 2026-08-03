@@ -846,26 +846,27 @@ export const payrollRepository = {
     for (const emp of employees.rows) {
       // ─── Pointage du mois ───
       const att = await db.query(
-        // 'repos' compte comme jour paye (jour de repos hebdomadaire inclus
-        // dans le salaire mensuel) — regroupe avec 'present'/'late' pour le
-        // decompte des jours travailles facturables.
-        // 'double' = deux shifts le meme jour : compte 2 jours travailles et
+        // Pointage REEL uniquement (is_expected = false, comme la quinzaine) :
+        // une ligne pre-remplie par le planning ne compte pas.
+        // 'repos' compte comme jour couvert (jour de repos hebdomadaire
+        // inclus dans le salaire mensuel).
+        // 'double' = deux shifts le meme jour : couvre 1 jour calendaire et
         // ajoute 1 jour supplementaire au brut (taux journalier base/26).
         `SELECT
           COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos')) as present_days,
           COUNT(*) FILTER (WHERE status = 'double') as double_days,
-          COUNT(*) FILTER (WHERE status = 'absent') as absent_days,
           COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
           COALESCE(SUM(overtime_minutes), 0) as total_overtime
          FROM attendance
-         WHERE employee_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`,
+         WHERE employee_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
+           AND is_expected = false`,
         [emp.id, month, year]
       );
       const a = att.rows[0];
       const baseSalary = parseFloat(emp.monthly_salary);
       const doubleDays = parseInt(a.double_days);
-      const workedDays = parseInt(a.present_days) + 2 * doubleDays + Math.floor(parseInt(a.half_days) / 2);
-      const absentDays = parseInt(a.absent_days);
+      const halfDays = parseInt(a.half_days);
+      const workedDays = parseInt(a.present_days) + 2 * doubleDays + 0.5 * halfDays;
       const overtimeHours = parseFloat(a.total_overtime) / 60;
       const dailyRate = baseSalary / 26;
       const seniorityYears = parseInt(emp.seniority_years) || 0;
@@ -873,12 +874,21 @@ export const payrollRepository = {
       const cimrRate = parseFloat(emp.cimr_rate) || 0;
 
       // ═══ ETAPE 1 : Salaire brut ═══
-      const seniorityBonus = r2(baseSalary * calcSeniorityRate(seniorityYears));
+      // Base pointage (regle metier 07/2026, alignee sur la quinzaine) :
+      // toute journee non couverte par un pointage reel sur la base de 26
+      // jours est retenue au taux journalier. Un jour 'absent' pointe et un
+      // jour sans pointage produisent la meme retenue ; mois pointe complet
+      // (presents + repos >= 26) = salaire plein.
+      const coveredDays = parseInt(a.present_days) + doubleDays + 0.5 * halfDays;
+      const absentDays = Math.max(0, 26 - coveredDays);
+      const absenceDeduction = r2(absentDays * dailyRate);
+      // Prime d'anciennete sur le salaire effectivement gagne (base moins
+      // retenues), pas sur le salaire theorique.
+      const seniorityBonus = r2((baseSalary - absenceDeduction) * calcSeniorityRate(seniorityYears));
       const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
       // Double shift : le 2e service du jour est paye 1 jour supplementaire
       // (symetrique de la retenue d'absence, meme taux journalier base/26).
       const extraShiftAmount = r2(doubleDays * dailyRate);
-      const absenceDeduction = r2(absentDays * dailyRate);
       const grossSalary = r2(baseSalary + seniorityBonus + overtimeAmount + extraShiftAmount - absenceDeduction);
 
       // ═══ ETAPE 2 : CNSS salariale (plafonnee a 6 000 DH) ═══
@@ -949,6 +959,7 @@ export const payrollRepository = {
            net_salary = EXCLUDED.net_salary,
            extra_shift_days = EXCLUDED.extra_shift_days,
            extra_shift_amount = EXCLUDED.extra_shift_amount
+         WHERE payroll.paid = false
          RETURNING *`,
         [emp.id, month, year, baseSalary, workedDays, absentDays,
          overtimeHours, overtimeAmount, seniorityBonus, grossSalary, absenceDeduction,
@@ -958,7 +969,17 @@ export const payrollRepository = {
          allocFamiliales, taxeFP, totalChargesPatron, netSalary,
          doubleDays, extraShiftAmount]
       );
-      results.push(result.rows[0]);
+      if (result.rows[0]) {
+        results.push(result.rows[0]);
+      } else {
+        // Bulletin deja paye : la garde WHERE l'a laisse intact (le net a
+        // servi a une sortie de caisse) — on renvoie la ligne existante.
+        const existing = await db.query(
+          'SELECT * FROM payroll WHERE employee_id = $1 AND month = $2 AND year = $3',
+          [emp.id, month, year]
+        );
+        if (existing.rows[0]) results.push(existing.rows[0]);
+      }
     }
     return results;
   },

@@ -52,7 +52,7 @@ export interface GeneratedEntry {
   journal_code: 'AC' | 'VE' | 'BQ' | 'CA' | 'OD';
   entry_date: string;
   description: string;
-  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment';
+  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment' | 'product_loss' | 'closure_diff';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
@@ -1075,5 +1075,112 @@ export async function regenerateShiftEntry(
 
   const entry = await fromManualShiftEntry(client, row);
   if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
+}
+
+/* ═══ Generateur — perte produit (section 3.3) ═══ */
+
+export interface ProductLossRow {
+  id: string;
+  product_id: string;
+  quantity: string | number;
+  loss_type: string;   // 'production' | 'vitrine' | 'perime' | 'recyclage'
+  reason: string;
+  unit_cost: string | number;
+  total_cost: string | number;
+  created_at: string;
+  store_id: string | null;
+  ingredients_consumed?: boolean;
+}
+
+/**
+ * Section 3.3 — Comptabilise une perte produit fini.
+ *   6114 Variations stock produits finis (D) — charge de gestion
+ *   7132 Variations stock produits finis (C) — mais on utilise plutot
+ *          3421 Stock produits finis (C) pour materialiser la sortie
+ *          de stock, coherent avec le CGNC.
+ *
+ * loss_type = 'production' : les ingredients ont deja ete consommes cote
+ *   plan de production, aucune sortie supplementaire de stock produit fini
+ *   -> on ne genere PAS d'ecriture ici (evite double comptage).
+ * Autres types (vitrine/perime/recyclage) : la vitrine a ete decrementee ->
+ *   on trace la sortie en compta.
+ */
+export async function fromProductLoss(
+  _client: PoolClient | typeof db,
+  loss: ProductLossRow
+): Promise<GeneratedEntry | null> {
+  if (loss.loss_type === 'production') return null;
+  const totalCost = round2(parseFloat(String(loss.total_cost)) || 0);
+  if (totalCost <= 0) return null;
+
+  const date = toIsoDate(loss.created_at);
+
+  return {
+    journal_code: 'OD',
+    entry_date: date,
+    description: `Perte ${loss.loss_type} (${loss.reason}) x${loss.quantity}`,
+    source_kind: 'product_loss',
+    source_id: loss.id,
+    store_id: loss.store_id,
+    lines: [
+      { account_code: '6114', debit: totalCost, credit: 0, label: `Perte ${loss.loss_type}` },
+      { account_code: '3421', debit: 0, credit: totalCost, label: 'Sortie stock produit fini' },
+    ],
+  };
+}
+
+/* ═══ Generateur — ecart de caisse (section 4.3) ═══ */
+
+export interface ClosureDiffRow {
+  id: string;
+  closure_number: string | null;
+  difference: string | number | null;
+  difference_reason: string | null;
+  closed_at: string | null;
+  store_id: string | null;
+}
+
+/**
+ * Section 4.3 — Comptabilise l'ecart de caisse constate au submit.
+ *   difference > 0 (excedent) : 5161 Caisse D / 758 Autres produits non
+ *                                courants (excedent) C
+ *   difference < 0 (manque)   : 6588 Autres charges non courantes (manque) D
+ *                               / 5161 Caisse C
+ *
+ * Seuil : les ecarts <= 5 DH (rendu-monnaie) sont ignores. Au dela, motif
+ * obligatoire (verifie par le repo submitActualAmount).
+ */
+export async function fromClosureDiff(
+  _client: PoolClient | typeof db,
+  session: ClosureDiffRow
+): Promise<GeneratedEntry | null> {
+  const diff = round2(parseFloat(String(session.difference ?? 0)) || 0);
+  if (Math.abs(diff) <= 5) return null;
+  if (!session.closed_at) return null;
+
+  const date = toIsoDate(session.closed_at);
+  const label = session.closure_number
+    ? `Ecart caisse ${session.closure_number} (${session.difference_reason || 'motif non precise'})`
+    : `Ecart caisse (${session.difference_reason || 'motif non precise'})`;
+
+  const lines: GeneratedLine[] = diff > 0
+    ? [
+        { account_code: '5161', debit: round2(diff), credit: 0, label: 'Excedent tiroir' },
+        { account_code: '7588', debit: 0, credit: round2(diff), label },
+      ]
+    : [
+        { account_code: '6588', debit: round2(-diff), credit: 0, label },
+        { account_code: '5161', debit: 0, credit: round2(-diff), label: 'Manque tiroir' },
+      ];
+
+  return {
+    journal_code: 'OD',
+    entry_date: date,
+    description: label,
+    source_kind: 'closure_diff',
+    source_id: session.id,
+    store_id: session.store_id,
+    lines,
+  };
 }
 

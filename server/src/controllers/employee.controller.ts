@@ -4,6 +4,7 @@ import { db } from '../config/database.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
 import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
+import { biweeklyPayrollRepository } from '../repositories/biweekly-payroll.repository.js';
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 
@@ -40,6 +41,19 @@ async function loadWeeklyPayrollInScope(id: string, userStoreId?: string) {
     `SELECT wp.id, wp.employee_id, e.store_id
        FROM weekly_payroll wp JOIN employees e ON e.id = wp.employee_id
       WHERE wp.id = $1`,
+    [id]
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  if (row.store_id !== null && !checkStoreOwnership(row.store_id, userStoreId)) return null;
+  return row;
+}
+
+async function loadBiweeklyPayrollInScope(id: string, userStoreId?: string) {
+  const r = await db.query(
+    `SELECT bp.id, bp.employee_id, e.store_id
+       FROM biweekly_payroll bp JOIN employees e ON e.id = bp.employee_id
+      WHERE bp.id = $1`,
     [id]
   );
   const row = r.rows[0];
@@ -277,6 +291,90 @@ export const weeklyPayrollController = {
     const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     await weeklyPayrollRepository.delete(req.params.id);
+    res.json({ success: true, data: null });
+  },
+};
+
+/**
+ * Rabat une date (YYYY-MM-DD) sur sa quinzaine CALENDAIRE :
+ * jour <= 15 -> [1er, 15] ; sinon -> [16, dernier jour du mois].
+ */
+function quinzaineBounds(iso: string): { start: string; end: string } {
+  const [y, m, d] = iso.split('-').map(Number);
+  const mm = String(m).padStart(2, '0');
+  if (d <= 15) return { start: `${y}-${mm}-01`, end: `${y}-${mm}-15` };
+  // new Date(UTC, y, m, 0) = dernier jour du mois m (m est 1-base ici)
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { start: `${y}-${mm}-16`, end: `${y}-${mm}-${String(lastDay).padStart(2, '0')}` };
+}
+
+export const biweeklyPayrollController = {
+  async list(req: AuthRequest, res: Response) {
+    const ref = String(req.query.refDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ref)) {
+      res.status(400).json({ success: false, error: { message: 'refDate YYYY-MM-DD requis' } });
+      return;
+    }
+    const { start, end } = quinzaineBounds(ref);
+    const rows = await biweeklyPayrollRepository.list(start, end, req.user!.storeId);
+    res.json({ success: true, data: { periodStart: start, periodEnd: end, rows } });
+  },
+
+  async generate(req: AuthRequest, res: Response) {
+    const ref = String(req.body.refDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ref)) {
+      res.status(400).json({ success: false, error: { message: 'refDate YYYY-MM-DD requis' } });
+      return;
+    }
+    const { start, end } = quinzaineBounds(ref);
+    const generated = await biweeklyPayrollRepository.generate(start, end, req.user!.storeId);
+    res.json({ success: true, data: { periodStart: start, periodEnd: end, generated } });
+  },
+
+  async markPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    const { paymentMethod, advanceDeduction } = req.body;
+    try {
+      const row = await biweeklyPayrollRepository.markPaid(
+        req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
+        parseFloat(String(advanceDeduction ?? 0)) || 0
+      );
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+
+  async unmarkPaid(req: AuthRequest, res: Response) {
+    const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    try {
+      const row = await biweeklyPayrollRepository.unmarkPaid(req.params.id);
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur lors de l\'annulation' } });
+    }
+  },
+
+  async update(req: AuthRequest, res: Response) {
+    const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    try {
+      const row = await biweeklyPayrollRepository.update(req.params.id, req.body);
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+
+  async remove(req: AuthRequest, res: Response) {
+    const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
+    await biweeklyPayrollRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
 };

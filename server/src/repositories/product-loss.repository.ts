@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 export const productLossRepository = {
   async findAll(filters: { month?: number; year?: number; lossType?: string; productId?: string; storeId?: string }) {
@@ -143,6 +145,10 @@ export const productLossRepository = {
         );
       }
 
+      // Section 3.3 — Reverse l'ecriture comptable si le ledger etait actif.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['product_loss', 'backfill'] });
+      }
       await client.query('DELETE FROM product_losses WHERE id = $1', [id]);
       await client.query('COMMIT');
       return { ok: true, loss };

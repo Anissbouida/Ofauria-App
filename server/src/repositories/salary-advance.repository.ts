@@ -40,11 +40,13 @@ export const salaryAdvanceRepository = {
                     'amount', sr.amount,
                     'repaymentDate', to_char(sr.repayment_date, 'YYYY-MM-DD'),
                     'payrollMonth', p.month, 'payrollYear', p.year,
-                    'weekStart', to_char(wp.week_start, 'YYYY-MM-DD')
+                    'weekStart', to_char(wp.week_start, 'YYYY-MM-DD'),
+                    'periodStart', to_char(bp.period_start, 'YYYY-MM-DD')
                   ) ORDER BY sr.repayment_date, sr.created_at) AS repayments
              FROM salary_advance_repayments sr
              LEFT JOIN payroll p ON p.id = sr.payroll_id
              LEFT JOIN weekly_payroll wp ON wp.id = sr.weekly_payroll_id
+             LEFT JOIN biweekly_payroll bp ON bp.id = sr.biweekly_payroll_id
             WHERE sr.advance_id = a.id
          ) r ON true
          ${where}
@@ -141,9 +143,11 @@ export const salaryAdvanceRepository = {
    * re-credite le solde des avances, reverse les ecritures 6171/3431 et
    * supprime les lignes de remboursement. Retourne le total re-credite.
    */
-  async reverseRepayments(params: { payrollId?: string; weeklyPayrollId?: string }): Promise<number> {
-    const col = params.payrollId ? 'payroll_id' : 'weekly_payroll_id';
-    const val = params.payrollId || params.weeklyPayrollId;
+  async reverseRepayments(params: { payrollId?: string; weeklyPayrollId?: string; biweeklyPayrollId?: string }): Promise<number> {
+    const col = params.payrollId ? 'payroll_id'
+      : params.weeklyPayrollId ? 'weekly_payroll_id'
+      : 'biweekly_payroll_id';
+    const val = params.payrollId || params.weeklyPayrollId || params.biweeklyPayrollId;
     if (!val) return 0;
     const client = await db.getClient();
     try {
@@ -308,7 +312,7 @@ export const salaryAdvanceRepository = {
    */
   async applyDeduction(data: {
     employeeId: string; amount: number;
-    payrollId?: string; weeklyPayrollId?: string;
+    payrollId?: string; weeklyPayrollId?: string; biweeklyPayrollId?: string;
     userId: string; storeId?: string; label: string;
   }): Promise<number> {
     if (data.amount <= 0) return 0;
@@ -334,9 +338,9 @@ export const salaryAdvanceRepository = {
         const take = Math.round(Math.min(remaining, toAllocate) * 100) / 100;
 
         const rep = await client.query(
-          `INSERT INTO salary_advance_repayments (advance_id, payroll_id, weekly_payroll_id, amount, repayment_date)
-           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [adv.id, data.payrollId || null, data.weeklyPayrollId || null, take, today]
+          `INSERT INTO salary_advance_repayments (advance_id, payroll_id, weekly_payroll_id, biweekly_payroll_id, amount, repayment_date)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [adv.id, data.payrollId || null, data.weeklyPayrollId || null, data.biweeklyPayrollId || null, take, today]
         );
 
         await client.query(

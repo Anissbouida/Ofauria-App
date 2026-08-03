@@ -25,16 +25,25 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const IS_MOBILE = !!import.meta.env.VITE_API_URL;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Plus de tokens en localStorage, mais on nettoie les legacy au cas ou.
-      localStorage.removeItem('ofauria_token');
-      localStorage.removeItem('ofauria_user');
-      // Don't redirect if already on login page (prevents infinite reload loop)
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+      const url = error.config?.url || '?';
+      // Sur mobile : ne PAS hard-reload ni effacer le token. Un 401 sur une
+      // requete secondaire (ex: settings, notifications) causait un cycle
+      // "login -> deconnexion immediate". On laisse le composant afficher
+      // l'erreur ; le vrai logout passe par AuthContext (me() ou /auth/logout).
+      if (IS_MOBILE) {
+        console.warn('[api] 401', url, '- token conserve (mobile)');
+      } else {
+        localStorage.removeItem('ofauria_token');
+        localStorage.removeItem('ofauria_user');
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
