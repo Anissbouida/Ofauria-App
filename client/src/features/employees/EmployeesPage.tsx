@@ -945,7 +945,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                 <th style={{ textAlign: 'center' }}>Statut</th>
                 <th style={{ textAlign: 'center' }}>Arrivée</th>
                 <th style={{ textAlign: 'center' }}>Départ</th>
-                <th style={{ textAlign: 'center' }}>H. Sup (min)</th>
+                <th style={{ textAlign: 'center' }}>H. Sup</th>
               </tr>
             </thead>
             <tbody>
@@ -1047,16 +1047,16 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                         }} />
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input key={`ot-${emp.id}-${selectedDate}`} type="number" className="input text-center text-sm w-20 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed" min="0"
+                      <input key={`ot-${emp.id}-${selectedDate}`} type="number" className="input text-center text-sm w-20 mx-auto disabled:bg-gray-100 disabled:cursor-not-allowed" min="0" step="0.5"
                         disabled={isOnLeave}
-                        defaultValue={(rec as Record<string, any>)?.overtime_minutes as number || 0}
+                        defaultValue={Math.round(((rec as Record<string, any>)?.overtime_minutes as number || 0) / 60 * 100) / 100 || 0}
                         onBlur={e => {
                           upsertMutation.mutate({
                             employeeId: emp.id, date: selectedDate,
                             status: (rec as Record<string, any>)?.status || 'present',
                             checkIn: (rec as Record<string, any>)?.check_in || undefined,
                             checkOut: (rec as Record<string, any>)?.check_out || undefined,
-                            overtimeMinutes: parseInt(e.target.value) || 0,
+                            overtimeMinutes: Math.round((parseFloat(e.target.value) || 0) * 60),
                           });
                         }} />
                     </td>
