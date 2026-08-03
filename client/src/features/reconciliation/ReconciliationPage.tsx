@@ -5,7 +5,7 @@ import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus,
+  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
@@ -937,6 +937,49 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
     [allProducts, slotQty],
   );
 
+  const [copyingJ1, setCopyingJ1] = useState(false);
+  const copyFromYesterday = async () => {
+    const yesterday = format(addDays(new Date(date + 'T00:00:00'), -1), 'yyyy-MM-dd');
+    setCopyingJ1(true);
+    try {
+      const prev = await reconciliationApi.getFiche(yesterday);
+      if (!prev?.lines || prev.lines.length === 0) {
+        notify.error(`Aucune fiche enregistrée pour le ${format(new Date(yesterday + 'T00:00:00'), 'd MMMM yyyy', { locale: fr })}`);
+        return;
+      }
+      const productKeys = new Set(allProducts.map(p => p.product_key));
+      const copied: Record<string, string> = {};
+      let count = 0;
+      for (const l of prev.lines) {
+        if (l.removed || num(l.total_qty) <= 0) continue;
+        if (!productKeys.has(l.product_key)) continue;
+        touchedRef.current.add(l.product_key);
+        for (const [slot, v] of Object.entries(l.slot_qty || {})) {
+          copied[`${l.product_key}__${slot}`] = String(v);
+        }
+        copied[`${l.product_key}__total`] = String(num(l.total_qty));
+        count++;
+      }
+      if (count === 0) {
+        notify.error('Aucun produit commun entre la fiche J-1 et le catalogue actuel');
+        return;
+      }
+      setRemoved(prev => {
+        const next = new Set(prev);
+        for (const l of prev) {
+          if (copied[`${l}__total`]) next.delete(l);
+        }
+        return next;
+      });
+      setSlotQty(prev => ({ ...prev, ...copied }));
+      notify.success(`${count} produit(s) copiés depuis la fiche du ${format(new Date(yesterday + 'T00:00:00'), 'd MMMM', { locale: fr })}`);
+    } catch (e: any) {
+      notify.error(e?.response?.data?.error?.message || 'Erreur lors de la copie');
+    } finally {
+      setCopyingJ1(false);
+    }
+  };
+
   /** Plan de cuisson par créneau boulangerie : plaques totales + dispatching
    *  baguette/pain en chariots de 18 plaques. */
   const bouCuissons = useMemo(() => {
@@ -1078,6 +1121,14 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
         <button className="odoo-btn-secondary" onClick={() => setShowAddProduct(true)}>
           <Plus size={14} /> Produit
+        </button>
+        <button className="odoo-btn-secondary"
+          disabled={copyingJ1}
+          title="Copier les quantités de la fiche de la veille (uniquement les produits du catalogue)"
+          onClick={copyFromYesterday}>
+          {copyingJ1
+            ? <><Loader2 size={14} className="animate-spin" /> Copie…</>
+            : <><Copy size={14} /> Copier J-1</>}
         </button>
         <button className="odoo-btn-secondary"
           disabled={!hasProducts || saveMut.isPending}
