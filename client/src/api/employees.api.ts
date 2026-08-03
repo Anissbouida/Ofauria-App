@@ -74,23 +74,6 @@ export const advancesApi = {
   remove: (id: string) => api.delete(`/salary-advances/${id}`).then(r => r.data.data),
 };
 
-export const biweeklyPayrollApi = {
-  /** Liste des employes en quinzaine + leur ligne paie de la periode (1-15 / 16-fin de mois).
-   * refDate : n'importe quelle date de la quinzaine visee — le serveur rabat sur les bornes. */
-  list: (refDate: string) =>
-    api.get('/biweekly-payroll', { params: { refDate } }).then(r => r.data.data),
-  /** Calcule et upsert les lignes paie de la quinzaine depuis le pointage. */
-  generate: (refDate: string) =>
-    api.post('/biweekly-payroll/generate', { refDate }).then(r => r.data.data),
-  /** Marque paye + cree ecriture comptable. advanceDeduction = retenue sur avances. */
-  markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
-    api.post(`/biweekly-payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
-  /** Annule le paiement : supprime la sortie de caisse liée + reverse les retenues d'avance. */
-  unmarkPaid: (id: string) =>
-    api.post(`/biweekly-payroll/${id}/unpay`).then(r => r.data.data),
-  remove: (id: string) => api.delete(`/biweekly-payroll/${id}`),
-};
-
 export const weeklyPayrollApi = {
   /** Liste tous les employes weekly + leur ligne paie de la semaine (ou null si pas generee). */
   list: (weekStart: string) =>
