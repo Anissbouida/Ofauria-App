@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi, advancesApi } from '../../api/employees.api';
+import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi, biweeklyPayrollApi, advancesApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -261,11 +261,16 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
   const activeEmployees = employees.filter((e: Record<string, any>) => e.is_active);
   const activeMonthly = activeEmployees.filter((e: Record<string, any>) => (e.pay_frequency ?? 'monthly') === 'monthly');
   const activeWeekly = activeEmployees.filter((e: Record<string, any>) => e.pay_frequency === 'weekly');
+  // Quinzaine : base = salaire MENSUEL (paye en deux fois) -> compte dans la
+  // masse mensuelle telle quelle.
+  const activeBiweekly = activeEmployees.filter((e: Record<string, any>) => e.pay_frequency === 'biweekly');
   const massMonthly = activeMonthly.reduce((s: number, e: Record<string, any>) => s + (parseFloat(e.monthly_salary as string) || 0), 0);
+  const massBiweekly = activeBiweekly.reduce((s: number, e: Record<string, any>) => s + (parseFloat(e.monthly_salary as string) || 0), 0);
   const massWeekly = activeWeekly.reduce((s: number, e: Record<string, any>) => s + (parseFloat(e.weekly_salary as string) || 0), 0);
   const WEEKS_PER_MONTH = 52 / 12; // ≈ 4.333
-  const massMonthlyEquiv = massMonthly + massWeekly * WEEKS_PER_MONTH;
+  const massMonthlyEquiv = massMonthly + massBiweekly + massWeekly * WEEKS_PER_MONTH;
   const withSalaryCount = activeMonthly.filter((e: Record<string, any>) => parseFloat(e.monthly_salary as string) > 0).length
+    + activeBiweekly.filter((e: Record<string, any>) => parseFloat(e.monthly_salary as string) > 0).length
     + activeWeekly.filter((e: Record<string, any>) => parseFloat(e.weekly_salary as string) > 0).length;
   const avgSalary = withSalaryCount > 0 ? massMonthlyEquiv / withSalaryCount : 0;
 
@@ -346,8 +351,8 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Effectif actif</div>
           <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
-          <div className="odoo-stat-card-sub" title="Repartition mensuel / hebdomadaire">
-            {activeMonthly.length} mensuel · {activeWeekly.length} hebdo
+          <div className="odoo-stat-card-sub" title="Repartition mensuel / quinzaine / hebdomadaire">
+            {activeMonthly.length} mensuel{activeBiweekly.length > 0 && <> · {activeBiweekly.length} quinzaine</>} · {activeWeekly.length} hebdo
             {employees.length - activeCount > 0 && (
               <> · <span style={{ color: '#adb5bd' }}>{employees.length - activeCount} inactif(s)</span></>
             )}
@@ -360,6 +365,7 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
           </div>
           <div className="odoo-stat-card-sub">
             {formatMoney(massMonthly)} mensuel
+            {massBiweekly > 0 && <> + {formatMoney(massBiweekly)} quinzaine</>}
             {massWeekly > 0 && <> + {formatMoney(massWeekly * WEEKS_PER_MONTH)} hebdo eq.</>}
           </div>
         </div>
@@ -462,12 +468,14 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                   <td style={{ textAlign: 'right' }}>
                     {(() => {
                       const isWeekly = e.pay_frequency === 'weekly';
+                      const isBiweekly = e.pay_frequency === 'biweekly';
                       const sal = isWeekly ? e.weekly_salary : e.monthly_salary;
                       if (!sal) return <span style={{ color: 'var(--odoo-text-light)' }}>—</span>;
                       const val = parseFloat(sal as string);
                       const eqMonth = isWeekly ? val * WEEKS_PER_MONTH : val;
                       return (
-                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${eqMonth.toFixed(0)} DH/mois equivalent` : 'Salaire mensuel'}>
+                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${eqMonth.toFixed(0)} DH/mois equivalent`
+                          : isBiweekly ? 'Salaire mensuel, payé par quinzaine (1–15 / 16–fin de mois)' : 'Salaire mensuel'}>
                           <span style={{ fontWeight: 600 }}>{val.toFixed(0)}</span>
                           <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem', marginLeft: 3 }}>
                             DH/{isWeekly ? 'sem' : 'mois'}
@@ -475,6 +483,11 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                           {isWeekly && (
                             <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-light)' }}>
                               ≈ {eqMonth.toFixed(0)} DH/mois
+                            </div>
+                          )}
+                          {isBiweekly && (
+                            <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-light)' }}>
+                              ≈ {(val / 2).toFixed(0)} DH/quinzaine
                             </div>
                           )}
                         </span>
@@ -646,20 +659,28 @@ function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQuery
                     ))}
                   </select></div>
                 <div><label className="block text-sm font-medium mb-1">Salaire mensuel (DH)</label>
-                  <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input" /></div>
+                  <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input"
+                    onChange={(e) => syncSalaryFields(e.currentTarget.form)} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Fréquence de paie</label>
-                  <select name="payFrequency" defaultValue={(editing?.pay_frequency as string) || 'monthly'} className="input">
+                  <select name="payFrequency" defaultValue={(editing?.pay_frequency as string) || 'monthly'} className="input"
+                    onChange={(e) => syncSalaryFields(e.currentTarget.form)}>
                     <option value="monthly">Mensuelle (fin de mois)</option>
+                    <option value="biweekly">Quinzaine (1–15 / 16–fin de mois)</option>
                     <option value="weekly">Hebdomadaire (lundi pour S-1)</option>
                   </select>
+                  <p className="text-xs text-gray-500 mt-1" data-quinzaine-info>
+                    {editing?.pay_frequency === 'biweekly'
+                      ? quinzaineHint(parseFloat(editing?.monthly_salary as string) || 0)
+                      : 'Quinzaine : base = salaire mensuel ÷ 26 par jour pointé.'}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Salaire hebdomadaire (DH)</label>
                   <input name="weeklySalary" type="number" step="0.01" defaultValue={editing?.weekly_salary as string} className="input" placeholder="Requis si fréquence = hebdo" />
-                  <p className="text-xs text-gray-500 mt-1">Base divisée par 6 jours pour le calcul jour.</p>
+                  <p className="text-xs text-gray-500 mt-1">Auto-calculé si fréquence = hebdo : mensuel × 12 ÷ 52 (modifiable à la main).</p>
                 </div>
               </div>
               <div>
@@ -712,9 +733,13 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [summaryMonth, setSummaryMonth] = useState(new Date().getMonth() + 1);
   const [summaryYear, setSummaryYear] = useState(new Date().getFullYear());
+  const [searchAtt, setSearchAtt] = useState('');
 
   const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const activeEmployees = (employees as Record<string, any>[]).filter(e => e.is_active);
+  const filteredEmployees = searchAtt
+    ? activeEmployees.filter(e => `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchAtt.toLowerCase()))
+    : activeEmployees;
 
   // Daily records
   const { data: records = [], isLoading } = useQuery({
@@ -787,26 +812,34 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
   return (
     <>
       {/* View toggle */}
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <div className="odoo-view-switcher">
-          <button onClick={() => setAttView('daily')} className={attView === 'daily' ? 'active' : ''}>
-            Pointage journalier
-          </button>
-          <button onClick={() => setAttView('monthly')} className={attView === 'monthly' ? 'active' : ''}>
-            Récapitulatif mensuel
-          </button>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <div className="odoo-view-switcher">
+            <button onClick={() => setAttView('daily')} className={attView === 'daily' ? 'active' : ''}>
+              Pointage journalier
+            </button>
+            <button onClick={() => setAttView('monthly')} className={attView === 'monthly' ? 'active' : ''}>
+              Récapitulatif mensuel
+            </button>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
+            <input type="text" value={searchAtt} onChange={e => setSearchAtt(e.target.value)}
+              placeholder="Chercher un employé…" className="input"
+              style={{ paddingLeft: 28, width: 180, fontSize: '0.8125rem' }} />
+          </div>
         </div>
 
         {attView === 'daily' ? (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <button onClick={() => {
-              const d = new Date(selectedDate); d.setDate(d.getDate() - 1);
+              const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
             }} className="odoo-pager-btn"><ChevronLeft size={14} /></button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
               className="input" style={{ width: 'auto' }} />
             <button onClick={() => {
-              const d = new Date(selectedDate); d.setDate(d.getDate() + 1);
+              const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
             }} className="odoo-pager-btn"><ChevronRight size={14} /></button>
             <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', fontWeight: 500, marginLeft: 4 }}>
@@ -843,7 +876,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                 </tr>
               </thead>
               <tbody>
-                {activeEmployees.map((emp: Record<string, any>) => {
+                {filteredEmployees.map((emp: Record<string, any>) => {
                   const s = getEmployeeMonthlySummary(emp.id as string);
                   const baseSalary = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
                   const dailyRate = baseSalary / 26;
@@ -889,14 +922,14 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
                 <tr>
                   <td style={{ fontWeight: 700, padding: '0.5rem 0.75rem' }} colSpan={6}>Total</td>
                   <td style={{ textAlign: 'center', background: '#eafaf1', fontWeight: 700, color: '#155724', padding: '0.5rem 0.75rem' }}>
-                    {activeEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0)}
+                    {filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0)}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {activeEmployees.reduce((sum, emp) => sum + (emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0), 0).toFixed(2)} DH
+                    {filteredEmployees.reduce((sum, emp) => sum + (emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0), 0).toFixed(2)} DH
                   </td>
                   <td></td>
                   <td style={{ textAlign: 'right', background: '#eafaf1', fontWeight: 700, color: '#155724', padding: '0.5rem 0.75rem' }}>
-                    {activeEmployees.reduce((sum, emp) => {
+                    {filteredEmployees.reduce((sum, emp) => {
                       const s = getEmployeeMonthlySummary(emp.id as string);
                       const base = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
                       return sum + (base / 26) * s.workedDays;
@@ -934,7 +967,7 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
               </tr>
             </thead>
             <tbody>
-              {activeEmployees.map((emp: Record<string, any>) => {
+              {filteredEmployees.map((emp: Record<string, any>) => {
                 const rec = getRecord(emp.id as string);
                 const plannedShift = rec?.planned_shift_code as ShiftCode | undefined;
                 const isExpected = (rec as Record<string, any>)?.is_expected === true;
@@ -1051,6 +1084,9 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
             </tbody>
           </table>
           {activeEmployees.length === 0 && <p className="text-center py-8 text-gray-400">Aucun employé actif</p>}
+          {activeEmployees.length > 0 && filteredEmployees.length === 0 && searchAtt && (
+            <p className="text-center py-8 text-gray-400">Aucun employé trouvé pour « {searchAtt} »</p>
+          )}
         </div>
         </div>
         )
@@ -1254,9 +1290,43 @@ function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCli
   );
 }
 
+/** Texte d'aide sous « Fréquence de paie » : montant auto par quinzaine. */
+function quinzaineHint(monthly: number): string {
+  if (monthly > 0) {
+    return `Quinzaine ≈ ${(monthly / 2).toFixed(2)} DH pour une quinzaine complète (mensuel ÷ 2, soit 13 jours × mensuel ÷ 26).`;
+  }
+  return 'Quinzaine : base = salaire mensuel ÷ 26 par jour pointé.';
+}
+
+/**
+ * Auto-calcul des salaires dérivés depuis le salaire mensuel (formulaire
+ * employé, champs non contrôlés) :
+ *  - fréquence hebdo : weeklySalary = mensuel × 12/52 — équivaut à
+ *    6 jours × (mensuel ÷ 26), cohérent avec WEEKS_PER_MONTH et le taux
+ *    journalier /26. Rempli automatiquement, modifiable à la main après.
+ *  - fréquence quinzaine : pas de champ dédié (base = mensuel), on affiche
+ *    le montant calculé (mensuel ÷ 2) dans l'aide [data-quinzaine-info].
+ */
+function syncSalaryFields(form: HTMLFormElement | null) {
+  if (!form) return;
+  const freq = (form.elements.namedItem('payFrequency') as HTMLSelectElement | null)?.value;
+  const monthlyEl = form.elements.namedItem('monthlySalary') as HTMLInputElement | null;
+  const weeklyEl = form.elements.namedItem('weeklySalary') as HTMLInputElement | null;
+  const monthly = parseFloat(monthlyEl?.value || '');
+  if (weeklyEl && freq === 'weekly') {
+    weeklyEl.value = monthly > 0 ? (monthly * 12 / 52).toFixed(2) : '';
+  }
+  const info = form.querySelector('[data-quinzaine-info]') as HTMLElement | null;
+  if (info) {
+    info.textContent = freq === 'biweekly'
+      ? quinzaineHint(monthly)
+      : 'Quinzaine : base = salaire mensuel ÷ 26 par jour pointé.';
+  }
+}
+
 /* ═══════════════════════ PAYROLL TAB ═══════════════════════ */
 function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
-  const [payView, setPayView] = useState<'monthly' | 'weekly'>('monthly');
+  const [payView, setPayView] = useState<'monthly' | 'biweekly' | 'weekly'>('monthly');
 
   return (
     <>
@@ -1265,12 +1335,17 @@ function PayrollTab({ queryClient }: { queryClient: ReturnType<typeof useQueryCl
           <button onClick={() => setPayView('monthly')} className={payView === 'monthly' ? 'active' : ''}>
             Paie mensuelle
           </button>
+          <button onClick={() => setPayView('biweekly')} className={payView === 'biweekly' ? 'active' : ''}>
+            Paie par quinzaine
+          </button>
           <button onClick={() => setPayView('weekly')} className={payView === 'weekly' ? 'active' : ''}>
             Paie hebdomadaire
           </button>
         </div>
       </div>
-      {payView === 'monthly' ? <MonthlyPayrollView queryClient={queryClient} /> : <WeeklyPayrollView queryClient={queryClient} />}
+      {payView === 'monthly' ? <MonthlyPayrollView queryClient={queryClient} />
+        : payView === 'biweekly' ? <BiweeklyPayrollView queryClient={queryClient} />
+        : <WeeklyPayrollView queryClient={queryClient} />}
     </>
   );
 }
@@ -2185,6 +2260,386 @@ function WeeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof use
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
         Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
         Taux journalier = salaire / 7. Le repos hebdomadaire est payé au prorata des jours travaillés (jours ÷ 6, plafonné à 1) : 6 jours = 1 journée de repos (salaire complet), une demi-semaine = une demi-journée de repos, 7 jours travaillés (repos non pris) = salaire + 1 journée.
+        Une demi-journée compte 0,5 ; un « Double shift » compte 2 jours payés.
+        Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
+        Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════ BIWEEKLY PAYROLL (paie par quinzaine) ═══════════════════════ */
+
+type BiweeklyPayrollRow = {
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  monthly_salary: string | null;
+  payroll_id: string | null;
+  base_amount: string | null;
+  worked_days: number | string | null;
+  absent_days: number | null;
+  overtime_hours: string | null;
+  overtime_amount: string | null;
+  net_amount: string | null;
+  advance_deduction: string | null;
+  paid: boolean | null;
+  paid_at: string | null;
+  payment_method: string | null;
+  notes: string | null;
+};
+
+type BiweeklyPayrollData = { periodStart: string; periodEnd: string; rows: BiweeklyPayrollRow[] };
+
+/**
+ * Quinzaine calendaire par decalage depuis la quinzaine courante :
+ * offset 0 = quinzaine en cours, -1 = precedente, etc.
+ * Index absolu = (annee*12 + mois)*2 + (jour>=16 ? 1 : 0).
+ */
+function quinzaineFromOffset(offset: number): { start: Date; end: Date } {
+  const now = new Date();
+  const idx = (now.getFullYear() * 12 + now.getMonth()) * 2 + (now.getDate() >= 16 ? 1 : 0) + offset;
+  const ym = Math.floor(idx / 2);
+  const half = idx - ym * 2; // 0 = 1-15, 1 = 16-fin de mois
+  const y = Math.floor(ym / 12);
+  const m = ym - y * 12;
+  const start = new Date(y, m, half === 0 ? 1 : 16);
+  const end = half === 0 ? new Date(y, m, 15) : new Date(y, m + 1, 0);
+  return { start, end };
+}
+
+function BiweeklyPayrollView({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+  // Par defaut : quinzaine PRECEDENTE (la paie se fait une fois la periode
+  // terminee, comme l'hebdo).
+  const [periodOffset, setPeriodOffset] = useState(-1);
+  const { start: periodStartDate, end: periodEndDate } = quinzaineFromOffset(periodOffset);
+  const refDateStr = format(periodStartDate, 'yyyy-MM-dd');
+
+  const { data: periodData, isLoading } = useQuery<BiweeklyPayrollData>({
+    queryKey: ['biweekly-payroll', refDateStr],
+    queryFn: () => biweeklyPayrollApi.list(refDateStr) as Promise<BiweeklyPayrollData>,
+  });
+
+  // Soldes d'avances en cours (pour proposer la retenue au paiement)
+  const { data: outstandingRows = [] } = useQuery({
+    queryKey: ['advances-outstanding'],
+    queryFn: () => advancesApi.outstanding(),
+  });
+  const { outstandingByEmp, suggestedByEmp } = useMemo(() => {
+    const o = new Map<string, number>();
+    const s = new Map<string, number>();
+    (outstandingRows as Record<string, any>[]).forEach(r => {
+      o.set(r.employee_id as string, parseFloat(r.outstanding as string) || 0);
+      s.set(r.employee_id as string, parseFloat(r.suggested as string) || 0);
+    });
+    return { outstandingByEmp: o, suggestedByEmp: s };
+  }, [outstandingRows]);
+  const [payTarget, setPayTarget] = useState<{ row: BiweeklyPayrollRow; method: string } | null>(null);
+
+  const generateMutation = useMutation({
+    mutationFn: () => biweeklyPayrollApi.generate(refDateStr),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['biweekly-payroll'] });
+      notify.success('Paies de la quinzaine générées depuis le pointage');
+    },
+    onError: () => notify.error('Erreur lors de la génération'),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: ({ id, method, deduction }: { id: string; method: string; deduction?: number }) =>
+      biweeklyPayrollApi.markPaid(id, method, deduction || 0),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['biweekly-payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      notify.success('Marqué comme payé + écriture comptable créée');
+      setPayTarget(null);
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur');
+    },
+  });
+
+  /** Paiement direct si pas d'avance en cours, sinon dialogue avec retenue proposée. */
+  const startPay = (row: BiweeklyPayrollRow, method: string) => {
+    const outstanding = outstandingByEmp.get(row.employee_id) || 0;
+    if (outstanding > 0) setPayTarget({ row, method });
+    else payMutation.mutate({ id: row.payroll_id as string, method });
+  };
+
+  const unpayMutation = useMutation({
+    mutationFn: (id: string) => biweeklyPayrollApi.unmarkPaid(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['biweekly-payroll'] });
+      queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      notify.success('Paiement annulé : sortie de caisse supprimée et retenues re-créditées');
+    },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de l\'annulation');
+    },
+  });
+
+  const rows = periodData?.rows ?? [];
+  const generated = rows.filter(r => r.payroll_id);
+  const ungenerated = rows.filter(r => !r.payroll_id);
+  const paidCount = generated.filter(r => r.paid).length;
+  // Montants REELS de tresorerie : net moins la retenue d'avance.
+  const cashOutOf = (r: BiweeklyPayrollRow) => {
+    const net = parseFloat(r.net_amount || '0');
+    const ded = r.paid
+      ? parseFloat(r.advance_deduction || '0')
+      : Math.min(suggestedByEmp.get(r.employee_id) ?? 0, net);
+    return Math.max(0, Math.round((net - ded) * 100) / 100);
+  };
+  const totalDue = generated.filter(r => !r.paid).reduce((s, r) => s + cashOutOf(r), 0);
+  const totalPaid = generated.filter(r => r.paid).reduce((s, r) => s + cashOutOf(r), 0);
+
+  const isCurrentPeriod = periodOffset === 0;
+  const periodLabel = `du ${format(periodStartDate, 'dd MMM', { locale: fr })} au ${format(periodEndDate, 'dd MMM yyyy', { locale: fr })}`;
+
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => setPeriodOffset(o => o - 1)} className="odoo-pager-btn" aria-label="Quinzaine précédente"><ChevronLeft size={14} /></button>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+            Quinzaine {periodLabel}
+          </span>
+          <button onClick={() => setPeriodOffset(o => o + 1)} className="odoo-pager-btn" aria-label="Quinzaine suivante"><ChevronRight size={14} /></button>
+          <button onClick={() => setPeriodOffset(-1)} style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', marginLeft: 4 }}>
+            Quinzaine précédente
+          </button>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => {
+            if (confirm(`Generer la paie de la quinzaine ${periodLabel} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`)) {
+              generateMutation.mutate();
+            }
+          }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}
+          </button>
+        </div>
+      </div>
+
+      {isCurrentPeriod && (
+        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem' }}>
+          <div style={{ fontSize: '0.75rem' }}>
+            <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
+            Vous regardez la quinzaine en cours. La paie se fait habituellement une fois la quinzaine terminée.
+          </div>
+        </div>
+      )}
+
+      {/* Stat tiles */}
+      <div className="odoo-stat-grid">
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Employés en quinzaine</div>
+          <div className="odoo-stat-card-value">{rows.length}</div>
+          <div className="odoo-stat-card-sub">à payer cette quinzaine</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Payés</div>
+          <div className="odoo-stat-card-value" style={{ color: paidCount > 0 ? '#28a745' : undefined }}>{paidCount}</div>
+          <div className="odoo-stat-card-sub">{totalPaid.toFixed(2)} DH</div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Reste dû</div>
+          <div className="odoo-stat-card-value" style={{ color: totalDue > 0 ? '#dc3545' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+        </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Non générés</div>
+          <div className="odoo-stat-card-value" style={{ color: ungenerated.length > 0 ? '#b08504' : undefined }}>{ungenerated.length}</div>
+          <div className="odoo-stat-card-sub">en attente du calcul</div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+      ) : rows.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+          <Banknote size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>Aucun employé en fréquence quinzaine.</p>
+          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Passez un employé en « Fréquence de paie : Quinzaine » dans l'onglet Employés pour le voir ici.</p>
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>Employé</th>
+                <th style={{ textAlign: 'right' }} title="Base du calcul : salaire mensuel ÷ 26 par jour pointé">Salaire mensuel</th>
+                <th style={{ textAlign: 'center' }}>Jours trav.</th>
+                <th style={{ textAlign: 'center' }}>Absents</th>
+                <th style={{ textAlign: 'right' }}>Base</th>
+                <th style={{ textAlign: 'right' }}>H. Sup</th>
+                <th style={{ textAlign: 'right' }} title="Solde d'avances à récupérer, ou retenue faite sur cette paie">Avance</th>
+                <th style={{ textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net</th>
+                <th style={{ textAlign: 'center', width: 110 }}>Paiement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const generated = !!r.payroll_id;
+                const paid = !!r.paid;
+                return (
+                  <tr key={r.employee_id} className={paid ? '' : generated ? 'row-warning' : ''}>
+                    <td>
+                      <span className={`odoo-status-dot ${paid ? 'ok' : generated ? 'warning' : 'neutral'}`} />
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                        <Users size={11} style={{ color: 'var(--theme-accent)' }} />
+                        {r.first_name} {r.last_name}
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[r.role as keyof typeof ROLE_LABELS] ?? r.role}</span>
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
+                      {r.monthly_salary ? `${parseFloat(r.monthly_salary).toFixed(2)} DH` : <span style={{ color: '#dc3545' }}>Non défini</span>}
+                    </td>
+                    {generated ? (
+                      <>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                          {(Math.round(parseFloat(String(r.worked_days ?? 0)) * 100) / 100).toString()}
+                        </td>
+                        <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
+                        <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
+                        <td style={{ textAlign: 'right', color: parseFloat(r.overtime_amount || '0') > 0 ? '#b85d1a' : 'var(--odoo-text-light)' }}>
+                          {parseFloat(r.overtime_amount || '0') > 0 ? `+${parseFloat(r.overtime_amount || '0').toFixed(2)}` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {paid ? (
+                            parseFloat(r.advance_deduction || '0') > 0
+                              ? <span style={{ color: '#b85d1a', fontWeight: 500 }} title="Retenue d'avance sur cette paie">− {parseFloat(r.advance_deduction || '0').toFixed(2)}</span>
+                              : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                          ) : (outstandingByEmp.get(r.employee_id) || 0) > 0 ? (
+                            <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)} DH — retenue proposée au paiement`}>
+                              <HandCoins size={10} style={{ marginRight: 2 }} />
+                              {(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                          {(() => {
+                            const net = parseFloat(r.net_amount || '0');
+                            const ded = paid
+                              ? parseFloat(r.advance_deduction || '0')
+                              : Math.min(suggestedByEmp.get(r.employee_id) ?? 0, net);
+                            const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
+                            if (ded <= 0.005) return `${net.toFixed(2)} DH`;
+                            return (
+                              <span title={paid
+                                ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
+                                : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
+                                {verse.toFixed(2)} DH
+                                <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
+                                  net {net.toFixed(2)}
+                                </div>
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {paid ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <span className="odoo-tag odoo-tag-green">
+                                <Check size={10} style={{ marginRight: 3 }} /> Payé
+                              </span>
+                              <button onClick={() => {
+                                if (confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`)) {
+                                  unpayMutation.mutate(r.payroll_id as string);
+                                }
+                              }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
+                                <RotateCcw size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <button onClick={() => startPay(r, 'cash')} className="odoo-btn-primary"
+                                disabled={payMutation.isPending}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
+                                <Banknote size={11} /> Espèces
+                              </button>
+                              <button onClick={() => startPay(r, 'bank')} className="odoo-btn-secondary"
+                                disabled={payMutation.isPending}
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
+                                Virement
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
+                          — Cliquez « Générer depuis pointage » pour calculer —
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className="odoo-tag odoo-tag-grey">Non généré</span>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+            {generated.length > 0 && (
+              <tfoot style={{ background: 'var(--odoo-bg-alt)', borderTop: '2px solid var(--odoo-border)' }}>
+                <tr>
+                  <td colSpan={5} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total quinzaine</td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700 }}>
+                    {generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }}>
+                    {generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0).toFixed(2)} DH
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }} title="Retenues d'avance effectuées sur les paies payées">
+                    {(() => {
+                      const t = generated.reduce((s, r) => s + parseFloat(r.advance_deduction || '0'), 0);
+                      return t > 0 ? `− ${t.toFixed(2)} DH` : '—';
+                    })()}
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}
+                    title="Total à verser (net moins retenues d'avance)">
+                    {generated.reduce((s, r) => s + cashOutOf(r), 0).toFixed(2)} DH
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
+      {/* ─── Dialogue de paiement avec retenue d'avance ─── */}
+      {payTarget && (
+        <PayrollPayDialog
+          employeeName={`${payTarget.row.first_name} ${payTarget.row.last_name}`}
+          periodLabel={`Quinzaine ${periodLabel}`}
+          net={parseFloat(payTarget.row.net_amount || '0')}
+          outstanding={outstandingByEmp.get(payTarget.row.employee_id) || 0}
+          suggested={suggestedByEmp.get(payTarget.row.employee_id) ?? (outstandingByEmp.get(payTarget.row.employee_id) || 0)}
+          defaultMethod={payTarget.method}
+          pending={payMutation.isPending}
+          onClose={() => setPayTarget(null)}
+          onConfirm={(method, deduction) => payMutation.mutate({ id: payTarget.row.payroll_id as string, method, deduction })}
+        />
+      )}
+
+      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+        Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage de la quinzaine (jours présents/absents/retards et heures sup). Les lignes déjà payées ne sont jamais écrasées.
+        Taux journalier = salaire mensuel / 26 (convention marocaine : 26 jours travaillés = mois complet). Seuls les jours pointés sont payés — pas de repos payé automatique.
         Une demi-journée compte 0,5 ; un « Double shift » compte 2 jours payés.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.
         Si l'employé a une avance en cours, une retenue est proposée au moment du paiement.
