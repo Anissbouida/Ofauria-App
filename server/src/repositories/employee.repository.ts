@@ -885,7 +885,7 @@ export const payrollRepository = {
       // Prime d'anciennete sur le salaire effectivement gagne (base moins
       // retenues), pas sur le salaire theorique.
       const seniorityBonus = r2((baseSalary - absenceDeduction) * calcSeniorityRate(seniorityYears));
-      const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
+      const overtimeAmount = r2(overtimeHours * (dailyRate / 8));
       // Double shift : le 2e service du jour est paye 1 jour supplementaire
       // (symetrique de la retenue d'absence, meme taux journalier base/26).
       const extraShiftAmount = r2(doubleDays * dailyRate);
