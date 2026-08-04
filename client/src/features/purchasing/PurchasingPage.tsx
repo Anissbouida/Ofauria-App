@@ -310,6 +310,44 @@ function InvoicesTab() {
 }
 
 /* ═══ Factures reçues (fournisseurs) ═══ */
+
+// Cle mois (YYYY-MM) d'une facture, ou null si date absente/invalide
+function invoiceMonthKey(inv: Record<string, any>): string | null {
+  const raw = inv.invoice_date as string | undefined;
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Prédicats de filtre partagés entre la liste affichée et les options des dropdowns.
+// Passer undefined pour un critère l'ignore : chaque dropdown est ainsi « facetté »
+// (il ne propose que les valeurs présentes dans les factures satisfaisant les AUTRES filtres).
+function matchesInvoiceFilters(
+  inv: Record<string, any>,
+  f: { status?: string; search?: string; supplier?: string; category?: string; month?: string },
+): boolean {
+  if (f.status) {
+    // 'pending' regroupe non réglées + partiellement réglées
+    if (f.status === 'pending') {
+      if (inv.status !== 'pending' && inv.status !== 'partial') return false;
+    } else if (inv.status !== f.status) return false;
+  }
+  if (f.search) {
+    const q = f.search.toLowerCase();
+    const hit =
+      ((inv.invoice_number as string) || '').toLowerCase().includes(q) ||
+      ((inv.supplier_name as string) || '').toLowerCase().includes(q) ||
+      ((inv.purchase_order_number as string) || '').toLowerCase().includes(q) ||
+      ((inv.category_name as string) || '').toLowerCase().includes(q);
+    if (!hit) return false;
+  }
+  if (f.supplier && inv.supplier_id !== f.supplier) return false;
+  if (f.category && inv.category_id !== f.category) return false;
+  if (f.month && invoiceMonthKey(inv) !== f.month) return false;
+  return true;
+}
+
 function ReceivedInvoicesSection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -467,37 +505,69 @@ function ReceivedInvoicesSection() {
   const totalFacture = invoicesList.reduce((s, inv) => s + parseFloat(inv.total_amount as string || '0'), 0);
   const totalPaid = invoicesList.reduce((s, inv) => s + parseFloat(inv.paid_amount as string || '0'), 0);
 
-  // Liste des fournisseurs et categories presents dans les factures, pour les dropdowns
+  // Options des dropdowns, facettées : chaque liste ne propose que les valeurs
+  // présentes dans les factures satisfaisant les AUTRES filtres actifs, avec le
+  // nombre de factures correspondantes. La valeur sélectionnée reste toujours
+  // proposée (compteur à 0) pour pouvoir la désélectionner.
   const invoiceSuppliers = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { name: string; count: number }>();
     invoicesList.forEach(inv => {
-      if (inv.supplier_id) map.set(inv.supplier_id as string, (inv.supplier_name as string) || '');
+      if (!inv.supplier_id) return;
+      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, category: categoryFilter, month: monthFilter })) return;
+      const cur = map.get(inv.supplier_id as string);
+      if (cur) cur.count += 1;
+      else map.set(inv.supplier_id as string, { name: (inv.supplier_name as string) || '', count: 1 });
     });
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [invoicesList]);
+    if (supplierFilter && !map.has(supplierFilter)) {
+      const inv = invoicesList.find(i => i.supplier_id === supplierFilter);
+      map.set(supplierFilter, { name: (inv?.supplier_name as string) || '', count: 0 });
+    }
+    return Array.from(map.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [invoicesList, statusFilter, searchTerm, categoryFilter, monthFilter, supplierFilter]);
 
   const invoiceCategories = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { name: string; count: number }>();
     invoicesList.forEach(inv => {
-      if (inv.category_id) map.set(inv.category_id as string, (inv.category_name as string) || '');
+      if (!inv.category_id) return;
+      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, supplier: supplierFilter, month: monthFilter })) return;
+      const cur = map.get(inv.category_id as string);
+      if (cur) cur.count += 1;
+      else map.set(inv.category_id as string, { name: (inv.category_name as string) || '', count: 1 });
     });
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [invoicesList]);
+    if (categoryFilter && !map.has(categoryFilter)) {
+      const inv = invoicesList.find(i => i.category_id === categoryFilter);
+      map.set(categoryFilter, { name: (inv?.category_name as string) || '', count: 0 });
+    }
+    return Array.from(map.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [invoicesList, statusFilter, searchTerm, supplierFilter, monthFilter, categoryFilter]);
 
-  // Liste des mois presents dans les factures (cle YYYY-MM), pour le dropdown, du plus recent au plus ancien
+  // Mois présents (cle YYYY-MM), du plus récent au plus ancien, facettés comme ci-dessus
   const invoiceMonths = useMemo(() => {
-    const map = new Map<string, string>();
     const monthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    const labelOf = (key: string) => {
+      const [y, m] = key.split('-');
+      return `${monthNames[parseInt(m, 10) - 1]} ${y}`;
+    };
+    const map = new Map<string, { name: string; count: number }>();
     invoicesList.forEach(inv => {
-      const raw = inv.invoice_date as string | undefined;
-      if (!raw) return;
-      const d = new Date(raw);
-      if (Number.isNaN(d.getTime())) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!map.has(key)) map.set(key, `${monthNames[d.getMonth()]} ${d.getFullYear()}`);
+      const key = invoiceMonthKey(inv);
+      if (!key) return;
+      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, supplier: supplierFilter, category: categoryFilter })) return;
+      const cur = map.get(key);
+      if (cur) cur.count += 1;
+      else map.set(key, { name: labelOf(key), count: 1 });
     });
-    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [invoicesList]);
+    if (monthFilter && !map.has(monthFilter)) {
+      map.set(monthFilter, { name: labelOf(monthFilter), count: 0 });
+    }
+    return Array.from(map.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.id.localeCompare(a.id));
+  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, monthFilter]);
 
   // Nombre de factures par statut, pour les badges des onglets
   const statusCounts = useMemo(() => {
@@ -511,39 +581,9 @@ function ReceivedInvoicesSection() {
 
   // Application des filtres (statut, recherche, fournisseur, categorie) puis tri
   const displayedInvoices = useMemo(() => {
-    let list = invoicesList;
-    if (statusFilter) {
-      // 'pending' regroupe non réglées + partiellement réglées
-      if (statusFilter === 'pending') {
-        list = list.filter(inv => inv.status === 'pending' || inv.status === 'partial');
-      } else {
-        list = list.filter(inv => inv.status === statusFilter);
-      }
-    }
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      list = list.filter(inv =>
-        ((inv.invoice_number as string) || '').toLowerCase().includes(q) ||
-        ((inv.supplier_name as string) || '').toLowerCase().includes(q) ||
-        ((inv.purchase_order_number as string) || '').toLowerCase().includes(q) ||
-        ((inv.category_name as string) || '').toLowerCase().includes(q)
-      );
-    }
-    if (supplierFilter) {
-      list = list.filter(inv => inv.supplier_id === supplierFilter);
-    }
-    if (categoryFilter) {
-      list = list.filter(inv => inv.category_id === categoryFilter);
-    }
-    if (monthFilter) {
-      list = list.filter(inv => {
-        const raw = inv.invoice_date as string | undefined;
-        if (!raw) return false;
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) return false;
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === monthFilter;
-      });
-    }
+    const list = invoicesList.filter(inv => matchesInvoiceFilters(inv, {
+      status: statusFilter, search: searchTerm, supplier: supplierFilter, category: categoryFilter, month: monthFilter,
+    }));
     const sorted = [...list].sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -667,30 +707,30 @@ function ReceivedInvoicesSection() {
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
         <input type="text" placeholder="Rechercher par N° facture, fournisseur, BC ou catégorie..."
           value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
-        {invoiceSuppliers.length > 1 && (
+        {(invoiceSuppliers.length > 1 || supplierFilter) && (
           <>
             <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
             <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
               <option value="">Tous les fournisseurs</option>
-              {invoiceSuppliers.map(([id, name]) => (
-                <option key={id} value={id}>{name}</option>
+              {invoiceSuppliers.map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.count})</option>
               ))}
             </select>
           </>
         )}
-        {invoiceCategories.length > 1 && (
+        {(invoiceCategories.length > 1 || categoryFilter) && (
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="odoo-filter-dropdown">
             <option value="">Toutes les catégories</option>
-            {invoiceCategories.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
+            {invoiceCategories.map(c => (
+              <option key={c.id} value={c.id}>{c.name} ({c.count})</option>
             ))}
           </select>
         )}
-        {invoiceMonths.length > 1 && (
+        {(invoiceMonths.length > 1 || monthFilter) && (
           <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="odoo-filter-dropdown">
             <option value="">Tous les mois</option>
-            {invoiceMonths.map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
+            {invoiceMonths.map(m => (
+              <option key={m.id} value={m.id}>{m.name} ({m.count})</option>
             ))}
           </select>
         )}
