@@ -12,6 +12,7 @@ import {
   Clock, CheckCircle2, Scale,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
@@ -710,12 +711,16 @@ function ReceivedInvoicesSection() {
         {(invoiceSuppliers.length > 1 || supplierFilter) && (
           <>
             <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
-            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
-              <option value="">Tous les fournisseurs</option>
-              {invoiceSuppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.count})</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={invoiceSuppliers.map(s => ({
+                id: s.id,
+                label: s.name,
+                detail: `${s.count} facture${s.count > 1 ? 's' : ''}`,
+              }))}
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              placeholder="Tous les fournisseurs"
+            />
           </>
         )}
         {(invoiceCategories.length > 1 || categoryFilter) && (
