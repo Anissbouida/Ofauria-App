@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search, X, Download, Loader2, ListTree, Users, Percent, Lock,
@@ -183,13 +184,17 @@ export default function PlanComptableTab() {
             </button>
           )}
         </div>
-        <select value={classFilter} onChange={e => setClassFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))}
-          className="odoo-search-input" style={{ minWidth: 200 }}>
-          <option value="all">Toutes les classes</option>
-          {[1, 2, 3, 4, 5, 6, 7].map(c => (
-            <option key={c} value={c}>Classe {c} - {CLASS_LABELS[c]} ({stats.byClassCount[c] || 0})</option>
-          ))}
-        </select>
+        <SearchSelect
+          options={[1, 2, 3, 4, 5, 6, 7].map(c => ({
+            id: String(c),
+            label: `Classe ${c} - ${CLASS_LABELS[c]}`,
+            detail: `${stats.byClassCount[c] || 0}`,
+          }))}
+          value={classFilter === 'all' ? '' : String(classFilter)}
+          onChange={id => setClassFilter(id === '' ? 'all' : parseInt(id, 10))}
+          placeholder="Toutes les classes"
+          width={220}
+        />
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi, type MenuEngineeringClass } from '../../api/reports.api';
 import { productLossesApi } from '../../api/product-losses.api';
@@ -951,14 +952,18 @@ function CostTab({ costData, costLoading, lossStats }: {
                   <button onClick={() => setCbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
                 )}
               </div>
-              <select value={cbSource} onChange={e => setCbSource(e.target.value as any)}
-                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white text-gray-700">
-                <option value="all">Toutes sources</option>
-                <option value="production">Production reelle</option>
-                <option value="recipe">Recette theorique</option>
-                <option value="manual">Cout manuel</option>
-                <option value="none">Sans cout</option>
-              </select>
+              <SearchSelect
+                options={[
+                  { id: 'production', label: 'Production reelle' },
+                  { id: 'recipe', label: 'Recette theorique' },
+                  { id: 'manual', label: 'Cout manuel' },
+                  { id: 'none', label: 'Sans cout' },
+                ]}
+                value={cbSource === 'all' ? '' : cbSource}
+                onChange={id => setCbSource((id || 'all') as any)}
+                placeholder="Toutes sources"
+                width={190}
+              />
             </div>
           </div>
           <div className="overflow-x-auto">

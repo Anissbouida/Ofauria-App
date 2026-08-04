@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, ChevronDown, Eye, Wand2,
@@ -248,20 +249,24 @@ export default function EcrituresTab() {
             </button>
           )}
         </div>
-        <select value={journalId} onChange={e => { setJournalId(e.target.value); setPage(0); }}
-          className="odoo-search-input" style={{ minWidth: 150 }}>
-          <option value="all">Tous les journaux</option>
-          {journals.map(j => (
-            <option key={j.id} value={j.id}>{j.code} - {j.label}</option>
-          ))}
-        </select>
-        <select value={status} onChange={e => { setStatus(e.target.value as JournalEntryStatus | 'all'); setPage(0); }}
-          className="odoo-search-input" style={{ minWidth: 130 }}>
-          <option value="all">Tous statuts</option>
-          <option value="draft">Brouillon</option>
-          <option value="posted">Comptabilise</option>
-          <option value="reversed">Extournee</option>
-        </select>
+        <SearchSelect
+          options={journals.map(j => ({ id: j.id, label: `${j.code} - ${j.label}` }))}
+          value={journalId === 'all' ? '' : journalId}
+          onChange={id => { setJournalId(id || 'all'); setPage(0); }}
+          placeholder="Tous les journaux"
+          width={190}
+        />
+        <SearchSelect
+          options={[
+            { id: 'draft', label: 'Brouillon' },
+            { id: 'posted', label: 'Comptabilise' },
+            { id: 'reversed', label: 'Extournee' },
+          ]}
+          value={status === 'all' ? '' : status}
+          onChange={id => { setStatus((id || 'all') as JournalEntryStatus | 'all'); setPage(0); }}
+          placeholder="Tous statuts"
+          width={160}
+        />
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
           <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }}

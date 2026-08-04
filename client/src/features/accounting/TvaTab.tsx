@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Download, Lock, Percent } from 'lucide-react';
 import { tvaDeclarationApi } from '../../api/ledger.api';
@@ -68,12 +69,20 @@ export default function TvaTab() {
   return (
     <>
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 130 }}>
-          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        <select value={year} onChange={e => setYear(parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 90 }}>
-          {[now.getFullYear(), now.getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <SearchSelect
+          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+          value={String(month)}
+          onChange={id => id && setMonth(parseInt(id, 10))}
+          placeholder="Mois"
+          width={150}
+        />
+        <SearchSelect
+          options={[now.getFullYear(), now.getFullYear() - 1].map(y => ({ id: String(y), label: String(y) }))}
+          value={String(year)}
+          onChange={id => id && setYear(parseInt(id, 10))}
+          placeholder="Année"
+          width={110}
+        />
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary" disabled={!data}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: !data ? 0.5 : 1 }}>

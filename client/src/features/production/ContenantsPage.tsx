@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contenantsApi } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
@@ -184,13 +185,12 @@ export default function ContenantsPage() {
             className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <select value={typeFilter} onChange={e => setTypeFilter(Number(e.target.value))}
-          className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500">
-          <option value={0}>Tous les types</option>
-          {Object.entries(TYPE_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{TYPE_ICONS[Number(k)]} {v}</option>
-          ))}
-        </select>
+        <SearchSelect
+          options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
+          value={typeFilter ? String(typeFilter) : ''}
+          onChange={id => setTypeFilter(id ? Number(id) : 0)}
+          placeholder="Tous les types"
+        />
         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)}
             className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { stockFrigoApi } from '../../api/stock-frigo.api';
@@ -211,16 +212,14 @@ export default function SemiFinisTab() {
           className="odoo-search-input"
         />
         {stores.length > 1 && (
-          <select
-            value={storeId}
-            onChange={e => setSelectedStoreId(e.target.value)}
-            className="odoo-filter-dropdown"
-            style={{ marginLeft: 'auto' }}
-          >
-            {(stores as Record<string, any>[]).map(s => (
-              <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-            ))}
-          </select>
+          <div style={{ marginLeft: 'auto' }}>
+            <SearchSelect
+              options={(stores as Record<string, any>[]).map(s => ({ id: s.id as string, label: s.name as string }))}
+              value={storeId}
+              onChange={id => id && setSelectedStoreId(id)}
+              placeholder="Magasin"
+            />
+          </div>
         )}
       </div>
 

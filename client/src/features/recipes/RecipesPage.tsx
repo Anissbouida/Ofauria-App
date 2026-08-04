@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
@@ -377,17 +378,14 @@ export default function RecipesPage() {
           placeholder={activeTab === 'base' ? 'Rechercher une préparation de base...' : 'Rechercher une recette ou un produit...'}
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="odoo-search-input" />
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          style={{ marginLeft: 8, padding: '4px 8px', border: '1px solid var(--theme-border, #d1d5db)', borderRadius: 4, fontSize: '0.8125rem', background: 'white' }}
-          title="Filtrer par catégorie"
-        >
-          <option value="">Toutes catégories</option>
-          {recipeCategories.map(c => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
-        </select>
+        <div style={{ marginLeft: 8 }}>
+          <SearchSelect
+            options={recipeCategories.map(c => ({ id: String(c.id), label: c.label }))}
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            placeholder="Toutes catégories"
+          />
+        </div>
         {search && (
           <span className="odoo-filter-chip">
             Recherche: {search}

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, Fragment, type CSSProperties } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
@@ -364,12 +365,12 @@ export default function PurchaseOrdersTab() {
         {orderSuppliers.length > 1 && (
           <>
             <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
-            <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
-              <option value="">Tous les fournisseurs</option>
-              {orderSuppliers.map(([id, name]) => (
-                <option key={id} value={id}>{name}</option>
-              ))}
-            </select>
+            <SearchSelect
+              options={orderSuppliers.map(([id, name]) => ({ id, label: name }))}
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              placeholder="Tous les fournisseurs"
+            />
           </>
         )}
       </div>

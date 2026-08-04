@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, Package, Recycle } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
@@ -180,17 +181,12 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
           </span>
         )}
 
-        <select value={categoryIdFilter} onChange={(e) => setCategoryIdFilter(e.target.value)}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          <option value="">▾ Catégorie</option>
-          {leafGroups.map(g => (
-            <optgroup key={g.rootId} label={g.label}>
-              {g.leaves.map(leaf => (
-                <option key={String(leaf.id)} value={String(leaf.id)}>{String(leaf.name)}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <SearchSelect
+          options={leafGroups.flatMap(g => g.leaves.map(leaf => ({ id: String(leaf.id), label: String(leaf.name), sublabel: g.label })))}
+          value={categoryIdFilter}
+          onChange={setCategoryIdFilter}
+          placeholder="Catégorie"
+        />
 
         <span style={{ flex: 1 }} />
 

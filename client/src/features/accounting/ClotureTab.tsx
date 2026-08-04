@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Lock, LockOpen, ShieldCheck, CalendarCheck } from 'lucide-react';
 import { fiscalPeriodsApi } from '../../api/ledger.api';
@@ -59,9 +60,13 @@ export default function ClotureTab() {
   return (
     <>
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <select value={year} onChange={e => setYear(parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 100 }}>
-          {[now.getFullYear(), now.getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <SearchSelect
+          options={[now.getFullYear(), now.getFullYear() - 1].map(y => ({ id: String(y), label: String(y) }))}
+          value={String(year)}
+          onChange={id => id && setYear(parseInt(id, 10))}
+          placeholder="Année"
+          width={120}
+        />
         <div style={{ flex: 1 }} />
       </div>
 

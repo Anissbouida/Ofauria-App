@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
@@ -249,12 +250,12 @@ function ProductionPlansView() {
           </span>
         )}
         {isAdmin && (
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
-            className="odoo-filter-dropdown"
-            style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-            <option value="">▾ Chef</option>
-            {CHEF_ROLES.map(role => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-          </select>
+          <SearchSelect
+            options={CHEF_ROLES.map(role => ({ id: role, label: ROLE_LABELS[role] }))}
+            value={roleFilter}
+            onChange={setRoleFilter}
+            placeholder="Chef"
+          />
         )}
       </div>
 

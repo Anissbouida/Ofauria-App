@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productLossesApi } from '../../api/product-losses.api';
 import { productsApi } from '../../api/products.api';
@@ -132,9 +133,13 @@ export default function LossesTab() {
     <>
       {/* Search panel : period + actions */}
       <div className="odoo-search-panel">
-        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
-          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
+        <SearchSelect
+          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+          value={String(month)}
+          onChange={id => id && setMonth(parseInt(id, 10))}
+          placeholder="Mois"
+          width={150}
+        />
         <input type="number" value={year} onChange={e => setYear(+e.target.value)}
           className="odoo-filter-dropdown" style={{ width: 80 }} />
         <div style={{ flex: 1 }} />

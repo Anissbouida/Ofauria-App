@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { stockFrigoApi } from '../../api/stock-frigo.api';
 import { storesApi } from '../../api/stores.api';
@@ -198,15 +199,12 @@ export default function StockFrigoPage() {
           </div>
         </div>
         {stores.length > 1 && (
-          <select
+          <SearchSelect
+            options={(stores as Record<string, any>[]).map(s => ({ id: s.id as string, label: s.name as string }))}
             value={storeId}
-            onChange={e => setSelectedStoreId(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-          >
-            {(stores as Record<string, any>[]).map(s => (
-              <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-            ))}
-          </select>
+            onChange={id => id && setSelectedStoreId(id)}
+            placeholder="Magasin"
+          />
         )}
       </div>
 

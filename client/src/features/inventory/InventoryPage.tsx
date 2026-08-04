@@ -19,6 +19,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 import { format } from 'date-fns';
 
@@ -570,35 +571,34 @@ export default function InventoryPage() {
         )}
 
         {/* Catégorie (branche) → Type (feuille) */}
-        <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setTypeFilter(''); }}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          <option value="">▾ Catégorie</option>
-          {categoryBranches.map(b => (
-            <option key={b.id} value={b.id}>{`${'  '.repeat(b.depth)}${b.name}`}</option>
-          ))}
-        </select>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          <option value="">▾ Type</option>
-          {leavesUnder(branchFilter).map(l => (
-            <option key={l.id} value={String(l.id)}>{l.name}</option>
-          ))}
-        </select>
+        <SearchSelect
+          options={categoryBranches.map(b => ({ id: b.id, label: `${'  '.repeat(b.depth)}${b.name}` }))}
+          value={branchFilter}
+          onChange={id => { setBranchFilter(id); setTypeFilter(''); }}
+          placeholder="Catégorie"
+        />
+        <SearchSelect
+          options={leavesUnder(branchFilter).map(l => ({ id: String(l.id), label: l.name }))}
+          value={typeFilter}
+          onChange={setTypeFilter}
+          placeholder="Type"
+        />
 
         {/* Fournisseur */}
-        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          <option value="">▾ Fournisseur</option>
-          {supplierOptions.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <SearchSelect
+          options={supplierOptions.map(s => ({ id: s, label: s }))}
+          value={supplierFilter}
+          onChange={setSupplierFilter}
+          placeholder="Fournisseur"
+        />
 
         {/* État de stock */}
-        <select value={viewFilter} onChange={e => setViewFilter(e.target.value as ViewFilter)}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          {(Object.keys(STATE_LABELS) as ViewFilter[]).map(k => (
-            <option key={k} value={k}>{k === 'all' ? '▾ État' : STATE_LABELS[k]}</option>
-          ))}
-        </select>
+        <SearchSelect
+          options={(Object.keys(STATE_LABELS) as ViewFilter[]).filter(k => k !== 'all').map(k => ({ id: k, label: STATE_LABELS[k] }))}
+          value={viewFilter === 'all' ? '' : viewFilter}
+          onChange={id => setViewFilter((id || 'all') as ViewFilter)}
+          placeholder="État"
+        />
 
         <span style={{ flex: 1 }} />
 

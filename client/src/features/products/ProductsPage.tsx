@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
@@ -389,14 +390,12 @@ function CatalogueTab() {
             <span className="odoo-filter-chip-remove" onClick={() => setStockFilter('all')}>×</span>
           </span>
         )}
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
-          className="odoo-filter-dropdown"
-          style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          <option value="">▾ Catégorie</option>
-          {categories.map((c: { id: number; name: string }) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <SearchSelect
+          options={(categories as Array<{ id: number; name: string }>).map(c => ({ id: String(c.id), label: c.name }))}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          placeholder="Catégorie"
+        />
       </div>
 
       {/* Content */}

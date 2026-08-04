@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, attendanceApi, leavesApi, payrollApi, schedulesApi, shiftsApi, weeklyPayrollApi, advancesApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -830,9 +831,13 @@ function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQuer
           </div>
         ) : (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <select value={summaryMonth} onChange={e => setSummaryMonth(parseInt(e.target.value))} className="input" style={{ width: 'auto' }}>
-              {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
+            <SearchSelect
+              options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+              value={String(summaryMonth)}
+              onChange={id => id && setSummaryMonth(parseInt(id))}
+              placeholder="Mois"
+              width={140}
+            />
             <input type="number" value={summaryYear} onChange={e => setSummaryYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
           </div>
         )}
@@ -1573,9 +1578,13 @@ function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof us
       {/* Toolbar */}
       <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="input" style={{ width: 'auto' }}>
-            {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
+          <SearchSelect
+            options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+            value={String(month)}
+            onChange={id => id && setMonth(parseInt(id))}
+            placeholder="Mois"
+            width={140}
+          />
           <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -3175,12 +3184,13 @@ function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryC
         </div>
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input" style={{ width: 'auto' }}>
-            <option value="all">Toutes catégories</option>
-            {allRoles.map(r => (
-              <option key={r} value={r}>{ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r}</option>
-            ))}
-          </select>
+          <SearchSelect
+            options={allRoles.map(r => ({ id: r, label: ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r }))}
+            value={roleFilter === 'all' ? '' : roleFilter}
+            onChange={id => setRoleFilter(id || 'all')}
+            placeholder="Toutes catégories"
+            width={200}
+          />
           <button onClick={applyDefaults} className="odoo-btn-secondary" title="Pré-remplit les cellules vides avec le shift par défaut de chaque employé"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Sparkles size={13} /> Appliquer défaut

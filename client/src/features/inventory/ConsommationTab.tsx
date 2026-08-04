@@ -7,6 +7,7 @@ import {
   ShoppingCart, FileText, PackagePlus, ArrowDownToLine, ArrowUpFromLine,
 } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory.api';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 /**
  * Deux vues complementaires sur les matieres, basculables :
@@ -310,23 +311,32 @@ export default function ConsommationTab() {
 
       {/* Header : selecteur periode + export */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={periodMode} onChange={e => setPeriodMode(e.target.value as 'mois' | 'custom')}
-          className="odoo-input" style={{ width: 150 }}>
-          <option value="mois">Par mois</option>
-          <option value="custom">Période personnalisée</option>
-        </select>
+        <SearchSelect
+          options={[{ id: 'mois', label: 'Par mois' }, { id: 'custom', label: 'Période personnalisée' }]}
+          value={periodMode}
+          onChange={id => setPeriodMode((id || 'mois') as 'mois' | 'custom')}
+          placeholder="Période"
+          width={170}
+        />
         {periodMode === 'mois' ? (
           <>
-            <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
-              className="odoo-input" style={{ width: 130 }}>
-              {Array.from({ length: 12 }, (_, k) => k + 1).map(m => (
-                <option key={m} value={m}>{format(new Date(2026, m - 1, 1), 'MMMM', { locale: fr })}</option>
-              ))}
-            </select>
-            <select value={year} onChange={e => setYear(parseInt(e.target.value))}
-              className="odoo-input" style={{ width: 90 }}>
-              {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <SearchSelect
+              options={Array.from({ length: 12 }, (_, k) => k + 1).map(m => ({
+                id: String(m),
+                label: format(new Date(2026, m - 1, 1), 'MMMM', { locale: fr }),
+              }))}
+              value={String(month)}
+              onChange={id => id && setMonth(parseInt(id))}
+              placeholder="Mois"
+              width={150}
+            />
+            <SearchSelect
+              options={[2025, 2026, 2027].map(y => ({ id: String(y), label: String(y) }))}
+              value={String(year)}
+              onChange={id => id && setYear(parseInt(id))}
+              placeholder="Année"
+              width={100}
+            />
           </>
         ) : (
           <>

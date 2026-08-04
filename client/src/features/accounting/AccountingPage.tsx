@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { caisseApi, suppliersApi, expenseCategoriesApi, paymentsApi, invoicesApi } from '../../api/accounting.api';
@@ -1630,9 +1631,13 @@ function CaisseTab() {
     <>
       {/* Search panel : period + actions */}
       <div className="odoo-search-panel">
-        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
-          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
+        <SearchSelect
+          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+          value={String(month)}
+          onChange={id => id && setMonth(parseInt(id, 10))}
+          placeholder="Mois"
+          width={150}
+        />
         <input type="number" value={year} onChange={e => setYear(+e.target.value)}
           className="odoo-filter-dropdown" style={{ width: 80 }} />
         <div style={{ flex: 1 }} />
@@ -2364,9 +2369,13 @@ function ChargesTab() {
         </div>
         {periodMode === 'month' ? (
           <>
-            <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
-              {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
+            <SearchSelect
+              options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+              value={String(month)}
+              onChange={id => id && setMonth(parseInt(id, 10))}
+              placeholder="Mois"
+              width={150}
+            />
             <input type="number" value={year} onChange={e => setYear(+e.target.value)}
               className="odoo-filter-dropdown" style={{ width: 80 }} />
           </>
@@ -2425,18 +2434,24 @@ function ChargesTab() {
             </button>
           )}
         </div>
-        <select value={filterRoot} onChange={e => { setFilterRoot(e.target.value); setFilterLeaf('all'); }} className="odoo-filter-dropdown">
-          <option value="all">Toutes catégories</option>
-          {rootCatsWithPayments.map(rc => <option key={String(rc.id)} value={String(rc.id)}>{rc.name}</option>)}
-        </select>
-        <select value={filterLeaf} onChange={e => setFilterLeaf(e.target.value)} className="odoo-filter-dropdown">
-          <option value="all">Tous types</option>
-          {availableLeaves.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-        <select value={filterMethod} onChange={e => setFilterMethod(e.target.value)} className="odoo-filter-dropdown">
-          <option value="all">Toutes méthodes</option>
-          {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
-        </select>
+        <SearchSelect
+          options={rootCatsWithPayments.map(rc => ({ id: String(rc.id), label: rc.name }))}
+          value={filterRoot === 'all' ? '' : filterRoot}
+          onChange={id => { setFilterRoot(id || 'all'); setFilterLeaf('all'); }}
+          placeholder="Toutes catégories"
+        />
+        <SearchSelect
+          options={availableLeaves.map(l => ({ id: l, label: l }))}
+          value={filterLeaf === 'all' ? '' : filterLeaf}
+          onChange={id => setFilterLeaf(id || 'all')}
+          placeholder="Tous types"
+        />
+        <SearchSelect
+          options={paymentMethods.map(m => ({ id: m.code, label: m.label }))}
+          value={filterMethod === 'all' ? '' : filterMethod}
+          onChange={id => setFilterMethod(id || 'all')}
+          placeholder="Toutes méthodes"
+        />
         {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
           <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
             className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -3330,22 +3345,33 @@ function ChequesTab() {
             </button>
           )}
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'pending' | 'cashed' | 'all')}
-          className="odoo-filter-dropdown">
-          <option value="pending">En attente ({counts.pending})</option>
-          <option value="cashed">Encaisses ({counts.cashed})</option>
-          <option value="all">Tous</option>
-        </select>
-        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="odoo-filter-dropdown">
-          <option value="all">Tous beneficiaires</option>
-          {uniqueSuppliers.map(name => <option key={name} value={name}>{name}</option>)}
-        </select>
-        <select value={methodFilter} onChange={e => setMethodFilter(e.target.value as 'all' | 'check' | 'traite')}
-          className="odoo-filter-dropdown">
-          <option value="all">Toutes methodes</option>
-          <option value="check">Cheque</option>
-          <option value="traite">Traite</option>
-        </select>
+        <SearchSelect
+          options={[
+            { id: 'pending', label: 'En attente', detail: `${counts.pending}` },
+            { id: 'cashed', label: 'Encaisses', detail: `${counts.cashed}` },
+            { id: 'all', label: 'Tous' },
+          ]}
+          value={statusFilter}
+          onChange={id => setStatusFilter((id || 'pending') as 'pending' | 'cashed' | 'all')}
+          placeholder="Statut"
+          width={180}
+        />
+        <SearchSelect
+          options={uniqueSuppliers.map(name => ({ id: name, label: name }))}
+          value={supplierFilter === 'all' ? '' : supplierFilter}
+          onChange={id => setSupplierFilter(id || 'all')}
+          placeholder="Tous beneficiaires"
+        />
+        <SearchSelect
+          options={[
+            { id: 'check', label: 'Cheque' },
+            { id: 'traite', label: 'Traite' },
+          ]}
+          value={methodFilter === 'all' ? '' : methodFilter}
+          onChange={id => setMethodFilter((id || 'all') as 'all' | 'check' | 'traite')}
+          placeholder="Toutes methodes"
+          width={180}
+        />
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           title="Filtre echeance">
           <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>Du</span>
@@ -3817,9 +3843,13 @@ function ResumeTab() {
     <>
       {/* Search panel : period + actions */}
       <div className="odoo-search-panel">
-        <select value={month} onChange={e => setMonth(+e.target.value)} className="odoo-filter-dropdown" style={{ minWidth: 120 }}>
-          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
+        <SearchSelect
+          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+          value={String(month)}
+          onChange={id => id && setMonth(parseInt(id, 10))}
+          placeholder="Mois"
+          width={150}
+        />
         <input type="number" value={year} onChange={e => setYear(+e.target.value)}
           className="odoo-filter-dropdown" style={{ width: 80 }} />
         <div style={{ flex: 1 }} />

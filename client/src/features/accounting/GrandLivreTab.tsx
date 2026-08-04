@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Download, Lock, BookOpen, Calendar, Search, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
@@ -107,10 +108,13 @@ export default function GrandLivreTab() {
           <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
         </div>
-        <select value={classFilter} onChange={e => setClassFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 170 }}>
-          <option value="all">Toutes les classes</option>
-          {[1, 2, 3, 4, 5, 6, 7].map(c => <option key={c} value={c}>Classe {c} — {CLASS_LABELS[c]}</option>)}
-        </select>
+        <SearchSelect
+          options={[1, 2, 3, 4, 5, 6, 7].map(c => ({ id: String(c), label: `Classe ${c} — ${CLASS_LABELS[c]}` }))}
+          value={classFilter === 'all' ? '' : String(classFilter)}
+          onChange={id => setClassFilter(id === '' ? 'all' : parseInt(id, 10))}
+          placeholder="Toutes les classes"
+          width={200}
+        />
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 180px', minWidth: 160 }}>
           <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
           <input type="text" placeholder="Filtrer un compte..." value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />

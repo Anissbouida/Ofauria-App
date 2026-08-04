@@ -724,20 +724,20 @@ function ReceivedInvoicesSection() {
           </>
         )}
         {(invoiceCategories.length > 1 || categoryFilter) && (
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="odoo-filter-dropdown">
-            <option value="">Toutes les catégories</option>
-            {invoiceCategories.map(c => (
-              <option key={c.id} value={c.id}>{c.name} ({c.count})</option>
-            ))}
-          </select>
+          <SearchSelect
+            options={invoiceCategories.map(c => ({ id: c.id, label: c.name, detail: `${c.count}` }))}
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            placeholder="Toutes les catégories"
+          />
         )}
         {(invoiceMonths.length > 1 || monthFilter) && (
-          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="odoo-filter-dropdown">
-            <option value="">Tous les mois</option>
-            {invoiceMonths.map(m => (
-              <option key={m.id} value={m.id}>{m.name} ({m.count})</option>
-            ))}
-          </select>
+          <SearchSelect
+            options={invoiceMonths.map(m => ({ id: m.id, label: m.name, detail: `${m.count}` }))}
+            value={monthFilter}
+            onChange={setMonthFilter}
+            placeholder="Tous les mois"
+          />
         )}
         {hasActiveFilters && (
           <button onClick={() => { setSearchTerm(''); setSupplierFilter(''); setCategoryFilter(''); setMonthFilter(''); }}

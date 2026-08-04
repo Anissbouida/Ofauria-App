@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
@@ -366,14 +367,18 @@ function DecisionPanel({ setMsg }: { setMsg: (m: { type: 'success' | 'error'; te
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
         </div>
-        <select value={filterDest} onChange={e => setFilterDest(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-amber-500">
-          <option value="">Toutes destinations</option>
-          <option value="reexpose">Vitrine J+1</option>
-          <option value="retour_stock">Retour reserve</option>
-          <option value="recycle">Valorisation</option>
-          <option value="waste">Destruction</option>
-        </select>
+        <SearchSelect
+          options={[
+            { id: 'reexpose', label: 'Vitrine J+1' },
+            { id: 'retour_stock', label: 'Retour reserve' },
+            { id: 'recycle', label: 'Valorisation' },
+            { id: 'waste', label: 'Destruction' },
+          ]}
+          value={filterDest}
+          onChange={setFilterDest}
+          placeholder="Toutes destinations"
+          width={200}
+        />
         <button onClick={() => refetch()} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
           <RefreshCw size={16} className="text-gray-500" />
         </button>
@@ -672,13 +677,17 @@ function HistoryPanel() {
           <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm" />
         </div>
-        <select value={destFilter} onChange={e => { setDestFilter(e.target.value); setPage(1); }}
-          className="px-3 py-2 rounded-lg border border-gray-200 text-sm">
-          <option value="">Toutes destinations</option>
-          <option value="reexpose">Vitrine J+1</option>
-          <option value="recycle">Valorisation</option>
-          <option value="waste">Destruction</option>
-        </select>
+        <SearchSelect
+          options={[
+            { id: 'reexpose', label: 'Vitrine J+1' },
+            { id: 'recycle', label: 'Valorisation' },
+            { id: 'waste', label: 'Destruction' },
+          ]}
+          value={destFilter}
+          onChange={id => { setDestFilter(id); setPage(1); }}
+          placeholder="Toutes destinations"
+          width={200}
+        />
         <span className="text-xs text-gray-400 ml-auto">{total} decision(s)</span>
       </div>
 
