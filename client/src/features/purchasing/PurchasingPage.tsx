@@ -100,10 +100,14 @@ export default function PurchasingPage() {
 }
 
 /* ═══════════════════════ SUPPLIERS TAB ═══════════════════════ */
+type SuppliersFilter = 'active' | 'inactive' | 'all';
+
 function SuppliersTab() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
+  const [statusFilter, setStatusFilter] = useState<SuppliersFilter>('active');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const { data: suppliers = [], isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
 
@@ -138,6 +142,31 @@ function SuppliersTab() {
 
   const suppliersList = suppliers as Record<string, any>[];
   const activeCount = suppliersList.filter(s => s.is_active).length;
+  const inactiveCount = suppliersList.length - activeCount;
+
+  const filteredSuppliers = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return suppliersList
+      .filter(s => {
+        if (statusFilter === 'active' && !s.is_active) return false;
+        if (statusFilter === 'inactive' && s.is_active) return false;
+        if (!q) return true;
+        return (
+          ((s.name as string) || '').toLowerCase().includes(q) ||
+          ((s.contact_name as string) || '').toLowerCase().includes(q) ||
+          ((s.phone as string) || '').toLowerCase().includes(q) ||
+          ((s.city as string) || '').toLowerCase().includes(q) ||
+          ((s.ice as string) || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => ((a.name as string) || '').localeCompare((b.name as string) || '', 'fr', { sensitivity: 'base' }));
+  }, [suppliersList, statusFilter, searchTerm]);
+
+  const STATUS_TABS: Array<{ key: SuppliersFilter; label: string; icon: typeof Truck; color: string; count: number }> = [
+    { key: 'active', label: 'Actifs', icon: CheckCircle2, color: '#15803d', count: activeCount },
+    { key: 'inactive', label: 'Inactifs', icon: X, color: '#6b7280', count: inactiveCount },
+    { key: 'all', label: 'Tous', icon: Truck, color: '#374151', count: suppliersList.length },
+  ];
 
   return (
     <>
@@ -149,19 +178,53 @@ function SuppliersTab() {
           <div className="odoo-stat-card-sub">total</div>
         </div>
         <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
+          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
           <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
           <div className="odoo-stat-card-sub">en activité</div>
         </div>
+        <div className="odoo-stat-card">
+          <div className="odoo-stat-card-label"><X size={11} style={{ display: 'inline', marginRight: 4 }} />Inactifs</div>
+          <div className="odoo-stat-card-value" style={{ color: inactiveCount > 0 ? '#6b7280' : undefined }}>{inactiveCount}</div>
+          <div className="odoo-stat-card-sub">désactivés</div>
+        </div>
       </div>
 
-      {/* Search panel + action */}
+      {/* Search panel — sous-onglets par statut + bouton nouveau fournisseur */}
       <div className="odoo-search-panel">
+        {STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const active = statusFilter === tab.key;
+          return (
+            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+                color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+                fontWeight: active ? 600 : 400,
+              }}>
+              <Icon size={11} style={{ color: active ? undefined : tab.color }} /> {tab.label}
+              {tab.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{tab.count}</span>}
+            </button>
+          );
+        })}
         <div style={{ flex: 1 }} />
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouveau fournisseur
         </button>
+      </div>
+
+      {/* Search panel — recherche texte */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher par nom, contact, téléphone, ville ou ICE..."
+          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
+        {(searchTerm || statusFilter !== 'active') && (
+          <button onClick={() => { setSearchTerm(''); setStatusFilter('active'); }}
+            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Réinitialiser
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -174,6 +237,17 @@ function SuppliersTab() {
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>Aucun fournisseur</p>
+        </div>
+      ) : filteredSuppliers.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Search size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+          <p style={{ fontSize: '0.8125rem' }}>
+            {statusFilter === 'inactive'
+              ? 'Aucun fournisseur inactif'
+              : statusFilter === 'active'
+                ? 'Aucun fournisseur actif ne correspond à la recherche'
+                : 'Aucun fournisseur ne correspond à la recherche'}
+          </p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -191,7 +265,7 @@ function SuppliersTab() {
               </tr>
             </thead>
             <tbody>
-              {suppliersList.map(s => (
+              {filteredSuppliers.map(s => (
                 <tr key={s.id as string} onClick={() => { setEditing(s); setShowForm(true); }} style={{ cursor: 'pointer' }}>
                   <td><span className={`odoo-status-dot ${s.is_active ? 'ok' : 'neutral'}`} /></td>
                   <td>
