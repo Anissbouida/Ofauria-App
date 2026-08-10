@@ -2,18 +2,19 @@ import ExcelJS from 'exceljs';
 
 // Rapport xlsx d'une journée du module Contrôle des ventes, au format
 // « document papier » : une seule feuille — bandeau entreprise, légende,
-// tableau numéroté par catégorie (Appro / Reçu / Vendu / Invendu / Écart),
-// sous-totaux avec taux de vente, récapitulatif général, section stock
-// antérieur, signatures.
+// tableau numéroté par catégorie (Reste veille / Appro / Reçu / Vendu /
+// Invendu / Écart), sous-totaux avec taux de vente, récapitulatif général,
+// section stock antérieur, signatures.
 //
-// Convention identique à l'écran : Écart = Vendu + Invendu − Reçu (repli sur
-// l'Appro si le Reçu n'est pas saisi). Négatif → manque à expliquer ;
-// positif → vendu plus que reçu (stock antérieur) ; 0 → OK.
+// Convention identique à l'écran (mig 259) :
+//   Écart = Vendu + Invendu − (Reçu + Reste veille).
+// Négatif → manque à expliquer ; positif → vendu plus que disponible ; 0 → OK.
 
 type ReconLineRow = {
   sku: string | null;
   product_name: string;
   category: string | null;
+  report_veille_qty?: string | number;
   appro_qty: string | number;
   recu_qty: string | number;
   vendu_qty: string | number;
@@ -67,7 +68,7 @@ const C = {
 const thin = { style: 'thin' as const };
 const allBorders = { top: thin, left: thin, bottom: thin, right: thin };
 
-const NB_COLS = 9;
+const NB_COLS = 10;
 
 const MOIS = ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
 
@@ -76,19 +77,19 @@ function dateFr(iso: string): string {
   return `${d} ${MOIS[(m ?? 1) - 1]} ${y}`;
 }
 
-/** Base de calcul : le reçu s'il est saisi, sinon l'appro (même règle que l'UI). */
-const baseOf = (l: ReconLineRow) => (N(l.recu_qty) > 0 ? N(l.recu_qty) : N(l.appro_qty));
+/** Disponible à la vente = stock d'ouverture (reste de la veille) + reçu du jour. */
+const baseOf = (l: ReconLineRow) => N(l.report_veille_qty) + N(l.recu_qty);
 const caOf = (l: ReconLineRow) => (N(l.vendu_amount) > 0 ? N(l.vendu_amount) : N(l.vendu_qty) * N(l.unit_price));
 
 type Obs = { text: string; kind: 'ok' | 'info' | 'warn' | 'missing' };
 
-/** Convention app : écart négatif = manque, positif = vendu plus que reçu. */
+/** Convention app : écart négatif = manque, positif = vendu plus que disponible. */
 function observationOf(ecart: number, vendu: number, invendu: number, base: number): Obs {
   if (ecart < 0) {
     if (vendu === 0 && invendu === 0) return { text: '⚠️ Rien vendu ni compté en vitrine', kind: 'warn' };
     return { text: `❌ ${Math.abs(ecart)} article(s) manquant(s)`, kind: 'missing' };
   }
-  if (ecart > 0) return { text: `ℹ️ ${ecart} vendu(s) du stock antérieur`, kind: 'info' };
+  if (ecart > 0) return { text: `ℹ️ ${ecart} vendu(s) de plus que le disponible (reste veille + reçu)`, kind: 'info' };
   if (invendu === 0 && vendu === base && base > 0) return { text: '✅ Tout vendu (pas de reste)', kind: 'ok' };
   return { text: '✅ OK — cohérent', kind: 'ok' };
 }
@@ -124,20 +125,21 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
   const ws = wb.addWorksheet(`Écart ${d}-${m}-${y}`, { properties: { defaultRowHeight: 15 } });
   ws.columns = [
     { width: 4 },   // A  N°
-    { width: 34 },  // B  Article
-    { width: 10 },  // C  Appro
-    { width: 10 },  // D  Reçu
-    { width: 10 },  // E  Vendu
-    { width: 10 },  // F  Invendu
-    { width: 9 },   // G  ÉCART
-    { width: 10 },  // H  PU (DH)
-    { width: 13 },  // I  Val. Écart (DH)
+    { width: 32 },  // B  Article
+    { width: 11 },  // C  Reste veille
+    { width: 10 },  // D  Appro
+    { width: 10 },  // E  Reçu
+    { width: 10 },  // F  Vendu
+    { width: 10 },  // G  Invendu
+    { width: 9 },   // H  ÉCART
+    { width: 10 },  // I  PU (DH)
+    { width: 13 },  // J  Val. Écart (DH)
   ];
 
   // ── Bandeaux titre + légende
   band(ws, 'BOULANGERIE-PÂTISSERIE OFAURIA', { fill: C.darkBlue, size: 14, height: 20 });
   band(ws, `CONTRÔLE DES ÉCARTS : PRODUCTION vs CAISSE vs VITRINE — ${dateFr(dateIso)}`, { fill: C.darkBlue, size: 12 });
-  const legend = ws.addRow(['Écart = Vendu + Invendu − Reçu (repli sur l’Appro si le Reçu n’est pas saisi).  Négatif → manque à expliquer  |  Positif → vendu plus que reçu (stock antérieur)  |  0 → OK ✓']);
+  const legend = ws.addRow(['Écart = Vendu + Invendu − (Reçu + Reste veille).  Le reste de la veille est le stock d’ouverture, reporté automatiquement.  Négatif → manque à expliquer  |  Positif → vendu plus que le disponible  |  0 → OK ✓']);
   for (let c = 1; c <= NB_COLS; c++) {
     legend.getCell(c).style = {
       font: { name: 'Arial', size: 9, bold: true },
@@ -150,7 +152,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
   ws.addRow([]);
 
   // ── En-têtes du tableau
-  const hdr = ws.addRow(['N°', 'Article', 'Appro', 'Reçu', 'Vendu (caisse)', 'Invendu (vitrine)', 'ÉCART', 'PU (DH)', 'Val. Écart (DH)']);
+  const hdr = ws.addRow(['N°', 'Article', 'Reste veille (J-1)', 'Appro', 'Reçu', 'Vendu (caisse)', 'Reste soir (vitrine)', 'ÉCART', 'PU (DH)', 'Val. Écart (DH)']);
   hdr.height = 24;
   hdr.eachCell(cell => {
     cell.style = {
@@ -179,7 +181,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
     else groups.push({ cat, items: [l] });
   }
 
-  const zero = () => ({ appro: 0, recu: 0, base: 0, vendu: 0, invendu: 0, ecart: 0, ecartVal: 0, ca: 0 });
+  const zero = () => ({ report: 0, appro: 0, recu: 0, base: 0, vendu: 0, invendu: 0, ecart: 0, ecartVal: 0, ca: 0 });
   const g = zero();
 
   for (const { cat, items } of groups) {
@@ -197,14 +199,14 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
 
     const sub = zero();
     items.forEach((l, i) => {
-      const appro = N(l.appro_qty), recu = N(l.recu_qty), base = baseOf(l);
+      const report = N(l.report_veille_qty), appro = N(l.appro_qty), recu = N(l.recu_qty), base = baseOf(l);
       const vendu = N(l.vendu_qty), invendu = N(l.invendu_qty), pu = N(l.unit_price);
       const ecart = N(l.ecart_qty);
       const ecartVal = N(l.ecart_value);
       const obs = observationOf(ecart, vendu, invendu, base);
 
       const row = ws.addRow([
-        i + 1, l.product_name, appro, recu, vendu, invendu, ecart,
+        i + 1, l.product_name, report > 0 ? report : '—', appro, recu, vendu, invendu, ecart,
         pu > 0 ? pu : '—',
         ecart !== 0 ? ecartVal : null,
       ]);
@@ -216,16 +218,16 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
       // Cellule ÉCART colorée selon le cas ; l'explication reste en note au survol.
       const eFill = ecart < 0 ? (obs.kind === 'warn' ? C.ecartWarn : C.ecartNeg)
         : ecart > 0 ? C.ecartPos : C.ecartZero;
-      const eCell = row.getCell(7);
+      const eCell = row.getCell(8);
       eCell.fill = fillOf(eFill);
       eCell.font = { name: 'Arial', size: 10, bold: true };
       eCell.numFmt = '+#,##0;-#,##0;0';
       if (ecart !== 0 || obs.kind !== 'ok') {
         eCell.note = { texts: [{ font: { size: 10, name: 'Arial' }, text: obs.text }] } as any;
       }
-      row.getCell(9).numFmt = '+#,##0.00;-#,##0.00;0.00';
+      row.getCell(10).numFmt = '+#,##0.00;-#,##0.00;0.00';
 
-      sub.appro += appro; sub.recu += recu; sub.base += base;
+      sub.report += report; sub.appro += appro; sub.recu += recu; sub.base += base;
       sub.vendu += vendu; sub.invendu += invendu;
       sub.ecart += ecart; sub.ecartVal += ecartVal; sub.ca += caOf(l);
     });
@@ -236,7 +238,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
       ? `Sous-total ${cat} — vente ${taux}% · CA ${Math.round(sub.ca)} DH`
       : `Sous-total ${cat} — CA ${Math.round(sub.ca)} DH`;
     const st = ws.addRow([
-      null, stLabel, sub.appro, sub.recu, sub.vendu, sub.invendu, sub.ecart, null,
+      null, stLabel, sub.report > 0 ? sub.report : '—', sub.appro, sub.recu, sub.vendu, sub.invendu, sub.ecart, null,
       sub.ecartVal !== 0 ? sub.ecartVal : null,
     ]);
     st.height = 18;
@@ -248,10 +250,10 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
         border: allBorders,
       };
     });
-    st.getCell(7).numFmt = '+#,##0;-#,##0;0';
-    st.getCell(9).numFmt = '+#,##0.00;-#,##0.00;0.00';
+    st.getCell(8).numFmt = '+#,##0;-#,##0;0';
+    st.getCell(10).numFmt = '+#,##0.00;-#,##0.00;0.00';
 
-    g.appro += sub.appro; g.recu += sub.recu; g.base += sub.base;
+    g.report += sub.report; g.appro += sub.appro; g.recu += sub.recu; g.base += sub.base;
     g.vendu += sub.vendu; g.invendu += sub.invendu;
     g.ecart += sub.ecart; g.ecartVal += sub.ecartVal; g.ca += sub.ca;
   }
@@ -262,11 +264,13 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
 
   const caAnterieur = anterieur.reduce((s, l) => s + caOf(l), 0);
   const recap: [string, string, { labelFill?: string; valueFill?: string; valueColor?: string; valueSize?: number }][] = [
+    ['Reste de la veille (stock d’ouverture)', String(g.report), {}],
     ['Total appro (production prévue)', String(g.appro), {}],
     ['Total reçu (magasin)', String(g.recu), {}],
+    ['Disponible à la vente (reste veille + reçu)', String(g.base), {}],
     ['Total vendu (caisse enregistreuse)', String(g.vendu), {}],
-    ['Total invendu (compté en vitrine)', String(g.invendu), {}],
-    ['ÉCART TOTAL (Vendu + Invendu − Reçu)', `${g.ecart > 0 ? '+' : ''}${g.ecart}`, { labelFill: C.ecartNeg, valueFill: C.ecartNeg, valueColor: C.red, valueSize: 12 }],
+    ['Reste du soir (compté en vitrine)', String(g.invendu), {}],
+    ['ÉCART TOTAL (Vendu + Reste soir − Disponible)', `${g.ecart > 0 ? '+' : ''}${g.ecart}`, { labelFill: C.ecartNeg, valueFill: C.ecartNeg, valueColor: C.red, valueSize: 12 }],
     ["Valeur de l'écart (DH)", `${g.ecartVal > 0 ? '+' : ''}${g.ecartVal.toFixed(2)} DH`, {}],
   ];
   // Style appliqué à TOUTES les cellules des plages fusionnées (l'ancre seule
@@ -318,15 +322,15 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
     for (const l of anterieur) {
       const val = caOf(l);
       totalVal += val;
-      const row = ws.addRow([null, l.product_name, '—', '—', N(l.vendu_qty), '—', null, N(l.unit_price) > 0 ? N(l.unit_price) : '—', val]);
+      const row = ws.addRow([null, l.product_name, '—', '—', '—', N(l.vendu_qty), '—', null, N(l.unit_price) > 0 ? N(l.unit_price) : '—', val]);
       row.eachCell({ includeEmpty: true }, (cell, col) => {
         cell.border = allBorders;
         cell.font = { name: 'Arial', size: 10 };
         cell.alignment = { horizontal: col === 2 ? 'left' : 'center', vertical: 'middle', wrapText: true };
       });
-      row.getCell(9).numFmt = '#,##0.00';
+      row.getCell(10).numFmt = '#,##0.00';
     }
-    const tr = ws.addRow([null, 'Total stock antérieur vendu', null, null, null, null, null, null, totalVal]);
+    const tr = ws.addRow([null, 'Total stock antérieur vendu', null, null, null, null, null, null, null, totalVal]);
     tr.eachCell({ includeEmpty: true }, (cell, col) => {
       cell.style = {
         font: { name: 'Arial', size: 10, bold: true },
@@ -335,7 +339,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
         border: allBorders,
       };
     });
-    tr.getCell(9).numFmt = '#,##0.00';
+    tr.getCell(10).numFmt = '#,##0.00';
   }
 
   // ── Signatures

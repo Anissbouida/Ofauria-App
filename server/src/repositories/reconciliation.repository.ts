@@ -3,12 +3,15 @@ import { db } from '../config/database.js';
 /**
  * Module Rapprochement journalier (ISOLE, TEMPORAIRE).
  *
- * Bilan produit par jour : vendu + invendu - recu = ecart (mig 247 ;
- * negatif = manque ; l'appro n'entre pas dans le calcul, mig 257).
- *  - approvisionne : saisi manuellement (ce qui part au magasin) ;
+ * Bilan produit par jour, equation de stock (mig 259) :
+ *   report_veille + recu = vendu + invendu (+ ecart)
+ *   ecart = vendu + invendu - (recu + report_veille) ; negatif = manque.
+ *  - report_veille : stock d'ouverture, reporte du reste de J-1 pour les
+ *    categories a report (pas de saisie : recalcule a chaque ouverture) ;
+ *  - approvisionne : saisi manuellement (ce qui part au magasin), hors calcul ;
  *  - recu : confirme par la caissiere a la reception ;
  *  - vendu : importe du CSV Loyverse (item-sales-summary) ;
- *  - invendu : compte en fin de journee.
+ *  - invendu : compte en fin de journee (un seul comptage physique).
  *
  * Etanche : ne lit ni n'ecrit aucune table du systeme reel. Tout est pilote
  * par le SKU/nom Loyverse. Les colonnes ecart_qty / ecart_value sont calculees
@@ -95,14 +98,111 @@ export const reconciliationRepository = {
        WHERE business_date = $1 AND store_id IS NOT DISTINCT FROM $2`,
       [params.date, params.storeId ?? null]
     );
-    if (existing.rows[0]) return this.getDayById(existing.rows[0].id);
+    if (existing.rows[0]) {
+      // Journee ouverte : on resynchronise le report de J-1 a chaque acces, pour
+      // qu'une correction du reste de la veille se repercute immediatement.
+      if (existing.rows[0].status !== 'closed') {
+        await this.syncCarryOver(existing.rows[0].id, params.date, params.storeId ?? null);
+      }
+      return this.getDayById(existing.rows[0].id);
+    }
 
     const inserted = await db.query(
       `INSERT INTO recon_days (business_date, store_id, created_by)
        VALUES ($1, $2, $3) RETURNING *`,
       [params.date, params.storeId ?? null, params.userId ?? null]
     );
+    await this.syncCarryOver(inserted.rows[0].id, params.date, params.storeId ?? null);
     return this.getDayById(inserted.rows[0].id);
+  },
+
+  // ─── Report du reste de la veille ──────────────────────────────────────
+
+  /**
+   * Aligne report_veille_qty sur le reste de J-1, pour les seules categories a
+   * report (recon_carryover_categories). Idempotent : rejoue a chaque ouverture
+   * de la journee, donc une correction du reste de la veille se propage tout
+   * de suite. Cree la ligne du jour si le produit n'y figure pas encore, sinon
+   * le stock d'ouverture serait perdu. Remet a 0 les reports devenus caducs
+   * (categorie decochee, reste de J-1 corrige a 0, journee J-1 supprimee).
+   */
+  async syncCarryOver(dayId: string, date: string, storeId: string | null) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Restes de J-1 eligibles au report (meme magasin).
+      const prevCte = `
+        WITH prev AS (
+          SELECT l.product_key, l.sku, l.product_name, l.category,
+                 l.invendu_qty, l.unit_price
+          FROM recon_lines l
+          JOIN recon_days d ON d.id = l.recon_day_id
+          JOIN recon_carryover_categories c
+            ON UPPER(c.category) = UPPER(l.category) AND c.enabled
+          WHERE d.business_date = $2::date - 1
+            AND d.store_id IS NOT DISTINCT FROM $3
+            AND l.invendu_qty > 0
+        )`;
+
+      await client.query(`
+        ${prevCte}
+        INSERT INTO recon_lines
+          (recon_day_id, product_key, sku, product_name, category, report_veille_qty, unit_price)
+        SELECT $1, p.product_key, p.sku, p.product_name, p.category, p.invendu_qty, p.unit_price
+        FROM prev p
+        ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
+          report_veille_qty = EXCLUDED.report_veille_qty,
+          updated_at        = NOW()
+        WHERE recon_lines.report_veille_qty IS DISTINCT FROM EXCLUDED.report_veille_qty
+      `, [dayId, date, storeId]);
+
+      await client.query(`
+        ${prevCte}
+        UPDATE recon_lines t
+        SET report_veille_qty = 0, updated_at = NOW()
+        WHERE t.recon_day_id = $1
+          AND t.report_veille_qty <> 0
+          AND NOT EXISTS (SELECT 1 FROM prev p WHERE p.product_key = t.product_key)
+      `, [dayId, date, storeId]);
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Catégories du module avec leur drapeau de report. Union du referentiel
+   * (recon_carryover_categories) et des categories reellement presentes au
+   * catalogue : une categorie jamais parametree apparait decochee.
+   */
+  async listCarryOverCategories() {
+    const { rows } = await db.query(`
+      SELECT cat AS category, COALESCE(c.enabled, false) AS enabled
+      FROM (
+        SELECT DISTINCT category AS cat FROM recon_products WHERE category IS NOT NULL AND category <> ''
+        UNION
+        SELECT category FROM recon_carryover_categories
+      ) s
+      LEFT JOIN recon_carryover_categories c ON c.category = s.cat
+      ORDER BY cat
+    `);
+    return rows;
+  },
+
+  async setCarryOverCategory(category: string, enabled: boolean) {
+    const { rows } = await db.query(
+      `INSERT INTO recon_carryover_categories (category, enabled)
+       VALUES ($1, $2)
+       ON CONFLICT (category) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()
+       RETURNING category, enabled`,
+      [category, enabled]
+    );
+    return rows[0];
   },
 
   async setStatus(id: string, status: 'open' | 'closed') {

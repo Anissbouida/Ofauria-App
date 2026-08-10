@@ -114,6 +114,7 @@ export default function ReconciliationPage() {
          : tab === 'catalog' ? <CatalogView />
          : tab === 'report' ? <ReportView />
          : <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+             <CarryOverSettingsView />
              <SlotsSettingsView />
              <DarijaSettingsView />
            </div>}
@@ -1608,7 +1609,11 @@ type EditField = 'approQty' | 'recuQty' | 'venduQty' | 'invenduQty' | 'unitPrice
  * ce qui fait perdre le focus a chaque frappe.
  */
 // Teintes par colonne pour distinguer visuellement Appro / Reçu / Vendu.
+// « report » (reste de la veille) est volontairement hors palette — gris ardoise :
+// c'est la seule colonne qui ne décrit pas la journée en cours, et la seule
+// non saisissable.
 const COL_TINTS = {
+  report:  { bg: '#eceff1', input: '#f5f7f8', text: '#455a64', border: '#cfd8dc' },
   appro:   { bg: '#e8f1fb', input: '#f4f9ff', text: '#1565c0', border: '#bbdefb' },
   recu:    { bg: '#f3ebf9', input: '#faf5ff', text: '#6a1b9a', border: '#e1bee7' },
   vendu:   { bg: '#e6f4ea', input: '#f3fbf5', text: '#2e7d32', border: '#c8e6c9' },
@@ -1637,6 +1642,31 @@ function NumCell({ value, locked, onDraft, onCommit, tint }: {
         color: tint?.text,
       }}
     />
+  );
+}
+
+/**
+ * Stock d'ouverture reporte de J-1. Volontairement rendu comme un texte et non
+ * comme un champ : c'est une valeur calculee par le serveur, la caissiere ne
+ * doit jamais avoir a la corriger ici (elle corrige le reste du soir de J-1).
+ * Meme gabarit que NumCell pour que les colonnes restent alignees.
+ */
+function ReportVeilleCell({ qty }: { qty: number }) {
+  const t = COL_TINTS.report;
+  return (
+    <div
+      title={qty > 0
+        ? `${qf(qty)} en vitrine à l'ouverture (reste du soir de la veille). Pour corriger, modifier le reste du soir de J-1.`
+        : "Aucun report : catégorie sans report, ou rien ne restait la veille."}
+      style={{
+        display: 'inline-block', width: 74, textAlign: 'right', padding: '3px 6px',
+        fontFamily: 'ui-monospace, monospace', fontWeight: qty > 0 ? 600 : 400,
+        border: '1px dashed', borderColor: qty > 0 ? t.border : 'transparent', borderRadius: 3,
+        background: qty > 0 ? t.input : 'transparent',
+        color: qty > 0 ? t.text : 'var(--theme-text-muted)',
+      }}>
+      {qty > 0 ? qf(qty) : '—'}
+    </div>
   );
 }
 
@@ -1735,14 +1765,16 @@ function DayView() {
   const totals = useMemo(() => {
     return lines.reduce((a, l) => {
       const price = num(l.unit_price);
+      a.report += num(l.report_veille_qty);
       a.appro += num(l.appro_qty); a.recu += num(l.recu_qty); a.vendu += num(l.vendu_qty); a.invendu += num(l.invendu_qty);
       a.ecartQty += num(l.ecart_qty); a.ecartVal += num(l.ecart_value);
+      a.reportVal += num(l.report_veille_qty) * price;
       a.approVal += num(l.appro_qty) * price; a.recuVal += num(l.recu_qty) * price;
       // Montant vendu : ventes nettes reelles Loyverse si importees, sinon qte x prix.
       a.venduVal += num(l.vendu_amount) > 0 ? num(l.vendu_amount) : num(l.vendu_qty) * price;
       a.invenduVal += num(l.invendu_qty) * price;
       return a;
-    }, { appro: 0, recu: 0, vendu: 0, invendu: 0, ecartQty: 0, ecartVal: 0, approVal: 0, recuVal: 0, venduVal: 0, invenduVal: 0 });
+    }, { report: 0, appro: 0, recu: 0, vendu: 0, invendu: 0, ecartQty: 0, ecartVal: 0, reportVal: 0, approVal: 0, recuVal: 0, venduVal: 0, invenduVal: 0 });
   }, [lines]);
 
   const commit = (l: ReconLine, field: EditField, raw: string) => {
@@ -1773,9 +1805,11 @@ function DayView() {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Écart = Vendu + Reste − Reçu.</strong> Négatif = manque à expliquer (perte / vol / erreur),
-          positif = surplus. L'écart se calcule uniquement sur le reçu saisi — l'appro n'entre pas dans le calcul.
-          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir le reste compté.
+          <strong>Écart = Vendu + Reste soir − (Reste veille + Reçu).</strong> Négatif = manque à expliquer
+          (perte / vol / erreur), positif = surplus. L'appro n'entre pas dans le calcul.
+          Le <strong>reste veille</strong> est le stock d'ouverture, reporté automatiquement du reste du soir de J-1
+          pour les catégories à report (Paramètres) — il ne se saisit pas.
+          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir le reste du soir compté.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>
       </div>
@@ -1850,7 +1884,7 @@ function DayView() {
         return (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Chip tone="neg" label="Manque à expliquer" count={c.neg} />
-            <Chip tone="pos" label="Surplus / stock antérieur" count={c.pos} />
+            <Chip tone="pos" label="Surplus (vendu > disponible)" count={c.pos} />
             <Chip tone="ok" label="OK" count={c.ok} />
           </div>
         );
@@ -1867,10 +1901,19 @@ function DayView() {
             <thead>
               <tr>
                 <th>Produit</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}
+                    title="Stock d'ouverture : reste du soir de la veille, reporté automatiquement. Non modifiable.">
+                  Reste veille
+                  <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>J-1 · auto</div>
+                </th>
                 <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
                 <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
                 <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>Reste</th>
+                <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}
+                    title="Comptage physique de fin de journée : un seul chiffre, tout ce qui reste en vitrine.">
+                  Reste soir
+                  <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>comptage</div>
+                </th>
                 <th style={{ textAlign: 'right' }}>Prix (DH)</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
                 <th style={{ textAlign: 'right' }}>Écart (DH)</th>
@@ -1879,11 +1922,12 @@ function DayView() {
             </thead>
             <tbody>
               {lines.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                   Aucune ligne. Ajoute un produit ou importe le CSV Loyverse du jour.
                 </td></tr>
               ) : groupedLines.map(({ cat, items }) => {
                 const isCollapsed = collapsed.has(cat);
+                const catReport = items.reduce((s, l) => s + num(l.report_veille_qty), 0);
                 const catAppro = items.reduce((s, l) => s + num(l.appro_qty), 0);
                 const catRecu = items.reduce((s, l) => s + num(l.recu_qty), 0);
                 const catVendu = items.reduce((s, l) => s + num(l.vendu_qty), 0);
@@ -1910,6 +1954,7 @@ function DayView() {
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
                     </td>
+                    <td style={{ ...catCellBase, color: COL_TINTS.report.text }}>{catReport > 0 ? qf(catReport) : '—'}</td>
                     <td style={{ ...catCellBase, color: COL_TINTS.appro.text }}>{qf(catAppro)}</td>
                     <td style={{ ...catCellBase, color: catRecu > 0 && catRecu !== catAppro ? '#b26a00' : COL_TINTS.recu.text }}>{qf(catRecu)}</td>
                     <td style={{ ...catCellBase, color: COL_TINTS.vendu.text }}>{qf(catVendu)}</td>
@@ -1937,17 +1982,18 @@ function DayView() {
                       )}
                       {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
+                    <td style={{ textAlign: 'right', background: COL_TINTS.report.bg }}>
+                      <ReportVeilleCell qty={num(l.report_veille_qty)} />
+                    </td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro, !canEditAppro)}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
                       {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
-                      {num(l.recu_qty) > 0 && num(l.recu_qty) !== num(l.appro_qty) && (() => {
-                        const diff = num(l.recu_qty) - num(l.appro_qty);
-                        return (
-                          <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>
-                            {diff > 0 ? '+' : ''}{qf(diff)}
-                          </div>
-                        );
-                      })()}
+                      {num(l.report_veille_qty) > 0 && (
+                        <div style={{ fontSize: '0.5625rem', color: COL_TINTS.report.text, fontWeight: 600 }}
+                             title="Reste de la veille qui s'ajoute au reçu du jour pour le calcul de l'écart">
+                          +{qf(num(l.report_veille_qty))}
+                        </div>
+                      )}
                     </td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu, l.source_vendu === 'loyverse_import')}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.invendu.bg }}>{numCell(l, 'invenduQty', 'invendu_qty', COL_TINTS.invendu)}</td>
@@ -1975,17 +2021,10 @@ function DayView() {
               <tfoot>
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
                   <td>Total ({lines.length})</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? qf(totals.report) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : COL_TINTS.recu.text }}>
                     {qf(totals.recu)}
-                    {totals.recu > 0 && totals.recu !== totals.appro && (() => {
-                      const diff = totals.recu - totals.appro;
-                      return (
-                        <div style={{ fontSize: '0.5625rem', color: '#b26a00', fontWeight: 600 }}>
-                          {diff > 0 ? '+' : ''}{qf(diff)}
-                        </div>
-                      );
-                    })()}
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{qf(totals.vendu)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{qf(totals.invendu)}</td>
@@ -2000,6 +2039,7 @@ function DayView() {
                 </tr>
                 <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
                   <td>Montants (DH)</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? nf(totals.reportVal) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>{nf(totals.recuVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{nf(totals.venduVal)}</td>
@@ -2251,6 +2291,94 @@ function AddLineModal({ onClose, onSave, isLoading }: {
 }
 
 // ════════════════════════ PARAMÈTRES CRÉNEAUX ══════════════════
+/**
+ * Catégories dont le reste du soir devient le stock d'ouverture du lendemain.
+ * Pâtisserie : oui (la vitrine n'est pas vidée). Viennoiserie / boulangerie :
+ * non, ces produits sont jetés — un report y créerait des manques fictifs.
+ */
+function CarryOverSettingsView() {
+  const qc = useQueryClient();
+  const { data: cats = [], isLoading } = useQuery({
+    queryKey: ['recon-carryover'],
+    queryFn: () => reconciliationApi.listCarryOver(),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ category, enabled }: { category: string; enabled: boolean }) =>
+      reconciliationApi.setCarryOver(category, enabled),
+    onSuccess: (_r, v) => {
+      qc.invalidateQueries({ queryKey: ['recon-carryover'] });
+      // La journee affichee resynchronise son report a la prochaine ouverture.
+      qc.invalidateQueries({ queryKey: ['recon-day'] });
+      notify.success(v.enabled ? `Report activé : ${v.category}` : `Report désactivé : ${v.category}`);
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
+  });
+
+  const enabledCount = cats.filter(c => c.enabled).length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
+        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <strong>Report du reste de la veille.</strong> Pour les catégories cochées, le reste du soir
+          devient le <strong>stock d'ouverture</strong> du lendemain : il s'ajoute au reçu pour le calcul
+          de l'écart (<em>Écart = Vendu + Reste soir − (Reste veille + Reçu)</em>), tout en restant affiché
+          dans sa propre colonne. À réserver aux produits qui ne sont pas jetés le soir — cocher
+          viennoiseries ou baguettes ferait apparaître des manques fictifs le lendemain.
+          Le report est recalculé à chaque ouverture de la journée : corriger le reste du soir de J-1
+          met à jour le stock d'ouverture d'aujourd'hui tant que la journée n'est pas clôturée.
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
+        </div>
+      ) : cats.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+          Aucune catégorie au catalogue. Importe d'abord le catalogue Loyverse.
+        </div>
+      ) : (
+        <>
+          <div style={{
+            fontWeight: 700, padding: '6px 10px',
+            background: 'var(--theme-bg-sidebar, #f5f5f5)',
+            color: 'var(--theme-accent)', fontSize: '0.8125rem',
+            textTransform: 'uppercase', letterSpacing: 0.5,
+            borderRadius: '4px 4px 0 0', border: '1px solid var(--theme-bg-separator)',
+          }}>
+            Report du reste ({enabledCount} catégorie{enabledCount > 1 ? 's' : ''} sur {cats.length})
+          </div>
+          <table className="odoo-table" style={{ borderTop: 'none', marginTop: -14 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 70, textAlign: 'center' }}>Report</th>
+                <th>Catégorie</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cats.map(c => (
+                <tr key={c.category}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={c.enabled}
+                      disabled={toggleMut.isPending}
+                      onChange={e => toggleMut.mutate({ category: c.category, enabled: e.target.checked })} />
+                  </td>
+                  <td style={{ fontWeight: c.enabled ? 600 : 400, color: c.enabled ? undefined : 'var(--theme-text-muted)' }}>
+                    {c.category}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SlotsSettingsView() {
   const qc = useQueryClient();
   const { data: slots = [], isLoading } = useQuery({

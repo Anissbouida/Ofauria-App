@@ -38,6 +38,10 @@ router.get('/slots', asyncHandler(reconciliationController.listSlots));
 router.post('/slots', asyncHandler(reconciliationController.upsertSlot));
 router.delete('/slots/:id', asyncHandler(reconciliationController.deleteSlot));
 
+// Report du reste de la veille (catégories concernées)
+router.get('/carryover', asyncHandler(reconciliationController.listCarryOver));
+router.put('/carryover', asyncHandler(reconciliationController.setCarryOver));
+
 // Catalogue produits
 router.get('/products', asyncHandler(reconciliationController.listProducts));
 router.post('/products', asyncHandler(reconciliationController.upsertProduct));

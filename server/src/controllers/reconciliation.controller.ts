@@ -245,6 +245,22 @@ export const reconciliationController = {
     res.json({ success: true });
   },
 
+  // ─── Report du reste de la veille ──────────────────────────────────────
+
+  async listCarryOver(_req: AuthRequest, res: Response) {
+    const rows = await reconciliationRepository.listCarryOverCategories();
+    res.json({ success: true, data: rows });
+  },
+
+  /** Body: { category, enabled } — active/desactive le report pour une categorie. */
+  async setCarryOver(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    const category = String(b.category ?? '').trim();
+    if (!category) { res.status(400).json({ success: false, error: { message: 'Catégorie requise' } }); return; }
+    const row = await reconciliationRepository.setCarryOverCategory(category, b.enabled === true);
+    res.json({ success: true, data: row });
+  },
+
   // ─── Catalogue produits ────────────────────────────────────────────────
 
   async listProducts(_req: AuthRequest, res: Response) {

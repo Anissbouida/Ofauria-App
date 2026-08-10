@@ -9,6 +9,8 @@ export type ReconLine = {
   sku: string | null;
   product_name: string;
   category: string | null;
+  /** Stock d'ouverture reporté du reste de J-1 (lecture seule, calculé serveur). */
+  report_veille_qty: string;
   appro_qty: string;
   recu_qty: string;
   vendu_qty: string;
@@ -109,6 +111,12 @@ export type DarijaEntry = {
   darija: string;
 };
 
+/** Catégorie dont le reste du soir se reporte en stock d'ouverture le lendemain. */
+export type CarryOverCategory = {
+  category: string;
+  enabled: boolean;
+};
+
 export type ReconProduct = {
   id: string;
   product_key: string;
@@ -168,6 +176,11 @@ export const reconciliationApi = {
     api.post('/reconciliation/slots', data).then(r => r.data.data as SupplySlot),
   deleteSlot: (id: string) =>
     api.delete(`/reconciliation/slots/${id}`).then(r => r.data),
+
+  listCarryOver: () =>
+    api.get('/reconciliation/carryover').then(r => r.data.data as CarryOverCategory[]),
+  setCarryOver: (category: string, enabled: boolean) =>
+    api.put('/reconciliation/carryover', { category, enabled }).then(r => r.data.data as CarryOverCategory),
 
   listProducts: () =>
     api.get('/reconciliation/products').then(r => r.data.data as ReconProduct[]),
