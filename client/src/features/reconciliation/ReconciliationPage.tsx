@@ -938,22 +938,37 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
     [allProducts, slotQty],
   );
 
-  const [copyingJ1, setCopyingJ1] = useState(false);
-  const copyFromYesterday = async () => {
+  // Copie J-1 : null = aucune copie en cours, ALL_CATS = copie globale,
+  // sinon le nom de la categorie en cours de copie (bouton du bandeau).
+  const ALL_CATS = ' all';
+  const [copyingJ1, setCopyingJ1] = useState<string | null>(null);
+
+  /**
+   * Reprend les quantites de la fiche de la veille. Avec `category`, ne copie
+   * que cette section : le chef peut refaire une seule famille (« la patisserie
+   * classique comme hier ») sans ecraser le reste de la fiche du jour.
+   * La categorie retenue est celle du catalogue actuel (celle affichee dans le
+   * bandeau), pas celle figee dans la fiche J-1 : un produit reclasse depuis
+   * suit sa nouvelle section.
+   */
+  const copyFromYesterday = async (category?: string) => {
     const yesterday = format(addDays(new Date(date + 'T00:00:00'), -1), 'yyyy-MM-dd');
-    setCopyingJ1(true);
+    const veille = format(new Date(yesterday + 'T00:00:00'), 'd MMMM', { locale: fr });
+    setCopyingJ1(category ?? ALL_CATS);
     try {
       const prev = await reconciliationApi.getFiche(yesterday);
       if (!prev?.lines || prev.lines.length === 0) {
         notify.error(`Aucune fiche enregistrée pour le ${format(new Date(yesterday + 'T00:00:00'), 'd MMMM yyyy', { locale: fr })}`);
         return;
       }
-      const productKeys = new Set(allProducts.map(p => p.product_key));
+      const catOf = new Map(allProducts.map(p => [p.product_key, p.category || 'Non classé']));
       const copied: Record<string, string> = {};
       let count = 0;
       for (const l of prev.lines) {
         if (l.removed || num(l.total_qty) <= 0) continue;
-        if (!productKeys.has(l.product_key)) continue;
+        const cat = catOf.get(l.product_key);
+        if (cat === undefined) continue;                 // absent du catalogue actuel
+        if (category !== undefined && cat !== category) continue;
         touchedRef.current.add(l.product_key);
         for (const [slot, v] of Object.entries(l.slot_qty || {})) {
           copied[`${l.product_key}__${slot}`] = String(v);
@@ -962,7 +977,9 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         count++;
       }
       if (count === 0) {
-        notify.error('Aucun produit commun entre la fiche J-1 et le catalogue actuel');
+        notify.error(category !== undefined
+          ? `Aucun produit de « ${category} » dans la fiche du ${veille}`
+          : 'Aucun produit commun entre la fiche J-1 et le catalogue actuel');
         return;
       }
       setRemoved(prev => {
@@ -973,11 +990,13 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         return next;
       });
       setSlotQty(prev => ({ ...prev, ...copied }));
-      notify.success(`${count} produit(s) copiés depuis la fiche du ${format(new Date(yesterday + 'T00:00:00'), 'd MMMM', { locale: fr })}`);
+      notify.success(category !== undefined
+        ? `${category} : ${count} produit(s) repris de la fiche du ${veille}`
+        : `${count} produit(s) copiés depuis la fiche du ${veille}`);
     } catch (e: any) {
       notify.error(e?.response?.data?.error?.message || 'Erreur lors de la copie');
     } finally {
-      setCopyingJ1(false);
+      setCopyingJ1(null);
     }
   };
 
@@ -1124,10 +1143,10 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           <Plus size={14} /> Produit
         </button>
         <button className="odoo-btn-secondary"
-          disabled={copyingJ1}
-          title="Copier les quantités de la fiche de la veille (uniquement les produits du catalogue)"
-          onClick={copyFromYesterday}>
-          {copyingJ1
+          disabled={copyingJ1 !== null}
+          title="Copier toute la fiche de la veille (uniquement les produits du catalogue). Pour une seule famille, utilise le bouton J-1 du bandeau de catégorie."
+          onClick={() => copyFromYesterday()}>
+          {copyingJ1 === ALL_CATS
             ? <><Loader2 size={14} className="animate-spin" /> Copie…</>
             : <><Copy size={14} /> Copier J-1</>}
         </button>
@@ -1304,6 +1323,22 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                 }}>
                 <span>{isCollapsed ? '▸' : '▾'} {cat} ({visible.length})</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }} onClick={e => e.stopPropagation()}>
+                  <button type="button"
+                    disabled={copyingJ1 !== null}
+                    title={`Reprendre les quantités de « ${cat} » sur la fiche de la veille, sans toucher aux autres catégories`}
+                    onClick={() => copyFromYesterday(cat)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4, textTransform: 'none',
+                      fontSize: '0.6875rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                      border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card, #fff)',
+                      color: 'var(--theme-text-muted)',
+                      cursor: copyingJ1 !== null ? 'default' : 'pointer',
+                      opacity: copyingJ1 !== null && copyingJ1 !== cat ? 0.5 : 1,
+                    }}>
+                    {copyingJ1 === cat
+                      ? <><Loader2 size={11} className="animate-spin" /> Copie…</>
+                      : <><Copy size={11} /> J-1</>}
+                  </button>
                   {(() => {
                     const pct = catRiskPct[cat] ?? riskPct;
                     const hasOverride = catRiskPct[cat] !== undefined && catRiskPct[cat] !== riskPct;
