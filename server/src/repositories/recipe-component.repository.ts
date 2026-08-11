@@ -109,7 +109,10 @@ export const recipeComponentRepository = {
        ORDER BY r.name`
     );
     const ingredients = await db.query(
-      `SELECT id, name, unit, unit_cost FROM ingredients ORDER BY name`
+      // densite_kg_l : necessaire cote client pour re-valider en direct la
+      // conversion d'unite d'un composant (badge « conversion douteuse » mig 260)
+      // sans attendre la sauvegarde.
+      `SELECT id, name, unit, unit_cost, densite_kg_l FROM ingredients ORDER BY name`
     );
     return { recipes: recipes.rows, ingredients: ingredients.rows };
   },
@@ -140,7 +143,11 @@ export const recipeComponentRepository = {
               COALESCE(br.name, ing.name) AS source_name,
               CASE WHEN c.source_recipe_id IS NOT NULL THEN 'recipe' ELSE 'ingredient' END AS source_type,
               c.quantite, c.unite, c.ordre,
-              cc.cout_dh
+              cc.cout_dh,
+              -- Mig 260 : false = conversion d'unite repliee sur 1 (unites incompatibles
+              -- ou densite manquante) -> cout_dh probablement faux, l'UI doit signaler.
+              cc.conversion_ok,
+              COALESCE(ing.unit::text, br.yield_unit) AS target_unit
        FROM recipe_format_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
@@ -161,7 +168,10 @@ export const recipeComponentRepository = {
         `SELECT NULL::uuid AS id, NULL AS role, rsr.sub_recipe_id AS source_recipe_id, NULL::uuid AS source_ingredient_id,
                 sr.name AS source_name, 'recipe' AS source_type, rsr.quantity AS quantite, sr.yield_unit AS unite,
                 CASE WHEN COALESCE(sr.yield_quantity, 0) > 0
-                     THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh
+                     THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh,
+                -- Legacy : unite composant = yield_unit sous-recette, conversion toujours OK.
+                true AS conversion_ok,
+                sr.yield_unit AS target_unit
          FROM recipe_sub_recipes rsr
          JOIN recipes sr ON sr.id = rsr.sub_recipe_id
          LEFT JOIN v_recipe_total_cost vtc ON vtc.id = rsr.sub_recipe_id
@@ -171,7 +181,15 @@ export const recipeComponentRepository = {
       const ings = await db.query(
         `SELECT NULL::uuid AS id, NULL AS role, NULL::uuid AS source_recipe_id, ri.ingredient_id AS source_ingredient_id,
                 ing.name AS source_name, 'ingredient' AS source_type, ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite,
-                ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh
+                ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+                -- Legacy : idem, applique fn_unit_conv_ok sur le meme couple, incluant
+                -- la validation par densite si un croisement poids↔volume est en jeu.
+                (fn_unit_conv_ok(COALESCE(ri.unit, ing.unit), ing.unit::text)
+                 OR (((lower(COALESCE(ri.unit, ing.unit)) IN ('g','kg','mg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
+                      OR (lower(COALESCE(ri.unit, ing.unit)) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('g','kg','mg')))
+                     AND ing.densite_kg_l IS NOT NULL))
+                  AS conversion_ok,
+                ing.unit::text AS target_unit
          FROM recipe_ingredients ri
          JOIN ingredients ing ON ing.id = ri.ingredient_id
          WHERE ri.recipe_id = $1 ORDER BY ing.name`,
@@ -431,7 +449,11 @@ export const recipeComponentRepository = {
               pc.nom AS contenant_nom,
               (SELECT count(*) FROM recipe_format_components c WHERE c.format_id = f.id) AS nb_composants,
               round(cpc.cout_compose_dh::numeric, 2) AS cout_compose_dh,
-              round(vfc.prix_vente_unitaire::numeric, 2) AS prix_vente_unitaire
+              round(vfc.prix_vente_unitaire::numeric, 2) AS prix_vente_unitaire,
+              -- Mig 260 : nb de composants dont la conversion d'unite est retombee sur
+              -- le fallback 1 (unites incompatibles ou densite manquante). > 0 -> le
+              -- cout est probablement faux, l'UI doit signaler.
+              COALESCE(cpc.bad_conversions_count, 0) AS bad_conversions_count
        FROM recipe_formats f
        LEFT JOIN production_contenants pc ON pc.id = f.contenant_id
        LEFT JOIN v_recipe_compose_cost cpc ON cpc.format_id = f.id

@@ -19,7 +19,7 @@ export interface ComponentRole {
 
 export interface ComponentSources {
   recipes: { id: string; name: string; yield_unit: string; yield_quantity: string; cout_unitaire: string }[];
-  ingredients: { id: string; name: string; unit: string; unit_cost: string }[];
+  ingredients: { id: string; name: string; unit: string; unit_cost: string; densite_kg_l: string | null }[];
 }
 
 export interface FormatComponent {
@@ -33,6 +33,15 @@ export interface FormatComponent {
   unite: string;
   ordre: number;
   cout_dh: string | null;
+  /**
+   * Mig 260 : false = la conversion d'unite entre `unite` et l'unite de la
+   * source est retombee sur le fallback 1 (unites incompatibles ou densite
+   * manquante sur un croisement poids↔volume). `cout_dh` est alors calcule
+   * comme si les unites etaient identiques — probablement faux.
+   */
+  conversion_ok?: boolean;
+  /** Unite cible (unite de l'ingredient ou yield_unit de la sous-recette). */
+  target_unit?: string | null;
 }
 
 export interface FormatComponentsData {
@@ -77,6 +86,8 @@ export interface FormatSummary {
   nb_composants: number;
   cout_compose_dh: string | null;
   prix_vente_unitaire: string | null;
+  /** Mig 260 : nb de composants dont la conversion d'unite est fautive. > 0 → coût peu fiable. */
+  bad_conversions_count?: number;
 }
 
 export interface CompositionFinance {

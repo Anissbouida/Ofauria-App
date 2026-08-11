@@ -259,6 +259,38 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   };
   const aberrantCount = rows.filter(isAberrant).length;
 
+  // Detection d'une conversion d'unite fautive au niveau ligne (miroir de la
+  // fonction SQL fn_unit_conv_ok, mig 260). Alerte en direct sans attendre la
+  // sauvegarde ; la vue serveur reste la source de verite au repos.
+  //   - meme unite ou meme famille (g/kg/mg, ml/cl/dl/l) : toujours OK
+  //   - poids↔volume : OK uniquement pour un ingredient avec densite renseignee
+  //   - tout autre couple (`unit` face a `kg`, etc.) : fallback silencieux → KO
+  const family = (u: string): 'mass' | 'vol' | 'other' => {
+    const l = (u || '').toLowerCase();
+    if (l === 'g' || l === 'kg' || l === 'mg') return 'mass';
+    if (l === 'ml' || l === 'cl' || l === 'dl' || l === 'l') return 'vol';
+    return 'other';
+  };
+  const isBadConversion = (r: Row): boolean => {
+    const src = r.type && r.sourceId ? sourceMap[`${r.type}:${r.sourceId}`] : null;
+    if (!src) return false;
+    const from = (r.unite || '').toLowerCase();
+    const to = (src.unit || '').toLowerCase();
+    if (from === to) return false;
+    const fFam = family(from), tFam = family(to);
+    if (fFam === 'other' || tFam === 'other') return true;   // ex. 'unit' ↔ 'kg'
+    if (fFam === tFam) return false;                          // meme famille
+    // Croisement poids↔volume : valide si l'ingredient a une densite renseignee.
+    if (src.type === 'ingredient') {
+      const raw = (sources?.ingredients.find((i) => i.id === src.id)?.densite_kg_l) ?? null;
+      const dens = raw != null && raw !== '' ? parseFloat(raw) : NaN;
+      return !Number.isFinite(dens) || dens <= 0;
+    }
+    // Sous-recette : pas de densite modelisee → toujours suspect en poids↔volume.
+    return true;
+  };
+  const badConversionCount = rows.filter(isBadConversion).length;
+
   const rendementNum = Math.max(1, parseInt(rendement) || 1);
   const partsNum = Math.max(1, parseInt(parts) || 1);
   const poidsBrutG = rows.reduce((s, r) => { const eq = baseEquiv(r); return s + (eq ? eq.val : 0); }, 0);
@@ -392,6 +424,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const eq = baseEquiv(r);
     const pp = compoParPiece ? batchRatio(r) : null;
     const aberrant = isAberrant(r);
+    const badConv = isBadConversion(r);
     const canExpand = r.type === 'recipe' && !!r.sourceId;
     const isOpen = !!expanded[r.key];
     const roleCls = ROLE_COLOR[r.role] || 'bg-gray-100 text-gray-500';
@@ -454,7 +487,18 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })}>
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
-          <div className="text-right text-sm tabular-nums font-medium text-gray-700 pt-1.5">{dh(lineCost(r))}</div>
+          <div className="text-right text-sm tabular-nums font-medium pt-1.5 inline-flex items-center justify-end gap-1">
+            {badConv && (
+              <AlertTriangle size={12} className="text-amber-500 shrink-0"
+                aria-label="conversion d'unité douteuse">
+                <title>
+                  {src ? `Conversion ${r.unite} → ${src.unit} non fiable (fallback ×1). Coût potentiellement faux.`
+                       : "Conversion d'unité non fiable."}
+                </title>
+              </AlertTriangle>
+            )}
+            <span className={badConv ? 'text-amber-700' : 'text-gray-700'}>{dh(lineCost(r))}</span>
+          </div>
           <div className="flex justify-center pt-1">
             <button type="button" onClick={() => delRow(r.key)} className="text-gray-300 hover:text-red-500 transition-colors" aria-label="Supprimer"><Trash2 size={15} /></button>
           </div>
@@ -474,13 +518,18 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
 
       {/* Onglets de format */}
       <div className="flex items-center gap-1.5 flex-wrap px-3 pt-3">
-        {formats.map((ft) => (
+        {formats.map((ft) => {
+          const bad = (ft.bad_conversions_count ?? 0) > 0;
+          return (
           <button key={ft.id} type="button" onClick={() => setFormatId(ft.id)}
+            title={bad ? `${ft.bad_conversions_count} composant(s) avec conversion d'unité douteuse — coût peu fiable` : undefined}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${ft.id === formatId ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
             <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-blue-100' : 'text-gray-400'}>×{ft.nb_par_defaut}</span>
             {ft.is_default && <span className={`text-[10px] ${ft.id === formatId ? 'text-blue-100' : 'text-gray-400'}`}>(défaut)</span>}
+            {bad && <AlertTriangle size={12} className={ft.id === formatId ? 'text-amber-100' : 'text-amber-500'} />}
           </button>
-        ))}
+          );
+        })}
         {adding ? (
           <span className="inline-flex items-center gap-1.5">
             <select value={newContenant} onChange={(e) => setNewContenant(e.target.value)}
@@ -581,6 +630,16 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
                 <AlertTriangle size={15} className="shrink-0" />
                 <span><strong>{aberrantCount} ligne{aberrantCount > 1 ? 's' : ''} à corriger</strong> — dosage par pièce improbable (≥ 1 fournée). Saisis la quantité réelle par pièce.</span>
+              </div>
+            )}
+
+            {badConversionCount > 0 && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span>
+                  <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
+                  {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité de l'ingrédient pour un croisement poids ↔ volume.
+                </span>
               </div>
             )}
 
