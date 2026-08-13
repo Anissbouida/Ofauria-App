@@ -86,7 +86,7 @@ export const reconciliationRepository = {
         -- Un produit peut exister sur plusieurs shifts : compte distinct.
         -- La somme des ecarts des shifts = ecart journalier (telescopage).
         SELECT COUNT(DISTINCT product_key) AS line_count, SUM(ecart_value) AS total_ecart_value
-        FROM recon_lines WHERE recon_day_id = d.id
+        FROM recon_lines WHERE recon_day_id = d.id AND NOT hidden
       ) l ON true
       ${where}
       ORDER BY d.business_date DESC
@@ -118,7 +118,7 @@ export const reconciliationRepository = {
       `SELECT l.*, s.shift_number
        FROM recon_lines l
        JOIN recon_shifts s ON s.id = l.recon_shift_id
-       WHERE l.recon_day_id = $1
+       WHERE l.recon_day_id = $1 AND NOT l.hidden
        ORDER BY l.category NULLS LAST, l.product_name, s.shift_number`,
       [id]
     );
@@ -235,6 +235,7 @@ export const reconciliationRepository = {
           WHERE d.business_date = $2::date - 1
             AND d.store_id IS NOT DISTINCT FROM $3
             AND l.invendu_qty > 0
+            AND NOT l.hidden
             AND s.shift_number = (
               SELECT MAX(s2.shift_number) FROM recon_shifts s2 WHERE s2.recon_day_id = d.id
             )
@@ -295,7 +296,7 @@ export const reconciliationRepository = {
             (recon_day_id, recon_shift_id, product_key, sku, product_name, category, report_veille_qty, unit_price)
           SELECT $1, $2, l.product_key, l.sku, l.product_name, l.category, l.invendu_qty, l.unit_price
           FROM recon_lines l
-          WHERE l.recon_shift_id = $3 AND l.invendu_qty > 0
+          WHERE l.recon_shift_id = $3 AND l.invendu_qty > 0 AND NOT l.hidden
           ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
             report_veille_qty = EXCLUDED.report_veille_qty,
             updated_at        = NOW()
@@ -309,7 +310,7 @@ export const reconciliationRepository = {
             AND t.report_veille_qty <> 0
             AND NOT EXISTS (
               SELECT 1 FROM recon_lines p
-              WHERE p.recon_shift_id = $2 AND p.product_key = t.product_key AND p.invendu_qty > 0
+              WHERE p.recon_shift_id = $2 AND p.product_key = t.product_key AND p.invendu_qty > 0 AND NOT p.hidden
             )
         `, [to.id, from.id]);
       }
@@ -431,6 +432,7 @@ export const reconciliationRepository = {
          recu_qty    = EXCLUDED.recu_qty,
          invendu_qty = EXCLUDED.invendu_qty,
          unit_price  = EXCLUDED.unit_price,
+         hidden      = false,
          updated_at  = NOW()
        RETURNING *`,
       [
@@ -476,11 +478,17 @@ export const reconciliationRepository = {
     return r.rows[0];
   },
 
+  /**
+   * Suppression DOUCE (mig 265) : la ligne est masquée (hidden = true), pas
+   * détruite. La synchro (report veille / passation) ne la ressuscite donc plus
+   * à la prochaine ouverture de la journée. Ré-importer ou ré-ajouter le produit
+   * la ré-affiche (hidden repassé à false par les upserts).
+   */
   async deleteLine(lineId: string) {
     const line = await db.query(`SELECT recon_day_id, recon_shift_id FROM recon_lines WHERE id = $1`, [lineId]);
     if (!line.rows[0]) return;
     await this.assertShiftOpen(line.rows[0].recon_shift_id);
-    await db.query(`DELETE FROM recon_lines WHERE id = $1`, [lineId]);
+    await db.query(`UPDATE recon_lines SET hidden = true, updated_at = NOW() WHERE id = $1`, [lineId]);
     await this.syncPassation(line.rows[0].recon_day_id);
   },
 
@@ -511,6 +519,7 @@ export const reconciliationRepository = {
              category     = COALESCE(EXCLUDED.category, recon_lines.category),
              appro_qty    = EXCLUDED.appro_qty,
              unit_price   = CASE WHEN EXCLUDED.unit_price > 0 THEN EXCLUDED.unit_price ELSE recon_lines.unit_price END,
+             hidden       = false,
              updated_at   = NOW()`,
           [shift.recon_day_id, shiftId, key, r.sku ?? null, r.productName.trim(), r.category ?? null, r.approQty ?? 0, r.unitPrice ?? 0]
         );
@@ -531,7 +540,7 @@ export const reconciliationRepository = {
   async countSales(dayId: string): Promise<number> {
     const r = await db.query(
       `SELECT COUNT(*)::int AS n FROM recon_lines
-       WHERE recon_day_id = $1 AND (source_vendu = 'loyverse_import' OR vendu_qty > 0)`,
+       WHERE recon_day_id = $1 AND NOT hidden AND (source_vendu = 'loyverse_import' OR vendu_qty > 0)`,
       [dayId]
     );
     return r.rows[0]?.n ?? 0;
@@ -541,7 +550,7 @@ export const reconciliationRepository = {
   async countSalesShift(shiftId: string): Promise<number> {
     const r = await db.query(
       `SELECT COUNT(*)::int AS n FROM recon_lines
-       WHERE recon_shift_id = $1 AND (source_vendu = 'loyverse_import' OR vendu_qty > 0)`,
+       WHERE recon_shift_id = $1 AND NOT hidden AND (source_vendu = 'loyverse_import' OR vendu_qty > 0)`,
       [shiftId]
     );
     return r.rows[0]?.n ?? 0;
@@ -595,6 +604,7 @@ export const reconciliationRepository = {
              vendu_amount = EXCLUDED.vendu_amount,
              unit_price   = CASE WHEN EXCLUDED.unit_price > 0 THEN EXCLUDED.unit_price ELSE recon_lines.unit_price END,
              source_vendu = 'loyverse_import',
+             hidden       = false,
              updated_at   = NOW()`,
           [shift.recon_day_id, shiftId, key, it.sku ?? null, it.productName, it.category ?? null, it.quantity, it.netSales ?? 0, it.unitPrice ?? 0]
         );
@@ -648,7 +658,7 @@ export const reconciliationRepository = {
                SUM(appro_qty)   AS appro_qty,
                SUM(invendu_qty) AS invendu_qty
         FROM recon_lines
-        WHERE recon_day_id = $1
+        WHERE recon_day_id = $1 AND NOT hidden
         GROUP BY product_key
       ) ref ON ref.product_key = p.product_key
       ORDER BY p.category NULLS LAST, p.product_name
@@ -885,7 +895,7 @@ export const reconciliationRepository = {
         SELECT recon_day_id, MAX(shift_number) AS max_sn
         FROM recon_shifts GROUP BY recon_day_id
       ) last_s ON last_s.recon_day_id = l.recon_day_id
-      WHERE d.business_date BETWEEN $1 AND $2 ${storeCond}
+      WHERE d.business_date BETWEEN $1 AND $2 AND NOT l.hidden ${storeCond}
       GROUP BY l.product_key
       ORDER BY SUM(ABS(l.ecart_value)) DESC
     `, vals);
