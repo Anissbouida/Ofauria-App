@@ -58,7 +58,7 @@ export const reconciliationController = {
     res.json({ success: true, data: day });
   },
 
-  /** Cloture. Garde-fou : refuse si aucune vente importee, sauf force=true. */
+  /** Cloture de la journee (cascade sur les shifts). Garde-fou : refuse si aucune vente importee, sauf force=true. */
   async close(req: AuthRequest, res: Response) {
     const force = req.body?.force === true || (req.query.force as string) === 'true';
     if (!force) {
@@ -82,9 +82,35 @@ export const reconciliationController = {
     res.json({ success: true, data: day });
   },
 
+  // ─── Shifts ────────────────────────────────────────────────────────────
+
+  /** Cloture d'un shift (passation). Meme garde-fou NO_SALES que la journee, a l'echelle du shift. */
+  async closeShift(req: AuthRequest, res: Response) {
+    const force = req.body?.force === true || (req.query.force as string) === 'true';
+    if (!force) {
+      const nSales = await reconciliationRepository.countSalesShift(req.params.id);
+      if (nSales === 0) {
+        res.status(409).json({
+          success: false,
+          error: { code: 'NO_SALES', message: 'Aucune vente importee pour ce shift. Importer Loyverse avant de cloturer, ou forcer la cloture.' },
+        });
+        return;
+      }
+    }
+    const shift = await reconciliationRepository.setShiftStatus(req.params.id, 'closed');
+    if (!shift) { res.status(404).json({ success: false, error: { message: 'Shift introuvable' } }); return; }
+    res.json({ success: true, data: shift });
+  },
+
+  async reopenShift(req: AuthRequest, res: Response) {
+    const shift = await reconciliationRepository.setShiftStatus(req.params.id, 'open');
+    if (!shift) { res.status(404).json({ success: false, error: { message: 'Shift introuvable' } }); return; }
+    res.json({ success: true, data: shift });
+  },
+
   // ─── Lignes ────────────────────────────────────────────────────────────
 
-  /** Cree/maj une ligne. Body: { productName, sku?, category?, approQty?, recuQty?, invenduQty?, unitPrice? } */
+  /** Cree/maj une ligne d'un SHIFT (:id = shift). Body: { productName, sku?, category?, approQty?, recuQty?, invenduQty?, unitPrice? } */
   async upsertLine(req: AuthRequest, res: Response) {
     const b = req.body as Record<string, unknown>;
     const productName = String(b.productName ?? '').trim();
@@ -123,7 +149,7 @@ export const reconciliationController = {
     res.json({ success: true });
   },
 
-  /** Saisie en masse de l'appro. Body: { rows: [{ sku?, productName, category?, approQty, unitPrice? }] } */
+  /** Saisie en masse de l'appro d'un SHIFT (:id = shift). Body: { rows: [{ sku?, productName, category?, approQty, unitPrice? }] } */
   async bulkAppro(req: AuthRequest, res: Response) {
     const { rows } = req.body as {
       rows?: { sku?: string; productName: string; category?: string; approQty: number; unitPrice?: number }[];
@@ -135,7 +161,7 @@ export const reconciliationController = {
     res.json({ success: true, data: result });
   },
 
-  /** Remet vendu_qty / vendu_amount a 0 sur toutes les lignes du jour. */
+  /** Remet vendu_qty / vendu_amount a 0 sur toutes les lignes du SHIFT (:id = shift). */
   async resetSales(req: AuthRequest, res: Response) {
     const result = await reconciliationRepository.resetSales(req.params.id);
     res.json({ success: true, data: result });
@@ -143,7 +169,7 @@ export const reconciliationController = {
 
   // ─── Import Loyverse ───────────────────────────────────────────────────
 
-  /** Body: { items: [{ sku?, productName, category?, quantity, unitPrice, netSales? }] } */
+  /** Import des ventes d'un SHIFT (:id = shift). Body: { items: [{ sku?, productName, category?, quantity, unitPrice, netSales? }] } */
   async importSales(req: AuthRequest, res: Response) {
     const { items } = req.body as {
       items?: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[];

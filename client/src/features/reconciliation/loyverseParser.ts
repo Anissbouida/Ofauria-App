@@ -97,6 +97,95 @@ export function parseLoyverseCatalogFiles(files: FileList | File[]): Promise<Loy
   }))).then(arr => arr.flat());
 }
 
+// ─── Import par REÇUS PAR ARTICLE (transaction-level, avec heure) ─────────
+// Le module Contrôle des ventes est par shift (mig 262). L'export « item-sales
+// -summary » n'a pas d'horodatage. L'export « Reçus par article »
+// (receipts-by-item) donne UNE ligne par (reçu, article) avec l'heure, l'UGS
+// (SKU), la catégorie, la quantité et les ventes nettes — tout ce qu'il faut
+// pour ventiler automatiquement le vendu entre Matin et Soir en un seul import,
+// et pour matcher exactement les mêmes clés produit que l'export résumé.
+
+export type ParsedReceiptItem = {
+  date: string;      // AAAA-MM-JJ
+  hour: number;      // 0-23, pour la ventilation Matin/Soir
+  minute: number;
+  sku: string;
+  productName: string;
+  category: string;
+  quantity: number;  // négatif pour un remboursement (à soustraire du vendu)
+  netSales: number;
+};
+
+/** Enlève les accents pour comparer des en-têtes (« Catégorie » → « categorie »). */
+function deburr(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Reconnaît l'en-tête « Reçus par article » (date horodatée + UGS + article + quantité). */
+function isReceiptItemsHeader(header: string[]): boolean {
+  const h = header.map(x => deburr(x).toLowerCase());
+  return h.includes('date')
+    && (h.includes('ugs') || h.includes('sku'))
+    && h.includes('article')
+    && h.some(x => x.startsWith('quantite'));
+}
+
+/**
+ * Parse un ou plusieurs exports « Reçus par article » Loyverse. Les fichiers
+ * qui ne sont PAS à ce format sont ignorés (retour vide) : l'appelant se rabat
+ * alors sur le parseur item-sales-summary. Les remboursements (type contenant
+ * « rembours »/« refund »/« retour ») sortent en quantités et montants négatifs
+ * pour être soustraits du vendu.
+ */
+export function parseLoyverseReceiptFiles(files: FileList | File[]): Promise<ParsedReceiptItem[]> {
+  return Promise.all(Array.from(files).map(file => new Promise<ParsedReceiptItem[]>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = ((e.target?.result as string) || '').replace(/^﻿/, '');
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) { resolve([]); return; }
+      const header = splitCSVLine(lines[0]).map(h => h.trim());
+      if (!isReceiptItemsHeader(header)) { resolve([]); return; }
+
+      const norm = header.map(x => deburr(x).toLowerCase());
+      const col = (name: string) => norm.indexOf(name);
+      const iDate = col('date');
+      const iType = norm.findIndex(x => x.startsWith('type'));
+      const iCat = col('categorie');
+      const iSku = col('ugs') >= 0 ? col('ugs') : col('sku');
+      const iName = col('article');
+      const iQty = norm.findIndex(x => x.startsWith('quantite'));
+      const iNet = col('ventes nettes');
+
+      const items = lines.slice(1).map(line => {
+        const cols = splitCSVLine(line);
+        const dt = (cols[iDate] || '').trim();
+        // « 2026-08-12 17 h 10 » (ou « 17:10 ») → date + heure + minute.
+        const m = dt.match(/(\d{4}-\d{2}-\d{2}).*?(\d{1,2})\s*[h:]\s*(\d{2})/);
+        if (!m) return null;
+        const productName = (cols[iName] || '').trim();
+        const quantity = parseFloat((cols[iQty] || '').replace(',', '.')) || 0;
+        if (!productName || quantity === 0) return null;
+        const type = iType >= 0 ? deburr(cols[iType] || '').toLowerCase() : '';
+        const sign = /rembours|refund|retour/.test(type) ? -1 : 1;
+        return {
+          date: m[1],
+          hour: parseInt(m[2], 10),
+          minute: parseInt(m[3], 10),
+          sku: iSku >= 0 ? (cols[iSku] || '').trim() : '',
+          productName,
+          category: iCat >= 0 ? (cols[iCat] || '').trim() : '',
+          quantity: quantity * sign,
+          netSales: iNet >= 0 ? (parseFloat(cols[iNet]) || 0) * sign : 0,
+        };
+      }).filter(Boolean) as ParsedReceiptItem[];
+
+      resolve(items);
+    };
+    reader.readAsText(file);
+  }))).then(arr => arr.flat());
+}
+
 export function parseLoyverseFiles(files: FileList | File[]): Promise<ParsedLoyverseDay[]> {
   return Promise.all(Array.from(files).map(file => {
     return new Promise<ParsedLoyverseDay>((resolve) => {

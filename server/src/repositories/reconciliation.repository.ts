@@ -3,20 +3,31 @@ import { db } from '../config/database.js';
 /**
  * Module Rapprochement journalier (ISOLE, TEMPORAIRE).
  *
- * Bilan produit par jour, equation de stock (mig 259) :
- *   report_veille + recu = vendu + invendu (+ ecart)
+ * Bilan produit PAR SHIFT (mig 262), equation de stock inchangee (mig 259) :
  *   ecart = vendu + invendu - (recu + report_veille) ; negatif = manque.
- *  - report_veille : stock d'ouverture, reporte du reste de J-1 pour les
- *    categories a report (pas de saisie : recalcule a chaque ouverture) ;
+ *  - report_veille : stock d'ouverture DU SHIFT, jamais saisi. 1er shift :
+ *    reste du dernier shift de J-1 (categories a report seulement) ; shifts
+ *    suivants : comptage de passation = invendu du shift precedent, TOUTES
+ *    categories (entre deux shifts du meme jour, tout reste en vitrine) ;
  *  - approvisionne : saisi manuellement (ce qui part au magasin), hors calcul ;
  *  - recu : confirme par la caissiere a la reception ;
- *  - vendu : importe du CSV Loyverse (item-sales-summary) ;
- *  - invendu : compte en fin de journee (un seul comptage physique).
+ *  - vendu : importe du CSV Loyverse filtre sur la plage horaire du shift ;
+ *  - invendu : comptage physique de fin de shift (passation a 14h, ou soir).
+ *
+ * La somme des ecarts des shifts = ecart journalier (le comptage de passation
+ * s'annule) : le decoupage LOCALISE l'ecart sans changer le total.
+ * Journees anterieures a la mig 262 : shift unique n° 0 « Journée ».
  *
  * Etanche : ne lit ni n'ecrit aucune table du systeme reel. Tout est pilote
  * par le SKU/nom Loyverse. Les colonnes ecart_qty / ecart_value sont calculees
  * par la base (colonnes generees).
  */
+
+/** Shifts crees pour toute nouvelle journee. */
+const SHIFT_DEFS = [
+  { number: 1, label: 'Matin' },
+  { number: 2, label: 'Soir' },
+];
 
 export type ReconLineInput = {
   sku?: string | null;
@@ -72,7 +83,9 @@ export const reconciliationRepository = {
              COALESCE(l.total_ecart_value, 0) AS total_ecart_value
       FROM recon_days d
       LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS line_count, SUM(ecart_value) AS total_ecart_value
+        -- Un produit peut exister sur plusieurs shifts : compte distinct.
+        -- La somme des ecarts des shifts = ecart journalier (telescopage).
+        SELECT COUNT(DISTINCT product_key) AS line_count, SUM(ecart_value) AS total_ecart_value
         FROM recon_lines WHERE recon_day_id = d.id
       ) l ON true
       ${where}
@@ -81,39 +94,110 @@ export const reconciliationRepository = {
     return result.rows;
   },
 
+  /** Shifts d'une journee, ordonnes (n° 0 = journee entiere, historique). */
+  async getShifts(dayId: string) {
+    const { rows } = await db.query(
+      `SELECT * FROM recon_shifts WHERE recon_day_id = $1 ORDER BY shift_number`,
+      [dayId]
+    );
+    return rows;
+  },
+
+  /**
+   * Journee complete : shifts avec leurs lignes + vue agregee `lines` (les
+   * consommateurs journee — export Excel, vue Journée — restent inchanges).
+   * Agregat par produit : appro / recu / vendu / ecart = somme des shifts ;
+   * ouverture = report du 1er shift ; reste soir = invendu du DERNIER shift
+   * (les comptages de passation intermediaires ne sont pas des restes du jour).
+   */
   async getDayById(id: string) {
     const d = await db.query(`SELECT * FROM recon_days WHERE id = $1`, [id]);
     if (!d.rows[0]) return null;
-    const lines = await db.query(
-      `SELECT * FROM recon_lines WHERE recon_day_id = $1 ORDER BY category NULLS LAST, product_name`,
+    const shifts = await this.getShifts(id);
+    const { rows: lines } = await db.query(
+      `SELECT l.*, s.shift_number
+       FROM recon_lines l
+       JOIN recon_shifts s ON s.id = l.recon_shift_id
+       WHERE l.recon_day_id = $1
+       ORDER BY l.category NULLS LAST, l.product_name, s.shift_number`,
       [id]
     );
-    return { ...d.rows[0], lines: lines.rows };
+
+    const firstSn = shifts[0]?.shift_number;
+    const lastSn = shifts[shifts.length - 1]?.shift_number;
+    const num = (v: unknown) => {
+      const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0'));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // Agregat journee par produit (l'ordre categorie/nom des lignes est preserve).
+    const agg = new Map<string, any>();
+    for (const l of lines) {
+      let a = agg.get(l.product_key);
+      if (!a) {
+        a = {
+          id: null, recon_day_id: id, recon_shift_id: null,
+          product_key: l.product_key, sku: l.sku, product_name: l.product_name, category: l.category,
+          report_veille_qty: 0, appro_qty: 0, recu_qty: 0, vendu_qty: 0, vendu_amount: 0,
+          invendu_qty: 0, unit_price: 0, ecart_qty: 0, ecart_value: 0, source_vendu: 'manual',
+        };
+        agg.set(l.product_key, a);
+      }
+      a.appro_qty += num(l.appro_qty);
+      a.recu_qty += num(l.recu_qty);
+      a.vendu_qty += num(l.vendu_qty);
+      a.vendu_amount += num(l.vendu_amount);
+      a.ecart_qty += num(l.ecart_qty);
+      a.ecart_value += num(l.ecart_value);
+      if (l.shift_number === firstSn) a.report_veille_qty = num(l.report_veille_qty);
+      if (l.shift_number === lastSn) a.invendu_qty = num(l.invendu_qty);
+      if (num(l.unit_price) > 0) a.unit_price = num(l.unit_price);
+      if (l.source_vendu === 'loyverse_import') a.source_vendu = 'loyverse_import';
+    }
+
+    return {
+      ...d.rows[0],
+      shifts: shifts.map(s => ({ ...s, lines: lines.filter(l => l.recon_shift_id === s.id) })),
+      lines: [...agg.values()],
+    };
   },
 
-  /** Trouve la journee (date + magasin) ou la cree si absente. Idempotent. */
+  /**
+   * Trouve la journee (date + magasin) ou la cree si absente. Idempotent.
+   * Une nouvelle journee est creee avec ses shifts Matin / Soir ; les journees
+   * anterieures a la mig 262 gardent leur shift unique « Journée ».
+   */
   async openDay(params: { date: string; storeId?: string | null; userId?: string | null }) {
     const existing = await db.query(
       `SELECT * FROM recon_days
        WHERE business_date = $1 AND store_id IS NOT DISTINCT FROM $2`,
       [params.date, params.storeId ?? null]
     );
+    let dayId: string;
     if (existing.rows[0]) {
-      // Journee ouverte : on resynchronise le report de J-1 a chaque acces, pour
-      // qu'une correction du reste de la veille se repercute immediatement.
-      if (existing.rows[0].status !== 'closed') {
-        await this.syncCarryOver(existing.rows[0].id, params.date, params.storeId ?? null);
+      dayId = existing.rows[0].id;
+      if (existing.rows[0].status === 'closed') return this.getDayById(dayId);
+    } else {
+      const inserted = await db.query(
+        `INSERT INTO recon_days (business_date, store_id, created_by)
+         VALUES ($1, $2, $3) RETURNING id`,
+        [params.date, params.storeId ?? null, params.userId ?? null]
+      );
+      dayId = inserted.rows[0].id;
+      for (const s of SHIFT_DEFS) {
+        await db.query(
+          `INSERT INTO recon_shifts (recon_day_id, shift_number, label)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [dayId, s.number, s.label]
+        );
       }
-      return this.getDayById(existing.rows[0].id);
     }
-
-    const inserted = await db.query(
-      `INSERT INTO recon_days (business_date, store_id, created_by)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [params.date, params.storeId ?? null, params.userId ?? null]
-    );
-    await this.syncCarryOver(inserted.rows[0].id, params.date, params.storeId ?? null);
-    return this.getDayById(inserted.rows[0].id);
+    // Journee ouverte : resynchronise les stocks d'ouverture a chaque acces —
+    // report de J-1 sur le 1er shift, passation entre shifts. Une correction
+    // du reste (veille ou passation) se repercute immediatement.
+    await this.syncCarryOver(dayId, params.date, params.storeId ?? null);
+    await this.syncPassation(dayId);
+    return this.getDayById(dayId);
   },
 
   // ─── Report du reste de la veille ──────────────────────────────────────
@@ -127,6 +211,13 @@ export const reconciliationRepository = {
    * (categorie decochee, reste de J-1 corrige a 0, journee J-1 supprimee).
    */
   async syncCarryOver(dayId: string, date: string, storeId: string | null) {
+    // Cible : PREMIER shift du jour. Source : DERNIER shift de J-1 (son
+    // invendu est le vrai reste du soir ; les comptages de passation
+    // intermediaires n'en font pas partie).
+    const shifts = await this.getShifts(dayId);
+    const firstShift = shifts[0];
+    if (!firstShift) return;
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -137,35 +228,91 @@ export const reconciliationRepository = {
           SELECT l.product_key, l.sku, l.product_name, l.category,
                  l.invendu_qty, l.unit_price
           FROM recon_lines l
+          JOIN recon_shifts s ON s.id = l.recon_shift_id
           JOIN recon_days d ON d.id = l.recon_day_id
           JOIN recon_carryover_categories c
             ON UPPER(c.category) = UPPER(l.category) AND c.enabled
           WHERE d.business_date = $2::date - 1
             AND d.store_id IS NOT DISTINCT FROM $3
             AND l.invendu_qty > 0
+            AND s.shift_number = (
+              SELECT MAX(s2.shift_number) FROM recon_shifts s2 WHERE s2.recon_day_id = d.id
+            )
         )`;
 
       await client.query(`
         ${prevCte}
         INSERT INTO recon_lines
-          (recon_day_id, product_key, sku, product_name, category, report_veille_qty, unit_price)
-        SELECT $1, p.product_key, p.sku, p.product_name, p.category, p.invendu_qty, p.unit_price
+          (recon_day_id, recon_shift_id, product_key, sku, product_name, category, report_veille_qty, unit_price)
+        SELECT $1, $4, p.product_key, p.sku, p.product_name, p.category, p.invendu_qty, p.unit_price
         FROM prev p
-        ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
+        ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
           report_veille_qty = EXCLUDED.report_veille_qty,
           updated_at        = NOW()
         WHERE recon_lines.report_veille_qty IS DISTINCT FROM EXCLUDED.report_veille_qty
-      `, [dayId, date, storeId]);
+      `, [dayId, date, storeId, firstShift.id]);
 
       await client.query(`
         ${prevCte}
         UPDATE recon_lines t
         SET report_veille_qty = 0, updated_at = NOW()
         WHERE t.recon_day_id = $1
+          AND t.recon_shift_id = $4
           AND t.report_veille_qty <> 0
           AND NOT EXISTS (SELECT 1 FROM prev p WHERE p.product_key = t.product_key)
-      `, [dayId, date, storeId]);
+      `, [dayId, date, storeId, firstShift.id]);
 
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Chaine de passation : l'invendu compte a la fin d'un shift devient le
+   * stock d'ouverture (report_veille_qty) du shift suivant. TOUTES categories :
+   * la regle « categories a report » ne vaut qu'entre deux jours — au sein
+   * d'une meme journee, la baguette de 14h est toujours en vitrine le soir.
+   * Idempotent, rejoue a chaque ouverture et apres chaque saisie du comptage :
+   * une correction du reste de passation se propage immediatement. Le garde-fou
+   * de la colonne generee (ligne non touchee → ecart 0) evite les manques
+   * fictifs cote soir tant que rien n'y est saisi.
+   */
+  async syncPassation(dayId: string) {
+    const shifts = await this.getShifts(dayId);
+    if (shifts.length < 2) return;
+
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      for (let i = 1; i < shifts.length; i++) {
+        const from = shifts[i - 1], to = shifts[i];
+        await client.query(`
+          INSERT INTO recon_lines
+            (recon_day_id, recon_shift_id, product_key, sku, product_name, category, report_veille_qty, unit_price)
+          SELECT $1, $2, l.product_key, l.sku, l.product_name, l.category, l.invendu_qty, l.unit_price
+          FROM recon_lines l
+          WHERE l.recon_shift_id = $3 AND l.invendu_qty > 0
+          ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
+            report_veille_qty = EXCLUDED.report_veille_qty,
+            updated_at        = NOW()
+          WHERE recon_lines.report_veille_qty IS DISTINCT FROM EXCLUDED.report_veille_qty
+        `, [dayId, to.id, from.id]);
+
+        await client.query(`
+          UPDATE recon_lines t
+          SET report_veille_qty = 0, updated_at = NOW()
+          WHERE t.recon_shift_id = $1
+            AND t.report_veille_qty <> 0
+            AND NOT EXISTS (
+              SELECT 1 FROM recon_lines p
+              WHERE p.recon_shift_id = $2 AND p.product_key = t.product_key AND p.invendu_qty > 0
+            )
+        `, [to.id, from.id]);
+      }
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');
@@ -205,11 +352,38 @@ export const reconciliationRepository = {
     return rows[0];
   },
 
+  /** Statut de la JOURNEE : cascade sur tous ses shifts (cloture/reouverture globale). */
   async setStatus(id: string, status: 'open' | 'closed') {
     const r = await db.query(
       `UPDATE recon_days SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id, status]
     );
+    if (r.rows[0]) {
+      await db.query(
+        `UPDATE recon_shifts SET status = $2, updated_at = NOW() WHERE recon_day_id = $1`,
+        [id, status]
+      );
+    }
+    return r.rows[0] || null;
+  },
+
+  /**
+   * Statut d'un SEUL shift (cloture a la passation). Rouvrir un shift rouvre
+   * aussi la journee si elle etait cloturee — sinon la saisie resterait
+   * verrouillee par le statut du jour.
+   */
+  async setShiftStatus(shiftId: string, status: 'open' | 'closed') {
+    const r = await db.query(
+      `UPDATE recon_shifts SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [shiftId, status]
+    );
+    if (r.rows[0] && status === 'open') {
+      await db.query(
+        `UPDATE recon_days SET status = 'open', updated_at = NOW()
+         WHERE id = $1 AND status = 'closed'`,
+        [r.rows[0].recon_day_id]
+      );
+    }
     return r.rows[0] || null;
   },
 
@@ -221,17 +395,35 @@ export const reconciliationRepository = {
     }
   },
 
+  /** Verrou de saisie par shift : shift ET journee doivent etre ouverts. Renvoie le shift. */
+  async assertShiftOpen(shiftId: string) {
+    const r = await db.query(
+      `SELECT s.*, d.status AS day_status
+       FROM recon_shifts s JOIN recon_days d ON d.id = s.recon_day_id
+       WHERE s.id = $1`,
+      [shiftId]
+    );
+    if (!r.rows[0]) throw Object.assign(new Error('Shift introuvable'), { statusCode: 404 });
+    if (r.rows[0].day_status === 'closed') {
+      throw Object.assign(new Error('Journee cloturee : saisie verrouillee'), { statusCode: 409 });
+    }
+    if (r.rows[0].status === 'closed') {
+      throw Object.assign(new Error(`Shift « ${r.rows[0].label} » cloture : saisie verrouillee`), { statusCode: 409 });
+    }
+    return r.rows[0];
+  },
+
   // ─── Lignes ────────────────────────────────────────────────────────────
 
-  /** Cree ou met a jour une ligne (saisie manuelle appro/invendu/prix). */
-  async upsertLine(dayId: string, input: ReconLineInput) {
-    await this.assertOpen(dayId);
+  /** Cree ou met a jour une ligne d'un shift (saisie manuelle appro/invendu/prix). */
+  async upsertLine(shiftId: string, input: ReconLineInput) {
+    const shift = await this.assertShiftOpen(shiftId);
     const key = productKey(input.sku, input.productName);
     const r = await db.query(
       `INSERT INTO recon_lines
-         (recon_day_id, product_key, sku, product_name, category, appro_qty, recu_qty, vendu_qty, invendu_qty, unit_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
+         (recon_day_id, recon_shift_id, product_key, sku, product_name, category, appro_qty, recu_qty, vendu_qty, invendu_qty, unit_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
          sku         = COALESCE(NULLIF(EXCLUDED.sku, ''), recon_lines.sku),
          product_name = EXCLUDED.product_name,
          category    = COALESCE(EXCLUDED.category, recon_lines.category),
@@ -242,19 +434,21 @@ export const reconciliationRepository = {
          updated_at  = NOW()
        RETURNING *`,
       [
-        dayId, key, input.sku ?? null, input.productName, input.category ?? null,
+        shift.recon_day_id, shiftId, key, input.sku ?? null, input.productName, input.category ?? null,
         input.approQty ?? 0, input.recuQty ?? 0, input.venduQty ?? 0, input.invenduQty ?? 0, input.unitPrice ?? 0,
       ]
     );
     await registerProduct(db, input);
+    // L'invendu du shift alimente l'ouverture du shift suivant.
+    await this.syncPassation(shift.recon_day_id);
     return r.rows[0];
   },
 
   /** Mise a jour partielle d'une ligne existante (edition inline). */
   async updateLine(lineId: string, patch: { approQty?: number; recuQty?: number; venduQty?: number; invenduQty?: number; unitPrice?: number }) {
-    const line = await db.query(`SELECT recon_day_id FROM recon_lines WHERE id = $1`, [lineId]);
+    const line = await db.query(`SELECT recon_day_id, recon_shift_id FROM recon_lines WHERE id = $1`, [lineId]);
     if (!line.rows[0]) throw Object.assign(new Error('Ligne introuvable'), { statusCode: 404 });
-    await this.assertOpen(line.rows[0].recon_day_id);
+    await this.assertShiftOpen(line.rows[0].recon_shift_id);
 
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -275,14 +469,19 @@ export const reconciliationRepository = {
       `UPDATE recon_lines SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${vals.length} RETURNING *`,
       vals
     );
+    // Un comptage de passation corrige se propage a l'ouverture du shift suivant.
+    if (patch.invenduQty !== undefined) {
+      await this.syncPassation(line.rows[0].recon_day_id);
+    }
     return r.rows[0];
   },
 
   async deleteLine(lineId: string) {
-    const line = await db.query(`SELECT recon_day_id FROM recon_lines WHERE id = $1`, [lineId]);
+    const line = await db.query(`SELECT recon_day_id, recon_shift_id FROM recon_lines WHERE id = $1`, [lineId]);
     if (!line.rows[0]) return;
-    await this.assertOpen(line.rows[0].recon_day_id);
+    await this.assertShiftOpen(line.rows[0].recon_shift_id);
     await db.query(`DELETE FROM recon_lines WHERE id = $1`, [lineId]);
+    await this.syncPassation(line.rows[0].recon_day_id);
   },
 
   /**
@@ -291,10 +490,10 @@ export const reconciliationRepository = {
    * deja saisis sont preserves. Upsert par product_key, atomique.
    */
   async bulkUpsertAppro(
-    dayId: string,
+    shiftId: string,
     rows: { sku?: string | null; productName: string; category?: string | null; approQty: number; unitPrice?: number }[]
   ) {
-    await this.assertOpen(dayId);
+    const shift = await this.assertShiftOpen(shiftId);
     const client = await db.getClient();
     let upserted = 0;
     try {
@@ -304,16 +503,16 @@ export const reconciliationRepository = {
         const key = productKey(r.sku, r.productName);
         await client.query(
           `INSERT INTO recon_lines
-             (recon_day_id, product_key, sku, product_name, category, appro_qty, unit_price)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
+             (recon_day_id, recon_shift_id, product_key, sku, product_name, category, appro_qty, unit_price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
              sku          = COALESCE(NULLIF(EXCLUDED.sku, ''), recon_lines.sku),
              product_name = EXCLUDED.product_name,
              category     = COALESCE(EXCLUDED.category, recon_lines.category),
              appro_qty    = EXCLUDED.appro_qty,
              unit_price   = CASE WHEN EXCLUDED.unit_price > 0 THEN EXCLUDED.unit_price ELSE recon_lines.unit_price END,
              updated_at   = NOW()`,
-          [dayId, key, r.sku ?? null, r.productName.trim(), r.category ?? null, r.approQty ?? 0, r.unitPrice ?? 0]
+          [shift.recon_day_id, shiftId, key, r.sku ?? null, r.productName.trim(), r.category ?? null, r.approQty ?? 0, r.unitPrice ?? 0]
         );
         await registerProduct(client, r);
         upserted++;
@@ -338,17 +537,27 @@ export const reconciliationRepository = {
     return r.rows[0]?.n ?? 0;
   },
 
+  /** Idem, restreint a un shift (garde-fou de cloture par shift). */
+  async countSalesShift(shiftId: string): Promise<number> {
+    const r = await db.query(
+      `SELECT COUNT(*)::int AS n FROM recon_lines
+       WHERE recon_shift_id = $1 AND (source_vendu = 'loyverse_import' OR vendu_qty > 0)`,
+      [shiftId]
+    );
+    return r.rows[0]?.n ?? 0;
+  },
+
   /**
-   * Remet les ventes du jour a zero (vendu_qty + vendu_amount) avant un
+   * Remet les ventes du shift a zero (vendu_qty + vendu_amount) avant un
    * reimport propre. Appro / recu / invendu / prix sont preserves.
    */
-  async resetSales(dayId: string) {
-    await this.assertOpen(dayId);
+  async resetSales(shiftId: string) {
+    await this.assertShiftOpen(shiftId);
     const r = await db.query(
       `UPDATE recon_lines
        SET vendu_qty = 0, vendu_amount = 0, source_vendu = 'manual', updated_at = NOW()
-       WHERE recon_day_id = $1 AND (vendu_qty <> 0 OR vendu_amount <> 0 OR source_vendu = 'loyverse_import')`,
-      [dayId]
+       WHERE recon_shift_id = $1 AND (vendu_qty <> 0 OR vendu_amount <> 0 OR source_vendu = 'loyverse_import')`,
+      [shiftId]
     );
     return { reset: r.rowCount ?? 0 };
   },
@@ -356,16 +565,17 @@ export const reconciliationRepository = {
   // ─── Import Loyverse (ventes) ──────────────────────────────────────────
 
   /**
-   * Injecte les ventes du CSV Loyverse dans les lignes du jour.
+   * Injecte les ventes du CSV Loyverse dans les lignes d'un shift (export
+   * filtre sur la plage horaire du shift dans le back-office Loyverse).
    * Reimport idempotent : vendu_qty et unit_price sont ECRASES (set, pas
    * cumul). appro_qty / invendu_qty deja saisis sont preserves. Les produits
    * absents de la grille sont crees (rien n'est perdu).
    */
   async importSales(
-    dayId: string,
+    shiftId: string,
     items: { sku?: string | null; productName: string; category?: string | null; quantity: number; unitPrice: number; netSales?: number }[]
   ) {
-    await this.assertOpen(dayId);
+    const shift = await this.assertShiftOpen(shiftId);
     const client = await db.getClient();
     let upserted = 0;
     try {
@@ -375,9 +585,9 @@ export const reconciliationRepository = {
         const key = productKey(it.sku, it.productName);
         await client.query(
           `INSERT INTO recon_lines
-             (recon_day_id, product_key, sku, product_name, category, vendu_qty, vendu_amount, unit_price, source_vendu)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'loyverse_import')
-           ON CONFLICT (recon_day_id, product_key) DO UPDATE SET
+             (recon_day_id, recon_shift_id, product_key, sku, product_name, category, vendu_qty, vendu_amount, unit_price, source_vendu)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'loyverse_import')
+           ON CONFLICT (recon_shift_id, product_key) DO UPDATE SET
              sku          = COALESCE(NULLIF(EXCLUDED.sku, ''), recon_lines.sku),
              product_name = EXCLUDED.product_name,
              category     = COALESCE(recon_lines.category, EXCLUDED.category),
@@ -386,7 +596,7 @@ export const reconciliationRepository = {
              unit_price   = CASE WHEN EXCLUDED.unit_price > 0 THEN EXCLUDED.unit_price ELSE recon_lines.unit_price END,
              source_vendu = 'loyverse_import',
              updated_at   = NOW()`,
-          [dayId, key, it.sku ?? null, it.productName, it.category ?? null, it.quantity, it.netSales ?? 0, it.unitPrice ?? 0]
+          [shift.recon_day_id, shiftId, key, it.sku ?? null, it.productName, it.category ?? null, it.quantity, it.netSales ?? 0, it.unitPrice ?? 0]
         );
         await registerProduct(client, it);
         upserted++;
@@ -431,8 +641,16 @@ export const reconciliationRepository = {
         ref.vendu_qty                AS ref_vendu,
         ref.invendu_qty              AS ref_invendu
       FROM recon_products p
-      LEFT JOIN recon_lines ref
-        ON ref.product_key = p.product_key AND ref.recon_day_id = $1
+      LEFT JOIN (
+        -- Journee de reference cumulee sur ses shifts (mig 262)
+        SELECT product_key,
+               SUM(vendu_qty)   AS vendu_qty,
+               SUM(appro_qty)   AS appro_qty,
+               SUM(invendu_qty) AS invendu_qty
+        FROM recon_lines
+        WHERE recon_day_id = $1
+        GROUP BY product_key
+      ) ref ON ref.product_key = p.product_key
       ORDER BY p.category NULLS LAST, p.product_name
     `, [refDayId]);
 
@@ -646,6 +864,9 @@ export const reconciliationRepository = {
     const vals: unknown[] = [params.from, params.to];
     let storeCond = '';
     if (params.storeId) { vals.push(params.storeId); storeCond = `AND d.store_id = $${vals.length}`; }
+    // Le reste (invendu) d'une journee = celui de son DERNIER shift : les
+    // comptages de passation intermediaires ne sont pas des restes du jour.
+    // Vendu / appro / ecart se cumulent sur tous les shifts.
     const result = await db.query(`
       SELECT
         l.product_key,
@@ -653,12 +874,17 @@ export const reconciliationRepository = {
         MAX(l.category)                    AS category,
         SUM(l.appro_qty)                   AS appro_qty,
         SUM(l.vendu_qty)                   AS vendu_qty,
-        SUM(l.invendu_qty)                 AS invendu_qty,
+        COALESCE(SUM(l.invendu_qty) FILTER (WHERE s.shift_number = last_s.max_sn), 0) AS invendu_qty,
         SUM(l.ecart_qty)                   AS ecart_qty,
         SUM(l.ecart_value)                 AS ecart_value,
         COUNT(DISTINCT d.id)               AS days_count
       FROM recon_lines l
       JOIN recon_days d ON d.id = l.recon_day_id
+      JOIN recon_shifts s ON s.id = l.recon_shift_id
+      JOIN (
+        SELECT recon_day_id, MAX(shift_number) AS max_sn
+        FROM recon_shifts GROUP BY recon_day_id
+      ) last_s ON last_s.recon_day_id = l.recon_day_id
       WHERE d.business_date BETWEEN $1 AND $2 ${storeCond}
       GROUP BY l.product_key
       ORDER BY SUM(ABS(l.ecart_value)) DESC

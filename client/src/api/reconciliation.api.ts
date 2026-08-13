@@ -3,23 +3,36 @@ import api from './client';
 // Module Rapprochement journalier (ISOLE, TEMPORAIRE).
 
 export type ReconLine = {
-  id: string;
+  /** null sur les lignes agrégées de la vue Journée (day.lines). */
+  id: string | null;
   recon_day_id: string;
+  recon_shift_id: string | null;
   product_key: string;
   sku: string | null;
   product_name: string;
   category: string | null;
-  /** Stock d'ouverture reporté du reste de J-1 (lecture seule, calculé serveur). */
-  report_veille_qty: string;
-  appro_qty: string;
-  recu_qty: string;
-  vendu_qty: string;
-  vendu_amount: string;
-  invendu_qty: string;
-  unit_price: string;
-  ecart_qty: string;
-  ecart_value: string;
+  /** Stock d'ouverture du shift (lecture seule, calculé serveur) :
+   *  reste de J-1 pour le 1er shift, comptage de passation ensuite. */
+  report_veille_qty: string | number;
+  appro_qty: string | number;
+  recu_qty: string | number;
+  vendu_qty: string | number;
+  vendu_amount: string | number;
+  invendu_qty: string | number;
+  unit_price: string | number;
+  ecart_qty: string | number;
+  ecart_value: string | number;
   source_vendu: 'manual' | 'loyverse_import';
+};
+
+/** Shift d'une journée (mig 262). shift_number 0 = journée entière (historique). */
+export type ReconShift = {
+  id: string;
+  recon_day_id: string;
+  shift_number: number;
+  label: string;
+  status: 'open' | 'closed';
+  lines: ReconLine[];
 };
 
 export type ReconDay = {
@@ -28,6 +41,8 @@ export type ReconDay = {
   store_id: string | null;
   status: 'open' | 'closed';
   notes: string | null;
+  shifts: ReconShift[];
+  /** Vue agrégée de la journée (sommes des shifts ; ouverture = 1er shift, reste soir = dernier). */
   lines: ReconLine[];
 };
 
@@ -136,18 +151,23 @@ export const reconciliationApi = {
   close: (id: string, force = false) => api.post(`/reconciliation/days/${id}/close`, { force }).then(r => r.data.data),
   reopen: (id: string) => api.post(`/reconciliation/days/${id}/reopen`).then(r => r.data.data),
 
-  upsertLine: (dayId: string, data: { productName: string; sku?: string; category?: string; approQty?: number; recuQty?: number; invenduQty?: number; unitPrice?: number }) =>
-    api.post(`/reconciliation/days/${dayId}/lines`, data).then(r => r.data.data as ReconLine),
-  bulkAppro: (dayId: string, rows: { sku?: string; productName: string; category?: string; approQty: number; unitPrice?: number }[]) =>
-    api.post(`/reconciliation/days/${dayId}/bulk-appro`, { rows }).then(r => r.data.data as { upserted: number }),
+  closeShift: (shiftId: string, force = false) =>
+    api.post(`/reconciliation/shifts/${shiftId}/close`, { force }).then(r => r.data.data as ReconShift),
+  reopenShift: (shiftId: string) =>
+    api.post(`/reconciliation/shifts/${shiftId}/reopen`).then(r => r.data.data as ReconShift),
+
+  upsertLine: (shiftId: string, data: { productName: string; sku?: string; category?: string; approQty?: number; recuQty?: number; invenduQty?: number; unitPrice?: number }) =>
+    api.post(`/reconciliation/shifts/${shiftId}/lines`, data).then(r => r.data.data as ReconLine),
+  bulkAppro: (shiftId: string, rows: { sku?: string; productName: string; category?: string; approQty: number; unitPrice?: number }[]) =>
+    api.post(`/reconciliation/shifts/${shiftId}/bulk-appro`, { rows }).then(r => r.data.data as { upserted: number }),
   updateLine: (lineId: string, data: { approQty?: number; recuQty?: number; venduQty?: number; invenduQty?: number; unitPrice?: number }) =>
     api.put(`/reconciliation/lines/${lineId}`, data).then(r => r.data.data as ReconLine),
   deleteLine: (lineId: string) => api.delete(`/reconciliation/lines/${lineId}`).then(r => r.data),
 
-  importSales: (dayId: string, items: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[]) =>
-    api.post(`/reconciliation/days/${dayId}/import-sales`, { items }).then(r => r.data.data as { upserted: number }),
-  resetSales: (dayId: string) =>
-    api.post(`/reconciliation/days/${dayId}/reset-sales`).then(r => r.data.data as { reset: number }),
+  importSales: (shiftId: string, items: { sku?: string; productName: string; category?: string; quantity: number; unitPrice: number; netSales?: number }[]) =>
+    api.post(`/reconciliation/shifts/${shiftId}/import-sales`, { items }).then(r => r.data.data as { upserted: number }),
+  resetSales: (shiftId: string) =>
+    api.post(`/reconciliation/shifts/${shiftId}/reset-sales`).then(r => r.data.data as { reset: number }),
 
   /** Télécharge le classeur xlsx détaillé de la journée (déclenche un download). */
   exportDayXlsx: async (dayId: string, businessDate: string) => {

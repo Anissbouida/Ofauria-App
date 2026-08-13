@@ -7,13 +7,60 @@ import {
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
   Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy,
 } from 'lucide-react';
-import { reconciliationApi, type ReconLine, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
-import { parseLoyverseFiles, parseLoyverseCatalogFiles } from './loyverseParser';
+import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
+import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 import { useAuth } from '../../context/AuthContext';
 
-/** Rapprochement journalier (ISOLE, TEMPORAIRE) : vendu + invendu - recu = ecart (negatif = manque ; l'appro n'entre pas dans le calcul). */
+/** Rapprochement PAR SHIFT (ISOLE, TEMPORAIRE) : vendu + invendu - (recu + ouverture) = ecart (negatif = manque ; l'appro n'entre pas dans le calcul). */
+
+/** Heure de passation Matin → Soir : les créneaux d'appro avant cette heure
+ *  alimentent le shift Matin, les autres le Soir. Alignée sur la passation de
+ *  caisse (~14h). Constante en dur : module jetable, comme OVEN_CAPACITY_PLAQUES. */
+const SHIFT_SPLIT_TIME = '14:00';
+
+// ─── Fuseau horaire du magasin (import des reçus) ─────────────────────────
+// Les horodatages de l'export Loyverse sont dans le fuseau de l'ORDINATEUR qui
+// télécharge (ex. Montréal), pas celui du magasin (Maroc). On convertit donc
+// chaque heure de ticket depuis le fuseau du navigateur vers le fuseau du
+// magasin avant de découper Matin/Soir : +5h l'été depuis Montréal, +6h l'hiver,
+// +0h depuis le Maroc — géré automatiquement (changement d'heure compris).
+const DEFAULT_STORE_TZ = 'Africa/Casablanca';
+const LS_STORE_TZ = 'recon-store-tz';
+const LS_PASSATION = 'recon-passation-time';
+
+/** Fuseau détecté du navigateur (là où le fichier a été téléchargé). */
+function browserTz(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; }
+  catch { return 'local'; }
+}
+
+/**
+ * Minute du jour (0-1439) d'un ticket EXPRIMÉE EN HEURE DU MAGASIN. L'heure du
+ * fichier (date + hour + minute) est interprétée dans le fuseau du navigateur,
+ * puis reprojetée dans `storeTz`. Repli sur l'heure brute si le fuseau est
+ * invalide.
+ */
+function receiptStoreMinutes(date: string, hour: number, minute: number, storeTz: string): number {
+  try {
+    const [y, mo, d] = date.split('-').map(Number);
+    const instant = new Date(y, (mo || 1) - 1, d || 1, hour, minute); // naïf = heure navigateur
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: storeTz, hour12: false, hour: '2-digit', minute: '2-digit',
+    }).formatToParts(instant);
+    const hh = Number(parts.find(p => p.type === 'hour')?.value) % 24;
+    const mm = Number(parts.find(p => p.type === 'minute')?.value);
+    if (Number.isFinite(hh) && Number.isFinite(mm)) return hh * 60 + mm;
+  } catch { /* fuseau invalide → repli */ }
+  return hour * 60 + minute;
+}
+
+function parseHHMM(s: string): number {
+  const m = (s || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return 14 * 60;
+  return (Number(m[1]) % 24) * 60 + Number(m[2]);
+}
 
 function nf(v: number, dec = 2) {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -1064,17 +1111,48 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       // La validation enregistre aussi la fiche : l'état validé reste partagé.
       await reconciliationApi.saveFiche(date, buildFicheLines());
       const day = await reconciliationApi.openDay(date);
-      const rows = allProducts
-        .filter(p => num(slotQty[`${p.product_key}__total`]) > 0)
-        .map(p => ({
-          productName: p.product_name,
-          sku: p.sku || undefined,
-          category: p.category || undefined,
-          approQty: num(slotQty[`${p.product_key}__total`]),
-          unitPrice: num(p.unit_price) || undefined,
-        }));
-      if (rows.length === 0) throw new Error('Aucun produit avec une quantité > 0');
-      return reconciliationApi.bulkAppro(day.id, rows);
+      const shifts = day.shifts || [];
+      const matin = shifts.find(s => s.shift_number === 1) ?? shifts[0];
+      const soir = shifts.find(s => s.shift_number === 2);
+      if (!matin) throw new Error('Journée sans shift : rouvrir la journée');
+
+      const row = (p: SuggestProduct, qty: number) => ({
+        productName: p.product_name,
+        sku: p.sku || undefined,
+        category: p.category || undefined,
+        approQty: qty,
+        unitPrice: num(p.unit_price) || undefined,
+      });
+
+      // Ventilation de l'appro par shift : les créneaux avant l'heure de
+      // passation vont au Matin, les autres au Soir. Sans créneaux (ou sur une
+      // journée mono-shift, antérieure à la mig 262), tout part au 1er shift.
+      const rowsMatin: ReturnType<typeof row>[] = [];
+      const rowsSoir: ReturnType<typeof row>[] = [];
+      for (const p of allProducts) {
+        const total = num(slotQty[`${p.product_key}__total`]);
+        if (total <= 0) continue;
+        const catSlots = slotsByCategory[p.category || 'Non classé'] || [];
+        if (!soir || catSlots.length === 0) {
+          rowsMatin.push(row(p, total));
+          continue;
+        }
+        let qMatin = 0, qSoir = 0;
+        for (const s of catSlots) {
+          const q = num(slotQty[`${p.product_key}__${s.slot_number}`]);
+          if ((s.target_time || '00:00').slice(0, 5) < SHIFT_SPLIT_TIME) qMatin += q;
+          else qSoir += q;
+        }
+        // Écart éventuel entre le total saisi et la somme des créneaux : au Matin.
+        qMatin += total - (qMatin + qSoir);
+        if (qMatin > 0) rowsMatin.push(row(p, qMatin));
+        if (qSoir > 0) rowsSoir.push(row(p, qSoir));
+      }
+      if (rowsMatin.length + rowsSoir.length === 0) throw new Error('Aucun produit avec une quantité > 0');
+      let upserted = 0;
+      if (rowsMatin.length > 0) upserted += (await reconciliationApi.bulkAppro(matin.id, rowsMatin)).upserted;
+      if (soir && rowsSoir.length > 0) upserted += (await reconciliationApi.bulkAppro(soir.id, rowsSoir)).upserted;
+      return { upserted };
     },
     onSuccess: (r) => {
       notify.success(`Appro validé : ${r.upserted} produit(s)`);
@@ -1686,13 +1764,17 @@ function NumCell({ value, locked, onDraft, onCommit, tint }: {
  * doit jamais avoir a la corriger ici (elle corrige le reste du soir de J-1).
  * Meme gabarit que NumCell pour que les colonnes restent alignees.
  */
-function ReportVeilleCell({ qty }: { qty: number }) {
+function ReportVeilleCell({ qty, passation }: { qty: number; passation?: boolean }) {
   const t = COL_TINTS.report;
   return (
     <div
       title={qty > 0
-        ? `${qf(qty)} en vitrine à l'ouverture (reste du soir de la veille). Pour corriger, modifier le reste du soir de J-1.`
-        : "Aucun report : catégorie sans report, ou rien ne restait la veille."}
+        ? (passation
+          ? `${qf(qty)} en vitrine à l'ouverture du shift (comptage de passation). Pour corriger, modifier le reste du shift précédent.`
+          : `${qf(qty)} en vitrine à l'ouverture (reste du soir de la veille). Pour corriger, modifier le reste du soir de J-1.`)
+        : (passation
+          ? 'Aucun stock d\'ouverture : rien ne restait à la passation.'
+          : 'Aucun report : catégorie sans report, ou rien ne restait la veille.')}
       style={{
         display: 'inline-block', width: 74, textAlign: 'right', padding: '3px 6px',
         fontFamily: 'ui-monospace, monospace', fontWeight: qty > 0 ? 600 : 400,
@@ -1711,6 +1793,9 @@ function DayView() {
   // L'appro est la reference du rapprochement : seul l'admin peut la modifier.
   const canEditAppro = user?.role === 'admin';
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  // Onglet de shift : 'auto' = choisi selon l'heure (avant 14h → Matin),
+  // 'total' = vue Journée agrégée (lecture seule), sinon id du shift.
+  const [shiftSel, setShiftSel] = useState<string>('auto');
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [showAdd, setShowAdd] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
@@ -1722,6 +1807,24 @@ function DayView() {
     queryKey: ['recon-day', date],
     queryFn: () => reconciliationApi.openDay(date),
   });
+
+  const shifts = day?.shifts ?? [];
+  // Journees anterieures a la mig 262 : shift unique « Journée », pas d'onglets.
+  const multiShift = shifts.length > 1;
+  const activeShift: ReconShift | null = (() => {
+    if (shifts.length === 0) return null;
+    if (shiftSel === 'total') return multiShift ? null : shifts[0];
+    const found = shifts.find(s => s.id === shiftSel);
+    if (found) return found;
+    if (!multiShift) return shifts[0];
+    // auto : Matin avant l'heure de passation, dernier shift ensuite
+    return format(new Date(), 'HH:mm') < SHIFT_SPLIT_TIME ? shifts[0] : shifts[shifts.length - 1];
+  })();
+  // Vue Journée = agrégat serveur (ouverture du 1er shift, reste du dernier,
+  // sommes ailleurs), toujours en lecture seule.
+  const isTotalView = multiShift && shiftSel === 'total';
+  const firstSn = shifts[0]?.shift_number;
+  const lastSn = shifts[shifts.length - 1]?.shift_number;
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['recon-day', date] });
 
@@ -1737,30 +1840,123 @@ function DayView() {
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
   const addLineMut = useMutation({
-    mutationFn: (data: any) => reconciliationApi.upsertLine(day!.id, data),
+    mutationFn: (data: any) => reconciliationApi.upsertLine(activeShift!.id, data),
     onSuccess: () => { invalidate(); setShowAdd(false); notify.success('Produit ajouté'); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
-  const importMut = useMutation({
+  /** Cle produit identique au serveur (mig 262) : SKU s'il existe, sinon nom. */
+  const productKeyOf = (sku: string, name: string) =>
+    (sku.trim() || name.trim()).toUpperCase();
+
+  /**
+   * Ventile les reçus par shift selon l'heure DU MAGASIN (conversion de fuseau)
+   * comparée à l'heure de passation, agrège par produit puis POST à chaque shift.
+   * Un shift clôturé est signalé et sauté (l'autre s'importe quand même).
+   */
+  const doImportReceipts = async (rows: ParsedReceiptItem[], storeTz: string, passationMin: number) => {
+    const single = shifts.length === 1 ? shifts[0] : null;
+    const matin = single ?? shifts.find(s => s.shift_number === 1) ?? shifts[0];
+    const soir = single ? null : (shifts.find(s => s.shift_number === 2) ?? shifts[shifts.length - 1]);
+
+    type Agg = { sku: string; productName: string; category: string; quantity: number; netSales: number };
+    const buckets = new Map<string, Map<string, Agg>>();
+    for (const r of rows) {
+      // « <= » : la passation est l'heure de fermeture de la caisse du matin ;
+      // le ticket saisi à cette heure appartient encore au Matin.
+      const target = (single || !soir) ? matin
+        : receiptStoreMinutes(r.date, r.hour, r.minute, storeTz) <= passationMin ? matin : soir;
+      let m = buckets.get(target.id);
+      if (!m) { m = new Map(); buckets.set(target.id, m); }
+      const key = productKeyOf(r.sku, r.productName);
+      const a = m.get(key);
+      if (a) { a.quantity += r.quantity; a.netSales += r.netSales; }
+      else m.set(key, { sku: r.sku, productName: r.productName, category: r.category, quantity: r.quantity, netSales: r.netSales });
+    }
+
+    const parts: string[] = [];
+    for (const s of shifts) {
+      const agg = buckets.get(s.id);
+      if (!agg || agg.size === 0) continue;
+      const items = [...agg.values()]
+        .filter(a => a.quantity > 0)  // un produit net remboursé (≤0) est ignoré
+        .map(a => ({
+          sku: a.sku || undefined, productName: a.productName, category: a.category || undefined,
+          quantity: a.quantity,
+          // Prix = ventes nettes / quantité (même base que l'import résumé).
+          unitPrice: a.quantity > 0 ? Math.round((a.netSales / a.quantity) * 100) / 100 : 0,
+          netSales: a.netSales,
+        }));
+      if (items.length === 0) continue;
+      try {
+        const r = await reconciliationApi.importSales(s.id, items);
+        parts.push(`${s.label} : ${r.upserted}`);
+      } catch (e: any) {
+        if (e?.response?.status === 409) parts.push(`${s.label} clôturé (ignoré)`);
+        else throw e;
+      }
+    }
+    return { message: parts.length ? `Reçus ventilés — ${parts.join(' · ')} produit(s)` : 'Aucune vente exploitable' };
+  };
+
+  // Reçus parsés en attente de confirmation (aperçu Matin/Soir avant écriture).
+  const [receiptPreview, setReceiptPreview] = useState<ParsedReceiptItem[] | null>(null);
+
+  /** Import du résumé item-sales-summary (sans heure) dans le shift affiché. */
+  const importSummaryMut = useMutation({
     mutationFn: async (files: File[]) => {
+      if (!activeShift || isTotalView) {
+        throw new Error('Choisir un shift (Matin ou Soir) avant d\'importer un résumé sans heure — ou utiliser l\'export « Reçus par article ».');
+      }
       const parsed = await parseLoyverseFiles(files);
       const items = parsed.flatMap(p => p.items.map(i => ({
         sku: i.sku, productName: i.productName, category: i.category || undefined, quantity: i.quantity, unitPrice: i.unitPrice,
         netSales: i.netSales,
       })));
       if (items.length === 0) throw new Error('Aucune vente exploitable dans le fichier');
-      return reconciliationApi.importSales(day!.id, items);
+      const r = await reconciliationApi.importSales(activeShift.id, items);
+      return { message: `Ventes importées (${activeShift.label}) : ${r.upserted} produit(s)` };
     },
-    onSuccess: (r) => { invalidate(); notify.success(`Ventes importées : ${r.upserted} produit(s)`); },
+    onSuccess: (r) => { invalidate(); notify.success(r.message); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur import'),
   });
+
+  /** Import des reçus ventilés (déclenché depuis l'aperçu, après confirmation). */
+  const importReceiptsMut = useMutation({
+    mutationFn: ({ rows, storeTz, passationMin }: { rows: ParsedReceiptItem[]; storeTz: string; passationMin: number }) =>
+      doImportReceipts(rows, storeTz, passationMin),
+    onSuccess: (r) => { invalidate(); setReceiptPreview(null); notify.success(r.message); },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur import'),
+  });
+
+  const [parsingFile, setParsingFile] = useState(false);
+  /** Sélection de fichier : reçus horodatés → aperçu ; résumé → shift affiché. */
+  const handleImportFiles = async (files: File[]) => {
+    if (!day) return;
+    setParsingFile(true);
+    try {
+      const receipts = await parseLoyverseReceiptFiles(files);
+      if (receipts.length > 0) {
+        // Journée mono-shift (historique) : pas de découpage → import direct.
+        // Sinon on ouvre l'aperçu Matin/Soir avant écriture.
+        if (multiShift) setReceiptPreview(receipts);
+        else importReceiptsMut.mutate({ rows: receipts, storeTz: DEFAULT_STORE_TZ, passationMin: parseHHMM(SHIFT_SPLIT_TIME) });
+        return;
+      }
+      importSummaryMut.mutate(files);
+    } catch (e: any) {
+      notify.error(e?.message || 'Erreur de lecture du fichier');
+    } finally {
+      setParsingFile(false);
+    }
+  };
+  const importPending = parsingFile || importSummaryMut.isPending || importReceiptsMut.isPending;
   const bulkApproMut = useMutation({
-    mutationFn: (rows: any[]) => reconciliationApi.bulkAppro(day!.id, rows),
-    onSuccess: (r) => { invalidate(); setShowPaste(false); notify.success(`Appro importé : ${r.upserted} produit(s)`); },
+    mutationFn: (rows: any[]) => reconciliationApi.bulkAppro(activeShift!.id, rows),
+    onSuccess: (r) => { invalidate(); setShowPaste(false); notify.success(`Appro importé (${activeShift?.label}) : ${r.upserted} produit(s)`); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
   const resetSalesMut = useMutation({
-    mutationFn: () => reconciliationApi.resetSales(day!.id),
+    mutationFn: () => reconciliationApi.resetSales(activeShift!.id),
     onSuccess: (r) => { invalidate(); notify.success(`Ventes remises à zéro : ${r.reset} ligne(s)`); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
@@ -1780,9 +1976,27 @@ function DayView() {
       notify.error(err?.message || 'Erreur');
     },
   });
+  // Cloture / reouverture d'un seul shift (a la passation).
+  const shiftStatusMut = useMutation({
+    mutationFn: (v: { shiftId: string; action: 'open' | 'closed'; force?: boolean }) =>
+      v.action === 'closed' ? reconciliationApi.closeShift(v.shiftId, v.force) : reconciliationApi.reopenShift(v.shiftId),
+    onSuccess: invalidate,
+    onError: (e: any, v) => {
+      const err = e?.response?.data?.error;
+      if (err?.code === 'NO_SALES') {
+        if (window.confirm(`${err.message}\n\nClôturer quand même ?`)) {
+          shiftStatusMut.mutate({ ...v, force: true });
+        }
+        return;
+      }
+      notify.error(err?.message || 'Erreur');
+    },
+  });
 
-  const locked = day?.status === 'closed';
-  const lines = day?.lines || [];
+  const dayLocked = day?.status === 'closed';
+  // Saisie verrouillee : journee cloturee, shift cloture, ou vue Journée (agrégat).
+  const locked = dayLocked || isTotalView || !activeShift || activeShift.status === 'closed';
+  const lines = (isTotalView ? day?.lines : activeShift?.lines) || [];
 
   // Regroupement par categorie : le serveur trie deja par categorie puis nom,
   // on decoupe donc la liste en sections consecutives.
@@ -1813,21 +2027,26 @@ function DayView() {
   }, [lines]);
 
   const commit = (l: ReconLine, field: EditField, raw: string) => {
+    if (!l.id) return;  // ligne agrégée (vue Journée) : jamais éditable
+    const lineId = l.id;
     const parsed = parseFloat(raw.replace(',', '.'));
     const value = Number.isFinite(parsed) ? parsed : 0;
-    setEdits(s => { const c = { ...s }; if (c[l.id]) delete c[l.id][field]; return c; });
-    updateLineMut.mutate({ lineId: l.id, patch: { [field]: value } });
+    setEdits(s => { const c = { ...s }; if (c[lineId]) delete c[lineId][field]; return c; });
+    updateLineMut.mutate({ lineId, patch: { [field]: value } });
   };
 
-  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine, tint?: ColTint, extraLocked = false) => (
-    <NumCell
-      value={edits[l.id]?.[field] ?? String(l[serverField] ?? '')}
-      locked={locked || extraLocked}
-      tint={tint}
-      onDraft={v => setEdits(s => ({ ...s, [l.id]: { ...s[l.id], [field]: v } }))}
-      onCommit={raw => { if (edits[l.id]?.[field] !== undefined) commit(l, field, raw); }}
-    />
-  );
+  const numCell = (l: ReconLine, field: EditField, serverField: keyof ReconLine, tint?: ColTint, extraLocked = false) => {
+    const eid = l.id ?? l.product_key;
+    return (
+      <NumCell
+        value={edits[eid]?.[field] ?? String(l[serverField] ?? '')}
+        locked={locked || extraLocked}
+        tint={tint}
+        onDraft={v => setEdits(s => ({ ...s, [eid]: { ...s[eid], [field]: v } }))}
+        onCommit={raw => { if (edits[eid]?.[field] !== undefined) commit(l, field, raw); }}
+      />
+    );
+  };
 
   const exportMut = useMutation({
     mutationFn: () => reconciliationApi.exportDayXlsx(day!.id, day!.business_date),
@@ -1840,27 +2059,64 @@ function DayView() {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Écart = Vendu + Reste soir − (Reste veille + Reçu).</strong> Négatif = manque à expliquer
+          <strong>Écart d'un shift = Vendu + Reste fin − (Ouverture + Reçu).</strong> Négatif = manque à expliquer
           (perte / vol / erreur), positif = surplus. L'appro n'entre pas dans le calcul.
-          Le <strong>reste veille</strong> est le stock d'ouverture, reporté automatiquement du reste du soir de J-1
-          pour les catégories à report (Paramètres) — il ne se saisit pas.
-          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> → saisir le reste du soir compté.
+          L'<strong>ouverture</strong> ne se saisit jamais : reste du soir de J-1 pour le <strong>Matin</strong>
+          (catégories à report, Paramètres), <strong>comptage de passation</strong> (reste compté à 14h) pour le <strong>Soir</strong>.
+          Ordre conseillé : saisir l'appro → confirmer le <strong>reçu</strong> → <strong>importer Loyverse</strong> (export
+          « Reçus par article », horodaté → ventilé automatiquement Matin/Soir en un seul import) → saisir le reste compté (passation à 14h, ou reste du soir).
+          La somme des écarts Matin + Soir = l'écart de la journée : le découpage sert à localiser le manque.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
         </div>
       </div>
 
       {/* Barre d'action */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input type="date" value={date} onChange={e => { setDate(e.target.value); setEdits({}); }}
+        <input type="date" value={date} onChange={e => { setDate(e.target.value); setEdits({}); setShiftSel('auto'); }}
           className="odoo-input" style={{ width: 160 }} />
+        {day && multiShift && (
+          <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, overflow: 'hidden' }}>
+            {shifts.map(s => {
+              const active = !isTotalView && activeShift?.id === s.id;
+              return (
+                <button key={s.id} type="button" onClick={() => setShiftSel(s.id)}
+                  title={s.status === 'closed' ? `${s.label} clôturé` : `Saisie du shift ${s.label}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                    border: 'none', borderRight: '1px solid var(--theme-bg-separator)', cursor: 'pointer',
+                    fontSize: '0.8125rem', fontWeight: active ? 700 : 500,
+                    background: active ? 'var(--theme-accent)' : 'var(--theme-bg-card, #fff)',
+                    color: active ? '#fff' : 'var(--theme-text-primary)',
+                  }}>
+                  {s.status === 'closed' && <Lock size={11} />}
+                  {s.label}
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setShiftSel('total')}
+              title="Vue agrégée de la journée (lecture seule) : sommes des shifts, ouverture du matin, reste du soir"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                border: 'none', cursor: 'pointer',
+                fontSize: '0.8125rem', fontWeight: isTotalView ? 700 : 500,
+                background: isTotalView ? 'var(--theme-accent)' : 'var(--theme-bg-card, #fff)',
+                color: isTotalView ? '#fff' : 'var(--theme-text-primary)',
+              }}>
+              Journée
+            </button>
+          </div>
+        )}
         {day && (
-          <span className={`odoo-tag ${locked ? 'odoo-tag-red' : 'odoo-tag-green'}`}>
-            {locked ? 'Clôturée' : 'Ouverte'}
+          <span className={`odoo-tag ${dayLocked ? 'odoo-tag-red' : 'odoo-tag-green'}`}>
+            {dayLocked ? 'Journée clôturée' : 'Ouverte'}
           </span>
+        )}
+        {day && !dayLocked && !isTotalView && activeShift && multiShift && activeShift.status === 'closed' && (
+          <span className="odoo-tag odoo-tag-red">{activeShift.label} clôturé</span>
         )}
         <div style={{ flex: 1 }} />
         <input ref={fileRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
-          onChange={e => { if (e.target.files?.length) importMut.mutate(Array.from(e.target.files)); e.target.value = ''; }} />
+          onChange={e => { if (e.target.files?.length) handleImportFiles(Array.from(e.target.files)); e.target.value = ''; }} />
         <button className="odoo-btn-secondary" disabled={!day || locked || resetSalesMut.isPending || totals.vendu === 0}
           title="Remet vendu et montant vendu à 0 sur toutes les lignes (appro, reçu et reste conservés) avant un réimport propre"
           onClick={() => {
@@ -1870,9 +2126,10 @@ function DayView() {
           }}>
           {resetSalesMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Ventes à 0
         </button>
-        <button className="odoo-btn-secondary" disabled={!day || locked || importMut.isPending}
+        <button className="odoo-btn-secondary" disabled={!day || dayLocked || importPending}
+          title={'Deux formats acceptés :\n• « Reçus par article » (horodaté) → aperçu Matin/Soir puis import, un seul fichier pour toute la journée.\n• « Item sales summary » (sans heure) → importé dans le shift affiché ; sélectionner Matin ou Soir avant.'}
           onClick={() => fileRef.current?.click()}>
-          {importMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Importer Loyverse
+          {importPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Importer Loyverse
         </button>
         <button className="odoo-btn-secondary" disabled={!day || locked} onClick={() => setShowPaste(true)}>
           <ClipboardPaste size={14} /> Coller l'appro
@@ -1885,9 +2142,23 @@ function DayView() {
           title="Télécharger la journée au format Excel : synthèse par catégorie, détail commenté, écarts significatifs">
           {exportMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export Excel
         </button>
-        {day && (locked
-          ? <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'open' })}><Unlock size={14} /> Rouvrir</button>
-          : <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'closed' })}><Lock size={14} /> Clôturer</button>
+        {day && multiShift && !isTotalView && activeShift && !dayLocked && (
+          activeShift.status === 'closed'
+            ? <button className="odoo-btn-secondary"
+                onClick={() => shiftStatusMut.mutate({ shiftId: activeShift.id, action: 'open' })}>
+                <Unlock size={14} /> Rouvrir {activeShift.label}
+              </button>
+            : <button className="odoo-btn-secondary"
+                title={activeShift.shift_number === firstSn
+                  ? 'Clôture de la passation : fige le comptage de 14h qui devient l\'ouverture du Soir'
+                  : 'Clôture du shift'}
+                onClick={() => shiftStatusMut.mutate({ shiftId: activeShift.id, action: 'closed' })}>
+                <Lock size={14} /> Clôturer {activeShift.label}
+              </button>
+        )}
+        {day && (dayLocked
+          ? <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'open' })}><Unlock size={14} /> Rouvrir la journée</button>
+          : <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'closed' })}><Lock size={14} /> {multiShift ? 'Clôturer la journée' : 'Clôturer'}</button>
         )}
       </div>
 
@@ -1936,19 +2207,36 @@ function DayView() {
             <thead>
               <tr>
                 <th>Produit</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}
-                    title="Stock d'ouverture : reste du soir de la veille, reporté automatiquement. Non modifiable.">
-                  Reste veille
-                  <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>J-1 · auto</div>
-                </th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
-                <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}
-                    title="Comptage physique de fin de journée : un seul chiffre, tout ce qui reste en vitrine.">
-                  Reste soir
-                  <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>comptage</div>
-                </th>
+                {(() => {
+                  // Libelles des colonnes ouverture / reste selon le shift affiche.
+                  const isPassationOpen = !isTotalView && multiShift && activeShift != null && activeShift.shift_number !== firstSn;
+                  const isPassationClose = !isTotalView && multiShift && activeShift != null && activeShift.shift_number !== lastSn;
+                  return (
+                    <>
+                      <th style={{ textAlign: 'right', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}
+                          title={isPassationOpen
+                            ? 'Stock d\'ouverture du shift : reste compté à la passation (fin du shift précédent), reporté automatiquement. Non modifiable.'
+                            : 'Stock d\'ouverture : reste du soir de la veille, reporté automatiquement. Non modifiable.'}>
+                        {isPassationOpen ? 'Ouverture' : 'Reste veille'}
+                        <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>
+                          {isPassationOpen ? 'passation · auto' : 'J-1 · auto'}
+                        </div>
+                      </th>
+                      <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
+                      <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
+                      <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
+                      <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}
+                          title={isPassationClose
+                            ? 'Comptage physique de la passation (~14h) : tout ce qui reste en vitrine à la fin du shift. Devient l\'ouverture du shift suivant.'
+                            : 'Comptage physique de fin de journée : un seul chiffre, tout ce qui reste en vitrine.'}>
+                        {isPassationClose ? 'Reste passation' : 'Reste soir'}
+                        <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>
+                          {isPassationClose ? 'comptage 14h' : 'comptage'}
+                        </div>
+                      </th>
+                    </>
+                  );
+                })()}
                 <th style={{ textAlign: 'right' }}>Prix (DH)</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
                 <th style={{ textAlign: 'right' }}>Écart (DH)</th>
@@ -2009,7 +2297,7 @@ function DayView() {
                 const rowTheme = ecartTheme(eVal, isSignificant);
                 const rowBorder = isSignificant ? rowTheme.border : 'transparent';
                 return (
-                  <tr key={l.id}>
+                  <tr key={l.id ?? l.product_key}>
                     <td style={{ borderLeft: `3px solid ${rowBorder}` }}>
                       <span style={{ fontWeight: 500 }}>{l.product_name}</span>
                       {l.source_vendu === 'loyverse_import' && (
@@ -2018,7 +2306,8 @@ function DayView() {
                       {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.report.bg }}>
-                      <ReportVeilleCell qty={num(l.report_veille_qty)} />
+                      <ReportVeilleCell qty={num(l.report_veille_qty)}
+                        passation={!isTotalView && multiShift && activeShift != null && activeShift.shift_number !== firstSn} />
                     </td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro, !canEditAppro)}</td>
                     <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
@@ -2040,8 +2329,8 @@ function DayView() {
                       <EcartBadge value={eVal} format={nf} strong={isSignificant} minWidth={72} />
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      {!locked && (
-                        <button onClick={() => deleteLineMut.mutate(l.id)} title="Supprimer la ligne"
+                      {!locked && l.id && (
+                        <button onClick={() => deleteLineMut.mutate(l.id!)} title="Supprimer la ligne"
                           style={{ color: '#b71c1c', padding: 2 }}><Trash2 size={13} /></button>
                       )}
                     </td>
@@ -2105,6 +2394,129 @@ function DayView() {
           onSave={(rows) => bulkApproMut.mutate(rows)}
         />
       )}
+
+      {receiptPreview && multiShift && (
+        <ReceiptImportModal
+          receipts={receiptPreview}
+          isLoading={importReceiptsMut.isPending}
+          onClose={() => setReceiptPreview(null)}
+          onImport={(storeTz, passationMin) => importReceiptsMut.mutate({ rows: receiptPreview, storeTz, passationMin })}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Aperçu de la ventilation des reçus avant écriture. Les heures du fichier sont
+ * dans le fuseau de l'ordinateur qui a téléchargé (ex. Montréal) ; on les
+ * convertit en heure du magasin (ex. Casablanca) avant de couper à l'heure de
+ * passation. L'utilisateur vérifie les totaux Matin/Soir contre ses Z de caisse
+ * et ajuste l'heure si besoin — robuste à tout décalage horaire.
+ */
+function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
+  receipts: ParsedReceiptItem[];
+  isLoading: boolean;
+  onClose: () => void;
+  onImport: (storeTz: string, passationMin: number) => void;
+}) {
+  const [storeTz, setStoreTz] = useState(() => localStorage.getItem(LS_STORE_TZ) || DEFAULT_STORE_TZ);
+  const [passation, setPassation] = useState(() => localStorage.getItem(LS_PASSATION) || SHIFT_SPLIT_TIME);
+  const detectedTz = browserTz();
+  const passationMin = parseHHMM(passation);
+
+  const tzValid = useMemo(() => {
+    try { new Intl.DateTimeFormat('en-CA', { timeZone: storeTz }); return true; }
+    catch { return false; }
+  }, [storeTz]);
+
+  // Totaux Matin / Soir recalculés en direct selon fuseau + heure de passation.
+  const stats = useMemo(() => {
+    const acc = {
+      matin: { net: 0, qty: 0, tickets: new Set<string>() },
+      soir: { net: 0, qty: 0, tickets: new Set<string>() },
+    };
+    for (const r of receipts) {
+      const mins = tzValid ? receiptStoreMinutes(r.date, r.hour, r.minute, storeTz) : r.hour * 60 + r.minute;
+      const b = mins <= passationMin ? acc.matin : acc.soir;
+      b.net += r.netSales; b.qty += r.quantity;
+    }
+    return acc;
+  }, [receipts, storeTz, passationMin, tzValid]);
+
+  const total = stats.matin.net + stats.soir.net;
+
+  const confirm = () => {
+    localStorage.setItem(LS_STORE_TZ, storeTz);
+    localStorage.setItem(LS_PASSATION, passation);
+    onImport(storeTz, passationMin);
+  };
+
+  const box = (label: string, s: { net: number; qty: number }, color: string) => (
+    <div style={{ flex: 1, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '10px 14px' }}>
+      <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--theme-text-muted)' }}>{label}</div>
+      <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>DH</span></div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 540, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
+          Importer les reçus — répartition Matin / Soir
+        </div>
+        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 14, background: '#fff' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'flex', gap: 8 }}>
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div>
+              {receipts.length} ligne{receipts.length > 1 ? 's' : ''} de reçu. Fichier téléchargé depuis <strong>{detectedTz}</strong> ;
+              les heures sont converties en heure du magasin (<strong>{storeTz}</strong>) avant le découpage.
+              Vérifie que les montants ci-dessous correspondent à tes Z de caisse et ajuste l'heure de passation si besoin.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 2 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Fuseau du magasin</label>
+              <input className="input" value={storeTz} list="recon-tz-list"
+                onChange={e => setStoreTz(e.target.value.trim())}
+                style={{ borderColor: tzValid ? undefined : '#e53935' }} />
+              <datalist id="recon-tz-list">
+                <option value="Africa/Casablanca" />
+                <option value="Europe/Paris" />
+                <option value="America/Toronto" />
+                <option value="America/Montreal" />
+                <option value="UTC" />
+              </datalist>
+              {!tzValid && <div style={{ fontSize: '0.6875rem', color: '#b71c1c', marginTop: 3 }}>Fuseau invalide — heures du fichier utilisées telles quelles.</div>}
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Fermeture caisse matin</label>
+              <input type="time" className="input" value={passation}
+                onChange={e => setPassation(e.target.value || '14:00')} />
+              <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>
+                Heure du magasin. Tickets jusqu'à cette heure = Matin.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            {box('Matin', stats.matin, '#1565c0')}
+            {box('Soir', stats.soir, '#2e7d32')}
+          </div>
+          <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} DH</strong>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={isLoading}>Annuler</button>
+            <button type="button" onClick={confirm} className="odoo-btn-primary" disabled={isLoading}>
+              {isLoading ? <><Loader2 size={14} className="animate-spin" /> Import…</> : 'Importer'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

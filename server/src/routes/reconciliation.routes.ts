@@ -23,15 +23,19 @@ router.post('/days', asyncHandler(reconciliationController.openDay));
 router.post('/days/:id/close', asyncHandler(reconciliationController.close));
 router.post('/days/:id/reopen', asyncHandler(reconciliationController.reopen));
 
-// Lignes
-router.post('/days/:id/lines', asyncHandler(reconciliationController.upsertLine));
-router.post('/days/:id/bulk-appro', asyncHandler(reconciliationController.bulkAppro));
+// Shifts (mig 262) : cloture a la passation, saisie par shift
+router.post('/shifts/:id/close', asyncHandler(reconciliationController.closeShift));
+router.post('/shifts/:id/reopen', asyncHandler(reconciliationController.reopenShift));
+
+// Lignes (rattachees a un shift)
+router.post('/shifts/:id/lines', asyncHandler(reconciliationController.upsertLine));
+router.post('/shifts/:id/bulk-appro', asyncHandler(reconciliationController.bulkAppro));
 router.put('/lines/:lineId', asyncHandler(reconciliationController.updateLine));
 router.delete('/lines/:lineId', asyncHandler(reconciliationController.deleteLine));
 
-// Import Loyverse (ventes)
-router.post('/days/:id/import-sales', asyncHandler(reconciliationController.importSales));
-router.post('/days/:id/reset-sales', asyncHandler(reconciliationController.resetSales));
+// Import Loyverse (ventes d'un shift : export filtre sur sa plage horaire)
+router.post('/shifts/:id/import-sales', asyncHandler(reconciliationController.importSales));
+router.post('/shifts/:id/reset-sales', asyncHandler(reconciliationController.resetSales));
 
 // Créneaux d'approvisionnement
 router.get('/slots', asyncHandler(reconciliationController.listSlots));
