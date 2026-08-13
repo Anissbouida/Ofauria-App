@@ -126,12 +126,23 @@ export const recipeComponentRepository = {
               r.name AS recipe_name, r.mode_cout, r.compo_par_piece,
               r.margin_multiplier, r.taux_main_oeuvre_dh_h, r.main_oeuvre_min,
               r.cout_energie_fournee, r.taux_frais_structure_pct, r.perte_standard_pct,
-              r.yield_quantity, p.image_url AS product_image,
+              r.yield_quantity, pdef.image_url AS product_image,
               COALESCE((SELECT SUM((s->>'duree_estimee_min')::numeric)
-                        FROM jsonb_array_elements(COALESCE(r.etapes, '[]'::jsonb)) s), 0) AS duree_etapes_min
+                        FROM jsonb_array_elements(COALESCE(r.etapes, '[]'::jsonb)) s), 0) AS duree_etapes_min,
+              -- Mig 263 (audit A1) : produit vendu au POS pour ce format + prix pratique.
+              -- Voir listFormats() pour la meme regle de resolution (pos_price_source).
+              COALESCE(f.product_id, CASE WHEN f.is_default THEN r.product_id END) AS pos_product_id,
+              CASE
+                WHEN f.product_id IS NOT NULL THEN 'format'
+                WHEN f.is_default AND r.product_id IS NOT NULL THEN 'recipe'
+                ELSE 'none'
+              END AS pos_price_source,
+              ppos.name  AS pos_product_name,
+              ppos.price AS pos_price
        FROM recipe_formats f
        JOIN recipes r ON r.id = f.recipe_id
-       LEFT JOIN products p ON p.id = r.product_id
+       LEFT JOIN products pdef ON pdef.id = r.product_id
+       LEFT JOIN products ppos ON ppos.id = COALESCE(f.product_id, CASE WHEN f.is_default THEN r.product_id END)
        LEFT JOIN production_contenants pc ON pc.id = f.contenant_id
        WHERE f.id = $1 AND f.recipe_id = $2`,
       [formatId, recipeId]
@@ -453,11 +464,27 @@ export const recipeComponentRepository = {
               -- Mig 260 : nb de composants dont la conversion d'unite est retombee sur
               -- le fallback 1 (unites incompatibles ou densite manquante). > 0 -> le
               -- cout est probablement faux, l'UI doit signaler.
-              COALESCE(cpc.bad_conversions_count, 0) AS bad_conversions_count
+              COALESCE(cpc.bad_conversions_count, 0) AS bad_conversions_count,
+              -- Mig 263 (audit A1) : produit vendu au POS pour ce format + son prix.
+              -- pos_price_source dit d'ou vient le prix affiche :
+              --   'format' = format.product_id renseigne (attribution explicite) ;
+              --   'recipe' = format par defaut sans lien propre, herite du produit
+              --              historique de la recette (recipes.product_id) ;
+              --   'none'   = aucun lien connu.
+              COALESCE(f.product_id, CASE WHEN f.is_default THEN r.product_id END) AS pos_product_id,
+              CASE
+                WHEN f.product_id IS NOT NULL THEN 'format'
+                WHEN f.is_default AND r.product_id IS NOT NULL THEN 'recipe'
+                ELSE 'none'
+              END AS pos_price_source,
+              p.name  AS pos_product_name,
+              p.price AS pos_price
        FROM recipe_formats f
        LEFT JOIN production_contenants pc ON pc.id = f.contenant_id
        LEFT JOIN v_recipe_compose_cost cpc ON cpc.format_id = f.id
        LEFT JOIN v_recipe_format_cost vfc ON vfc.id = f.id
+       JOIN recipes r ON r.id = f.recipe_id
+       LEFT JOIN products p ON p.id = COALESCE(f.product_id, CASE WHEN f.is_default THEN r.product_id END)
        WHERE f.recipe_id = $1 AND f.is_active = true
        ORDER BY f.is_default DESC, f.ordre, pc.nom`,
       [recipeId]
@@ -534,17 +561,36 @@ export const recipeComponentRepository = {
     }
   },
 
-  async updateFormat(recipeId: string, formatId: string, data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null }) {
+  async updateFormat(
+    recipeId: string,
+    formatId: string,
+    data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null; productId?: string | null }
+  ) {
+    // productId (mig 263, audit A1) : attribution nullable au POS. La sentinelle
+    // '__CLEAR__' passee par le repo signifie "explicitement mettre a NULL" (le
+    // COALESCE ne peut pas distinguer "non fourni" de "efface"). Sinon la
+    // valeur passe telle quelle et est castee cote SQL en uuid.
+    const clearProduct = data.productId === null;
     const r = await db.query(
       `UPDATE recipe_formats
        SET contenant_id            = COALESCE($3, contenant_id),
            nb_par_defaut           = COALESCE($4, nb_par_defaut),
            cout_emballage_unitaire = COALESCE($5, cout_emballage_unitaire),
            nb_parts                = COALESCE($6, nb_parts),
+           product_id              = CASE
+                                       WHEN $7::boolean THEN NULL
+                                       WHEN $8::uuid IS NOT NULL THEN $8::uuid
+                                       ELSE product_id
+                                     END,
            updated_at              = NOW()
        WHERE id = $1 AND recipe_id = $2
        RETURNING id`,
-      [formatId, recipeId, data.contenantId ?? null, data.nbParDefaut ?? null, data.coutEmballageUnitaire ?? null, data.nbParts ?? null]
+      [
+        formatId, recipeId,
+        data.contenantId ?? null, data.nbParDefaut ?? null,
+        data.coutEmballageUnitaire ?? null, data.nbParts ?? null,
+        clearProduct, clearProduct ? null : (data.productId ?? null),
+      ]
     );
     if (r.rows.length === 0) return null;
     return this.findByFormat(recipeId, formatId);

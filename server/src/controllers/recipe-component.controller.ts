@@ -93,8 +93,14 @@ export const recipeComponentController = {
       if (!data) { res.status(404).json({ success: false, error: { message: 'Format introuvable' } }); return; }
       res.json({ success: true, data });
     } catch (err: unknown) {
-      if ((err as { code?: string })?.code === '23505') {
-        res.status(409).json({ success: false, error: { message: 'Ce contenant est déjà utilisé par un autre format' } });
+      const e = err as { code?: string; constraint?: string };
+      if (e?.code === '23505') {
+        // Distingue les 2 uniques partiels sur recipe_formats : contenant vs produit vendu.
+        if (e.constraint === 'uq_recipe_formats_product') {
+          res.status(409).json({ success: false, error: { message: 'Ce produit est déjà lié à un autre format actif' } });
+        } else {
+          res.status(409).json({ success: false, error: { message: 'Ce contenant est déjà utilisé par un autre format' } });
+        }
         return;
       }
       throw err;

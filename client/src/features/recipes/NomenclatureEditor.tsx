@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, SlidersHorizontal, Box, GripVertical, HelpCircle, Copy, X } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { contenantsApi } from '../../api/contenants.api';
+import { productsApi } from '../../api/products.api';
 import type { FormatComponentsData, FormatSummary, RecipeChild } from '../../api/recipes.api';
+import { Tag, Link2 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
@@ -752,6 +754,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             )}
 
+            {/* Mig 263, audit A1 : lien vers le produit vendu au POS + ecart prix. */}
+            {data?.format && (
+              <PosLinkPanel recipeId={recipeId} formatId={data.format.id}
+                format={data.format} priceCalc={fin.prix} />
+            )}
+
             <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
               <p className="text-xs text-gray-400">
                 Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : 'par fournée'}</strong>
@@ -767,6 +775,135 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Attribution du produit vendu au POS pour un format, et confrontation du prix
+ * théorique (calcul coût × marge) au prix réellement pratiqué (mig 263, audit A1).
+ *
+ * L'ECART EST INFORMATIF : la vue ne change PAS le prix POS ni le prix calculé.
+ * L'utilisateur voit la divergence, décide s'il rehausse le prix, revoit la
+ * marge, ou tolère l'écart. C'est la première marche vers l'unification vente-
+ * production ; l'automatisme viendra plus tard, après validation humaine.
+ *
+ * Un produit ne peut être lié qu'à UN SEUL format actif (contrainte unique
+ * partielle mig 263). Un doublon renvoie une 409 avec message explicite.
+ */
+function PosLinkPanel({
+  recipeId, formatId, format, priceCalc,
+}: {
+  recipeId: string;
+  formatId: string;
+  format: FormatComponentsData['format'];
+  priceCalc: number;
+}) {
+  const qc = useQueryClient();
+  const posProductId = format.pos_product_id ?? null;
+  const posPrice = format.pos_price != null ? parseFloat(format.pos_price) : null;
+  const source = format.pos_price_source ?? 'none';
+  const gap = posPrice != null && priceCalc > 0 ? posPrice - priceCalc : null;
+  const gapPct = gap != null && priceCalc > 0 ? (gap / priceCalc) * 100 : null;
+
+  const { data: products = [] } = useQuery<{ id: string; name: string; price: string | number }[]>({
+    queryKey: ['products-lite', recipeId],
+    queryFn: () => productsApi.list({ limit: '500' }).then((r: { data: any[] }) => r.data),
+    staleTime: 3e5,
+  });
+
+  const [picking, setPicking] = useState(false);
+  const [choice, setChoice] = useState<string>(posProductId ?? '');
+  useEffect(() => { setChoice(posProductId ?? ''); }, [posProductId]);
+
+  const linkMut = useMutation({
+    mutationFn: (productId: string | null) =>
+      recipesApi.updateFormat(recipeId, formatId, { productId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['format-components', recipeId] });
+      qc.invalidateQueries({ queryKey: ['recipe-formats', recipeId] });
+      setPicking(false);
+      notify.success('Lien produit mis à jour');
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      notify.error(e?.response?.data?.error?.message || 'Erreur');
+    },
+  });
+
+  const strong = gap != null && (Math.abs(gap) >= 2 || (gapPct != null && Math.abs(gapPct) >= 5));
+  const gapColor = gap == null ? 'text-gray-400'
+    : Math.abs(gap) < 0.01 ? 'text-emerald-700'
+    : gap > 0 ? (strong ? 'text-emerald-700' : 'text-emerald-600')
+    : (strong ? 'text-red-700' : 'text-red-600');
+  const gapBg = gap == null || Math.abs(gap) < 0.01 ? 'bg-gray-50 border-gray-200'
+    : gap > 0 ? 'bg-emerald-50 border-emerald-200'
+    : 'bg-red-50 border-red-200';
+
+  return (
+    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Tag size={14} className="text-gray-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] text-gray-500">Produit vendu au POS</div>
+          {picking ? (
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              <select value={choice} onChange={(e) => setChoice(e.target.value)}
+                className="h-8 min-w-[240px] px-2 bg-white border border-gray-200 rounded-md text-sm">
+                <option value="">— non lié —</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {parseFloat(String(p.price ?? 0)).toFixed(2)} DH
+                  </option>
+                ))}
+              </select>
+              <button type="button" disabled={linkMut.isPending}
+                onClick={() => linkMut.mutate(choice || null)}
+                className="odoo-btn-primary text-sm px-3 py-1">Enregistrer</button>
+              <button type="button" onClick={() => { setPicking(false); setChoice(posProductId ?? ''); }}
+                className="text-gray-500 hover:text-gray-700 text-sm px-1">Annuler</button>
+            </div>
+          ) : (
+            <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+              {format.pos_product_name ? (
+                <span className="text-sm font-medium text-gray-800">{format.pos_product_name}</span>
+              ) : (
+                <span className="text-sm text-gray-400 italic">Aucun produit lié</span>
+              )}
+              {source === 'recipe' && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200"
+                  title="Le format est celui par défaut : hérite du produit historique de la recette. Attribue-le explicitement pour figer.">
+                  hérité
+                </span>
+              )}
+              <button type="button" onClick={() => setPicking(true)}
+                className="text-xs text-blue-700 hover:text-blue-800 inline-flex items-center gap-1">
+                <Link2 size={12} /> {posProductId ? 'Changer' : 'Lier un produit'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      {posPrice != null && (
+        <div className={`mt-3 grid grid-cols-3 gap-2 rounded-md border px-3 py-2 text-sm ${gapBg}`}>
+          <div>
+            <div className="text-[11px] text-gray-500">Prix calculé</div>
+            <div className="tabular-nums font-medium text-gray-800">{priceCalc.toFixed(2)} DH</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-500">Prix POS</div>
+            <div className="tabular-nums font-medium text-gray-800">{posPrice.toFixed(2)} DH</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-500">Écart</div>
+            <div className={`tabular-nums font-semibold ${gapColor}`}>
+              {gap == null ? '—'
+                : Math.abs(gap!) < 0.01 ? '0,00 DH · 0 %'
+                : `${gap! > 0 ? '+' : ''}${gap!.toFixed(2)} DH · ${gapPct! > 0 ? '+' : ''}${gapPct!.toFixed(1)} %`}
             </div>
           </div>
         </div>

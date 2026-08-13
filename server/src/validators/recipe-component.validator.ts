@@ -52,4 +52,6 @@ export const updateFormatSchema = z.object({
   nbParDefaut: z.number().int().positive().optional(),
   coutEmballageUnitaire: z.number().nonnegative().optional(),
   nbParts: z.number().int().positive().nullable().optional(),
+  // Mig 263 (audit A1) : produit vendu au POS. `null` explicite = defaire le lien.
+  productId: z.string().uuid().nullable().optional(),
 });

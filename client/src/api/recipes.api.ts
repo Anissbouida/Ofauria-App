@@ -68,6 +68,11 @@ export interface FormatComponentsData {
     yield_quantity: string | null;
     product_image: string | null;
     duree_etapes_min: string | null;
+    /** Mig 263 (audit A1) : produit POS lié et son prix pratique (voir FormatSummary). */
+    pos_product_id?: string | null;
+    pos_product_name?: string | null;
+    pos_price?: string | null;
+    pos_price_source?: 'format' | 'recipe' | 'none';
   };
   components: FormatComponent[];
   finance: CompositionFinance;
@@ -88,6 +93,17 @@ export interface FormatSummary {
   prix_vente_unitaire: string | null;
   /** Mig 260 : nb de composants dont la conversion d'unite est fautive. > 0 → coût peu fiable. */
   bad_conversions_count?: number;
+  /**
+   * Mig 263 (audit A1) : produit vendu au POS pour ce format + son prix pratique.
+   * pos_price_source :
+   *   'format' = attribution explicite via recipe_formats.product_id ;
+   *   'recipe' = fallback pour le format par défaut sur recipes.product_id (legacy) ;
+   *   'none'   = aucun lien connu, prix POS inconnu du système.
+   */
+  pos_product_id?: string | null;
+  pos_product_name?: string | null;
+  pos_price?: string | null;
+  pos_price_source?: 'format' | 'recipe' | 'none';
 }
 
 export interface CompositionFinance {
