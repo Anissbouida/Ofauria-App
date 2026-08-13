@@ -222,7 +222,9 @@ export const recipeComponentRepository = {
   },
 
   // Remplace toute la nomenclature d'un format (transactionnel).
-  async replaceForFormat(recipeId: string, formatId: string, data: ReplacePayload) {
+  // userId (mig 264, audit A6a) alimente recipe_format_components.updated_by,
+  // que le trigger recopie dans recipe_bom_audit.changed_by.
+  async replaceForFormat(recipeId: string, formatId: string, data: ReplacePayload, userId?: string | null) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -251,10 +253,10 @@ export const recipeComponentRepository = {
       for (const c of data.components) {
         await client.query(
           `INSERT INTO recipe_format_components
-             (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [formatId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-           c.quantite, c.unite, c.ordre]
+           c.quantite, c.unite, c.ordre, userId ?? null]
         );
       }
 
@@ -265,9 +267,10 @@ export const recipeComponentRepository = {
              nb_parts      = COALESCE($3, nb_parts),
              poids_cru_g   = COALESCE($4, poids_cru_g),
              poids_cuit_g  = COALESCE($5, poids_cuit_g),
+             updated_by    = COALESCE($6, updated_by),
              updated_at    = NOW()
          WHERE id = $1`,
-        [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, data.poidsCruG ?? null, data.poidsCuitG ?? null]
+        [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, data.poidsCruG ?? null, data.poidsCuitG ?? null, userId ?? null]
       );
 
       // Le format par défaut pilote le coût recette (v_recipe_total_cost) :
@@ -492,7 +495,7 @@ export const recipeComponentRepository = {
     return r.rows;
   },
 
-  async createFormat(recipeId: string, data: { contenantId: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null }) {
+  async createFormat(recipeId: string, data: { contenantId: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null }, userId?: string | null) {
     const existing = await db.query(
       `SELECT count(*)::int AS n FROM recipe_formats WHERE recipe_id = $1 AND is_active = true`,
       [recipeId]
@@ -501,12 +504,13 @@ export const recipeComponentRepository = {
     const r = await db.query(
       `INSERT INTO recipe_formats
          (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite,
-          nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active)
+          nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by)
        VALUES ($1, $2, 1, 'g', $3, $4, $5, $6,
-               COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true)
-       ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET is_active = true, updated_at = NOW()
+               COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $7)
+       ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
+         is_active = true, updated_by = COALESCE(EXCLUDED.updated_by, recipe_formats.updated_by), updated_at = NOW()
        RETURNING id`,
-      [recipeId, data.contenantId, data.nbParDefaut ?? 1, data.coutEmballageUnitaire ?? 0, data.nbParts ?? null, isDefault]
+      [recipeId, data.contenantId, data.nbParDefaut ?? 1, data.coutEmballageUnitaire ?? 0, data.nbParts ?? null, isDefault, userId ?? null]
     );
     return this.findByFormat(recipeId, r.rows[0].id);
   },
@@ -514,7 +518,7 @@ export const recipeComponentRepository = {
   // Duplique un format vers un contenant : copie rendement/parts/emballage + toute la
   // BOM. Si un format existe déjà pour ce contenant (même inactif), il est RÉACTIVÉ et
   // sa composition remplacée (pas d'erreur « contenant déjà utilisé »).
-  async duplicateFormat(recipeId: string, fromFormatId: string, contenantId: string) {
+  async duplicateFormat(recipeId: string, fromFormatId: string, contenantId: string, userId?: string | null) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -529,27 +533,28 @@ export const recipeComponentRepository = {
       const ins = await client.query(
         `INSERT INTO recipe_formats
            (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite,
-            nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active)
+            nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by)
          VALUES ($1, $2, 1, 'g', $3, $4, $5, false,
-                 COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true)
+                 COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $6)
          ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
            is_active = true,
            nb_par_defaut = EXCLUDED.nb_par_defaut,
            nb_parts = EXCLUDED.nb_parts,
            cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
+           updated_by = COALESCE(EXCLUDED.updated_by, recipe_formats.updated_by),
            updated_at = NOW()
          RETURNING id`,
-        [recipeId, contenantId, s.nb_par_defaut, s.cout_emballage_unitaire, s.nb_parts]
+        [recipeId, contenantId, s.nb_par_defaut, s.cout_emballage_unitaire, s.nb_parts, userId ?? null]
       );
       const newId = ins.rows[0].id;
       // Remplace la BOM cible par celle de la source.
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [newId]);
       await client.query(
         `INSERT INTO recipe_format_components
-           (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre)
-         SELECT $1, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre
+           (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, updated_by)
+         SELECT $1, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, $3
          FROM recipe_format_components WHERE format_id = $2`,
-        [newId, fromFormatId]
+        [newId, fromFormatId, userId ?? null]
       );
       await client.query('COMMIT');
       return this.findByFormat(recipeId, newId);
@@ -564,7 +569,8 @@ export const recipeComponentRepository = {
   async updateFormat(
     recipeId: string,
     formatId: string,
-    data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null; productId?: string | null }
+    data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null; productId?: string | null },
+    userId?: string | null
   ) {
     // productId (mig 263, audit A1) : attribution nullable au POS. La sentinelle
     // '__CLEAR__' passee par le repo signifie "explicitement mettre a NULL" (le
@@ -582,6 +588,7 @@ export const recipeComponentRepository = {
                                        WHEN $8::uuid IS NOT NULL THEN $8::uuid
                                        ELSE product_id
                                      END,
+           updated_by              = COALESCE($9::uuid, updated_by),
            updated_at              = NOW()
        WHERE id = $1 AND recipe_id = $2
        RETURNING id`,
@@ -590,6 +597,7 @@ export const recipeComponentRepository = {
         data.contenantId ?? null, data.nbParDefaut ?? null,
         data.coutEmballageUnitaire ?? null, data.nbParts ?? null,
         clearProduct, clearProduct ? null : (data.productId ?? null),
+        userId ?? null,
       ]
     );
     if (r.rows.length === 0) return null;

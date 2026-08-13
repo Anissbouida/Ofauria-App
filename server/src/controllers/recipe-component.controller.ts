@@ -27,7 +27,8 @@ export const recipeComponentController = {
       const data = await recipeComponentRepository.replaceForFormat(
         req.params.recipeId,
         req.params.formatId,
-        req.body
+        req.body,
+        req.user?.userId
       );
       if (!data) {
         res.status(404).json({ success: false, error: { message: 'Format introuvable pour cette recette' } });
@@ -62,7 +63,7 @@ export const recipeComponentController = {
 
   async createFormat(req: AuthRequest, res: Response) {
     try {
-      const data = await recipeComponentRepository.createFormat(req.params.recipeId, req.body);
+      const data = await recipeComponentRepository.createFormat(req.params.recipeId, req.body, req.user?.userId);
       res.status(201).json({ success: true, data });
     } catch (err: unknown) {
       if ((err as { code?: string })?.code === '23505') {
@@ -75,7 +76,7 @@ export const recipeComponentController = {
 
   async duplicateFormat(req: AuthRequest, res: Response) {
     try {
-      const data = await recipeComponentRepository.duplicateFormat(req.params.recipeId, req.params.formatId, req.body.contenantId);
+      const data = await recipeComponentRepository.duplicateFormat(req.params.recipeId, req.params.formatId, req.body.contenantId, req.user?.userId);
       if (!data) { res.status(404).json({ success: false, error: { message: 'Format source introuvable' } }); return; }
       res.status(201).json({ success: true, data });
     } catch (err: unknown) {
@@ -89,7 +90,7 @@ export const recipeComponentController = {
 
   async updateFormat(req: AuthRequest, res: Response) {
     try {
-      const data = await recipeComponentRepository.updateFormat(req.params.recipeId, req.params.formatId, req.body);
+      const data = await recipeComponentRepository.updateFormat(req.params.recipeId, req.params.formatId, req.body, req.user?.userId);
       if (!data) { res.status(404).json({ success: false, error: { message: 'Format introuvable' } }); return; }
       res.json({ success: true, data });
     } catch (err: unknown) {
