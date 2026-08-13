@@ -230,9 +230,22 @@ export const productionCoutRepository = {
       });
     }
 
-    // Cout prevu (from recipes) — total_cost vient de la vue v_recipe_total_cost.
+    // Cout prevu (mig 261, audit A6b) : sommer le snapshot fige au lancement du
+    // plan (theo_cout_complet_u) plutot que de relire les vues LIVE. Sans ce
+    // snapshot, une modification de recette entre le lancement du plan et le
+    // calcul du cout reel deplaçait le « prevu » et faisait mentir l'ecart.
+    // Repli pour les plans lances AVANT la mig 261 (theo_snapshot_at IS NULL) :
+    // on garde le calcul live d'avant, pour ne pas casser l'historique.
     const prevuResult = await db.query(
-      `SELECT SUM(COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / NULLIF(r.yield_quantity, 0)) as total
+      `SELECT SUM(
+         CASE
+           WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
+             THEN ppi.theo_cout_complet_u * ppi.planned_quantity
+           WHEN r.yield_quantity > 0
+             THEN COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / r.yield_quantity
+           ELSE 0
+         END
+       ) AS total
        FROM production_plan_items ppi
        LEFT JOIN recipes r ON r.product_id = ppi.product_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id

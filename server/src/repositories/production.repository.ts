@@ -896,6 +896,50 @@ export const productionRepository = {
         );
         if (result.rows[0]) {
           started.push(result.rows[0].id);
+          // Snapshot du cout theorique par piece (mig 261, audit A6b).
+          // Se fait ICI, juste apres le UPDATE : rien n'est snapshotte si le
+          // UPDATE n'a pas modifie de ligne (deja in_progress, annulee).
+          // v_recipe_format_cost donne un cout par piece de CE format precis
+          // (proration ratio_poids ou nomenclature composee) ; repli sur
+          // v_recipe_total_cost pour le mode legacy (format_id NULL), divise
+          // par yield_quantity pour ramener le cout de fournee au cout piece.
+          // Sous-selects necessaires : Postgres interdit de reflarger la table
+          // cible (ppi) dans un LEFT JOIN de la clause FROM d'un UPDATE.
+          // theo_snapshot_at IS NULL empeche l'ecrasement d'un snapshot existant.
+          await client.query(
+            `UPDATE production_plan_items ppi SET
+               theo_cout_matiere_u = (
+                 SELECT COALESCE(vfc.cout_matiere_unitaire,
+                                 CASE WHEN r.yield_quantity > 0
+                                      THEN vtc.total_cost / r.yield_quantity ELSE NULL END)
+                 FROM recipes r
+                 LEFT JOIN v_recipe_total_cost  vtc ON vtc.id = r.id
+                 LEFT JOIN v_recipe_format_cost vfc ON vfc.id = ppi.format_id
+                 WHERE r.product_id = ppi.product_id
+                 LIMIT 1
+               ),
+               theo_cout_complet_u = (
+                 SELECT COALESCE(vfc.cout_unitaire_complet,
+                                 CASE WHEN r.yield_quantity > 0
+                                      THEN vtc.total_cost / r.yield_quantity ELSE NULL END)
+                 FROM recipes r
+                 LEFT JOIN v_recipe_total_cost  vtc ON vtc.id = r.id
+                 LEFT JOIN v_recipe_format_cost vfc ON vfc.id = ppi.format_id
+                 WHERE r.product_id = ppi.product_id
+                 LIMIT 1
+               ),
+               theo_prix_u = (
+                 SELECT vfc.prix_vente_unitaire
+                 FROM v_recipe_format_cost vfc
+                 WHERE vfc.id = ppi.format_id
+                 LIMIT 1
+               ),
+               theo_snapshot_at = $1::timestamptz,
+               theo_source_view = CASE WHEN ppi.format_id IS NOT NULL THEN 'v_recipe_format_cost'
+                                       ELSE 'v_recipe_total_cost' END
+             WHERE ppi.id = $2 AND ppi.theo_snapshot_at IS NULL`,
+            [startTime, result.rows[0].id]
+          );
           // Initialize production steps from contenant/profile (Phase 4)
           try {
             await productionEtapesRepository.initializeForItem(result.rows[0].id, client);
