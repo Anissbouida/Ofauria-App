@@ -9,6 +9,9 @@ const componentSchema = z
     quantite: z.number().positive('La quantité doit être > 0'),
     unite: z.enum(['g', 'kg', 'ml', 'l', 'cl', 'unit']).default('g'),
     ordre: z.number().int().nonnegative().default(0),
+    // Mig 265 (audit A5) : perte % par ligne, defaut 0. Majore la matiere brute
+    // (qty_brute = qty / (1 - pertePct/100)) cote cout et cote besoins.
+    pertePct: z.number().min(0).max(99.99).nullable().optional(),
   })
   .refine(
     (c) => Boolean(c.sourceRecipeId) !== Boolean(c.sourceIngredientId),

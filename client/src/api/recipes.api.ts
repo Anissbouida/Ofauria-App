@@ -42,6 +42,11 @@ export interface FormatComponent {
   conversion_ok?: boolean;
   /** Unite cible (unite de l'ingredient ou yield_unit de la sous-recette). */
   target_unit?: string | null;
+  /**
+   * Mig 265 (audit A5) : perte % par ligne (0-99.99). Majore la matiere
+   * consommee (qty_brute = qty / (1 - perte/100)). 0 = pas de perte.
+   */
+  perte_pct?: string | number | null;
 }
 
 export interface FormatComponentsData {

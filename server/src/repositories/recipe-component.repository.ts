@@ -7,6 +7,8 @@ export interface ComponentInput {
   quantite: number;
   unite: string;
   ordre: number;
+  /** Mig 265 (audit A5) : perte % par ligne (0-99.99), defaut 0. */
+  pertePct?: number | null;
 }
 
 export interface ReplacePayload {
@@ -158,7 +160,9 @@ export const recipeComponentRepository = {
               -- Mig 260 : false = conversion d'unite repliee sur 1 (unites incompatibles
               -- ou densite manquante) -> cout_dh probablement faux, l'UI doit signaler.
               cc.conversion_ok,
-              COALESCE(ing.unit::text, br.yield_unit) AS target_unit
+              COALESCE(ing.unit::text, br.yield_unit) AS target_unit,
+              -- Mig 265 (audit A5) : perte % ligne, majoration matiere consommee.
+              c.perte_pct
        FROM recipe_format_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
@@ -182,7 +186,8 @@ export const recipeComponentRepository = {
                      THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh,
                 -- Legacy : unite composant = yield_unit sous-recette, conversion toujours OK.
                 true AS conversion_ok,
-                sr.yield_unit AS target_unit
+                sr.yield_unit AS target_unit,
+                0::numeric AS perte_pct
          FROM recipe_sub_recipes rsr
          JOIN recipes sr ON sr.id = rsr.sub_recipe_id
          LEFT JOIN v_recipe_total_cost vtc ON vtc.id = rsr.sub_recipe_id
@@ -200,7 +205,8 @@ export const recipeComponentRepository = {
                       OR (lower(COALESCE(ri.unit, ing.unit)) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('g','kg','mg')))
                      AND ing.densite_kg_l IS NOT NULL))
                   AS conversion_ok,
-                ing.unit::text AS target_unit
+                ing.unit::text AS target_unit,
+                0::numeric AS perte_pct
          FROM recipe_ingredients ri
          JOIN ingredients ing ON ing.id = ri.ingredient_id
          WHERE ri.recipe_id = $1 ORDER BY ing.name`,
@@ -253,10 +259,10 @@ export const recipeComponentRepository = {
       for (const c of data.components) {
         await client.query(
           `INSERT INTO recipe_format_components
-             (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [formatId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-           c.quantite, c.unite, c.ordre, userId ?? null]
+           c.quantite, c.unite, c.ordre, c.pertePct ?? 0, userId ?? null]
         );
       }
 
@@ -280,10 +286,10 @@ export const recipeComponentRepository = {
         for (const c of data.components) {
           await client.query(
             `INSERT INTO recipe_components
-               (recipe_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+               (recipe_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [recipeId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-             c.quantite, c.unite, c.ordre]
+             c.quantite, c.unite, c.ordre, c.pertePct ?? 0]
           );
         }
         // Finalise la bascule legacy → composé : la compo vit dans la nomenclature,
@@ -551,8 +557,8 @@ export const recipeComponentRepository = {
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [newId]);
       await client.query(
         `INSERT INTO recipe_format_components
-           (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, updated_by)
-         SELECT $1, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, $3
+           (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, updated_by)
+         SELECT $1, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, $3
          FROM recipe_format_components WHERE format_id = $2`,
         [newId, fromFormatId, userId ?? null]
       );

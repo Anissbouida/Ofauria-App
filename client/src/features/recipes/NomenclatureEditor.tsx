@@ -9,7 +9,7 @@ import { Tag, Link2 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
-interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; }
+interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
@@ -245,6 +245,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       key: newKey(), role: c.role ?? '', type: c.source_type,
       sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? '',
       quantite: parseFloat(c.quantite).toString(), unite: c.unite,
+      // Mig 265 (audit A5) : perte % ligne, conservee dans l'etat pour ne pas
+      // etre remise a 0 a la sauvegarde suivante. UI dediee en P2.
+      pertePct: c.perte_pct != null ? String(parseFloat(String(c.perte_pct))) : '0',
     }));
     const nextFields: EditableFields = {
       rendement: f.nb_par_defaut != null ? String(f.nb_par_defaut) : '',
@@ -422,6 +425,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         key: newKey(), role: c.role ?? '', type: c.source_type,
         sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? '',
         quantite: parseFloat(c.quantite).toString(), unite: c.unite,
+        pertePct: c.perte_pct != null ? String(parseFloat(String(c.perte_pct))) : '0',
       })));
       setCopySrc('');
       notify.success('Composition copiée — ajuste les quantités puis Enregistre');
@@ -445,12 +449,17 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!formatId) throw new Error('Aucun format sélectionné');
-      const components = rows.filter((r) => r.type && r.sourceId && parseFloat(r.quantite) > 0).map((r, i) => ({
-        role: r.role || null,
-        sourceRecipeId: r.type === 'recipe' ? r.sourceId : null,
-        sourceIngredientId: r.type === 'ingredient' ? r.sourceId : null,
-        quantite: parseFloat(r.quantite), unite: r.unite, ordre: i,
-      }));
+      const components = rows.filter((r) => r.type && r.sourceId && parseFloat(r.quantite) > 0).map((r, i) => {
+        // Mig 265 (audit A5) : envoie la perte % ligne pour majorer matiere et besoins.
+        const perte = r.pertePct != null && r.pertePct !== '' ? parseFloat(r.pertePct.replace(',', '.')) : 0;
+        return {
+          role: r.role || null,
+          sourceRecipeId: r.type === 'recipe' ? r.sourceId : null,
+          sourceIngredientId: r.type === 'ingredient' ? r.sourceId : null,
+          quantite: parseFloat(r.quantite), unite: r.unite, ordre: i,
+          pertePct: Number.isFinite(perte) && perte > 0 ? perte : 0,
+        };
+      });
       await recipesApi.saveFormatComponents(recipeId, formatId, {
         components,
         nbParDefaut: parseInt(rendement) || null,

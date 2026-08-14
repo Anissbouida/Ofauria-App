@@ -193,11 +193,16 @@ export async function getCompositionForNeeds(
 }
 
 function componentQuery(table: string, keyColumn: string): string {
+  // Mig 265 : perte_pct ligne majore la quantite BRUTE consommee (qty_saisie
+  // = net, qty_brute = net / (1 - perte/100)). Meme regle que la perte
+  // standard sur la sous-recette (majoration cumulee : perte assemblage
+  // + perte cuisson sub-recette). Defaut 0 -> facteur 1, comportement inchange.
   return `
     SELECT c.source_recipe_id, c.source_ingredient_id,
            ing.name AS ingredient_name, ing.unit AS ingredient_unit,
            c.quantite AS qty_entered, c.unite AS unit_entered,
-           c.quantite * fn_unit_conv(c.unite, ing.unit::text, ing.densite_kg_l) AS qty_ing_base,
+           (c.quantite * fn_unit_conv(c.unite, ing.unit::text, ing.densite_kg_l))
+             / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0) AS qty_ing_base,
            (((lower(c.unite) IN ('mg','g','kg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
               OR (lower(c.unite) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('mg','g','kg')))
              AND ing.densite_kg_l IS NULL) AS conv_incertaine,
@@ -205,9 +210,11 @@ function componentQuery(table: string, keyColumn: string): string {
            br.yield_unit AS sub_yield_unit, br.yield_quantity AS sub_yield_quantity,
            c.quantite * fn_unit_conv(c.unite, br.yield_unit) AS qty_sub_net,
            COALESCE(
-             c.quantite * fn_unit_conv(c.unite, br.yield_unit)
-               / NULLIF(1 - COALESCE(br.perte_standard_pct, 0) / 100, 0),
-             c.quantite * fn_unit_conv(c.unite, br.yield_unit)
+             (c.quantite * fn_unit_conv(c.unite, br.yield_unit))
+               / NULLIF(1 - COALESCE(br.perte_standard_pct, 0) / 100, 0)
+               / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0),
+             (c.quantite * fn_unit_conv(c.unite, br.yield_unit))
+               / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0)
            ) AS qty_sub_gross
       FROM ${table} c
       LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
