@@ -32,6 +32,17 @@ export const APP_MODULES = {
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
 
+/**
+ * Source de verite UNIQUE des libelles de modules, cote client comme serveur.
+ * Aucun ecran ne doit redefinir son propre libelle : la nav, le fil d'ariane et
+ * l'ecran des permissions lisent tous ici (cf. client/src/config/navigation.ts).
+ *
+ * Choix de vocabulaire volontaires :
+ *  - 'Fiches techniques' plutot que 'Recettes' : en comptabilite « recettes » =
+ *    encaissements, et le module Comptabilite est juste a cote.
+ *  - 'Besoins' plutot que 'Approvisionnement' : dans les ERP du marche
+ *    « approvisionnement » designe l'achat, or ici c'est le calcul des besoins.
+ */
 export const MODULE_LABELS: Record<AppModule, string> = {
   dashboard: 'Tableau de bord',
   pos: 'Point de vente',
@@ -41,15 +52,15 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   customers: 'Clients',
   economat: 'Économat',
   inventory: 'Économat',  // alias
-  recipes: 'Recettes',
+  recipes: 'Fiches techniques',
   production: 'Production',
   employees: 'Personnel',
-  accounting: 'Comptabilite',
+  accounting: 'Comptabilité',
   purchasing: 'Achats',
   users: 'Utilisateurs',
   reports: 'Rapports',
-  settings: 'Parametres',
-  replenishment: 'Approvisionnement',
+  settings: 'Paramètres',
+  replenishment: 'Besoins',
   unsold: 'Invendus',
   pesage: 'Pesage',
   warehouse: 'Pesage',  // alias retrocompat

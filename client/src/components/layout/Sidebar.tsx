@@ -1,50 +1,30 @@
 import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  LayoutDashboard, ShoppingBag, Package, ClipboardList,
-  Users, ChefHat, Warehouse, UserCog, BarChart3, Monitor, Factory, Receipt, Lock, Calculator, Truck, ClipboardCheck, ArrowLeftRight
-} from 'lucide-react';
+import { Package } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { ROLE_LABELS } from '@ofauria/shared';
-import type { AppModule } from '@ofauria/shared';
+import { NAV_HOME, navLabel, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
 
-const navigation: { name: string; href: string; icon: typeof LayoutDashboard; module: AppModule }[] = [
-  { name: 'Tableau de bord', href: '/', icon: LayoutDashboard, module: 'dashboard' },
-  { name: 'Point de vente', href: '/pos', icon: Monitor, module: 'pos' },
-  { name: 'Ventes', href: '/sales', icon: Receipt, module: 'sales' },
-  { name: 'Commandes', href: '/orders', icon: ClipboardList, module: 'orders' },
-  { name: 'Produits', href: '/products', icon: ShoppingBag, module: 'products' },
-  { name: 'Clients', href: '/customers', icon: Users, module: 'customers' },
-  { name: 'Économat', href: '/inventory', icon: Warehouse, module: 'economat' },
-  { name: 'Pesage', href: '/warehouse', icon: Truck, module: 'pesage' },
-  { name: 'Recettes', href: '/recipes', icon: ChefHat, module: 'recipes' },
-  { name: 'Production', href: '/production', icon: Factory, module: 'production' },
-  { name: 'Approvisionnement', href: '/replenishment', icon: Package, module: 'replenishment' },
-  { name: 'Contrôle ouverture', href: '/inventory-check/validation', icon: ClipboardCheck, module: 'unsold' },
-  { name: 'Contrôle des ventes', href: '/reconciliation', icon: ArrowLeftRight, module: 'reconciliation' },
-  { name: 'RH', href: '/employees', icon: UserCog, module: 'employees' },
-  { name: 'Comptabilite', href: '/accounting', icon: Calculator, module: 'accounting' },
-  { name: 'Achats', href: '/purchasing', icon: ShoppingBag, module: 'purchasing' },
-  { name: 'Utilisateurs', href: '/users', icon: Lock, module: 'users' },
-  { name: 'Rapports', href: '/reports', icon: BarChart3, module: 'reports' },
-];
+/** Chemin de l'Economat : sert d'ancre au badge des actions magasinier en attente. */
+const ECONOMAT_HREF = '/inventory';
 
 export default function Sidebar() {
   const { user } = useAuth();
   const { hasModule } = usePermissions();
-  const filteredNav = navigation.filter(item => hasModule(item.module));
 
-  // Badge "transferts en attente" sur l'icone Pesage : compteur global toutes BSI confondues
-  // pour le store du magasinier. Polling 30s pour rester aligne avec la file d'attente.
-  // Visible uniquement pour les roles ayant acces au module economat (filteredNav le garantit).
-  // Le badge est attache au module Economat : c'est la qu'on selectionne le lot FEFO,
-  // qu'on declenche le transfert vers Pesage et qu'on commande les ingredients en
-  // rupture (decision metier de centraliser ces actions cote economat).
-  // Le compteur agrege transferts + ruptures pour un signal unique.
+  const homeItem = isNavItemVisible(NAV_HOME, hasModule) ? NAV_HOME : null;
+  const userGroups = visibleNavGroups(hasModule);
+
+  // Badge "transferts en attente" sur l'icone Economat : compteur global toutes BSI
+  // confondues pour le store du magasinier. Polling 30s pour rester aligne avec la
+  // file d'attente. Le badge est attache au module Economat : c'est la qu'on
+  // selectionne le lot FEFO, qu'on declenche le transfert vers Pesage et qu'on
+  // commande les ingredients en rupture (decision metier de centraliser ces actions
+  // cote economat). Le compteur agrege transferts + ruptures pour un signal unique.
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
-  const showsEconomat = filteredNav.some(n => n.module === 'economat');
+  const showsEconomat = userGroups.some(g => g.items.some(i => i.href === ECONOMAT_HREF));
   const { data: transferRequests = [] } = useQuery<Record<string, any>[]>({
     queryKey: ['warehouse-transfer-requests'],
     queryFn: bonSortieApi.transferRequests,
@@ -62,6 +42,37 @@ export default function Sidebar() {
   const transferCount = transferRequests.length;
   const ruptureCount = ruptureRequests.length;
   const economatActionCount = transferCount + ruptureCount;
+  // Priorite a l'onglet transferts si les deux ont des items. Sinon, ruptures.
+  const badgeTab = transferCount > 0 ? 'transfers' : 'ruptures';
+
+  const renderLink = (item: typeof NAV_HOME) => {
+    const showBadge = item.href === ECONOMAT_HREF && isWarehouseUser && economatActionCount > 0;
+    return (
+      <NavLink
+        key={item.href}
+        to={showBadge ? `${item.href}?tab=${badgeTab}` : item.href}
+        end={item.href === '/'}
+        className={({ isActive }) =>
+          `flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+            isActive
+              ? 'bg-primary-600 text-white'
+              : 'text-gray-300 hover:bg-white/10 hover:text-white'
+          }`
+        }
+      >
+        <item.icon size={20} />
+        <span className="flex-1">{navLabel(item)}</span>
+        {showBadge && (
+          <span
+            className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow"
+            title={`${transferCount} transfert(s) + ${ruptureCount} commande(s) en attente`}
+          >
+            {economatActionCount}
+          </span>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
     <aside className="w-64 bg-bakery-chocolate text-white min-h-screen flex flex-col">
@@ -70,36 +81,15 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 p-4 space-y-1">
-        {filteredNav.map((item) => {
-          const showBadge = item.module === 'economat' && isWarehouseUser && economatActionCount > 0;
-          // Priorite a l'onglet transferts si les deux ont des items. Sinon, ruptures.
-          const badgeTab = transferCount > 0 ? 'transfers' : 'ruptures';
-          return (
-            <NavLink
-              key={item.href}
-              to={showBadge ? `${item.href}?tab=${badgeTab}` : item.href}
-              end={item.href === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-sm font-medium ${
-                  isActive
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                }`
-              }
-            >
-              <item.icon size={20} />
-              <span className="flex-1">{item.name}</span>
-              {showBadge && (
-                <span
-                  className="ml-auto bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center shadow"
-                  title={`${transferCount} transfert(s) + ${ruptureCount} commande(s) en attente`}
-                >
-                  {economatActionCount}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+        {homeItem && renderLink(homeItem)}
+        {userGroups.map(group => (
+          <div key={group.title} className="pt-4 first:pt-2">
+            <p className="px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              {group.title}
+            </p>
+            <div className="space-y-1">{group.items.map(renderLink)}</div>
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-white/10">

@@ -124,7 +124,7 @@ export default function ReplenishmentPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Approvisionnement</span>
+          <span>Besoins</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">Demandes</span>
         </div>
@@ -513,7 +513,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Approvisionnement</span>
+            <span>Besoins</span>
             <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">Nouvelle demande</span>
           </div>

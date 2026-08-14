@@ -8,34 +8,12 @@ import { productionApi } from '../../api/production.api';
 import { inventoryApi } from '../../api/inventory.api';
 import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import {
-  LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag, Truck,
-  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator, Package,
-  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock, Box, ArrowLeftRight,
+  Warehouse, Factory, ClipboardList,
+  DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock,
   Plus, Zap,
 } from 'lucide-react';
 import type { AppModule } from '@ofauria/shared';
-
-const modules: { name: string; description: string; href: string; icon: typeof LayoutDashboard; color: string; module: AppModule }[] = [
-  { name: 'Tableau de bord', description: 'Vue d\'ensemble de l\'activite', href: '/reports', icon: LayoutDashboard, color: 'bg-blue-500', module: 'dashboard' },
-  { name: 'Point de vente', description: 'Caisse et ventes directes', href: '/pos', icon: Monitor, color: 'bg-green-600', module: 'pos' },
-  { name: 'Ventes', description: 'Historique des ventes', href: '/sales', icon: Receipt, color: 'bg-emerald-500', module: 'sales' },
-  { name: 'Commandes', description: 'Commandes clients a produire', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
-  { name: 'Produits', description: 'Catalogue et tarifs', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', module: 'products' },
-  { name: 'Clients', description: 'Fichier clients et fidelite', href: '/customers', icon: Users, color: 'bg-cyan-600', module: 'customers' },
-  { name: 'Économat', description: 'Stock principal scelle (sacs/boites intacts)', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'economat' },
-  { name: 'Pesage', description: 'Stock en cours d\'utilisation + BSI magasinier', href: '/warehouse', icon: Truck, color: 'bg-amber-500', module: 'pesage' },
-  { name: 'Emballages', description: 'Caissettes, boites, etiquettes, films', href: '/packaging', icon: Box, color: 'bg-blue-500', module: 'packaging' },
-  { name: 'Recettes', description: 'Fiches techniques de fabrication', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
-  { name: 'Production', description: 'Planification de la fabrication', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
-  { name: 'Approvisionnement', description: 'Demandes et transferts de stock', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
-  { name: 'RH', description: 'Gestion des ressources humaines', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
-  { name: 'Comptabilite', description: 'Caisse, charges et tresorerie', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
-  { name: 'Achats', description: 'Fournisseurs, commandes et factures', href: '/purchasing', icon: Truck, color: 'bg-blue-700', module: 'purchasing' },
-  { name: 'Utilisateurs', description: 'Comptes et droits d\'acces', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
-  { name: 'Contrôle des ventes', description: 'Suivi appro, transferts et invendus', href: '/reconciliation', icon: ArrowLeftRight, color: 'bg-sky-600', module: 'reconciliation' },
-  { name: 'Rapports', description: 'Statistiques et analyses', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },
-  { name: 'Parametres', description: 'Personnalisation de l\'application', href: '/settings', icon: Settings, color: 'bg-slate-600', module: 'settings' },
-];
+import { navLabel, visibleNavGroups } from '../../config/navigation';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -69,7 +47,7 @@ export default function HomePage() {
   // module purchasing ou accounting.
   const canSeePaymentAlerts = hasModule('purchasing') || hasModule('accounting');
 
-  const userModules = modules.filter(m => hasModule(m.module));
+  const userGroups = visibleNavGroups(hasModule);
 
   // Production stats
   const plans = (productionPlans?.data || []) as { status: string; items?: { status: string }[] }[];
@@ -202,19 +180,26 @@ export default function HomePage() {
       )}
 
       {/* ══════ MODULE NAVIGATION ══════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
-        {userModules.map((mod) => (
-          <button key={mod.href + mod.name}
-            onClick={() => navigate(mod.href)}
-            className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-gray-300 transition-all group text-left">
-            <div className={`w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm mb-4 group-hover:scale-110 transition-transform`}>
-              <mod.icon size={24} />
-            </div>
-            <h3 className="font-semibold text-gray-800 text-sm">{mod.name}</h3>
-            <p className="text-xs text-gray-400 mt-1 leading-relaxed">{mod.description}</p>
-          </button>
-        ))}
-      </div>
+      {userGroups.map((group) => (
+        <div key={group.title} className="mb-8 last:mb-0">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+            {group.title}
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
+            {group.items.map((mod) => (
+              <button key={mod.href}
+                onClick={() => navigate(mod.href)}
+                className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-gray-300 transition-all group text-left">
+                <div className={`w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm mb-4 group-hover:scale-110 transition-transform`}>
+                  <mod.icon size={24} />
+                </div>
+                <h3 className="font-semibold text-gray-800 text-sm">{navLabel(mod)}</h3>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">{mod.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
 
       {/* ══════ FLOATING ACTION BUTTONS ══════ */}
       {quickActions.length > 0 && (

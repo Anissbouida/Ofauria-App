@@ -330,7 +330,7 @@ function SubRequestDetailView({
         </button>
         <div className="odoo-breadcrumb">
           <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/replenishment')}>Approvisionnement</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/replenishment')}>Besoins</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
             #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}

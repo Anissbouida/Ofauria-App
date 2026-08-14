@@ -84,7 +84,7 @@ export default function EmployeesPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <UserCog size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Ressources Humaines</span>
+          <span>Personnel</span>
           <span className="odoo-breadcrumb-separator">/</span>
           <span className="odoo-breadcrumb-current">{currentTab?.label}</span>
         </div>

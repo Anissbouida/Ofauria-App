@@ -3,37 +3,23 @@ import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import Header from './Header';
-import {
-  LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
-  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  AlertTriangle, Package, PackageX, Truck, ClipboardCheck, ArrowLeftRight,
-} from 'lucide-react';
-import type { AppModule } from '@ofauria/shared';
+import { AlertTriangle } from 'lucide-react';
+import { NAV_HOME, navLabel, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
+import type { NavItem } from '../../config/navigation';
 
 const CASHIER_ROLES = ['cashier', 'saleswoman'];
 
-const modules: { name: string; href: string; icon: typeof LayoutDashboard; color: string; module: AppModule }[] = [
-  { name: 'Tableau de bord', href: '/', icon: LayoutDashboard, color: 'bg-blue-500', module: 'dashboard' },
-  { name: 'Point de vente', href: '/pos', icon: Monitor, color: 'bg-green-600', module: 'pos' },
-  { name: 'Ventes', href: '/sales', icon: Receipt, color: 'bg-emerald-500', module: 'sales' },
-  { name: 'Commandes', href: '/orders', icon: ClipboardList, color: 'bg-orange-500', module: 'orders' },
-  { name: 'Produits', href: '/products', icon: ShoppingBag, color: 'bg-purple-500', module: 'products' },
-  { name: 'Clients', href: '/customers', icon: Users, color: 'bg-cyan-600', module: 'customers' },
-  { name: 'Économat', href: '/inventory', icon: Warehouse, color: 'bg-amber-600', module: 'inventory' },
-  { name: 'Recettes', href: '/recipes', icon: ChefHat, color: 'bg-pink-500', module: 'recipes' },
-  { name: 'Production', href: '/production', icon: Factory, color: 'bg-indigo-500', module: 'production' },
-  { name: 'Pesage', href: '/warehouse', icon: Truck, color: 'bg-amber-500', module: 'warehouse' },
-  { name: 'Approvisionnement', href: '/replenishment', icon: Package, color: 'bg-rose-500', module: 'replenishment' },
-  { name: 'Invendus', href: '/unsold', icon: PackageX, color: 'bg-orange-600', module: 'unsold' },
-  { name: 'Contrôle des ventes', href: '/reconciliation', icon: ArrowLeftRight, color: 'bg-lime-600', module: 'reconciliation' },
-  { name: 'Contrôle ouverture', href: '/inventory-check/validation', icon: ClipboardCheck, color: 'bg-orange-700', module: 'unsold' },
-  { name: 'RH', href: '/employees', icon: UserCog, color: 'bg-teal-600', module: 'employees' },
-  { name: 'Comptabilite', href: '/accounting', icon: Calculator, color: 'bg-yellow-600', module: 'accounting' },
-  { name: 'Achats', href: '/purchasing', icon: ShoppingBag, color: 'bg-blue-700', module: 'purchasing' },
-  { name: 'Utilisateurs', href: '/users', icon: Lock, color: 'bg-gray-600', module: 'users' },
-  { name: 'Rapports', href: '/reports', icon: BarChart3, color: 'bg-red-500', module: 'reports' },
-  { name: 'Parametres', href: '/settings', icon: Settings, color: 'bg-slate-600', module: 'settings' },
-];
+function ModuleTile({ item, onSelect }: { item: NavItem; onSelect: () => void }) {
+  return (
+    <button onClick={onSelect}
+      className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-gray-50 transition-colors group">
+      <div className={`w-12 h-12 ${item.color} rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform`}>
+        <item.icon size={24} />
+      </div>
+      <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item)}</span>
+    </button>
+  );
+}
 
 function TimeoutWarningModal() {
   const { timeoutWarning, extendSession, logout } = useAuth();
@@ -132,7 +118,8 @@ export default function AppLayout() {
     );
   }
 
-  const userModules = modules.filter(m => hasModule(m.module));
+  const homeItem = isNavItemVisible(NAV_HOME, hasModule) ? NAV_HOME : null;
+  const userGroups = visibleNavGroups(hasModule);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
@@ -143,19 +130,25 @@ export default function AppLayout() {
         <div className="fixed inset-0 z-30" style={{ top: 48 }}>
           <div className="absolute inset-0 bg-black/20" onClick={() => setShowApps(false)} />
           <div ref={appsRef}
-            className="relative mx-auto mt-2 w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-gray-200 p-6 animate-in fade-in slide-in-from-top-2">
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-              {userModules.map((mod) => (
-                <button key={mod.href}
-                  onClick={() => { navigate(mod.href); setShowApps(false); }}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-gray-50 transition-colors group">
-                  <div className={`w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform`}>
-                    <mod.icon size={24} />
-                  </div>
-                  <span className="text-xs font-medium text-gray-700 text-center leading-tight">{mod.name}</span>
-                </button>
-              ))}
-            </div>
+            className="relative mx-auto mt-2 w-full max-w-2xl max-h-[80vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 p-6 animate-in fade-in slide-in-from-top-2">
+            {homeItem && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 pb-5 mb-1 border-b border-gray-100">
+                <ModuleTile item={homeItem} onSelect={() => { navigate(homeItem.href); setShowApps(false); }} />
+              </div>
+            )}
+            {userGroups.map((group) => (
+              <div key={group.title} className="pt-4 first:pt-0">
+                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  {group.title}
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+                  {group.items.map((item) => (
+                    <ModuleTile key={item.href} item={item}
+                      onSelect={() => { navigate(item.href); setShowApps(false); }} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

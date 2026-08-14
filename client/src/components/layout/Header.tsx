@@ -6,6 +6,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import NotificationBell from './NotificationBell';
+import { NAV_LABEL_BY_PATH } from '../../config/navigation';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const { user, logout } = useAuth();
@@ -23,28 +24,11 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const moduleNames: Record<string, string> = {
-    '/': 'Accueil',
-    '/pos': 'Point de vente',
-    '/sales': 'Ventes',
-    '/orders': 'Commandes',
-    '/products': 'Produits',
-    '/customers': 'Clients',
-    '/inventory': 'Économat',
-    '/recipes': 'Recettes',
-    '/production': 'Production',
-    '/warehouse': 'Pesage',
-    '/employees': 'Employes',
-    '/users': 'Utilisateurs',
-    '/reports': 'Rapports',
-    '/settings': 'Parametres',
-  };
-
   const currentPath = '/' + location.pathname.split('/')[1];
   // Cas particulier : la page autonome /production/:id/bon-sortie est le flux magasinier
   // (acces depuis la page Pesage), pas le flux chef. Le breadcrumb doit refleter ca.
   const isBsiStandalone = /^\/production\/[^/]+\/bon-sortie\/?$/.test(location.pathname);
-  const currentModule = isBsiStandalone ? 'Pesage' : (moduleNames[currentPath] || '');
+  const currentModule = isBsiStandalone ? 'Pesage' : (NAV_LABEL_BY_PATH[currentPath] || '');
 
   return (
     <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
