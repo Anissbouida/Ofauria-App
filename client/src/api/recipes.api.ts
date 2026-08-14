@@ -58,6 +58,8 @@ export interface FormatComponentsData {
     nb_parts: number | null;
     poids_cru_g: string | null;
     poids_cuit_g: string | null;
+    /** Mig 266 (audit A4) : densite de la pate/appareil (kg/l = g/ml). NULL = defaut 1. */
+    densite_kg_l?: string | null;
     cout_emballage_unitaire: string;
     is_default: boolean;
     contenant_nom: string | null;

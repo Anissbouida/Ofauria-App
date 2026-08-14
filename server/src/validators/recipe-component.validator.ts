@@ -57,4 +57,6 @@ export const updateFormatSchema = z.object({
   nbParts: z.number().int().positive().nullable().optional(),
   // Mig 263 (audit A1) : produit vendu au POS. `null` explicite = defaire le lien.
   productId: z.string().uuid().nullable().optional(),
+  // Mig 266 (audit A4) : densite kg/l de la pate/appareil. `null` explicite = defaut 1.
+  densiteKgL: z.number().positive().nullable().optional(),
 });

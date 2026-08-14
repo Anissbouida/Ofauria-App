@@ -124,6 +124,7 @@ export const recipeComponentRepository = {
     const fmt = await db.query(
       `SELECT f.id, f.recipe_id, f.contenant_id, f.nb_par_defaut, f.nb_parts,
               f.poids_cru_g, f.poids_cuit_g, f.cout_emballage_unitaire, f.is_default,
+              f.densite_kg_l,
               pc.nom AS contenant_nom,
               r.name AS recipe_name, r.mode_cout, r.compo_par_piece,
               r.margin_multiplier, r.taux_main_oeuvre_dh_h, r.main_oeuvre_min,
@@ -575,7 +576,7 @@ export const recipeComponentRepository = {
   async updateFormat(
     recipeId: string,
     formatId: string,
-    data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null; productId?: string | null },
+    data: { contenantId?: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null; productId?: string | null; densiteKgL?: number | null },
     userId?: string | null
   ) {
     // productId (mig 263, audit A1) : attribution nullable au POS. La sentinelle
@@ -583,6 +584,10 @@ export const recipeComponentRepository = {
     // COALESCE ne peut pas distinguer "non fourni" de "efface"). Sinon la
     // valeur passe telle quelle et est castee cote SQL en uuid.
     const clearProduct = data.productId === null;
+    // Mig 266 (audit A4) : densite meme sentinelle que productId — `null`
+    // explicite efface la valeur (retour au defaut 1 dans les vues), absent
+    // = conserve.
+    const clearDensite = data.densiteKgL === null;
     const r = await db.query(
       `UPDATE recipe_formats
        SET contenant_id            = COALESCE($3, contenant_id),
@@ -594,6 +599,11 @@ export const recipeComponentRepository = {
                                        WHEN $8::uuid IS NOT NULL THEN $8::uuid
                                        ELSE product_id
                                      END,
+           densite_kg_l            = CASE
+                                       WHEN $10::boolean THEN NULL
+                                       WHEN $11::numeric IS NOT NULL THEN $11::numeric
+                                       ELSE densite_kg_l
+                                     END,
            updated_by              = COALESCE($9::uuid, updated_by),
            updated_at              = NOW()
        WHERE id = $1 AND recipe_id = $2
@@ -604,6 +614,7 @@ export const recipeComponentRepository = {
         data.coutEmballageUnitaire ?? null, data.nbParts ?? null,
         clearProduct, clearProduct ? null : (data.productId ?? null),
         userId ?? null,
+        clearDensite, clearDensite ? null : (data.densiteKgL ?? null),
       ]
     );
     if (r.rows.length === 0) return null;
