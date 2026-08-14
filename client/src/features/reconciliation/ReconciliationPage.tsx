@@ -772,6 +772,8 @@ function printPassationJournee(
   businessDate: string,
   darijaOf: (name: string) => string,
 ) {
+ try {
+  if (!Array.isArray(lines) || lines.length === 0) { notify.error('Aucune ligne sur ce shift — importez les ventes ou saisissez l\'appro d\'abord'); return; }
   const d = new Date(businessDate + 'T00:00:00');
   const dateFormatted = format(d, 'dd/MM/yyyy', { locale: fr });
   const jourSemaine = format(d, 'EEEE', { locale: fr });
@@ -854,6 +856,11 @@ function printPassationJournee(
       }
     } catch { /* fenetre fermee entre-temps */ }
   }, 1000);
+ } catch (e: any) {
+    notify.error('Fiche de passation — erreur : ' + (e?.message || String(e)));
+    // eslint-disable-next-line no-console
+    console.error('[printPassationJournee]', e);
+ }
 }
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
