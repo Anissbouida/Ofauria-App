@@ -7,7 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Filter, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, GripVertical, Timer, ShieldCheck, Repeat, Upload, Download } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
