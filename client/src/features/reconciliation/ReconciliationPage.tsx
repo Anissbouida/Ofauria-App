@@ -774,7 +774,9 @@ function printPassationJournee(
 ) {
  try {
   if (!Array.isArray(lines) || lines.length === 0) { notify.error('Aucune ligne sur ce shift — importez les ventes ou saisissez l\'appro d\'abord'); return; }
-  const d = new Date(businessDate + 'T00:00:00');
+  // business_date peut arriver en timestamp ISO complet (2026-08-14T00:00:00.000Z) :
+  // on ne garde que la date (10 premiers car.) avant de parser, sinon Date invalide.
+  const d = new Date(String(businessDate).slice(0, 10) + 'T00:00:00');
   const dateFormatted = format(d, 'dd/MM/yyyy', { locale: fr });
   const jourSemaine = format(d, 'EEEE', { locale: fr });
   const fmtQty = (n: number) => String(Math.round(n * 100) / 100);
