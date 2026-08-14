@@ -168,6 +168,8 @@ export const reconciliationApi = {
     api.post(`/reconciliation/shifts/${shiftId}/import-sales`, { items }).then(r => r.data.data as { upserted: number }),
   resetSales: (shiftId: string) =>
     api.post(`/reconciliation/shifts/${shiftId}/reset-sales`).then(r => r.data.data as { reset: number }),
+  prefillReste: (shiftId: string) =>
+    api.post(`/reconciliation/shifts/${shiftId}/prefill-reste`).then(r => r.data.data as { updated: number }),
 
   /** Télécharge le classeur xlsx détaillé de la journée (déclenche un download). */
   exportDayXlsx: async (dayId: string, businessDate: string) => {

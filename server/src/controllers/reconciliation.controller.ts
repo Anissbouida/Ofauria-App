@@ -166,6 +166,10 @@ export const reconciliationController = {
     const result = await reconciliationRepository.resetSales(req.params.id);
     res.json({ success: true, data: result });
   },
+  async prefillReste(req: AuthRequest, res: Response) {
+    const result = await reconciliationRepository.prefillReste(req.params.id);
+    res.json({ success: true, data: result });
+  },
 
   // ─── Import Loyverse ───────────────────────────────────────────────────
 

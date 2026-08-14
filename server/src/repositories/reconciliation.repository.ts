@@ -571,6 +571,31 @@ export const reconciliationRepository = {
     return { reset: r.rowCount ?? 0 };
   },
 
+  /**
+   * Pre-remplit le comptage de passation (invendu) avec le reste THEORIQUE :
+   * invendu = max(ouverture + entree - vendu, 0), pour chaque ligne visible du
+   * shift. « entree » = le Recu confirme s'il est saisi, sinon l'Appro planifie
+   * (certains magasins ne confirment pas le Recu a la passation de 14h). Ramene
+   * l'ecart a 0 par defaut quand le Recu est saisi ; l'equipe ne fait plus que
+   * valider ou corriger les ecarts au comptage physique. Idempotent (ne reecrit
+   * que les lignes dont l'invendu differe). Le comptage de passation alimente
+   * l'ouverture du shift suivant (syncPassation). Le 0 est caste en numeric pour
+   * eviter l'inference integer de GREATEST sur des quantites decimales.
+   */
+  async prefillReste(shiftId: string) {
+    const shift = await this.assertShiftOpen(shiftId);
+    const theo = `GREATEST(report_veille_qty + (CASE WHEN recu_qty > 0 THEN recu_qty ELSE appro_qty END) - vendu_qty, 0::numeric)`;
+    const r = await db.query(
+      `UPDATE recon_lines
+         SET invendu_qty = ${theo}, updated_at = NOW()
+       WHERE recon_shift_id = $1 AND NOT hidden
+         AND invendu_qty IS DISTINCT FROM ${theo}`,
+      [shiftId]
+    );
+    await this.syncPassation(shift.recon_day_id);
+    return { updated: r.rowCount ?? 0 };
+  },
+
   // ─── Import Loyverse (ventes) ──────────────────────────────────────────
 
   /**

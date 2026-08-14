@@ -5,7 +5,7 @@ import { fr } from 'date-fns/locale';
 import {
   Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
   ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy,
+  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy, Scale,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
@@ -685,10 +685,6 @@ function printBonSection(
     const chef = SECTION_CHEF[section] || `Chef ${section}`;
 
     if (hasSlots) {
-      // La fiche de passation s'intercale à la frontière des shifts : juste avant
-      // le premier créneau ≥ SHIFT_SPLIT_TIME (14h), donc entre le 11h30 (Midi) et
-      // le 15h30 (Après-midi). Comptage vierge du stock transféré entre équipes.
-      let passationDone = false;
       for (const slot of slotList) {
         const k = slotTimeKey(slot);
         // Le numéro de créneau correspondant à cette heure varie par catégorie :
@@ -707,13 +703,6 @@ function printBonSection(
         const rowsProd = buildTableRows(flatGroups, slotKey, false);
         if (!rowsProd) continue;
         const rowsMag = buildTableRows(flatGroups, slotKey, true);
-
-        // Créneau d'après-midi (≥ 14h) : la passation vient juste avant.
-        if (!passationDone && (slot.target_time || '99:99').slice(0, 5) >= SHIFT_SPLIT_TIME) {
-          const passationPage = buildPassationPage([section], bySection, slotQty, darijaOf, jourSemaine, dateFormatted);
-          if (passationPage) pages.push(passationPage);
-          passationDone = true;
-        }
 
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsProd, 'Copie Production', false));
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsMag, 'Copie Magasin', true));
@@ -772,56 +761,99 @@ ${pages.join('')}
 }
 
 /**
- * Dernière page des bons : fiche de transfert de passation MIDI → APRÈS-MIDI.
- * Comptage vierge listant les produits imprimés (total tous créneaux), groupés
- * par section puis famille — dans la même portée que les bons (section filtrée
- * ou toutes). L'équipe midi (sortante) compte le stock réellement passé,
- * l'équipe après-midi (entrante) vérifie et co-signe. Une seule colonne
- * (STOCK PASSATION), signée une fois. Renvoie '' si aucun produit > 0.
+ * Fiche de passation MIDI → APRÈS-MIDI imprimée depuis la Journée (données
+ * réelles). Chaque produit avec du stock disponible (ouverture + reçu > 0) est
+ * listé avec son RESTE THÉORIQUE pré-imprimé = max(ouverture + reçu − vendu, 0),
+ * plus une colonne CORRIGÉ vierge : l'équipe ne fait que valider ou corriger les
+ * écarts au comptage physique, au lieu de tout compter. Groupé par section/famille.
  */
-function buildPassationPage(
-  orderedSections: string[],
-  bySection: Record<string, { cat: string; products: SuggestProduct[] }[]>,
-  slotQty: Record<string, string>,
+function printPassationJournee(
+  lines: ReconLine[],
+  businessDate: string,
   darijaOf: (name: string) => string,
-  jourSemaine: string,
-  dateFormatted: string,
-): string {
+) {
+  const d = new Date(businessDate + 'T00:00:00');
+  const dateFormatted = format(d, 'dd/MM/yyyy', { locale: fr });
+  const jourSemaine = format(d, 'EEEE', { locale: fr });
+  const fmtQty = (n: number) => String(Math.round(n * 100) / 100);
+
+  // Reste théorique par ligne ; on ne garde que les produits qui ont eu du stock.
+  type Row = { name: string; theo: number };
+  const bySection: Record<string, Record<string, Row[]>> = {};
+  for (const l of lines) {
+    // Entrée de stock : le Reçu confirmé s'il est saisi, sinon l'Appro planifié
+    // (certains magasins ne confirment pas le Reçu à la passation de 14h).
+    const entree = num(l.recu_qty) > 0 ? num(l.recu_qty) : num(l.appro_qty);
+    const dispo = num(l.report_veille_qty) + entree;
+    // On liste tout produit qui a eu du stock OU des ventes (rien masqué).
+    if (dispo <= 0 && num(l.vendu_qty) <= 0) continue;
+    const theo = Math.max(dispo - num(l.vendu_qty), 0);
+    const cat = l.category || 'Aucune catégorie';
+    const section = getSectionName(cat);
+    ((bySection[section] ??= {})[cat] ??= []).push({ name: l.product_name, theo });
+  }
+
+  const orderedSections = [
+    ...SECTION_ORDER.filter(s => bySection[s]),
+    ...Object.keys(bySection).filter(s => !SECTION_ORDER.includes(s)),
+  ];
+
   let rows = '';
   let hasAny = false;
   for (const section of orderedSections) {
     let sectionRows = '';
-    for (const { cat, products } of bySection[section]) {
-      const active = products.filter(p => num(slotQty[`${p.product_key}__total`]) > 0);
-      if (active.length === 0) continue;
-      sectionRows += `<tr class="cat-row"><td colspan="3">${esc(cat)}</td></tr>`;
-      for (const p of active) {
-        const dj = darijaOf(p.product_name);
-        sectionRows += `<tr><td>${esc(p.product_name)}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
+    for (const [cat, catRows] of Object.entries(bySection[section])) {
+      if (catRows.length === 0) continue;
+      sectionRows += `<tr class="cat-row"><td colspan="4">${esc(cat)}</td></tr>`;
+      for (const r of catRows) {
+        const dj = darijaOf(r.name);
+        sectionRows += `<tr><td>${esc(r.name)}</td><td class="qty">${esc(fmtQty(r.theo))}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
       }
     }
     if (!sectionRows) continue;
     hasAny = true;
-    rows += `<tr class="section-row"><td colspan="3">${esc(section)}</td></tr>${sectionRows}`;
+    rows += `<tr class="section-row"><td colspan="4">${esc(section)}</td></tr>${sectionRows}`;
   }
 
-  if (!hasAny) return '';
+  if (!hasAny) { notify.error('Aucun produit à afficher : ni stock (ouverture + reçu/appro) ni vente sur ce shift'); return; }
 
-  return `<div class="section">
-    <div class="header">Passation Midi &rarr; Apr&egrave;s-midi</div>
-    <div class="sub-header">Transfert de stock entre &eacute;quipes &mdash; ${jourSemaine} ${dateFormatted}</div>
-    <div class="copy-tag"><span>Fiche de passation</span></div>
-    <table>
-      <colgroup><col style="width:44%"><col style="width:120px"><col style="width:auto"></colgroup>
-      <thead><tr><th style="text-align:left">PRODUIT</th><th>STOCK PASSATION</th><th style="text-align:right">بالدارجة</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td></tr></tfoot>
-    </table>
-    <div class="signatures">
-      <div class="sig-box"><strong>&Eacute;quipe Midi (sortante)</strong><br>Nom :<br>Signature :</div>
-      <div class="sig-box"><strong>&Eacute;quipe Apr&egrave;s-midi (entrante)</strong><br>Nom :<br>Signature :</div>
-    </div>
-  </div>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Fiche de passation — ${dateFormatted}</title>
+<style>${printCSS()}</style></head><body>
+<div class="toolbar no-print">
+  <button type="button" id="btn-print">&#128424; Imprimer</button>
+  <button type="button" id="btn-close" class="secondary">Fermer</button>
+</div>
+<div class="section">
+  <div class="header">Passation Midi &rarr; Apr&egrave;s-midi</div>
+  <div class="sub-header">Reste th&eacute;orique &agrave; valider (Ouverture + Re&ccedil;u &minus; Vendu) &mdash; ${jourSemaine} ${dateFormatted}</div>
+  <div class="copy-tag"><span>Fiche de passation</span></div>
+  <table>
+    <colgroup><col style="width:40%"><col style="width:110px"><col style="width:110px"><col style="width:auto"></colgroup>
+    <thead><tr><th style="text-align:left">PRODUIT</th><th>TH&Eacute;ORIQUE</th><th>CORRIG&Eacute;</th><th style="text-align:right">بالدارجة</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td></tr></tfoot>
+  </table>
+  <div class="signatures">
+    <div class="sig-box"><strong>&Eacute;quipe Midi (sortante)</strong><br>Nom :<br>Signature :</div>
+    <div class="sig-box"><strong>&Eacute;quipe Apr&egrave;s-midi (entrante)</strong><br>Nom :<br>Signature :</div>
+  </div>
+</div>
+<script src="${window.location.origin}/print-helper.js"></script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { notify.error('Pop-up bloqué — autorisez les pop-ups pour imprimer.'); return; }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => {
+    try {
+      if (!(w as any).__printWired) {
+        w.document.getElementById('btn-print')?.addEventListener('click', () => w.print());
+        w.document.getElementById('btn-close')?.addEventListener('click', () => w.close());
+      }
+    } catch { /* fenetre fermee entre-temps */ }
+  }, 1000);
 }
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
@@ -1873,6 +1905,14 @@ function DayView() {
     queryFn: () => reconciliationApi.openDay(date),
   });
 
+  // Darija partagé avec la Fiche de besoin (même cache) : pour l'impression de
+  // la fiche de passation.
+  const { data: darijaEntries = [] } = useQuery({
+    queryKey: ['recon-darija'],
+    queryFn: () => reconciliationApi.listDarija(),
+  });
+  const darijaOf = useMemo(() => makeDarijaLookup(darijaEntries), [darijaEntries]);
+
   const shifts = day?.shifts ?? [];
   // Journees anterieures a la mig 262 : shift unique « Journée », pas d'onglets.
   const multiShift = shifts.length > 1;
@@ -2023,6 +2063,13 @@ function DayView() {
   const resetSalesMut = useMutation({
     mutationFn: () => reconciliationApi.resetSales(activeShift!.id),
     onSuccess: (r) => { invalidate(); notify.success(`Ventes remises à zéro : ${r.reset} ligne(s)`); },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
+  });
+  // Pré-remplit le reste (invendu) avec le théorique = ouverture + reçu − vendu,
+  // pour gagner du temps à la passation : l'équipe ne valide/corrige que les écarts.
+  const prefillResteMut = useMutation({
+    mutationFn: () => reconciliationApi.prefillReste(activeShift!.id),
+    onSuccess: (r) => { invalidate(); notify.success(`Reste théorique pré-rempli : ${r.updated} ligne(s) — validez ou corrigez les écarts`); },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
   const statusMut = useMutation({
@@ -2190,6 +2237,22 @@ function DayView() {
             }
           }}>
           {resetSalesMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Ventes à 0
+        </button>
+        <button className="odoo-btn-secondary" disabled={!day || locked || prefillResteMut.isPending || lines.length === 0}
+          title="Pré-remplit la colonne Reste avec le théorique (Ouverture + Reçu − Vendu). À faire après l'import Loyverse : l'équipe ne valide/corrige que les écarts au comptage physique."
+          onClick={() => {
+            const hasInvendu = lines.some(l => num(l.invendu_qty) > 0);
+            const msg = hasInvendu
+              ? 'Des restes sont déjà saisis. Les remplacer par le reste théorique (Ouverture + Reçu − Vendu) ?\n\nLes corrections manuelles saisies seront écrasées.'
+              : 'Pré-remplir la colonne Reste avec le théorique (Ouverture + Reçu − Vendu) ?\n\nL\'écart passe à 0 par défaut : vous n\'aurez plus qu\'à valider ou corriger les écarts au comptage physique.';
+            if (window.confirm(msg)) prefillResteMut.mutate();
+          }}>
+          {prefillResteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Scale size={14} />} Reste théorique
+        </button>
+        <button className="odoo-btn-secondary" disabled={!day}
+          title="Imprime la fiche de passation du shift affiché : reste théorique (Ouverture + Reçu/Appro − Vendu) + colonne Corrigé à valider physiquement, groupé par famille avec darija."
+          onClick={() => day && printPassationJournee(lines, day.business_date, darijaOf)}>
+          <Printer size={14} /> Fiche de passation
         </button>
         <button className="odoo-btn-secondary" disabled={!day || dayLocked || importPending}
           title={'Deux formats acceptés :\n• « Reçus par article » (horodaté) → aperçu Matin/Soir puis import, un seul fichier pour toute la journée.\n• « Item sales summary » (sans heure) → importé dans le shift affiché ; sélectionner Matin ou Soir avant.'}

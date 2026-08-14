@@ -36,6 +36,7 @@ router.delete('/lines/:lineId', asyncHandler(reconciliationController.deleteLine
 // Import Loyverse (ventes d'un shift : export filtre sur sa plage horaire)
 router.post('/shifts/:id/import-sales', asyncHandler(reconciliationController.importSales));
 router.post('/shifts/:id/reset-sales', asyncHandler(reconciliationController.resetSales));
+router.post('/shifts/:id/prefill-reste', asyncHandler(reconciliationController.prefillReste));
 
 // Créneaux d'approvisionnement
 router.get('/slots', asyncHandler(reconciliationController.listSlots));
