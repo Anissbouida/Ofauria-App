@@ -233,6 +233,7 @@ th,td{border:1px solid #444;padding:4px 7px;font-size:10.5pt;vertical-align:midd
 th{background:#e0e0e0;text-align:center;font-size:10pt;font-weight:700;text-transform:uppercase}
 tbody tr:nth-child(even) td{background:#f7f7f7}
 tbody tr.cat-row td{background:#d0d0d0;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:0.3px;padding:5px 7px;border-bottom:2px solid #888;text-align:center}
+tbody tr.section-row td{background:#222;color:#fff;font-weight:700;font-size:11pt;text-transform:uppercase;letter-spacing:1px;padding:6px 7px;text-align:center}
 td.qty{text-align:center;font-weight:bold;font-size:13pt}
 td.darija{color:#222;font-size:12.5pt;font-weight:bold;direction:rtl;text-align:right}
 td:first-child{text-align:left;font-size:11pt}
@@ -684,6 +685,10 @@ function printBonSection(
     const chef = SECTION_CHEF[section] || `Chef ${section}`;
 
     if (hasSlots) {
+      // La fiche de passation s'intercale à la frontière des shifts : juste avant
+      // le premier créneau ≥ SHIFT_SPLIT_TIME (14h), donc entre le 11h30 (Midi) et
+      // le 15h30 (Après-midi). Comptage vierge du stock transféré entre équipes.
+      let passationDone = false;
       for (const slot of slotList) {
         const k = slotTimeKey(slot);
         // Le numéro de créneau correspondant à cette heure varie par catégorie :
@@ -702,6 +707,13 @@ function printBonSection(
         const rowsProd = buildTableRows(flatGroups, slotKey, false);
         if (!rowsProd) continue;
         const rowsMag = buildTableRows(flatGroups, slotKey, true);
+
+        // Créneau d'après-midi (≥ 14h) : la passation vient juste avant.
+        if (!passationDone && (slot.target_time || '99:99').slice(0, 5) >= SHIFT_SPLIT_TIME) {
+          const passationPage = buildPassationPage([section], bySection, slotQty, darijaOf, jourSemaine, dateFormatted);
+          if (passationPage) pages.push(passationPage);
+          passationDone = true;
+        }
 
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsProd, 'Copie Production', false));
         pages.push(buildPage(section, `${slot.label.toUpperCase()}`, jourSemaine, dateFormatted, chef, rowsMag, 'Copie Magasin', true));
@@ -757,6 +769,59 @@ ${pages.join('')}
       }
     } catch { /* fenetre fermee entre-temps */ }
   }, 1000);
+}
+
+/**
+ * Dernière page des bons : fiche de transfert de passation MIDI → APRÈS-MIDI.
+ * Comptage vierge listant les produits imprimés (total tous créneaux), groupés
+ * par section puis famille — dans la même portée que les bons (section filtrée
+ * ou toutes). L'équipe midi (sortante) compte le stock réellement passé,
+ * l'équipe après-midi (entrante) vérifie et co-signe. Une seule colonne
+ * (STOCK PASSATION), signée une fois. Renvoie '' si aucun produit > 0.
+ */
+function buildPassationPage(
+  orderedSections: string[],
+  bySection: Record<string, { cat: string; products: SuggestProduct[] }[]>,
+  slotQty: Record<string, string>,
+  darijaOf: (name: string) => string,
+  jourSemaine: string,
+  dateFormatted: string,
+): string {
+  let rows = '';
+  let hasAny = false;
+  for (const section of orderedSections) {
+    let sectionRows = '';
+    for (const { cat, products } of bySection[section]) {
+      const active = products.filter(p => num(slotQty[`${p.product_key}__total`]) > 0);
+      if (active.length === 0) continue;
+      sectionRows += `<tr class="cat-row"><td colspan="3">${esc(cat)}</td></tr>`;
+      for (const p of active) {
+        const dj = darijaOf(p.product_name);
+        sectionRows += `<tr><td>${esc(p.product_name)}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
+      }
+    }
+    if (!sectionRows) continue;
+    hasAny = true;
+    rows += `<tr class="section-row"><td colspan="3">${esc(section)}</td></tr>${sectionRows}`;
+  }
+
+  if (!hasAny) return '';
+
+  return `<div class="section">
+    <div class="header">Passation Midi &rarr; Apr&egrave;s-midi</div>
+    <div class="sub-header">Transfert de stock entre &eacute;quipes &mdash; ${jourSemaine} ${dateFormatted}</div>
+    <div class="copy-tag"><span>Fiche de passation</span></div>
+    <table>
+      <colgroup><col style="width:44%"><col style="width:120px"><col style="width:auto"></colgroup>
+      <thead><tr><th style="text-align:left">PRODUIT</th><th>STOCK PASSATION</th><th style="text-align:right">بالدارجة</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td></tr></tfoot>
+    </table>
+    <div class="signatures">
+      <div class="sig-box"><strong>&Eacute;quipe Midi (sortante)</strong><br>Nom :<br>Signature :</div>
+      <div class="sig-box"><strong>&Eacute;quipe Apr&egrave;s-midi (entrante)</strong><br>Nom :<br>Signature :</div>
+    </div>
+  </div>`;
 }
 
 function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
