@@ -38,27 +38,34 @@ export default function NomenclaturePage() {
         </button>
         <div className="odoo-breadcrumb" style={{ marginLeft: '0.75rem' }}>
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>Recettes</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>Fiches techniques</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{recipe.name}</span>
         </div>
       </div>
 
-      {/* Bandeau KPI (rendement / coût / prix / marge du format affiché) */}
+      {/* Bandeau KPI du format affiché. Les quatre tuiles doivent se recouper :
+          marge = (prix − coût de production) / prix. La tuile coût affiche donc le
+          coût de PRODUCTION (matière + MO + énergie + structure), avec le coût
+          matière en second plan — auparavant elle montrait la matière seule, ce qui
+          rendait la marge inexplicable pour qui refaisait le calcul. */}
       <div className="odoo-smart-button-row">
         <div className="odoo-smart-button">
           <div className="odoo-smart-button-value">{kpi ? kpi.rendement : '—'}</div>
           <div className="odoo-smart-button-label"><Layers size={11} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : '(pièces/fournée)'}</div>
         </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{kpi ? dh(kpi.coutPiece) : '—'}</div>
-          <div className="odoo-smart-button-label">Coût / pièce</div>
+        <div className="odoo-smart-button" title="Matière + main d'œuvre + énergie + frais de structure, ramenés à une pièce.">
+          <div className="odoo-smart-button-value">{kpi ? dh(kpi.coutProd) : '—'}</div>
+          <div className="odoo-smart-button-label">
+            Coût prod. / pièce
+            {kpi && <span style={{ marginLeft: 4, opacity: 0.7 }}>· matière {dh(kpi.coutMatiere)}</span>}
+          </div>
         </div>
         <div className="odoo-smart-button">
           <div className="odoo-smart-button-value">{kpi ? dh(kpi.prix) : '—'}</div>
           <div className="odoo-smart-button-label">Prix / pièce</div>
         </div>
-        <div className="odoo-smart-button">
+        <div className="odoo-smart-button" title="(Prix − coût de production) / prix">
           <div className="odoo-smart-button-value" style={{ color: kpi ? margeColor : undefined }}>{kpi ? `${kpi.margePct.toFixed(1)}%` : '—'}</div>
           <div className="odoo-smart-button-label">Marge</div>
         </div>

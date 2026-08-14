@@ -164,14 +164,19 @@ const COMPATIBLE_UNITS: Record<string, string[]> = {
 type ActiveTab = 'product' | 'base' | 'contenants';
 type ViewMode = 'grid' | 'list';
 
-function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
+function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left', title }: {
   label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
-  onSort: (key: string) => void; align?: 'left' | 'right' | 'center';
+  onSort: (key: string) => void; align?: 'left' | 'right' | 'center'; title?: string;
 }) {
   const active = currentKey === sk;
+  // En-tête triable au clavier : le <th onClick> nu n'était ni focusable ni annoncé
+  // comme triable par un lecteur d'écran.
   return (
-    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
-      <span className="inline-flex items-center gap-1">
+    <th style={{ textAlign: align }} aria-sort={active ? (currentDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <span role="button" tabIndex={0} title={title}
+        onClick={() => onSort(sk)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(sk); } }}
+        className="inline-flex items-center gap-1 cursor-pointer">
         {label}
         <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
           {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
@@ -197,7 +202,10 @@ export default function RecipesPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>(''); // '' = toutes
   const [showForm, setShowForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('contenants');
+  // Point d'entrée du module : les recettes produits finis. L'onglet « Formats de
+  // production » est un référentiel de contenants (pas de recherche, pas de compteur) :
+  // y atterrir par défaut donnait l'impression d'être ailleurs que dans les fiches.
+  const [activeTab, setActiveTab] = useState<ActiveTab>('product');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   // Retour depuis la page plein écran : ?tab=<onglet> (liste) et/ou ?open=<id> (rouvre la fiche).
   useEffect(() => {
@@ -217,6 +225,8 @@ export default function RecipesPage() {
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showImport, setShowImport] = useState(false);
+  // Piloté depuis la barre de contrôle, consommé par l'onglet Formats de production.
+  const [creatingContenant, setCreatingContenant] = useState(false);
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -292,13 +302,57 @@ export default function RecipesPage() {
     setShowForm(true);
   };
 
+  /** Changement d'onglet : les filtres du précédent ne s'appliquent plus au suivant. */
+  const switchTab = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    setSearch('');
+    setCategoryFilter('');
+  };
+
+  const askDelete = (r: Record<string, any>) => {
+    const label = r.is_base ? 'la préparation de base' : 'la recette';
+    if (confirm(`Supprimer ${label} « ${r.name as string} » ?\n\nCette action est définitive.`)) {
+      deleteMutation.mutate(r.id as string);
+    }
+  };
+
+  // Distingue « le référentiel est vide » de « les filtres ne renvoient rien » :
+  // le message et l'action utile ne sont pas les mêmes.
+  const hasAnyInTab = activeTab === 'base' ? baseCount > 0 : productCount > 0;
+  const emptyState = hasAnyInTab
+    ? { title: 'Aucun résultat', hint: 'Aucune fiche ne correspond aux filtres actifs.', action: 'clear' as const }
+    : {
+        title: activeTab === 'base' ? 'Aucune préparation de base' : 'Aucune recette produit fini',
+        hint: activeTab === 'base'
+          ? 'Les préparations de base (pâtes, crèmes, garnitures) sont les briques réutilisées par les produits finis.'
+          : 'Une recette produit fini se compose de préparations de base et d’ingrédients, format par format.',
+        action: 'create' as const,
+      };
+
+  const EmptyState = () => (
+    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+      <BookOpen size={44} style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
+      <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>{emptyState.title}</p>
+      <p style={{ fontSize: '0.8125rem', marginTop: 4, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>{emptyState.hint}</p>
+      <div style={{ marginTop: '1rem' }}>
+        {emptyState.action === 'create' ? (
+          <button onClick={openCreate} className="odoo-btn-primary"><Plus size={14} /> Créer une fiche</button>
+        ) : (
+          <button onClick={() => { setSearch(''); setCategoryFilter(''); }} className="odoo-btn-secondary">
+            Réinitialiser les filtres
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="odoo-scope">
       {/* ══════ CONTROL BAR ══════ */}
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Recettes</span>
+          <span>Fiches techniques</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
             {activeTab === 'contenants' ? 'Formats de production'
@@ -306,7 +360,13 @@ export default function RecipesPage() {
               : 'Recettes produits finis'}
           </span>
         </div>
-        {activeTab !== 'contenants' && (
+        {/* L'onglet Formats gère son propre référentiel : le bouton reste dans la barre
+            de contrôle comme pour les deux autres onglets, mais pilote son formulaire. */}
+        {activeTab === 'contenants' ? (
+          <button onClick={() => setCreatingContenant(true)} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau format
+          </button>
+        ) : (
           <button onClick={openCreate} className="odoo-btn-primary">
             <Plus size={14} /> Nouveau
           </button>
@@ -349,28 +409,34 @@ export default function RecipesPage() {
       </div>
 
       {/* ══════ TABS ══════ */}
+      {/* Ordre = flux métier : on compose un produit fini à partir de préparations de
+          base, elles-mêmes coulées dans des formats. Les filtres sont remis à zéro au
+          changement d'onglet : une catégorie restée active donnait une liste vide
+          inexpliquée sur l'onglet d'arrivée. */}
       <div className="odoo-tabs">
-        <button onClick={() => { setActiveTab('contenants'); setSearch(''); }}
-          className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
-          <Package size={13} /> Formats de production
-        </button>
-        <button onClick={() => { setActiveTab('base'); setSearch(''); }}
-          className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
-          <Layers size={13} /> Préparations de base
-          {baseCount > 0 && (
-            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{baseCount}</span>
-          )}
-        </button>
-        <button onClick={() => { setActiveTab('product'); setSearch(''); }}
+        <button onClick={() => switchTab('product')}
           className={`odoo-tab ${activeTab === 'product' ? 'active' : ''}`}>
           <ChefHat size={13} /> Recettes produits finis
           {productCount > 0 && (
             <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{productCount}</span>
           )}
         </button>
+        <button onClick={() => switchTab('base')}
+          className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
+          <Layers size={13} /> Préparations de base
+          {baseCount > 0 && (
+            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{baseCount}</span>
+          )}
+        </button>
+        <button onClick={() => switchTab('contenants')}
+          className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
+          <Package size={13} /> Formats de production
+        </button>
       </div>
 
-      {activeTab === 'contenants' ? <div style={{ padding: '1rem' }}><ContenantsPage /></div> : <>
+      {activeTab === 'contenants' ? (
+        <ContenantsPage creating={creatingContenant} onCreatingChange={setCreatingContenant} />
+      ) : <>
       {/* ══════ SEARCH PANEL ══════ */}
       <div className="odoo-search-panel">
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
@@ -410,13 +476,7 @@ export default function RecipesPage() {
         </div>
       ) : viewMode === 'grid' ? (
         /* ═══ GRID View (kanban Odoo) ═══ */
-        sortedFiltered.length === 0 ? (
-          <div style={{ padding: '5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <BookOpen size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucune recette trouvée</p>
-            <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Essayez de modifier vos filtres</p>
-          </div>
-        ) : (
+        sortedFiltered.length === 0 ? <EmptyState /> : (
         <div className="odoo-kanban">
           <div className="odoo-kanban-grid">
             {sortedFiltered.map((r: Record<string, any>) => {
@@ -457,12 +517,12 @@ export default function RecipesPage() {
                     <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--theme-accent)' }}>
                       {totalCost.toFixed(2)}
                     </span>
-                    <span className="odoo-kanban-card-stock-unit">DH coût total</span>
+                    <span className="odoo-kanban-card-stock-unit">DH coût matière</span>
                   </div>
                   <div className="odoo-kanban-card-split">
                     <span>Rendement <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
                     <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
-                    <span>Coût/u. <strong>{costPerUnit.toFixed(2)} DH</strong></span>
+                    <span>Coût mat./u. <strong>{costPerUnit.toFixed(2)} DH</strong></span>
                   </div>
                   <div className="odoo-kanban-card-footer">
                     <span>
@@ -473,8 +533,9 @@ export default function RecipesPage() {
                       )}
                     </span>
                     {!r.is_base && price > 0 && (
-                      <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}>
-                        Marge {margin.toFixed(0)}%
+                      <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}
+                        title="Marge sur coût matière — hors main d'œuvre, énergie et frais de structure.">
+                        Marge mat. {margin.toFixed(0)}%
                       </span>
                     )}
                   </div>
@@ -495,17 +556,22 @@ export default function RecipesPage() {
                 <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Coût total" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Coût/u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Marge" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                {/* Ces colonnes viennent de v_recipe_total_cost = matière seule
+                    (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
+                    frais de structure ne sont ajoutés que dans l'éditeur de composition.
+                    Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
+                <SortHeader label="Coût matière" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />
+                <SortHeader label="Coût mat./u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  title="Coût matière rapporté à une unité produite." />
+                <SortHeader label="Marge mat." sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  title="Marge sur coût matière — majorée par rapport à la marge réelle, qui déduit aussi main d'œuvre, énergie et structure (voir l'éditeur de composition)." />
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {sortedFiltered.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                  Aucune recette trouvée
-                </td></tr>
+                <tr><td colSpan={9} style={{ padding: 0 }}><EmptyState /></td></tr>
               ) : sortedFiltered.map((r: Record<string, any>) => {
                 const isComposeRow = r.mode_cout === 'compose';
                 const totalCost = parseFloat(r.total_cost as string || '0');
@@ -576,17 +642,30 @@ export default function RecipesPage() {
                         </span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
+                    {/* Produit fini : « Voir » et « Modifier » menaient tous deux à
+                        l'éditeur de composition — deux boutons pour une seule action.
+                        Une seule entrée y mène désormais ; la base garde consultation
+                        (modal) et édition (formulaire), qui sont bien distinctes. */}
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
-                          className="odoo-pager-btn" title="Voir">
-                          <Eye size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); editRecipe(r); }}
-                          className="odoo-pager-btn" title="Modifier">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => { if (confirm('Supprimer cette recette ?')) deleteMutation.mutate(r.id as string); }}
+                        {r.is_base ? (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
+                              className="odoo-pager-btn" title="Consulter la fiche">
+                              <Eye size={13} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); editRecipe(r); }}
+                              className="odoo-pager-btn" title="Modifier la fiche">
+                              <Pencil size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
+                            className="odoo-pager-btn" title="Ouvrir la composition">
+                            <Layers size={13} />
+                          </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
                           className="odoo-pager-btn" title="Supprimer"
                           style={{ color: '#dc3545' }}>
                           <Trash2 size={13} />

@@ -46,6 +46,16 @@ function extractErr(err: unknown): string {
 }
 const np = (s: string): number | null => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
 
+/** Champs editables hors lignes de composition — sert a la detection de modifications. */
+interface EditableFields {
+  rendement: string; parts: string; mult: string; tauxMO: string; moMin: string;
+  energie: string; structPct: string; perte: string; compoParPiece: boolean;
+}
+/** Empreinte stable de l'etat editable (lignes + champs), comparee a la reference. */
+function signature(rows: Row[], f: EditableFields): string {
+  return JSON.stringify([rows.map((r) => [r.role, r.type, r.sourceId, r.quantite, r.unite]), f]);
+}
+
 function SourcePicker({ options, value, onPick }: {
   options: SourceOpt[]; value: SourceOpt | null; onPick: (o: SourceOpt) => void;
 }) {
@@ -66,7 +76,7 @@ function SourcePicker({ options, value, onPick }: {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((v) => !v)}
-        className="h-8 w-full px-2.5 bg-white border border-gray-200 rounded-md text-sm text-left flex items-center justify-between gap-1 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300">
+        className="h-8 w-full px-2.5 bg-white border border-gray-200 rounded-md text-sm text-left flex items-center justify-between gap-1 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400">
         <span className={`truncate ${value ? 'text-gray-800' : 'text-gray-400'}`}>{value ? value.name : 'Choisir un composant…'}</span>
         <ChevronDown size={14} className="text-gray-400 shrink-0" />
       </button>
@@ -82,14 +92,14 @@ function SourcePicker({ options, value, onPick }: {
           {recipes.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] uppercase text-gray-400">Recettes de base</div>}
           {recipes.map((o) => (
             <button key={`recipe:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-amber-50 flex justify-between gap-2">
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
               <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.cost.toFixed(2)} DH/{o.unit}</span>
             </button>
           ))}
           {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] uppercase text-gray-400">Ingrédients</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-amber-50 flex justify-between gap-2">
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
               <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.cost.toFixed(2)} DH/{o.unit}</span>
             </button>
           ))}
@@ -135,7 +145,24 @@ function SubTree({ recipeId, depth }: { recipeId: string; depth: number }) {
   return <div className="bg-gray-50/60">{data.map((c, i) => <ChildRow key={`${c.type}:${c.source_id}:${i}`} child={c} depth={depth} />)}</div>;
 }
 
-export interface FormatKpi { contenantNom: string | null; rendement: number; coutPiece: number; prix: number; margePct: number; }
+/**
+ * KPI du format actif, remontes a la page parente pour le bandeau d'en-tete.
+ *
+ * `coutMatiere` et `coutProd` sont TOUS LES DEUX exposes volontairement : le
+ * bandeau affichait auparavant le cout matiere sous le libelle « Coût / pièce »
+ * a cote d'une marge calculee, elle, sur le cout de production (matiere + MO +
+ * energie + structure). Les trois chiffres du bandeau ne se recoupaient donc pas
+ * — (prix − cout) / prix ne retombait pas sur la marge affichee. La marge doit
+ * rester alignee sur `coutProd`, seul cout comparable au prix de vente.
+ */
+export interface FormatKpi {
+  contenantNom: string | null;
+  rendement: number;
+  coutMatiere: number;
+  coutProd: number;
+  prix: number;
+  margePct: number;
+}
 
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
   const qc = useQueryClient();
@@ -145,6 +172,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // « absent » et rebascule sur le format par défaut → la sauvegarde repartirait
   // sur l'ancien cadre, qui se retrouverait écrasé).
   const justAddedRef = useRef<string | null>(null);
+  /** Empreinte du dernier etat enregistre, pour detecter les modifications en cours. */
+  const baselineRef = useRef<string>('');
   const [rows, setRows] = useState<Row[]>([]);
   const [rendement, setRendement] = useState('');
   const [parts, setParts] = useState('');
@@ -211,25 +240,66 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // « Annuler » pour rétablir le dernier état enregistré (annule les modifs en cours).
   const applyData = useCallback(() => {
     if (!data) return;
-    setRows(data.components.map((c) => ({
+    const f = data.format;
+    const nextRows: Row[] = data.components.map((c) => ({
       key: newKey(), role: c.role ?? '', type: c.source_type,
       sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? '',
       quantite: parseFloat(c.quantite).toString(), unite: c.unite,
-    })));
-    const f = data.format;
-    setRendement(f.nb_par_defaut != null ? String(f.nb_par_defaut) : '');
-    setParts(f.nb_parts != null ? String(f.nb_parts) : '');
+    }));
+    const nextFields: EditableFields = {
+      rendement: f.nb_par_defaut != null ? String(f.nb_par_defaut) : '',
+      parts: f.nb_parts != null ? String(f.nb_parts) : '',
+      mult: f.margin_multiplier != null ? parseFloat(f.margin_multiplier).toString() : '3',
+      tauxMO: f.taux_main_oeuvre_dh_h != null ? parseFloat(f.taux_main_oeuvre_dh_h).toString() : '',
+      moMin: f.main_oeuvre_min != null ? String(f.main_oeuvre_min) : '',
+      energie: f.cout_energie_fournee != null ? parseFloat(f.cout_energie_fournee).toString() : '',
+      structPct: f.taux_frais_structure_pct != null ? parseFloat(f.taux_frais_structure_pct).toString() : '',
+      perte: f.perte_standard_pct != null && parseFloat(f.perte_standard_pct) > 0 ? parseFloat(f.perte_standard_pct).toString() : '',
+      compoParPiece: f.compo_par_piece === true,
+    };
+    setRows(nextRows);
     setShowParts((f.nb_parts ?? 1) > 1);
-    setMult(f.margin_multiplier != null ? parseFloat(f.margin_multiplier).toString() : '3');
-    setTauxMO(f.taux_main_oeuvre_dh_h != null ? parseFloat(f.taux_main_oeuvre_dh_h).toString() : '');
-    setMoMin(f.main_oeuvre_min != null ? String(f.main_oeuvre_min) : '');
-    setEnergie(f.cout_energie_fournee != null ? parseFloat(f.cout_energie_fournee).toString() : '');
-    setStructPct(f.taux_frais_structure_pct != null ? parseFloat(f.taux_frais_structure_pct).toString() : '');
-    setPerte(f.perte_standard_pct != null && parseFloat(f.perte_standard_pct) > 0 ? parseFloat(f.perte_standard_pct).toString() : '');
-    setCompoParPiece(f.compo_par_piece === true);
+    setRendement(nextFields.rendement);
+    setParts(nextFields.parts);
+    setMult(nextFields.mult);
+    setTauxMO(nextFields.tauxMO);
+    setMoMin(nextFields.moMin);
+    setEnergie(nextFields.energie);
+    setStructPct(nextFields.structPct);
+    setPerte(nextFields.perte);
+    setCompoParPiece(nextFields.compoParPiece);
     setDureeEtapes(f.duree_etapes_min != null ? parseFloat(f.duree_etapes_min) : 0);
+    // Reference pour la detection de modifications non enregistrees : on la calcule
+    // depuis les valeurs qu'on vient de poser, pas depuis le state (encore non commit).
+    baselineRef.current = signature(nextRows, nextFields);
   }, [data]);
   useEffect(() => { applyData(); }, [applyData]);
+
+  const currentSig = signature(rows, { rendement, parts, mult, tauxMO, moMin, energie, structPct, perte, compoParPiece });
+  const isDirty = !!data && baselineRef.current !== '' && currentSig !== baselineRef.current;
+
+  // Filet de securite navigateur (fermeture d'onglet / rechargement). La navigation
+  // interne est couverte par les gardes explicites sur « Annuler » et le changement
+  // de format, ou l'on peut afficher un message utile.
+  useEffect(() => {
+    if (!isDirty) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [isDirty]);
+
+  /** Changer de format recharge `rows` : sans garde, la saisie en cours disparaissait. */
+  const switchFormat = (id: string) => {
+    if (id === formatId) return;
+    if (isDirty && !confirm('Modifications non enregistrées sur ce format.\nChanger de format les abandonnera. Continuer ?')) return;
+    setFormatId(id);
+  };
+
+  /** Sans onCancel, « Annuler » rétablit le dernier état enregistré au lieu de quitter. */
+  const handleCancel = () => {
+    if (isDirty && !confirm('Abandonner les modifications non enregistrées ?')) return;
+    if (onCancel) onCancel(); else applyData();
+  };
 
   const setRow = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const addRow = (role = '') => setRows((rs) => [...rs, { key: newKey(), role, type: '', sourceId: '', quantite: '', unite: 'g' }]);
@@ -262,8 +332,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const aberrantCount = rows.filter(isAberrant).length;
 
   // Detection d'une conversion d'unite fautive au niveau ligne (miroir de la
-  // fonction SQL fn_unit_conv_ok, mig 260). Alerte en direct sans attendre la
-  // sauvegarde ; la vue serveur reste la source de verite au repos.
+  // fonction SQL fn_unit_conv_ok, mig 260). Sert a alerter en direct sans
+  // attendre la sauvegarde ; la vue serveur reste la source de verite au repos.
   //   - meme unite ou meme famille (g/kg/mg, ml/cl/dl/l) : toujours OK
   //   - poids↔volume : OK uniquement pour un ingredient avec densite renseignee
   //   - tout autre couple (`unit` face a `kg`, etc.) : fallback silencieux → KO
@@ -282,13 +352,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const fFam = family(from), tFam = family(to);
     if (fFam === 'other' || tFam === 'other') return true;   // ex. 'unit' ↔ 'kg'
     if (fFam === tFam) return false;                          // meme famille
-    // Croisement poids↔volume : valide si l'ingredient a une densite renseignee.
+    // Croisement poids↔volume : validé si l'ingredient a une densite
     if (src.type === 'ingredient') {
       const raw = (sources?.ingredients.find((i) => i.id === src.id)?.densite_kg_l) ?? null;
       const dens = raw != null && raw !== '' ? parseFloat(raw) : NaN;
       return !Number.isFinite(dens) || dens <= 0;
     }
-    // Sous-recette : pas de densite modelisee → toujours suspect en poids↔volume.
+    // Sous-recette : pas de densite modelisee → toujours suspect en poids↔volume
     return true;
   };
   const badConversionCount = rows.filter(isBadConversion).length;
@@ -320,6 +390,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     };
   }, [coutMatiere, compoParPiece, rendementNum, partsNum, moMin, dureeEtapes, tauxMO, energie, structPct, mult]);
   const coutFournee = fin.coutProd * rendementNum;
+  // Seuils de marge alignes sur la liste des fiches et le bandeau KPI : la meme
+  // recette ne doit pas etre « verte » ici et « rouge » ailleurs.
+  const margeTileStyle = fin.margePct >= 50
+    ? { c: 'border-green-200 bg-green-50', t: 'text-green-700', vt: 'text-green-800' }
+    : fin.margePct >= 30
+      ? { c: 'border-amber-200 bg-amber-50', t: 'text-amber-700', vt: 'text-amber-800' }
+      : { c: 'border-red-200 bg-red-50', t: 'text-red-700', vt: 'text-red-800' };
 
   // Remonte la finance du format actif au parent (en-tête du modal — Lot 4).
   const onFinanceRef = useRef(onFinance);
@@ -328,9 +405,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     if (!data?.format) return;
     onFinanceRef.current?.({
       contenantNom: data.format.contenant_nom,
-      rendement: rendementNum, coutPiece: fin.matierePiece, prix: fin.prix, margePct: fin.margePct,
+      rendement: rendementNum,
+      coutMatiere: fin.matierePiece, coutProd: fin.coutProd,
+      prix: fin.prix, margePct: fin.margePct,
     });
-  }, [data?.format, rendementNum, fin.matierePiece, fin.prix, fin.margePct]);
+  }, [data?.format, rendementNum, fin.matierePiece, fin.coutProd, fin.prix, fin.margePct]);
   useEffect(() => () => onFinanceRef.current?.(null), []);
 
   // Copie la composition d'un AUTRE format dans le format courant (non sauvegardé :
@@ -449,7 +528,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </button>
             ) : <span className="block w-[15px]" />}
           </div>
-          <select className={`h-8 rounded-md text-xs font-medium px-2 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-200 ${roleCls}`}
+          <select className={`h-8 rounded-md text-xs font-medium px-2 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 ${roleCls}`}
             value={r.role} onChange={(e) => setRow(r.key, { role: e.target.value })} title="Rôle du composant">
             <option value="">Sans rôle</option>
             {roles.map((ro) => <option key={ro.code} value={ro.code}>{ro.label}</option>)}
@@ -472,7 +551,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           </div>
           <div>
             <input type="number" step="any" min="0"
-              className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-blue-100 focus:border-blue-300'}`}
+              className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
             {pp != null ? (
               <div className={`text-[10px] mt-0.5 text-right ${pp >= 1 ? 'text-red-500' : 'text-gray-400'}`} title="Fournées de la recette de base consommées par pièce">
@@ -485,7 +564,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             ) : null}
           </div>
-          <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+          <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })}>
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
@@ -523,11 +602,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         {formats.map((ft) => {
           const bad = (ft.bad_conversions_count ?? 0) > 0;
           return (
-          <button key={ft.id} type="button" onClick={() => setFormatId(ft.id)}
+          <button key={ft.id} type="button" onClick={() => switchFormat(ft.id)}
             title={bad ? `${ft.bad_conversions_count} composant(s) avec conversion d'unité douteuse — coût peu fiable` : undefined}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${ft.id === formatId ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
-            <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-blue-100' : 'text-gray-400'}>×{ft.nb_par_defaut}</span>
-            {ft.is_default && <span className={`text-[10px] ${ft.id === formatId ? 'text-blue-100' : 'text-gray-400'}`}>(défaut)</span>}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${ft.id === formatId ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
+            <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}>×{ft.nb_par_defaut}</span>
+            {ft.is_default && <span className={`text-[10px] ${ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}`}>(défaut)</span>}
             {bad && <AlertTriangle size={12} className={ft.id === formatId ? 'text-amber-100' : 'text-amber-500'} />}
           </button>
           );
@@ -579,7 +658,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               {(() => {
                 const [bv, bu] = splitW(poidsBrutG);
                 const [cv, cu] = splitW(poidsCuitG);
-                const cell = 'h-7 w-full px-2 bg-white border border-gray-200 rounded-md text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300';
+                const cell = 'h-7 w-full px-2 bg-white border border-gray-200 rounded-md text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
                 const rowCls = 'grid grid-cols-[1fr_52px_26px] items-center gap-1.5 py-1';
                 const lbl = 'text-sm text-gray-600 whitespace-nowrap';
                 const unit = 'text-xs text-gray-400 whitespace-nowrap';
@@ -599,7 +678,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                     ) : (
                       <div className="py-1">
                         <button type="button" onClick={() => setShowParts(true)}
-                          className="text-xs text-blue-600 hover:text-blue-700" title="Pour un produit coupé en portions (entremets, tarte…)">
+                          className="text-xs text-primary-700 hover:text-primary-800" title="Pour un produit coupé en portions (entremets, tarte…)">
                           + Vendu à la part
                         </button>
                       </div>
@@ -656,10 +735,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
                 <button type="button" onClick={() => setCompoParPiece(false)}
                   title="Quantités pour toute la fournée (cadre/plaque découpé)"
-                  className={`px-3 py-1.5 ${!compoParPiece ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par fournée (lot)</button>
+                  className={`px-3 py-1.5 ${!compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par fournée (lot)</button>
                 <button type="button" onClick={() => setCompoParPiece(true)}
                   title="Quantités pour une seule pièce (entremets individuel, monoportion…)"
-                  className={`px-3 py-1.5 border-l border-gray-200 ${compoParPiece ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par pièce (unité)</button>
+                  className={`px-3 py-1.5 border-l border-gray-200 ${compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par pièce (unité)</button>
               </div>
             </div>
             <div className="text-[11px] text-gray-400 text-right mb-2">
@@ -679,7 +758,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <div className="px-3 py-8 text-center text-sm text-gray-400 border-t border-gray-100">Aucun composant pour ce format.</div>
               )}
               <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 flex-wrap">
-                <button type="button" onClick={() => addRow('')} className="text-sm font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
+                <button type="button" onClick={() => addRow('')} className="text-sm font-medium text-primary-700 hover:text-primary-800 inline-flex items-center gap-1">
                   <Plus size={15} /> Ajouter un composant
                 </button>
                 {formats.filter((ft) => ft.id !== formatId).length > 0 && (
@@ -702,7 +781,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {/* Frais indirects & multiplicateur */}
             <div className="mt-5 rounded-lg border border-gray-200 overflow-hidden">
               <div className="flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-gray-700 bg-gray-50 border-b border-gray-200">
-                <SlidersHorizontal size={14} className="text-blue-600" /> Frais indirects &amp; prix de vente
+                <SlidersHorizontal size={14} className="text-primary-600" /> Frais indirects &amp; prix de vente
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-3">
                 {[
@@ -714,7 +793,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 ].map((fld) => (
                   <label key={fld.lbl} className="block">
                     <span className="text-[11px] text-gray-500">{fld.lbl}</span>
-                    <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300">
+                    <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400">
                       <input type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}
                         className="h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none" placeholder={fld.ph} />
                       <span className="text-[11px] text-gray-400 shrink-0">{fld.sfx}</span>
@@ -724,19 +803,22 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             </div>
 
-            {/* Panneau financier */}
+            {/* Panneau financier — lecture de gauche à droite : les 3 composantes du
+                coût, puis leur somme, puis le prix qui en découle, puis la marge.
+                Les 3 premières tuiles restent neutres pour que l'œil aille aux
+                trois dernières, qui sont les chiffres de décision. */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mt-4">
               {[
                 { l: 'Matière / pièce', v: dh(fin.matierePiece), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
                 { l: 'MO + énergie', v: dh(fin.moPiece + fin.energiePiece), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
                 { l: 'Structure', v: dh(fin.structP), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
-                { l: 'Coût production', v: dh(fin.coutProd), c: 'border-blue-200 bg-blue-50', t: 'text-blue-700', vt: 'text-blue-800' },
-                { l: 'Prix vente HT', v: dh(fin.prix), c: 'border-green-200 bg-green-50', t: 'text-green-700', vt: 'text-green-800' },
-                { l: 'Marge brute', v: `${dh(fin.marge)} (${Math.round(fin.margePct)}%)`, c: 'border-amber-200 bg-amber-50', t: 'text-amber-700', vt: 'text-amber-800' },
+                { l: 'Coût production', v: dh(fin.coutProd), c: 'border-gray-300 bg-white', t: 'text-gray-600', vt: 'text-gray-900', strong: true },
+                { l: 'Prix vente HT', v: dh(fin.prix), c: 'border-primary-300 bg-primary-50', t: 'text-primary-700', vt: 'text-primary-800', strong: true },
+                { l: 'Marge brute', v: `${dh(fin.marge)} (${Math.round(fin.margePct)}%)`, ...margeTileStyle, strong: true },
               ].map((k) => (
                 <div key={k.l} className={`rounded-lg border px-3 py-2.5 ${k.c}`}>
                   <div className={`text-[11px] ${k.t}`}>{k.l}</div>
-                  <div className={`text-base font-medium tabular-nums mt-0.5 ${k.vt}`}>{k.v}</div>
+                  <div className={`tabular-nums mt-0.5 ${k.strong ? 'text-base font-semibold' : 'text-base font-medium'} ${k.vt}`}>{k.v}</div>
                 </div>
               ))}
             </div>
@@ -767,11 +849,20 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 Coût/fournée : <strong>{dh(coutFournee)}</strong>.
               </p>
               <div className="inline-flex items-center gap-2">
-                <button type="button" onClick={() => (onCancel ? onCancel() : applyData())} disabled={saveMut.isPending}
+                {isDirty && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"
+                    title="Les chiffres ci-dessus sont recalculés en direct, mais rien n'est encore enregistré.">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    Modifications non enregistrées
+                  </span>
+                )}
+                <button type="button" onClick={handleCancel} disabled={saveMut.isPending}
                   className="odoo-btn-secondary inline-flex items-center gap-1" title="Annuler les modifications et quitter">
                   <X size={15} /> Annuler
                 </button>
-                <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="odoo-btn-primary inline-flex items-center gap-1">
+                <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !isDirty}
+                  className="odoo-btn-primary inline-flex items-center gap-1"
+                  title={isDirty ? 'Enregistrer la composition et les paramètres financiers' : 'Aucune modification à enregistrer'}>
                   <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
               </div>
@@ -881,7 +972,7 @@ function PosLinkPanel({
                 </span>
               )}
               <button type="button" onClick={() => setPicking(true)}
-                className="text-xs text-blue-700 hover:text-blue-800 inline-flex items-center gap-1">
+                className="text-xs text-primary-700 hover:text-primary-800 inline-flex items-center gap-1">
                 <Link2 size={12} /> {posProductId ? 'Changer' : 'Lier un produit'}
               </button>
             </div>
