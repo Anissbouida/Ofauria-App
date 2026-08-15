@@ -784,10 +784,9 @@ function printPassationJournee(
   type Row = { name: string; theo: number };
   const bySection: Record<string, Record<string, Row[]>> = {};
   for (const l of lines) {
-    // Entrée de stock : le Reçu confirmé s'il est saisi, sinon l'Appro planifié
-    // (certains magasins ne confirment pas le Reçu à la passation de 14h).
-    const entree = num(l.recu_qty) > 0 ? num(l.recu_qty) : num(l.appro_qty);
-    const dispo = num(l.report_veille_qty) + entree;
+    // Reste théorique = Ouverture (reste veille / comptage de passation) + Reçu
+    // − Vendu. JAMAIS l'Appro : ce qui compte c'est le stock réellement entré.
+    const dispo = num(l.report_veille_qty) + num(l.recu_qty);
     // On liste tout produit qui a eu du stock OU des ventes (rien masqué).
     if (dispo <= 0 && num(l.vendu_qty) <= 0) continue;
     const theo = Math.max(dispo - num(l.vendu_qty), 0);
@@ -2258,7 +2257,7 @@ function DayView() {
           {prefillResteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Scale size={14} />} Reste théorique
         </button>
         <button className="odoo-btn-secondary" disabled={!day}
-          title="Imprime la fiche de passation du shift affiché : reste théorique (Ouverture + Reçu/Appro − Vendu) + colonne Corrigé à valider physiquement, groupé par famille avec darija."
+          title="Imprime la fiche de passation du shift affiché : reste théorique (Ouverture + Reçu − Vendu) + colonne Corrigé à valider physiquement, groupé par famille avec darija."
           onClick={() => day && printPassationJournee(lines, day.business_date, darijaOf)}>
           <Printer size={14} /> Fiche de passation
         </button>
