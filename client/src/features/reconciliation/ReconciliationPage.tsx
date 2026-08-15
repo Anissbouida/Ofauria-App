@@ -233,7 +233,6 @@ th,td{border:1px solid #444;padding:4px 7px;font-size:10.5pt;vertical-align:midd
 th{background:#e0e0e0;text-align:center;font-size:10pt;font-weight:700;text-transform:uppercase}
 tbody tr:nth-child(even) td{background:#f7f7f7}
 tbody tr.cat-row td{background:#d0d0d0;font-weight:700;font-size:10pt;text-transform:uppercase;letter-spacing:0.3px;padding:5px 7px;border-bottom:2px solid #888;text-align:center}
-tbody tr.section-row td{background:#222;color:#fff;font-weight:700;font-size:11pt;text-transform:uppercase;letter-spacing:1px;padding:6px 7px;text-align:center}
 td.qty{text-align:center;font-weight:bold;font-size:13pt}
 td.darija{color:#222;font-size:12.5pt;font-weight:bold;direction:rtl;text-align:right}
 td:first-child{text-align:left;font-size:11pt}
@@ -802,24 +801,38 @@ function printPassationJournee(
     ...Object.keys(bySection).filter(s => !SECTION_ORDER.includes(s)),
   ];
 
-  let rows = '';
-  let hasAny = false;
+  // Une PAGE par section (comme les bons de la fiche de besoin) : chaque section
+  // = son propre bon avec en-tête, tableau (familles en cat-row) et signatures.
+  const pages: string[] = [];
   for (const section of orderedSections) {
-    let sectionRows = '';
+    let bodyRows = '';
     for (const [cat, catRows] of Object.entries(bySection[section])) {
       if (catRows.length === 0) continue;
-      sectionRows += `<tr class="cat-row"><td colspan="4">${esc(cat)}</td></tr>`;
+      bodyRows += `<tr class="cat-row"><td colspan="4">${esc(cat)}</td></tr>`;
       for (const r of catRows) {
         const dj = darijaOf(r.name);
-        sectionRows += `<tr><td>${esc(r.name)}</td><td class="qty">${esc(fmtQty(r.theo))}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
+        bodyRows += `<tr><td>${esc(r.name)}</td><td class="qty">${esc(fmtQty(r.theo))}</td><td></td><td class="darija">${esc(dj)}</td></tr>`;
       }
     }
-    if (!sectionRows) continue;
-    hasAny = true;
-    rows += `<tr class="section-row"><td colspan="4">${esc(section)}</td></tr>${sectionRows}`;
+    if (!bodyRows) continue;
+    pages.push(`<div class="section">
+  <div class="header">${esc(section)}</div>
+  <div class="sub-header">Passation Midi &rarr; Apr&egrave;s-midi &mdash; reste th&eacute;orique &agrave; valider (Ouverture + Re&ccedil;u &minus; Vendu) &mdash; ${jourSemaine} ${dateFormatted}</div>
+  <div class="copy-tag"><span>Fiche de passation</span></div>
+  <table>
+    <colgroup><col style="width:40%"><col style="width:110px"><col style="width:110px"><col style="width:auto"></colgroup>
+    <thead><tr><th style="text-align:left">PRODUIT</th><th>TH&Eacute;ORIQUE</th><th>CORRIG&Eacute;</th><th style="text-align:right">بالدارجة</th></tr></thead>
+    <tbody>${bodyRows}</tbody>
+    <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td></tr></tfoot>
+  </table>
+  <div class="signatures">
+    <div class="sig-box"><strong>&Eacute;quipe Midi (sortante)</strong><br>Nom :<br>Signature :</div>
+    <div class="sig-box"><strong>&Eacute;quipe Apr&egrave;s-midi (entrante)</strong><br>Nom :<br>Signature :</div>
+  </div>
+</div>`);
   }
 
-  if (!hasAny) { notify.error('Aucun produit à afficher : ni stock (ouverture + reçu/appro) ni vente sur ce shift'); return; }
+  if (pages.length === 0) { notify.error('Aucun produit à afficher : ni stock (ouverture + reçu/appro) ni vente sur ce shift'); return; }
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Fiche de passation — ${dateFormatted}</title>
@@ -828,21 +841,7 @@ function printPassationJournee(
   <button type="button" id="btn-print">&#128424; Imprimer</button>
   <button type="button" id="btn-close" class="secondary">Fermer</button>
 </div>
-<div class="section">
-  <div class="header">Passation Midi &rarr; Apr&egrave;s-midi</div>
-  <div class="sub-header">Reste th&eacute;orique &agrave; valider (Ouverture + Re&ccedil;u &minus; Vendu) &mdash; ${jourSemaine} ${dateFormatted}</div>
-  <div class="copy-tag"><span>Fiche de passation</span></div>
-  <table>
-    <colgroup><col style="width:40%"><col style="width:110px"><col style="width:110px"><col style="width:auto"></colgroup>
-    <thead><tr><th style="text-align:left">PRODUIT</th><th>TH&Eacute;ORIQUE</th><th>CORRIG&Eacute;</th><th style="text-align:right">بالدارجة</th></tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr><td><strong>TOTAL</strong></td><td></td><td></td><td></td></tr></tfoot>
-  </table>
-  <div class="signatures">
-    <div class="sig-box"><strong>&Eacute;quipe Midi (sortante)</strong><br>Nom :<br>Signature :</div>
-    <div class="sig-box"><strong>&Eacute;quipe Apr&egrave;s-midi (entrante)</strong><br>Nom :<br>Signature :</div>
-  </div>
-</div>
+${pages.join('')}
 <script src="${window.location.origin}/print-helper.js"></script>
 </body></html>`;
 
