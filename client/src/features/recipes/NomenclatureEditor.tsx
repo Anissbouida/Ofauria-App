@@ -114,6 +114,9 @@ function SourcePicker({ options, value, onPick }: {
 function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
   const [open, setOpen] = useState(false);
   const cost = child.cout_dh != null ? parseFloat(child.cout_dh) : null;
+  // Audit A7 : la sous-recette a plusieurs formats actifs, le coût affiché est
+  // celui du format par défaut (approximation si les BOM par format divergent).
+  const defaultFmt = child.costed_on_default_format === true;
   return (
     <>
       <div className="flex items-center gap-2 py-1 text-sm text-gray-600 border-t border-gray-50"
@@ -126,6 +129,12 @@ function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
           <CornerDownRight size={13} className="text-gray-300 shrink-0" />
         )}
         <span className="flex-1 truncate">{child.name}</span>
+        {defaultFmt && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 shrink-0"
+            title="Cette recette a plusieurs formats actifs. Le coût affiché est celui du format par défaut (approximation si les compositions par format divergent).">
+            format défaut
+          </span>
+        )}
         <span className="text-gray-400 shrink-0">{parseFloat(child.quantite)} {child.unite}</span>
         <span className="w-20 text-right tabular-nums shrink-0">{dh(cost)}</span>
       </div>

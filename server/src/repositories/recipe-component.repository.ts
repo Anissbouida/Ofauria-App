@@ -82,6 +82,8 @@ function toChild(r: Record<string, unknown>) {
     unite: r.unite,
     cout_dh: r.cout_dh,
     expandable: type === 'recipe', // seules les (sous-)recettes se déplient
+    // Audit A7 : voir findChildren.
+    costed_on_default_format: r.costed_on_default_format === true,
   };
 }
 
@@ -385,11 +387,19 @@ export const recipeComponentRepository = {
   // Privilégie la nomenclature (recipe_components) ; sinon retombe sur le legacy
   // (recipe_ingredients + recipe_sub_recipes) afin que les recettes de base se déplient.
   async findChildren(recipeId: string) {
+    // Audit A7 : costed_on_default_format = true quand le composant est
+    // une sous-recette qui a plusieurs formats actifs. v_recipe_total_cost ne
+    // developpe que la BOM du format is_default (mig 204) : le cout affiche est
+    // donc une approximation si les formats divergent sur les composants. L'UI
+    // ajoute un badge.
     const comps = await db.query(
       `SELECT c.role, c.source_recipe_id, c.source_ingredient_id,
               COALESCE(br.name, ing.name) AS source_name,
               CASE WHEN c.source_recipe_id IS NOT NULL THEN 'recipe' ELSE 'ingredient' END AS source_type,
-              c.quantite, c.unite, c.ordre, cc.cout_dh
+              c.quantite, c.unite, c.ordre, cc.cout_dh,
+              (c.source_recipe_id IS NOT NULL AND
+               (SELECT COUNT(*) FROM recipe_formats f WHERE f.recipe_id = c.source_recipe_id AND f.is_active) > 1
+              ) AS costed_on_default_format
        FROM recipe_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
@@ -405,7 +415,9 @@ export const recipeComponentRepository = {
               NULL::uuid AS source_ingredient_id, 'recipe' AS source_type,
               rsr.quantity AS quantite, sr.yield_unit AS unite, NULL AS role,
               CASE WHEN COALESCE(sr.yield_quantity, 0) > 0
-                   THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh
+                   THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh,
+              ((SELECT COUNT(*) FROM recipe_formats f WHERE f.recipe_id = rsr.sub_recipe_id AND f.is_active) > 1
+              ) AS costed_on_default_format
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = rsr.sub_recipe_id
@@ -417,7 +429,8 @@ export const recipeComponentRepository = {
       `SELECT ing.name AS source_name, NULL::uuid AS source_recipe_id,
               ri.ingredient_id AS source_ingredient_id, 'ingredient' AS source_type,
               ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite, NULL AS role,
-              ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh
+              ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+              false AS costed_on_default_format
        FROM recipe_ingredients ri
        JOIN ingredients ing ON ing.id = ri.ingredient_id
        WHERE ri.recipe_id = $1

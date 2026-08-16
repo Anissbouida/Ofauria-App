@@ -168,6 +168,13 @@ export interface RecipeChild {
   unite: string;
   cout_dh: string | null;
   expandable: boolean;
+  /**
+   * Audit A7 : true quand `type = 'recipe'` ET la sous-recette a plus
+   * d'un format actif. Le coût affiché a alors été calculé sur le format par
+   * défaut (via v_recipe_total_cost), ce qui est une approximation si la BOM
+   * varie selon le format. L'UI ajoute un badge d'avertissement.
+   */
+  costed_on_default_format?: boolean;
 }
 
 export const recipesApi = {
