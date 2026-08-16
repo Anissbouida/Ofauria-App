@@ -39,19 +39,21 @@ export const financeSchema = z.object({
 });
 
 // CRUD format
+// Mig 267 (audit A9) : contenantId nullable — un format d'assemblage n'a pas
+// de moule physique. Le placebo « Assemblage » a ete supprime.
 export const createFormatSchema = z.object({
-  contenantId: z.string().uuid('Contenant invalide'),
+  contenantId: z.string().uuid('Contenant invalide').nullable().optional(),
   nbParDefaut: z.number().int().positive().default(1),
   coutEmballageUnitaire: z.number().nonnegative().default(0),
   nbParts: z.number().int().positive().nullable().optional(),
 });
 
 export const duplicateFormatSchema = z.object({
-  contenantId: z.string().uuid('Contenant invalide'),
+  contenantId: z.string().uuid('Contenant invalide').nullable().optional(),
 });
 
 export const updateFormatSchema = z.object({
-  contenantId: z.string().uuid().optional(),
+  contenantId: z.string().uuid().nullable().optional(),
   nbParDefaut: z.number().int().positive().optional(),
   coutEmballageUnitaire: z.number().nonnegative().optional(),
   nbParts: z.number().int().positive().nullable().optional(),

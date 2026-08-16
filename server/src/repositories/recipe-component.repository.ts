@@ -515,7 +515,7 @@ export const recipeComponentRepository = {
     return r.rows;
   },
 
-  async createFormat(recipeId: string, data: { contenantId: string; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null }, userId?: string | null) {
+  async createFormat(recipeId: string, data: { contenantId?: string | null; nbParDefaut?: number; coutEmballageUnitaire?: number; nbParts?: number | null }, userId?: string | null) {
     const existing = await db.query(
       `SELECT count(*)::int AS n FROM recipe_formats WHERE recipe_id = $1 AND is_active = true`,
       [recipeId]
@@ -538,7 +538,7 @@ export const recipeComponentRepository = {
   // Duplique un format vers un contenant : copie rendement/parts/emballage + toute la
   // BOM. Si un format existe déjà pour ce contenant (même inactif), il est RÉACTIVÉ et
   // sa composition remplacée (pas d'erreur « contenant déjà utilisé »).
-  async duplicateFormat(recipeId: string, fromFormatId: string, contenantId: string, userId?: string | null) {
+  async duplicateFormat(recipeId: string, fromFormatId: string, contenantId: string | null, userId?: string | null) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
