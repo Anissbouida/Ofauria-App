@@ -230,43 +230,58 @@ export const productionCoutRepository = {
       });
     }
 
-    // Cout prevu (mig 261, audit A6b) : sommer le snapshot fige au lancement du
-    // plan (theo_cout_complet_u) plutot que de relire les vues LIVE. Sans ce
-    // snapshot, une modification de recette entre le lancement du plan et le
-    // calcul du cout reel deplaçait le « prevu » et faisait mentir l'ecart.
-    // Repli pour les plans lances AVANT la mig 261 (theo_snapshot_at IS NULL) :
-    // on garde le calcul live d'avant, pour ne pas casser l'historique.
+    // Cout prevu (mig 261, audit A6b + mig 268, audit A10). Deux totaux :
+    //   - prevu           = SUM(theo × planned_quantity)   [mix standard]
+    //   - prevu_mix_reel  = SUM(theo × actual_quantity)    [meme prix theorique
+    //     mais applique au mix effectivement produit ; actual NULL -> planned]
+    // ecart_mix = prevu - prevu_mix_reel isole l'effet du changement de mix.
+    // Le reste (cout_total - prevu_mix_reel) est un ecart prix + pertes.
+    // Repli legacy identique a la mig 261 pour les items sans snapshot.
     const prevuResult = await db.query(
-      `SELECT SUM(
-         CASE
-           WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
-             THEN ppi.theo_cout_complet_u * ppi.planned_quantity
-           WHEN r.yield_quantity > 0
-             THEN COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / r.yield_quantity
-           ELSE 0
-         END
-       ) AS total
+      `SELECT
+         SUM(
+           CASE
+             WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
+               THEN ppi.theo_cout_complet_u * ppi.planned_quantity
+             WHEN r.yield_quantity > 0
+               THEN COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / r.yield_quantity
+             ELSE 0
+           END
+         ) AS total_prevu,
+         SUM(
+           CASE
+             WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
+               THEN ppi.theo_cout_complet_u * COALESCE(ppi.actual_quantity, ppi.planned_quantity)
+             WHEN r.yield_quantity > 0
+               THEN COALESCE(vtc.total_cost, 0) * COALESCE(ppi.actual_quantity, ppi.planned_quantity) / r.yield_quantity
+             ELSE 0
+           END
+         ) AS total_prevu_mix_reel
        FROM production_plan_items ppi
        LEFT JOIN recipes r ON r.product_id = ppi.product_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
     );
-    const coutPrevu = parseFloat(prevuResult.rows[0]?.total) || null;
+    const coutPrevu = parseFloat(prevuResult.rows[0]?.total_prevu) || null;
+    const coutPrevuMixReel = parseFloat(prevuResult.rows[0]?.total_prevu_mix_reel) || null;
+    const ecartMix = coutPrevu != null && coutPrevuMixReel != null
+      ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
+      : null;
     const coutTotal = coutMatieres + coutMO + coutCharges;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
-    // Upsert
+    // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix)
     const result = await db.query(
       `INSERT INTO production_cout_reel
        (plan_id, cout_matieres, cout_main_oeuvre, cout_energie, cout_pertes,
         cout_charges_fixes, detail_charges_fixes,
-        cout_prevu, ecart_pct,
+        cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
         calculated_by, calculated_at)
-       VALUES ($1, $2, $3, 0, 0, $4, $5, $6, $7, $8, $9, '[]', '[]', $10, NOW())
+       VALUES ($1, $2, $3, 0, 0, $4, $5, $6, $7, $11, $12, $8, $9, '[]', '[]', $10, NOW())
        ON CONFLICT (plan_id)
        DO UPDATE SET
          cout_matieres = EXCLUDED.cout_matieres,
@@ -277,6 +292,8 @@ export const productionCoutRepository = {
          detail_charges_fixes = EXCLUDED.detail_charges_fixes,
          cout_prevu = EXCLUDED.cout_prevu,
          ecart_pct = EXCLUDED.ecart_pct,
+         cout_prevu_mix_reel = EXCLUDED.cout_prevu_mix_reel,
+         ecart_mix = EXCLUDED.ecart_mix,
          detail_matieres = EXCLUDED.detail_matieres,
          detail_main_oeuvre = EXCLUDED.detail_main_oeuvre,
          detail_energie = '[]',
@@ -288,7 +305,8 @@ export const productionCoutRepository = {
       [planId, coutMatieres, coutMO, coutCharges,
        JSON.stringify(detailCharges), coutPrevu, ecartPct,
        JSON.stringify(detailMatieres), JSON.stringify(detailMO),
-       userId]
+       userId,
+       coutPrevuMixReel, ecartMix]
     );
     return result.rows[0];
   },

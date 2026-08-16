@@ -28,6 +28,14 @@ interface CoutReel {
   detail_charges_fixes: { label: string; mensuel: Money; part: Money }[];
   cout_prevu: Money;
   ecart_pct: Money;
+  /**
+   * Mig 268 (audit A10) : prevu au mix REELLEMENT produit
+   * (theo × actual_quantity) et ecart de mix isole
+   * = cout_prevu - cout_prevu_mix_reel. Le reste (cout_total -
+   * cout_prevu_mix_reel) est l'ecart prix + pertes.
+   */
+  cout_prevu_mix_reel?: Money;
+  ecart_mix?: Money;
   detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
   detail_main_oeuvre: { employee_id: string; name: string; minutes: Money; hourly_rate: Money; total: Money }[];
   detail_energie: { equipement_id: string; name: string; minutes: Money; cout_horaire: Money; total: Money }[];
@@ -143,6 +151,63 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               <span style={{ fontWeight: 600 }}>{(coutRevient / totalQuantity).toFixed(2)} DH</span>
             </div>
           )}
+
+          {/* Ecart prevu vs reel, decompose (audit A10) : mix vs prix/pertes.
+              N'affiche rien si le prevu n'est pas dispo (recettes sans product_id
+              ou plan lance avant mig 261). */}
+          {cout.cout_prevu != null && toNum(cout.cout_prevu) > 0 && (() => {
+            const prevu = toNum(cout.cout_prevu);
+            const prevuMix = cout.cout_prevu_mix_reel != null ? toNum(cout.cout_prevu_mix_reel) : null;
+            const ecartTot = coutRevient - prevu;
+            const ecartMix = cout.ecart_mix != null ? toNum(cout.ecart_mix)
+              : (prevuMix != null ? prevu - prevuMix : null);
+            const ecartPrix = prevuMix != null ? coutRevient - prevuMix : null;
+            const color = (v: number) => v > 0 ? '#c62828' : v < 0 ? '#2e7d32' : 'var(--theme-text-muted)';
+            const sign = (v: number) => (v > 0 ? '+' : '');
+            return (
+              <div style={{
+                padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)',
+                backgroundColor: 'var(--theme-bg-card)', fontSize: '0.8125rem',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>Coût prévu (mix standard)</span>
+                  <span style={{ fontWeight: 500 }}>{formatDH(prevu)}</span>
+                </div>
+                {prevuMix != null && Math.abs((ecartMix ?? 0)) > 0.01 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
+                    title="Différence due au mix réellement produit (ex : 6 moyens au lieu de 3+3). N'implique aucune sur/sous-consommation de matière — c'est un effet volume par format.">
+                    <span style={{ color: 'var(--theme-text-muted)' }}>Écart de mix</span>
+                    <span style={{ fontWeight: 500, color: color(-(ecartMix ?? 0)) }}>
+                      {sign(-(ecartMix ?? 0))}{(-(ecartMix ?? 0)).toFixed(2)} DH
+                    </span>
+                  </div>
+                )}
+                {prevuMix != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
+                    title="Coût prévu recalculé sur les quantités réellement produites (le mix standard ne compte plus).">
+                    <span style={{ color: 'var(--theme-text-muted)' }}>Prévu au mix réel</span>
+                    <span style={{ fontWeight: 500 }}>{formatDH(prevuMix)}</span>
+                  </div>
+                )}
+                {ecartPrix != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
+                    title="Ce qui reste de l'écart après avoir absorbé le mix : sur/sous-consommation matière + pertes + variation de prix des ingrédients.">
+                    <span style={{ color: 'var(--theme-text-muted)' }}>Écart prix / pertes</span>
+                    <span style={{ fontWeight: 500, color: color(ecartPrix) }}>
+                      {sign(ecartPrix)}{ecartPrix.toFixed(2)} DH
+                    </span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px dashed var(--theme-bg-separator)', fontWeight: 600 }}>
+                  <span>Écart total (Réel − Prévu)</span>
+                  <span style={{ color: color(ecartTot) }}>
+                    {sign(ecartTot)}{ecartTot.toFixed(2)} DH
+                    {' '}({sign(ecartTot)}{prevu > 0 ? ((ecartTot / prevu) * 100).toFixed(1) : '0.0'} %)
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Expandable detail sections */}
           <div className="border-t border-gray-100 divide-y divide-gray-100">
