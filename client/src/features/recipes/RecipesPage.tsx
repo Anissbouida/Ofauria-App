@@ -45,7 +45,7 @@ interface RecipeFormat {
   contenant_nom: string;
   contenant_unite_lancement: string;
   contenant_type: number | null;
-  quantite_par_format_g: string;
+  quantite_par_format: string;
   quantite_par_format_unite: string;
   nb_par_defaut: number;
   cout_emballage_unitaire: string;
@@ -1140,7 +1140,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                       </thead>
                       <tbody>
                         {recipe.formats.map((fmt) => {
-                          const qtyPerFormat = parseFloat(fmt.quantite_par_format_g || '0');
+                          const qtyPerFormat = parseFloat(fmt.quantite_par_format || '0');
                           const unitFmt = fmt.quantite_par_format_unite || 'g';
                           const toGramsFactor = (u: string) => (u === 'kg' || u === 'l') ? 1000 : 1;
                           const nb = fmt.nb_par_defaut;
@@ -1720,7 +1720,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       existingRecipe.formats && existingRecipe.formats.length > 0
         ? existingRecipe.formats.map(f => ({
             contenantId: f.contenant_id,
-            quantiteParFormatG: trimZeros(f.quantite_par_format_g),
+            quantiteParFormatG: trimZeros(f.quantite_par_format),
             quantiteParFormatUnite: f.quantite_par_format_unite || 'g',
             nbParDefaut: String(f.nb_par_defaut),
             coutEmballageUnitaire: parseFloat(f.cout_emballage_unitaire || '0') > 0

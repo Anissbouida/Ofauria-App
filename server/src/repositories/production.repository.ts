@@ -79,7 +79,7 @@ export const productionRepository = {
               br.name as base_recipe_name, br.yield_unit as base_recipe_unit,
               pc.nom as contenant_nom, pc.type_production as contenant_type,
               -- Format de production (recipe_formats) si l'item est multi-format
-              rf.quantite_par_format_g as format_qte_par_unite,
+              rf.quantite_par_format as format_qte_par_unite,
               rf.quantite_par_format_unite as format_unite,
               rf.nb_par_defaut as format_nb_par_defaut,
               fpc.nom as format_nom

@@ -523,7 +523,7 @@ export const recipeComponentRepository = {
     const isDefault = existing.rows[0].n === 0;
     const r = await db.query(
       `INSERT INTO recipe_formats
-         (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite,
+         (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite,
           nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by)
        VALUES ($1, $2, 1, 'g', $3, $4, $5, $6,
                COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $7)
@@ -552,7 +552,7 @@ export const recipeComponentRepository = {
       // Upsert : réactive un format existant (inactif) pour ce contenant, sinon en crée un.
       const ins = await client.query(
         `INSERT INTO recipe_formats
-           (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite,
+           (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite,
             nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by)
          VALUES ($1, $2, 1, 'g', $3, $4, $5, false,
                  COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $6)

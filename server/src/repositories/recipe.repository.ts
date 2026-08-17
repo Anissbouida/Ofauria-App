@@ -54,7 +54,7 @@ export const recipeRepository = {
                   'id', rf.id,
                   'contenant_id', rf.contenant_id,
                   'contenant_nom', pcf.nom,
-                  'quantite_par_format_g', rf.quantite_par_format_g,
+                  'quantite_par_format', rf.quantite_par_format,
                   'quantite_par_format_unite', rf.quantite_par_format_unite,
                   'nb_par_defaut', rf.nb_par_defaut
                 ) ORDER BY rf.ordre, pcf.nom)
@@ -158,7 +158,7 @@ export const recipeRepository = {
 
     // Formats de production : poids, nb, ventilation cout matiere/MO/energie/structure
     const formatsResult = await db.query(
-      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
+      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format, rf.quantite_par_format_unite, rf.nb_par_defaut,
               rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
               rf.prix_vente_unitaire_override, rf.margin_multiplier_override,
               rf.is_default, rf.nb_parts,
@@ -246,7 +246,7 @@ export const recipeRepository = {
     );
 
     const formatsResult = await db.query(
-      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format_g, rf.quantite_par_format_unite, rf.nb_par_defaut,
+      `SELECT rf.id, rf.contenant_id, rf.quantite_par_format, rf.quantite_par_format_unite, rf.nb_par_defaut,
               rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
               pc.nom as contenant_nom, pc.unite_lancement as contenant_unite_lancement,
               pc.type_production as contenant_type,
@@ -420,10 +420,10 @@ export const recipeRepository = {
       if (data.formats && data.formats.length > 0) {
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override)
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
-               quantite_par_format_g = EXCLUDED.quantite_par_format_g,
+               quantite_par_format = EXCLUDED.quantite_par_format,
                quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
                nb_par_defaut = EXCLUDED.nb_par_defaut,
                cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
@@ -734,10 +734,10 @@ export const recipeRepository = {
         // 2. Upsert (insert ou reactive + maj des valeurs)
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format_g, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, is_active)
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, is_active)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
              ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
-               quantite_par_format_g = EXCLUDED.quantite_par_format_g,
+               quantite_par_format = EXCLUDED.quantite_par_format,
                quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
                nb_par_defaut = EXCLUDED.nb_par_defaut,
                cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
