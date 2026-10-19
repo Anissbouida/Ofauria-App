@@ -320,7 +320,14 @@ export const biweeklyPayrollRepository = {
     return r.rows[0];
   },
 
+  /** Supprime une ligne NON payee. Une ligne payee porte une sortie de caisse
+   *  et d'eventuelles retenues d'avance : il faut d'abord annuler le paiement
+   *  (unmarkPaid), sinon la caisse et la compta resteraient orphelines. */
   async delete(id: string) {
-    await db.query('DELETE FROM biweekly_payroll WHERE id = $1', [id]);
+    const r = await db.query('DELETE FROM biweekly_payroll WHERE id = $1 AND paid IS NOT TRUE RETURNING id', [id]);
+    if (r.rowCount === 0) {
+      const exists = await db.query('SELECT 1 FROM biweekly_payroll WHERE id = $1', [id]);
+      if (exists.rowCount) throw new Error('Ligne deja payee : annulez d\'abord le paiement avant de la supprimer');
+    }
   },
 };

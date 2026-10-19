@@ -111,9 +111,9 @@ export const employeeRepository = {
    * Retourne le nombre de lignes supprimees par table pour audit/log.
    */
   async hardDelete(id: string): Promise<{
-    payments: number; payroll: number; weeklyPayroll: number; leaves: number;
-    attendance: number; schedules: number; salaryAdvances: number;
-    productionTempsTravail: number; salesUnlinked: number; employee: number;
+    payments: number; payroll: number; weeklyPayroll: number; biweeklyPayroll: number;
+    leaves: number; attendance: number; schedules: number; salaryAdvances: number;
+    salaryHistory: number; productionTempsTravail: number; salesUnlinked: number; employee: number;
   }> {
     // ─── Pre-validation HORS transaction ───
     // 1. Refuse si des retenues d'avance existent : l'admin doit d'abord
@@ -172,6 +172,11 @@ export const employeeRepository = {
       // etaient OUBLIES avant P1.4 -> FK error sur employe hebdo/avec avance.
       const payroll = await tryQuery('DELETE FROM payroll WHERE employee_id = $1', 'payroll');
       const weeklyPayroll = await tryQuery('DELETE FROM weekly_payroll WHERE employee_id = $1', 'weekly_payroll');
+      // Quinzaine (mig 254) et historique salaire (mig 239, FK ON DELETE
+      // RESTRICT) : oublies jusqu'ici -> le hard delete echouait des que le
+      // salaire avait ete modifie une fois ou que l'employe etait en quinzaine.
+      const biweeklyPayroll = await tryQuery('DELETE FROM biweekly_payroll WHERE employee_id = $1', 'biweekly_payroll');
+      const salaryHistory = await tryQuery('DELETE FROM employee_salary_history WHERE employee_id = $1', 'employee_salary_history');
       const salaryAdvances = await tryQuery('DELETE FROM salary_advances WHERE employee_id = $1', 'salary_advances');
       const leaves = await tryQuery('DELETE FROM leaves WHERE employee_id = $1', 'leaves');
       const attendance = await tryQuery('DELETE FROM attendance WHERE employee_id = $1', 'attendance');
@@ -190,8 +195,8 @@ export const employeeRepository = {
       await client.query('COMMIT');
 
       return {
-        payments: paymentsDeleted, payroll, weeklyPayroll, leaves, attendance,
-        schedules, salaryAdvances, productionTempsTravail, salesUnlinked,
+        payments: paymentsDeleted, payroll, weeklyPayroll, biweeklyPayroll, leaves, attendance,
+        schedules, salaryAdvances, salaryHistory, productionTempsTravail, salesUnlinked,
         employee: empResult.rowCount || 0,
       };
     } catch (err) {
@@ -207,9 +212,9 @@ export const employeeRepository = {
    * delete supprimerait avant que l'admin confirme).
    */
   async countDependencies(id: string): Promise<{
-    payments: number; payroll: number; weeklyPayroll: number; leaves: number;
-    attendance: number; schedules: number; salaryAdvances: number;
-    salaryAdvanceRepayments: number;
+    payments: number; payroll: number; weeklyPayroll: number; biweeklyPayroll: number;
+    leaves: number; attendance: number; schedules: number; salaryAdvances: number;
+    salaryAdvanceRepayments: number; salaryHistory: number;
     productionTempsTravail: number; sales: number;
   }> {
     const q = async (sql: string): Promise<number> => {
@@ -225,7 +230,7 @@ export const employeeRepository = {
     const [
       payments, payroll, weeklyPayroll, leaves, attendance, schedules,
       salaryAdvances, salaryAdvanceRepayments,
-      productionTempsTravail, sales,
+      productionTempsTravail, sales, biweeklyPayroll, salaryHistory,
     ] = await Promise.all([
       q('SELECT COUNT(*)::int AS n FROM payments WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM payroll WHERE employee_id = $1'),
@@ -238,11 +243,26 @@ export const employeeRepository = {
            JOIN salary_advances a ON a.id = sr.advance_id WHERE a.employee_id = $1`),
       q('SELECT COUNT(*)::int AS n FROM production_temps_travail WHERE employee_id = $1'),
       q('SELECT COUNT(*)::int AS n FROM sales WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM biweekly_payroll WHERE employee_id = $1'),
+      q('SELECT COUNT(*)::int AS n FROM employee_salary_history WHERE employee_id = $1'),
     ]);
     return {
-      payments, payroll, weeklyPayroll, leaves, attendance, schedules,
-      salaryAdvances, salaryAdvanceRepayments, productionTempsTravail, sales,
+      payments, payroll, weeklyPayroll, biweeklyPayroll, leaves, attendance, schedules,
+      salaryAdvances, salaryAdvanceRepayments, salaryHistory, productionTempsTravail, sales,
     };
+  },
+
+  /** Historique des changements de salaire / frequence (trigger mig 239), plus recent d'abord. */
+  async salaryHistory(id: string) {
+    const r = await db.query(
+      `SELECT h.*, u.first_name AS changed_by_first_name, u.last_name AS changed_by_last_name
+         FROM employee_salary_history h
+         LEFT JOIN users u ON u.id = h.changed_by
+        WHERE h.employee_id = $1
+        ORDER BY h.changed_at DESC`,
+      [id]
+    );
+    return r.rows;
   },
 };
 
@@ -753,7 +773,13 @@ export const payrollRepository = {
     return result.rows;
   },
 
-  async generate(month: number, year: number) {
+  /**
+   * Genere / regenere les bulletins du mois. Retourne aussi `removed` : les
+   * bulletins NON payes supprimes parce que l'employe n'est plus paye au mois
+   * (passe en hebdo/quinzaine) — l'appelant doit l'afficher, jamais en silence.
+   * storeId : perimetre du gerant (meme regle que la paie hebdo/quinzaine).
+   */
+  async generate(month: number, year: number, storeId?: string): Promise<{ payrolls: Record<string, unknown>[]; removed: Array<{ employee_id: string; first_name: string; last_name: string; pay_frequency: string }> }> {
     // ═══════════════════════════════════════════════════════════
     // Modele de paie marocain — CNSS / AMO / CIMR / IR 2025
     // Conforme aux regles de la CNSS et de la fiscalite marocaine
@@ -827,19 +853,24 @@ export const payrollRepository = {
       `SELECT * FROM employees
         WHERE is_active = true
           AND monthly_salary IS NOT NULL
-          AND COALESCE(pay_frequency, 'monthly') = 'monthly'`
+          AND COALESCE(pay_frequency, 'monthly') = 'monthly'
+          ${storeId ? 'AND (store_id = $1 OR store_id IS NULL)' : ''}`,
+      storeId ? [storeId] : []
     );
 
     // Purge les bulletins generes par erreur pour des employes passes en
-    // hebdo (non payes uniquement — l'historique paye n'est jamais touche).
-    await db.query(
+    // hebdo/quinzaine (non payes uniquement — l'historique paye n'est jamais
+    // touche). Les lignes supprimees sont renvoyees pour etre signalees.
+    const purge = await db.query(
       `DELETE FROM payroll p
         USING employees e
         WHERE e.id = p.employee_id
           AND p.month = $1 AND p.year = $2
           AND p.paid = false
-          AND COALESCE(e.pay_frequency, 'monthly') != 'monthly'`,
-      [month, year]
+          AND COALESCE(e.pay_frequency, 'monthly') != 'monthly'
+          ${storeId ? 'AND (e.store_id = $3 OR e.store_id IS NULL)' : ''}
+        RETURNING p.employee_id, e.first_name, e.last_name, e.pay_frequency`,
+      storeId ? [month, year, storeId] : [month, year]
     );
     const results = [];
 
@@ -956,7 +987,10 @@ export const payrollRepository = {
            nb_dependents = EXCLUDED.nb_dependents,
            alloc_familiales = EXCLUDED.alloc_familiales, taxe_fp = EXCLUDED.taxe_fp,
            total_charges_patron = EXCLUDED.total_charges_patron,
-           net_salary = EXCLUDED.net_salary,
+           -- La prime manuelle (bonuses, saisie via PUT) survit a la
+           -- regeneration : sans ce terme, regenerer effacait la prime du net
+           -- alors que la colonne bonuses l'affichait encore.
+           net_salary = EXCLUDED.net_salary + COALESCE(payroll.bonuses, 0),
            extra_shift_days = EXCLUDED.extra_shift_days,
            extra_shift_amount = EXCLUDED.extra_shift_amount
          WHERE payroll.paid = false
@@ -981,7 +1015,7 @@ export const payrollRepository = {
         if (existing.rows[0]) results.push(existing.rows[0]);
       }
     }
-    return results;
+    return { payrolls: results, removed: purge.rows };
   },
 
   /**

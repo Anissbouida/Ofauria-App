@@ -53,7 +53,7 @@ export const createEmployeeSchema = z.object({
   emergencyContactPhone: z.string().max(50).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   defaultShiftCode: z.string().max(20).nullable().optional(),
-  payFrequency: z.enum(['monthly', 'weekly']).default('monthly'),
+  payFrequency: z.enum(['monthly', 'weekly', 'biweekly']).default('monthly'),
   weeklySalary: nullableNumber((n) => n.nonnegative('Salaire hebdo >= 0')),
   seniorityYears: nullableNumber((n) => n.int().nonnegative()),
   nbDependents: nullableNumber((n) => n.int().min(0).max(20)),
@@ -130,8 +130,19 @@ export const updatePayrollSchema = z.object({
   // paid/paidAt/paymentMethod deliberement absents : passer par POST /pay.
 }).strict('Champ non autorise (paid/paidAt/paymentMethod : utiliser POST /pay)');
 
+// Modes acceptes par les CHECK des tables de paie (payroll / weekly_payroll /
+// biweekly_payroll : cash|bank|check) ET reconnus par le generateur d'ecritures
+// ('bank' -> 5141 BQ). L'ancien enum (bank_transfer|traite) rejetait le
+// « Virement » du client ('bank') et aurait viole le CHECK en base :
+// seul le paiement en especes passait. 'bank_transfer'/'transfer' restent
+// acceptes en entree et normalises en 'bank'.
+const payrollPaymentMethod = z.preprocess(
+  (v) => (v === 'bank_transfer' || v === 'transfer' ? 'bank' : v),
+  z.enum(['cash', 'bank', 'check']),
+);
+
 export const markPaidSchema = z.object({
-  paymentMethod: z.enum(['cash', 'bank_transfer', 'check', 'traite']).default('cash'),
+  paymentMethod: payrollPaymentMethod.default('cash'),
   advanceDeduction: nullableNumber((n) => n.nonnegative()).default(0),
 });
 
@@ -150,6 +161,14 @@ export const updateWeeklyPayrollSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 }).strict('Champ non autorise');
 
+// ─── Biweekly payroll (quinzaine 1-15 / 16-fin) ──────────────────────────
+// periodStart = n'importe quelle date de la quinzaine : bornes recalculees serveur.
+export const generateBiweeklyPayrollSchema = z.object({
+  periodStart: isoDate,
+});
+
+export const updateBiweeklyPayrollSchema = updateWeeklyPayrollSchema;
+
 // ─── Salary advances ─────────────────────────────────────────────────────
 // Note : amount est REQUIS et > 0. Le helper nullableNumber accepte null mais
 // on ajoute un refine pour rejeter null explicitement (une avance sans montant
@@ -158,7 +177,7 @@ export const createAdvanceSchema = z.object({
   employeeId: z.string().uuid('employeeId invalide'),
   amount: nullableNumber((n) => n.positive('Montant > 0 requis'))
     .refine((v) => v !== null && v !== undefined, 'Montant requis'),
-  paymentMethod: z.enum(['cash', 'bank_transfer', 'check']).default('cash'),
+  paymentMethod: payrollPaymentMethod.default('cash'),
   advanceDate: dateStrOrEmpty,
   notes: z.string().max(1000).nullable().optional(),
   monthlyDeduction: nullableNumber((n) => n.positive()),
@@ -166,7 +185,7 @@ export const createAdvanceSchema = z.object({
 
 export const updateAdvanceSchema = z.object({
   amount: nullableNumber((n) => n.positive()),
-  paymentMethod: z.enum(['cash', 'bank_transfer', 'check']).optional(),
+  paymentMethod: payrollPaymentMethod.optional(),
   advanceDate: isoDate.optional(),
   notes: z.string().max(1000).nullable().optional(),
   monthlyDeduction: nullableNumber(),

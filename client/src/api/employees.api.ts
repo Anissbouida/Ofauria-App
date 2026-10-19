@@ -11,6 +11,8 @@ export const employeesApi = {
   hardDelete: (id: string) => api.delete(`/employees/${id}`, { params: { hard: 'true' } }).then(r => r.data.data),
   /** Compte les references vers l'employe (preview avant hard delete). */
   dependencies: (id: string) => api.get(`/employees/${id}/dependencies`).then(r => r.data.data),
+  /** Historique des changements de salaire / frequence (qui, quand, ancien -> nouveau). */
+  salaryHistory: (id: string) => api.get(`/employees/${id}/salary-history`).then(r => r.data.data),
 };
 
 export const schedulesApi = {
@@ -53,7 +55,10 @@ export const leavesApi = {
 
 export const payrollApi = {
   list: (params?: Record<string, string>) => api.get('/payroll', { params }).then(r => r.data.data),
-  generate: (month: number, year: number) => api.post('/payroll/generate', { month, year }).then(r => r.data.data),
+  /** Genere les bulletins du mois. `removed` = bulletins non payes retires
+   *  (employe passe en hebdo/quinzaine) : a signaler a l'utilisateur. */
+  generate: (month: number, year: number) => api.post('/payroll/generate', { month, year })
+    .then(r => ({ payrolls: r.data.data, removed: (r.data.removed ?? []) as Array<{ employee_id: string; first_name: string; last_name: string; pay_frequency: string }> })),
   update: (id: string, data: Record<string, any>) => api.put(`/payroll/${id}`, data).then(r => r.data.data),
   /** advanceDeduction : montant retenu sur les avances en cours (0 = aucune retenue). */
   markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
@@ -88,4 +93,18 @@ export const weeklyPayrollApi = {
   unmarkPaid: (id: string) =>
     api.post(`/weekly-payroll/${id}/unpay`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/weekly-payroll/${id}`),
+};
+
+/** Paie par quinzaine (1-15 / 16-fin de mois), base salaire mensuel / 26. */
+export const biweeklyPayrollApi = {
+  /** periodStart = n'importe quelle date de la quinzaine (bornes recalculees serveur). */
+  list: (periodStart: string) =>
+    api.get('/payroll/biweekly', { params: { periodStart } }).then(r => r.data.data),
+  generate: (periodStart: string) =>
+    api.post('/payroll/biweekly/generate', { periodStart }).then(r => r.data.data),
+  markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
+    api.post(`/payroll/biweekly/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
+  unmarkPaid: (id: string) =>
+    api.post(`/payroll/biweekly/${id}/unpay`).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/payroll/biweekly/${id}`),
 };
