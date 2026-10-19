@@ -143,7 +143,7 @@ export const payrollConfigController = {
         seniorityYears: serviceYears(p.hire_date ? (fr(p.hire_date) as string).split('/').reverse().join('-') : null, end) ?? (p.seniority_years ?? null),
         dependents: num(p.nb_dependents), contract: p.contract_type ? String(p.contract_type).toUpperCase() : null, declared,
       },
-      workedDays: num(p.worked_days), baseDays, absentDays: num(p.absent_days),
+      workedDays: num(p.worked_days), baseDays, absentDays: num(p.absent_days), paidLeaveDays: num(p.paid_leave_days),
       lines: rows,
       grossSalary: num(p.gross_salary) + num(p.deductions),
       totalRetenues: totalRetenues + num(p.deductions),

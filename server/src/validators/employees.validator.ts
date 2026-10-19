@@ -104,8 +104,10 @@ export const bulkAttendanceSchema = z.object({
 // Types de conge : aligne sur le CHECK db (mig 018). `days` n'est pas
 // requis cote client — recalcule serveur depuis start/end pour eviter
 // fraude/fausse comptabilite.
+// 'annual' est le code du referentiel (conge paye) : absent de l'ancien enum,
+// toute demande de conge annuel etait refusee (400). 'paid' = ancien alias.
 export const leaveTypeSchema = z.enum([
-  'paid', 'unpaid', 'sick', 'maternity', 'paternity', 'other',
+  'annual', 'paid', 'unpaid', 'sick', 'maternity', 'paternity', 'exceptional', 'other',
 ]);
 
 export const createLeaveSchema = z.object({
@@ -114,6 +116,8 @@ export const createLeaveSchema = z.object({
   startDate: isoDate,
   endDate: isoDate,
   reason: z.string().max(1000).nullable().optional(),
+  // Admin : autorise un conge anticipe (solde negatif).
+  allowNegative: z.boolean().optional(),
 }).refine(v => v.endDate >= v.startDate, {
   message: 'endDate doit etre >= startDate', path: ['endDate'],
 });
@@ -301,4 +305,16 @@ export const settlePayrollDeclarationSchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100),
   paymentMethod: payrollPaymentMethod.default('bank'),
   paymentDate: isoDate,
+});
+
+// Conges legaux (mig 320)
+export const holidaySchema = z.object({
+  date: isoDate,
+  label: z.string().min(1).max(120),
+  isConfirmed: z.boolean().optional(),
+});
+export const leaveAdjustmentSchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  days: z.coerce.number().min(-60).max(60).refine(v => v !== 0, 'Nombre de jours non nul'),
+  reason: z.string().min(3, 'Motif requis').max(300),
 });

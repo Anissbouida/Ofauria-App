@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
+import { leaveBalanceRepository, loadLeaveConfig } from './leave.repository.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -98,6 +99,7 @@ export const biweeklyPayrollRepository = {
     const r2 = (v: number) => Math.round(v * 100) / 100;
     const results: Array<Record<string, unknown>> = [];
 
+    const leaveCfg = await loadLeaveConfig();
     for (const emp of employeesRes.rows) {
       const monthlySalary = parseFloat(emp.monthly_salary as string);
       const dailyRate = monthlySalary / 26;
@@ -119,8 +121,10 @@ export const biweeklyPayrollRepository = {
         [emp.id, periodStart, periodEnd]
       );
       const a = att.rows[0];
+      // Conges payes approuves (hors jours pointes) : comptes comme travailles.
+      const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, periodStart, periodEnd, leaveCfg);
       // Demi-journee = 0.5 jour paye.
-      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days;
+      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days + paidLeaveDays;
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
       const baseAmount = r2(dailyRate * workedDays);
@@ -130,8 +134,8 @@ export const biweeklyPayrollRepository = {
       const r = await db.query(
         `INSERT INTO biweekly_payroll
            (employee_id, period_start, period_end, base_amount, worked_days, absent_days,
-            overtime_hours, overtime_amount, net_amount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            overtime_hours, overtime_amount, net_amount, paid_leave_days)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (employee_id, period_start) DO UPDATE SET
            period_end = EXCLUDED.period_end,
            base_amount = EXCLUDED.base_amount,
@@ -139,12 +143,19 @@ export const biweeklyPayrollRepository = {
            absent_days = EXCLUDED.absent_days,
            overtime_hours = EXCLUDED.overtime_hours,
            overtime_amount = EXCLUDED.overtime_amount,
-           -- Si paye, on garde le net_amount existant (ne pas modifier le montant deja paye).
-           net_amount = CASE WHEN biweekly_payroll.paid THEN biweekly_payroll.net_amount ELSE EXCLUDED.net_amount END
+           paid_leave_days = EXCLUDED.paid_leave_days,
+           net_amount = EXCLUDED.net_amount
+         -- Ligne payee : intouchable (jours, base et net ont servi a la sortie de
+         -- caisse). Avant, seul le net etait garde et les jours/base changeaient.
+         WHERE biweekly_payroll.paid = false
          RETURNING *`,
-        [emp.id, periodStart, periodEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount]
+        [emp.id, periodStart, periodEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount, paidLeaveDays]
       );
-      results.push(r.rows[0]);
+      if (r.rows[0]) results.push(r.rows[0]);
+      else {
+        const existing = await db.query('SELECT * FROM biweekly_payroll WHERE employee_id = $1 AND period_start = $2', [emp.id, periodStart]);
+        if (existing.rows[0]) results.push(existing.rows[0]);
+      }
     }
     return results;
   },

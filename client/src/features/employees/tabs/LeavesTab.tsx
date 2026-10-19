@@ -1,32 +1,47 @@
 import { useState } from 'react';
+
+const frDate = (raw: unknown) => { const s = isoDate(raw); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, leavesApi } from '../../../api/employees.api';
+import { leavesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
-import { format } from 'date-fns';
 import { Plus, Users, CalendarOff, Check, X, AlertTriangle } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../../utils/api-error';
+import { isoDate } from '../shared';
+import LeaveRequestForm from '../leaves/LeaveRequestForm';
+import LeaveBalancesView from '../leaves/LeaveBalancesView';
+import HolidaysView from '../leaves/HolidaysView';
 
 /* ═══════════════════════ LEAVES TAB ═══════════════════════ */
 export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+  const [view, setView] = useState<'requests' | 'balances' | 'holidays'>('requests');
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'flex-start' }}>
+        <div className="odoo-view-switcher">
+          <button onClick={() => setView('requests')} className={view === 'requests' ? 'active' : ''}>Demandes</button>
+          <button onClick={() => setView('balances')} className={view === 'balances' ? 'active' : ''}>Soldes</button>
+          <button onClick={() => setView('holidays')} className={view === 'holidays' ? 'active' : ''}>Jours fériés</button>
+        </div>
+      </div>
+      {view === 'requests' ? <LeaveRequests queryClient={queryClient} />
+        : view === 'balances' ? <LeaveBalancesView /> : <HolidaysView />}
+    </>
+  );
+}
+
+function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const [showForm, setShowForm] = useState(false);
   const currentYear = new Date().getFullYear();
-  const { entries: leaveTypes, getLabel: getLeaveLabel } = useReferentiel('leave_types');
-
-  const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
+  const { getLabel: getLeaveLabel } = useReferentiel('leave_types');
   const { data: leaves = [], isLoading } = useQuery({
     queryKey: ['leaves', currentYear],
     queryFn: () => leavesApi.list({ year: String(currentYear) }),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, any>) => leavesApi.create(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé ajouté'); setShowForm(false); },
-    onError: () => notify.error('Erreur'),
-  });
   const approveMutation = useMutation({
     mutationFn: (id: string) => leavesApi.approve(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé approuvé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); queryClient.invalidateQueries({ queryKey: ['leave-balances'] }); notify.success('Congé approuvé'); },
     onError: (err: unknown) => notify.error(getApiErrorMessage(err, 'Erreur lors de l\'approbation')),
   });
   const rejectMutation = useMutation({
@@ -36,7 +51,7 @@ export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typ
   });
   const removeMutation = useMutation({
     mutationFn: (id: string) => leavesApi.remove(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); notify.success('Congé supprimé'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['leaves'] }); queryClient.invalidateQueries({ queryKey: ['leave-balances'] }); notify.success('Congé supprimé'); },
     onError: (err: unknown) => notify.error(getApiErrorMessage(err, 'Erreur lors de la suppression')),
   });
 
@@ -107,9 +122,9 @@ export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typ
                   </td>
                   <td>{getLeaveLabel(l.type as string)}</td>
                   <td style={{ color: 'var(--odoo-text-muted)' }}>
-                    {format(new Date(l.start_date as string), 'dd/MM/yyyy')} — {format(new Date(l.end_date as string), 'dd/MM/yyyy')}
+                    {frDate(l.start_date)} — {frDate(l.end_date)}
                   </td>
-                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{l.days as number}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{parseFloat(String(l.days))}</td>
                   <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {l.reason as string || '—'}
                   </td>
@@ -127,7 +142,7 @@ export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typ
                       {l.status === 'pending' && (
                         <>
                           <button onClick={() => {
-                            if (confirm(`Approuver le conge de ${l.first_name} ${l.last_name} du ${format(new Date(l.start_date as string), 'dd/MM/yyyy')} au ${format(new Date(l.end_date as string), 'dd/MM/yyyy')} (${l.days as number} j) ?`)) {
+                            if (confirm(`Approuver le conge de ${l.first_name} ${l.last_name} du ${frDate(l.start_date)} au ${frDate(l.end_date)} (${l.days as number} j) ?`)) {
                               approveMutation.mutate(l.id as string);
                             }
                           }}
@@ -160,44 +175,7 @@ export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typ
         </div>
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Nouvelle demande de congé</h2>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const data = Object.fromEntries(fd) as Record<string, any>;
-              const start = new Date(data.startDate as string);
-              const end = new Date(data.endDate as string);
-              const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-              data.days = diffDays > 0 ? diffDays : 1;
-              createMutation.mutate(data);
-            }} className="space-y-4">
-              <div><label className="block text-sm font-medium mb-1">Employé *</label>
-                <select name="employeeId" className="input" required>
-                  <option value="">Choisir...</option>
-                  {(employees as Record<string, any>[]).filter(e => e.is_active).map(e => (
-                    <option key={e.id as string} value={e.id as string}>{e.first_name as string} {e.last_name as string}</option>
-                  ))}
-                </select></div>
-              <div><label className="block text-sm font-medium mb-1">Type *</label>
-                <select name="type" className="input" required>
-                  {leaveTypes.map(lt => <option key={lt.code} value={lt.code}>{lt.label}</option>)}
-                </select></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Du *</label><input name="startDate" type="date" className="input" required /></div>
-                <div><label className="block text-sm font-medium mb-1">Au *</label><input name="endDate" type="date" className="input" required /></div>
-              </div>
-              <div><label className="block text-sm font-medium mb-1">Motif</label><textarea name="reason" rows={2} className="input" /></div>
-              <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending} className="btn-primary">Enregistrer</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showForm && <LeaveRequestForm onClose={() => setShowForm(false)} />}
     </>
   );
 }

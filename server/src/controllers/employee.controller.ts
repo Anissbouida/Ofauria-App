@@ -5,6 +5,7 @@ import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepo
 import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
 import { biweeklyPayrollRepository } from '../repositories/biweekly-payroll.repository.js';
+import { leaveBalanceRepository, holidayRepository, leaveAdjustmentRepository, loadLeaveConfig, typeOf, leaveDayCount } from '../repositories/leave.repository.js';
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { biweeklyBounds } from '../utils/payroll-periods.js';
@@ -436,31 +437,86 @@ export const leaveController = {
     });
     res.json({ success: true, data: leaves });
   },
+
+  /** Apercu d'une demande : jours decomptes (ouvrables ou calendaires) et solde. */
+  async preview(req: AuthRequest, res: Response) {
+    const { employeeId, type, startDate, endDate } = req.query as Record<string, string>;
+    if (!employeeId || !type || !/^\d{4}-\d{2}-\d{2}$/.test(startDate ?? '') || !/^\d{4}-\d{2}-\d{2}$/.test(endDate ?? '') || endDate < startDate) {
+      res.status(400).json({ success: false, error: { message: 'employeeId, type, startDate, endDate requis' } });
+      return;
+    }
+    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    const cfg = await loadLeaveConfig();
+    const t = typeOf(cfg, type);
+    const days = leaveDayCount(cfg, type, startDate, endDate);
+    const balance = t.deductsBalance ? await leaveBalanceRepository.forEmployee(employeeId, startDate, cfg) : null;
+    res.json({ success: true, data: {
+      days, unit: t.unit, paid: t.paid, deductsBalance: t.deductsBalance,
+      available: balance ? balance.available : null, pending: balance ? balance.pending : null,
+    } });
+  },
+
   async create(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
-    // Recalcule `days` cote SERVEUR depuis start/end : le validator garantit
-    // que start/end sont YYYY-MM-DD et que end >= start (cf. createLeaveSchema).
-    // Faire confiance au client permettait de gonfler artificiellement la
-    // balance de conges ("j'ai pris 1 jour mais je declare 0.5").
-    const { startDate, endDate } = req.body as { startDate: string; endDate: string };
-    const start = Date.parse(`${startDate}T00:00:00Z`);
-    const end = Date.parse(`${endDate}T00:00:00Z`);
-    const days = Math.floor((end - start) / 86400_000) + 1;
+    // `days` recalcule cote SERVEUR : jours ouvrables (hors repos hebdomadaire
+    // et feries, art. 232) ou calendaires selon le type de conge. Ne jamais
+    // faire confiance au client (gonflement du solde).
+    const { employeeId, type, startDate, endDate, allowNegative } = req.body as { employeeId: string; type: string; startDate: string; endDate: string; allowNegative?: boolean };
+    const cfg = await loadLeaveConfig();
+    const days = leaveDayCount(cfg, type, startDate, endDate);
+    if (days <= 0) {
+      res.status(400).json({ success: false, error: { message: 'Aucun jour décompté sur cette période (repos hebdomadaire ou jours fériés).' } });
+      return;
+    }
+    if (typeOf(cfg, type).deductsBalance && !(allowNegative && req.user!.role === 'admin')) {
+      const b = await leaveBalanceRepository.forEmployee(employeeId, startDate, cfg);
+      const free = b ? b.available - b.pending : 0;
+      if (days > free + 0.001) {
+        res.status(409).json({ success: false, error: { message: `Solde insuffisant : ${days} j demandés, ${Math.max(0, free).toFixed(2)} j disponibles (demandes en attente déduites). Un administrateur peut autoriser un congé anticipé.` } });
+        return;
+      }
+    }
     const leave = await leaveRepository.create({ ...req.body, days });
     res.status(201).json({ success: true, data: leave });
   },
+
   async approve(req: AuthRequest, res: Response) {
     const r = await db.query(
-      `SELECT e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
+      `SELECT l.*, e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
       [req.params.id]
     );
-    if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
+    const l = r.rows[0];
+    if (!l || (l.store_id !== null && !checkStoreOwnership(l.store_id, req.user!.storeId))) {
       res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
       return;
     }
-    const leave = await leaveRepository.updateStatus(req.params.id, 'approved', req.user!.userId);
-    res.json({ success: true, data: leave });
+    if (l.status === 'approved') { res.json({ success: true, data: l }); return; }
+    // Re-controle du solde a la validation (d'autres conges ont pu etre approuves entre-temps).
+    const cfg = await loadLeaveConfig();
+    if (typeOf(cfg, l.type).deductsBalance && !(req.body?.allowNegative && req.user!.role === 'admin')) {
+      const startIso = l.start_date instanceof Date
+        ? `${l.start_date.getFullYear()}-${String(l.start_date.getMonth() + 1).padStart(2, '0')}-${String(l.start_date.getDate()).padStart(2, '0')}`
+        : String(l.start_date).slice(0, 10);
+      const b = await leaveBalanceRepository.forEmployee(l.employee_id, startIso, cfg);
+      // La demande elle-meme est comptee dans « pending » : on la retire.
+      const free = b ? b.available - (b.pending - parseFloat(l.days)) : 0;
+      if (parseFloat(l.days) > free + 0.001) {
+        res.status(409).json({ success: false, error: { message: `Solde insuffisant pour approuver : ${parseFloat(l.days)} j, ${Math.max(0, free).toFixed(2)} j disponibles.` } });
+        return;
+      }
+    }
+    try {
+      const leave = await leaveRepository.updateStatus(req.params.id, 'approved', req.user!.userId);
+      res.json({ success: true, data: leave });
+    } catch (err) {
+      // Contrainte d'exclusion leaves_no_overlap : chevauchement avec un conge approuve.
+      if ((err as { code?: string }).code === '23P01') {
+        res.status(409).json({ success: false, error: { message: 'Chevauche un congé déjà approuvé pour cet employé.' } });
+        return;
+      }
+      throw err;
+    }
   },
   async reject(req: AuthRequest, res: Response) {
     const r = await db.query(
@@ -474,15 +530,22 @@ export const leaveController = {
     const leave = await leaveRepository.updateStatus(req.params.id, 'rejected', req.user!.userId);
     res.json({ success: true, data: leave });
   },
+
+  /** Solde detaille d'un employe (par annee) a une date. */
   async balance(req: AuthRequest, res: Response) {
-    const { employeeId, year } = req.query as Record<string, string>;
-    if (employeeId) {
-      const scoped = await loadEmployeeInScope(employeeId, req.user!.storeId);
-      if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
-    }
-    const balance = await leaveRepository.balanceByEmployee(employeeId, parseInt(year));
-    res.json({ success: true, data: balance });
+    const { employeeId, asOf } = req.query as Record<string, string>;
+    if (!employeeId) { res.status(400).json({ success: false, error: { message: 'employeeId requis' } }); return; }
+    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    const b = await leaveBalanceRepository.forEmployee(employeeId, /^\d{4}-\d{2}-\d{2}$/.test(asOf ?? '') ? asOf : undefined);
+    res.json({ success: true, data: b });
   },
+
+  /** Soldes de tous les employes actifs. */
+  async balances(req: AuthRequest, res: Response) {
+    const { asOf } = req.query as Record<string, string>;
+    res.json({ success: true, data: await leaveBalanceRepository.all(req.user!.storeId, /^\d{4}-\d{2}-\d{2}$/.test(asOf ?? '') ? asOf : undefined) });
+  },
+
   async remove(req: AuthRequest, res: Response) {
     const r = await db.query(
       `SELECT e.store_id FROM leaves l JOIN employees e ON e.id = l.employee_id WHERE l.id = $1`,
@@ -493,6 +556,37 @@ export const leaveController = {
       return;
     }
     await leaveRepository.delete(req.params.id);
+    res.json({ success: true, data: null });
+  },
+
+  // ─── Jours feries ───
+  async holidays(req: AuthRequest, res: Response) {
+    const year = req.query.year ? parseInt(String(req.query.year), 10) : undefined;
+    res.json({ success: true, data: await holidayRepository.list(year) });
+  },
+  async upsertHoliday(req: AuthRequest, res: Response) {
+    const { date, label, isConfirmed } = req.body as { date: string; label: string; isConfirmed?: boolean };
+    res.json({ success: true, data: await holidayRepository.upsert(date, label, isConfirmed ?? true) });
+  },
+  async removeHoliday(req: AuthRequest, res: Response) {
+    await holidayRepository.remove(req.params.date);
+    res.json({ success: true, data: null });
+  },
+
+  // ─── Ajustements de solde ───
+  async adjustments(req: AuthRequest, res: Response) {
+    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    res.json({ success: true, data: await leaveAdjustmentRepository.list(req.params.employeeId) });
+  },
+  async createAdjustment(req: AuthRequest, res: Response) {
+    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    const row = await leaveAdjustmentRepository.create({ ...req.body, employeeId: req.params.employeeId }, req.user!.userId);
+    res.status(201).json({ success: true, data: row });
+  },
+  async removeAdjustment(req: AuthRequest, res: Response) {
+    const adj = await leaveAdjustmentRepository.findById(req.params.id);
+    if (!adj || !(await loadEmployeeInScope(adj.employee_id, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Ajustement introuvable' } }); return; }
+    await leaveAdjustmentRepository.remove(req.params.id);
     res.json({ success: true, data: null });
   },
 };

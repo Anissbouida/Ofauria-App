@@ -3,6 +3,7 @@ import {
   computeMonthlyPayslip, serviceYears, taxScaleFromRow,
   type RubriqueInput, type TaxScale,
 } from '../services/payroll-engine.js';
+import { leaveBalanceRepository } from './leave.repository.js';
 
 /**
  * Parametrage et calcul de la paie mensuelle (mig 318) : bareme versionne,
@@ -255,7 +256,9 @@ export async function computeAndSavePayslip(
     [emp.id, start, end]
   );
   const a = att.rows[0];
-  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days;
+  // Conges payes approuves (hors jours deja pointes) : jours couverts, pas d'absence retenue.
+  const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, start, end);
+  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days + paidLeaveDays;
 
   // Elements fixes actifs sur le mois.
   const fixed = await db.query(
@@ -321,8 +324,8 @@ export async function computeAndSavePayslip(
          cimr_employee, cimr_employer, frais_pro, ir_gross, ir_net, family_deduction, nb_dependents,
          alloc_familiales, taxe_fp, total_charges_patron, net_salary,
          extra_shift_days, extra_shift_amount,
-         tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+         tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable, paid_leave_days
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
        ON CONFLICT (employee_id, month, year) DO UPDATE SET
          base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
          absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
@@ -343,7 +346,7 @@ export async function computeAndSavePayslip(
          extra_shift_amount = EXCLUDED.extra_shift_amount,
          tax_scale_id = EXCLUDED.tax_scale_id, is_declared = EXCLUDED.is_declared,
          base_cnss = EXCLUDED.base_cnss, brut_imposable = EXCLUDED.brut_imposable,
-         net_imposable = EXCLUDED.net_imposable
+         net_imposable = EXCLUDED.net_imposable, paid_leave_days = EXCLUDED.paid_leave_days
        WHERE payroll.paid = false
        RETURNING *`,
       [emp.id, month, year, r.baseSalary, r.workedDays, r.absentDays,
@@ -354,7 +357,7 @@ export async function computeAndSavePayslip(
        Math.min(parseInt(emp.nb_dependents, 10) || 0, ctx.scale.maxPersonnesCharge),
        r.allocFamiliales, r.taxeFp, r.totalChargesPatron, r.netSalary,
        a.double_days, r.extraShiftAmount,
-       ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable]
+       ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable, paidLeaveDays]
     );
 
     if (!up.rows[0]) {

@@ -17,7 +17,7 @@ import {
   createScheduleSchema, updateScheduleSchema, bulkWeekScheduleSchema,
   setPayrollLinesSchema, payrollPeriodSchema, createRubriqueSchema, updateRubriqueSchema,
   employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
-  declarePayrollSchema, settlePayrollDeclarationSchema,
+  declarePayrollSchema, settlePayrollDeclarationSchema, holidaySchema, leaveAdjustmentSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -71,6 +71,16 @@ attendanceRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit
 export const leavesRouter = Router();
 leavesRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.list));
 leavesRouter.get('/balance', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.balance));
+leavesRouter.get('/balances', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.balances));
+leavesRouter.get('/preview', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.preview));
+// Jours feries : lecture droit Personnel, modification admin (impact paie et soldes).
+leavesRouter.get('/holidays', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.holidays));
+leavesRouter.put('/holidays', authenticate, authorize(ROLES.ADMIN), validate(holidaySchema), asyncHandler(leaveController.upsertHoliday));
+leavesRouter.delete('/holidays/:date', authenticate, authorize(ROLES.ADMIN), asyncHandler(leaveController.removeHoliday));
+// Ajustements de solde (reprise d'un solde initial, regularisation) : admin.
+leavesRouter.get('/adjustments/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.adjustments));
+leavesRouter.post('/adjustments/:employeeId', authenticate, authorize(ROLES.ADMIN), validate(leaveAdjustmentSchema), asyncHandler(leaveController.createAdjustment));
+leavesRouter.delete('/adjustments/entry/:id', authenticate, authorize(ROLES.ADMIN), asyncHandler(leaveController.removeAdjustment));
 leavesRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(createLeaveSchema), asyncHandler(leaveController.create));
 leavesRouter.post('/:id/approve', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.approve));
 leavesRouter.post('/:id/reject', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.reject));

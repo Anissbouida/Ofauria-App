@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
+import { leaveBalanceRepository, loadLeaveConfig } from './leave.repository.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -132,6 +133,7 @@ export const weeklyPayrollRepository = {
     const r2 = (v: number) => Math.round(v * 100) / 100;
     const results: Array<Record<string, unknown>> = [];
 
+    const leaveCfg = await loadLeaveConfig();
     for (const emp of employeesRes.rows) {
       const weeklySalary = parseFloat(emp.weekly_salary as string);
       const dailyRate = weeklySalary / 7;
@@ -153,8 +155,10 @@ export const weeklyPayrollRepository = {
         [emp.id, weekStart, weekEnd]
       );
       const a = att.rows[0];
+      // Conges payes approuves (hors jours pointes) : comptes comme travailles.
+      const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, weekStart, weekEnd, leaveCfg);
       // Demi-journee = 0.5 jour paye (un simple half_day compte donc 0.5).
-      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days;
+      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days + paidLeaveDays;
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
       // Repos hebdomadaire paye — regle metier centralisee (voir docblock).
@@ -167,8 +171,8 @@ export const weeklyPayrollRepository = {
       const r = await db.query(
         `INSERT INTO weekly_payroll
            (employee_id, week_start, week_end, base_amount, worked_days, absent_days,
-            overtime_hours, overtime_amount, net_amount)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            overtime_hours, overtime_amount, net_amount, paid_leave_days)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (employee_id, week_start) DO UPDATE SET
            week_end = EXCLUDED.week_end,
            base_amount = EXCLUDED.base_amount,
@@ -176,13 +180,19 @@ export const weeklyPayrollRepository = {
            absent_days = EXCLUDED.absent_days,
            overtime_hours = EXCLUDED.overtime_hours,
            overtime_amount = EXCLUDED.overtime_amount,
-           -- Si paye, on garde le net_amount existant (ne pas modifier le montant deja paye).
-           -- Si non paye, on recalcule.
-           net_amount = CASE WHEN weekly_payroll.paid THEN weekly_payroll.net_amount ELSE EXCLUDED.net_amount END
+           paid_leave_days = EXCLUDED.paid_leave_days,
+           net_amount = EXCLUDED.net_amount
+         -- Ligne payee : intouchable (jours, base et net ont servi a la sortie de
+         -- caisse). Avant, seul le net etait garde et les jours/base changeaient.
+         WHERE weekly_payroll.paid = false
          RETURNING *`,
-        [emp.id, weekStart, weekEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount]
+        [emp.id, weekStart, weekEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount, paidLeaveDays]
       );
-      results.push(r.rows[0]);
+      if (r.rows[0]) results.push(r.rows[0]);
+      else {
+        const existing = await db.query('SELECT * FROM weekly_payroll WHERE employee_id = $1 AND week_start = $2', [emp.id, weekStart]);
+        if (existing.rows[0]) results.push(existing.rows[0]);
+      }
     }
     return results;
   },

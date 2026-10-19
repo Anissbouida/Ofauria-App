@@ -48,8 +48,21 @@ export const leavesApi = {
   create: (data: Record<string, any>) => api.post('/leaves', data).then(r => r.data.data),
   approve: (id: string) => api.post(`/leaves/${id}/approve`).then(r => r.data.data),
   reject: (id: string) => api.post(`/leaves/${id}/reject`).then(r => r.data.data),
-  balance: (employeeId: string, year: number) =>
-    api.get('/leaves/balance', { params: { employeeId, year: String(year) } }).then(r => r.data.data),
+  /** Solde detaille (par annee) d'un employe a une date. */
+  balance: (employeeId: string, asOf?: string) =>
+    api.get('/leaves/balance', { params: { employeeId, asOf } }).then(r => r.data.data),
+  /** Soldes de tous les employes actifs. */
+  balances: (asOf?: string) => api.get('/leaves/balances', { params: asOf ? { asOf } : undefined }).then(r => r.data.data),
+  /** Jours decomptes + solde disponible pour une demande. */
+  preview: (params: { employeeId: string; type: string; startDate: string; endDate: string }) =>
+    api.get('/leaves/preview', { params }).then(r => r.data.data),
+  holidays: (year?: number) => api.get('/leaves/holidays', { params: year ? { year } : undefined }).then(r => r.data.data),
+  upsertHoliday: (data: { date: string; label: string; isConfirmed?: boolean }) => api.put('/leaves/holidays', data).then(r => r.data.data),
+  removeHoliday: (date: string) => api.delete(`/leaves/holidays/${date}`).then(r => r.data.data),
+  adjustments: (employeeId: string) => api.get(`/leaves/adjustments/${employeeId}`).then(r => r.data.data),
+  createAdjustment: (employeeId: string, data: { year: number; days: number; reason: string }) =>
+    api.post(`/leaves/adjustments/${employeeId}`, data).then(r => r.data.data),
+  removeAdjustment: (id: string) => api.delete(`/leaves/adjustments/entry/${id}`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/leaves/${id}`),
 };
 
