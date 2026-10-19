@@ -81,10 +81,10 @@ export const employeeRepository = {
       notes: 'notes', seniorityYears: 'seniority_years', nbDependents: 'nb_dependents', cimrRate: 'cimr_rate',
       defaultShiftCode: 'default_shift_code',
       payFrequency: 'pay_frequency', weeklySalary: 'weekly_salary',
-      hireDate: 'hire_date', isDeclared: 'is_declared',
+      hireDate: 'hire_date', isDeclared: 'is_declared', cinExpiresOn: 'cin_expires_on',
     };
     // Date fields: convert empty strings to null to avoid DB type errors
-    const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate'];
+    const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate', 'cinExpiresOn'];
     for (const df of dateFields) {
       if (data[df] === '') data[df] = null;
     }

@@ -46,7 +46,12 @@ export const createEmployeeSchema = z.object({
   city: z.string().max(100).nullable().optional(),
   birthDate: dateStrOrEmpty,
   cnssNumber: z.string().max(50).nullable().optional(),
-  contractType: z.string().max(50).nullable().optional(),
+  contractType: z.enum(['cdi', 'cdd', 'stage', 'interim', 'saisonnier']).nullable().optional(),
+  // Contrat initial cree avec l'employe (lot 4).
+  category: z.enum(['cadre', 'employe', 'ouvrier']).optional(),
+  jobTitle: z.string().max(120).nullable().optional(),
+  withTrial: z.boolean().optional(),
+  cinExpiresOn: dateStrOrEmpty,
   contractStart: dateStrOrEmpty,
   contractEnd: dateStrOrEmpty,
   emergencyContactName: z.string().max(200).nullable().optional(),
@@ -336,3 +341,26 @@ export const leaveAdjustmentSchema = z.object({
   days: z.coerce.number().min(-60).max(60).refine(v => v !== 0, 'Nombre de jours non nul'),
   reason: z.string().min(3, 'Motif requis').max(300),
 });
+
+// Contrats (lot 4, mig 322)
+const contractType = z.enum(['cdi', 'cdd', 'stage', 'interim', 'saisonnier']);
+const contractCategory = z.enum(['cadre', 'employe', 'ouvrier']);
+const contractChanges = {
+  contractType: contractType.optional(),
+  category: contractCategory.optional(),
+  jobTitle: z.string().max(120).nullable().optional(),
+  weeklyHours: z.coerce.number().positive().max(60).optional(),
+  monthlySalary: nullableNumber((n) => n.nonnegative()),
+  weeklySalary: nullableNumber((n) => n.nonnegative()),
+  endDate: z.union([isoDate, z.null()]).optional(),
+  notes: z.string().max(1000).nullable().optional(),
+};
+export const createContractSchema = z.object({
+  ...contractChanges,
+  startDate: isoDate,
+  trialEndDate: z.union([isoDate, z.null()]).optional(),
+  withTrial: z.boolean().optional(),
+});
+export const contractAvenantSchema = z.object({ ...contractChanges, effectiveDate: isoDate });
+export const renewContractSchema = z.object({ endDate: isoDate, notes: z.string().max(1000).nullable().optional() });
+export const endContractSchema = z.object({ endDate: isoDate, reason: z.string().min(3, 'Motif requis').max(200) });

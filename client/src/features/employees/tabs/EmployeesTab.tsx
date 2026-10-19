@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, shiftsApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
@@ -11,6 +11,9 @@ import { useAuth } from '../../../context/AuthContext';
 import { isoDate, syncSalaryFields } from '../shared';
 import EmployeeSalaryHistory from './EmployeeSalaryHistory';
 import EmployeePayrollItems from './EmployeePayrollItems';
+import HrAlertsPanel from '../contracts/HrAlertsPanel';
+import EmployeeContracts from '../contracts/EmployeeContracts';
+import EmployeeDocuments from '../contracts/EmployeeDocuments';
 
 /* ═══════════════════════ EMPLOYEES TAB ═══════════════════════ */
 export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -249,8 +252,20 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     manager: 'bg-indigo-100 text-indigo-700',
   };
 
+  // La fiche ouverte suit les mises a jour (contrat, salaire) de la liste.
+  useEffect(() => {
+    if (!viewDetail) return;
+    const fresh = (employees as Record<string, any>[]).find(e => e.id === viewDetail.id);
+    if (fresh && fresh !== viewDetail) setViewDetail(fresh);
+  }, [employees]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <>
+      <HrAlertsPanel onOpenEmployee={id => {
+        const e = (employees as Record<string, any>[]).find(x => x.id === id);
+        if (e) setViewDetail(e);
+      }} />
+
       {/* Stat tiles - style Odoo */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
@@ -451,7 +466,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
       {/* Detail modal — redesigned */}
       {viewDetail && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewDetail(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[88vh] overflow-y-auto shadow-2xl" onClick={ev => ev.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={ev => ev.stopPropagation()}>
             {/* Header */}
             <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 border-b border-teal-100">
               <div className="flex items-center justify-between">
@@ -509,6 +524,8 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                   <p className="text-amber-800">{viewDetail.notes as string}</p>
                 </div>
               )}
+              <EmployeeContracts employeeId={viewDetail.id as string} onChanged={() => undefined} />
+              <EmployeeDocuments employeeId={viewDetail.id as string} />
               {(viewDetail.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={viewDetail.id as string} />}
               <EmployeeSalaryHistory employeeId={viewDetail.id as string} />
             </div>
@@ -529,6 +546,8 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               if (data.weeklySalary) data.weeklySalary = parseFloat(data.weeklySalary as string);
               // Case a cocher : absente du FormData quand decochee.
               data.isDeclared = fd.has('isDeclared');
+              if (!editing) data.withTrial = fd.has('withTrial');
+              if (data.jobTitle === '') delete data.jobTitle;
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
               if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
               if (data.defaultShiftCode === '') data.defaultShiftCode = null;
@@ -538,7 +557,8 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Prénom *</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
                 <div><label className="block text-sm font-medium mb-1">Nom *</label><input name="lastName" defaultValue={editing?.last_name as string} className="input" required /></div>
-                <div><label className="block text-sm font-medium mb-1">CIN</label><input name="cin" defaultValue={editing?.cin as string} className="input" /></div>
+                <div><label className="block text-sm font-medium mb-1">CIN</label><input name="cin" defaultValue={editing?.cin as string} className="input" />
+                  <label className="block text-xs text-gray-500 mt-1">Expire le <input name="cinExpiresOn" type="date" defaultValue={isoDate(editing?.cin_expires_on)} className="input" style={{ display: 'inline-block', width: 'auto' }} /></label></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
@@ -597,6 +617,20 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                 <div><label className="block text-sm font-medium mb-1">Début contrat</label><input name="contractStart" type="date" defaultValue={isoDate(editing?.contract_start)} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Fin contrat</label><input name="contractEnd" type="date" defaultValue={isoDate(editing?.contract_end)} className="input" /></div>
               </div>
+              {editing ? (
+                <p className="text-xs text-gray-500">Correction directe du contrat en vigueur. Un changement de conditions (salaire, poste, type) se fait par un avenant depuis la fiche.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  <div><label className="block text-sm font-medium mb-1">Catégorie</label>
+                    <select name="category" defaultValue="employe" className="input">
+                      <option value="cadre">Cadre (essai 3 mois)</option>
+                      <option value="employe">Employé (essai 1,5 mois)</option>
+                      <option value="ouvrier">Ouvrier (essai 15 jours)</option>
+                    </select></div>
+                  <div><label className="block text-sm font-medium mb-1">Poste</label><input name="jobTitle" className="input" /></div>
+                  <label className="flex items-center gap-2 text-sm mt-6"><input name="withTrial" type="checkbox" defaultChecked /> Période d'essai légale</label>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">N° CNSS</label><input name="cnssNumber" defaultValue={editing?.cnss_number as string} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Taux CIMR (%)</label><input name="cimrRate" type="number" min="0" max="10" step="0.5" defaultValue={editing?.cimr_rate as string || '0'} className="input" /></div>

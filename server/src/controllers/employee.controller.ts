@@ -6,6 +6,7 @@ import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
 import { biweeklyPayrollRepository } from '../repositories/biweekly-payroll.repository.js';
 import { overtimeYearSummary } from '../repositories/time-rules.repository.js';
+import { contractRepository } from '../repositories/contract.repository.js';
 import { leaveBalanceRepository, holidayRepository, leaveAdjustmentRepository, loadLeaveConfig, typeOf, leaveDayCount } from '../repositories/leave.repository.js';
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
@@ -80,15 +81,43 @@ export const employeeController = {
     res.json({ success: true, data: employee });
   },
   async create(req: AuthRequest, res: Response) {
-    const employee = await employeeRepository.create({
-      ...req.body, storeId: req.user!.storeId, createdBy: req.user!.userId,
+    const b = req.body;
+    // Le contrat initial est cree avec l'employe (lot 4) : un CDD exige sa fin.
+    if (b.contractType === 'cdd' && !b.contractEnd) {
+      res.status(400).json({ success: false, error: { message: 'Un CDD exige une date de fin de contrat.' } });
+      return;
+    }
+    let employee = await employeeRepository.create({
+      ...b, storeId: req.user!.storeId, createdBy: req.user!.userId,
     });
-    res.status(201).json({ success: true, data: employee });
+    if (b.cinExpiresOn) employee = await employeeRepository.update(employee.id, { cinExpiresOn: b.cinExpiresOn }, req.user!.userId);
+    await contractRepository.create(employee.id, {
+      contractType: b.contractType || 'cdi', category: b.category, jobTitle: b.jobTitle ?? null,
+      startDate: b.contractStart || b.hireDate, endDate: b.contractEnd || null, withTrial: b.withTrial,
+      monthlySalary: b.monthlySalary ?? null, weeklySalary: b.weeklySalary ?? null,
+    }, req.user!.userId);
+    res.status(201).json({ success: true, data: await employeeRepository.findById(employee.id) });
   },
   async update(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    const cur = await employeeRepository.findById(req.params.id);
+    const nextType = req.body.contractType ?? cur?.contract_type;
+    const nextEnd = req.body.contractEnd !== undefined ? req.body.contractEnd : cur?.contract_end;
+    if (nextType === 'cdd' && !nextEnd) {
+      res.status(400).json({ success: false, error: { message: 'Un CDD exige une date de fin de contrat.' } });
+      return;
+    }
     const employee = await employeeRepository.update(req.params.id, req.body, req.user!.userId);
+    // Correction depuis la fiche : repercutee sur le contrat actif (meme source
+    // de verite). Un vrai changement de conditions passe par un avenant.
+    const b = req.body as Record<string, any>;
+    await contractRepository.correctActive(req.params.id, {
+      contractType: b.contractType ?? undefined,
+      endDate: b.contractEnd !== undefined ? (b.contractEnd || null) : undefined,
+      monthlySalary: b.monthlySalary !== undefined ? b.monthlySalary : undefined,
+      weeklySalary: b.weeklySalary !== undefined ? b.weeklySalary : undefined,
+    });
     res.json({ success: true, data: employee });
   },
   async remove(req: AuthRequest, res: Response) {

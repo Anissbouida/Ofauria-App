@@ -1,9 +1,11 @@
-import { Router, json as expressJson } from 'express';
+import { Router, json as expressJson, type Request, type Response, type NextFunction } from 'express';
 import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController, biweeklyPayrollController, salaryAdvanceController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
 import { payrollConfigController } from '../controllers/payroll-config.controller.js';
+import { hrContractController } from '../controllers/hr-contract.controller.js';
+import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
@@ -18,6 +20,7 @@ import {
   setPayrollLinesSchema, payrollPeriodSchema, createRubriqueSchema, updateRubriqueSchema,
   employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
   declarePayrollSchema, settlePayrollDeclarationSchema, holidaySchema, leaveAdjustmentSchema,
+  createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -30,10 +33,31 @@ import { ROLES } from '@ofauria/shared';
 const router = Router();
 
 router.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.list));
+// Alertes RH (fins de CDD et d'essai, pieces) — avant '/:id'.
+router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.alerts));
+router.get('/documents/:docId/file', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.download));
+router.delete('/documents/:docId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.removeDocument));
 router.get('/:id', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.getById));
 router.post('/', authenticate, authorize(ROLES.ADMIN), validate(createEmployeeSchema), asyncHandler(employeeController.create));
 router.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updateEmployeeSchema), asyncHandler(employeeController.update));
 router.get('/:id/salary-history', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.salaryHistory));
+// Contrats et avenants (lot 4) : droit Personnel en edition.
+router.get('/:employeeId/contracts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.list));
+router.post('/:employeeId/contracts', authenticate, authorizeModule('employees', 'edit'), validate(createContractSchema), asyncHandler(hrContractController.create));
+router.post('/:employeeId/contracts/avenant', authenticate, authorizeModule('employees', 'edit'), validate(contractAvenantSchema), asyncHandler(hrContractController.avenant));
+router.post('/:employeeId/contracts/renew', authenticate, authorizeModule('employees', 'edit'), validate(renewContractSchema), asyncHandler(hrContractController.renew));
+router.post('/:employeeId/contracts/renew-trial', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.renewTrial));
+router.post('/:employeeId/contracts/end', authenticate, authorizeModule('employees', 'edit'), validate(endContractSchema), asyncHandler(hrContractController.end));
+// Documents (stockes en base, 5 Mo max) : donnees personnelles, droit Personnel.
+const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+router.get('/:employeeId/documents', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.documents));
+// Fichier trop lourd : erreur lisible (400) au lieu d'une erreur serveur.
+const singleDocument = (req: Request, res: Response, next: NextFunction) =>
+  documentUpload.single('file')(req, res, (err?: unknown) => {
+    if (err) { res.status(400).json({ success: false, error: { message: err instanceof Error && /File too large/.test(err.message) ? 'Fichier trop lourd (5 Mo max)' : 'Fichier invalide' } }); return; }
+    next();
+  });
+router.post('/:employeeId/documents', authenticate, authorizeModule('employees', 'edit'), singleDocument, asyncHandler(hrContractController.upload));
 // GET /:id/dependencies : compte les references vers l'employe (pour preview hard delete).
 router.get('/:id/dependencies', authenticate, authorize(ROLES.ADMIN), asyncHandler(employeeController.dependencies));
 // DELETE /:id : soft delete par defaut. ?hard=true cascade les enfants + supprime l'employe.

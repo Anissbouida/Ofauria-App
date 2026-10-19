@@ -11,6 +11,8 @@ export const employeesApi = {
   hardDelete: (id: string) => api.delete(`/employees/${id}`, { params: { hard: 'true' } }).then(r => r.data.data),
   /** Compte les references vers l'employe (preview avant hard delete). */
   dependencies: (id: string) => api.get(`/employees/${id}/dependencies`).then(r => r.data.data),
+  /** Alertes RH : fins de CDD et d'essai, pieces expirees ou manquantes. */
+  hrAlerts: (days = 30) => api.get('/employees/hr-alerts', { params: { days } }).then(r => r.data.data),
   /** Historique des changements de salaire / frequence (qui, quand, ancien -> nouveau). */
   salaryHistory: (id: string) => api.get(`/employees/${id}/salary-history`).then(r => r.data.data),
 };
@@ -155,4 +157,25 @@ export const biweeklyPayrollApi = {
   unmarkPaid: (id: string) =>
     api.post(`/payroll/biweekly/${id}/unpay`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/payroll/biweekly/${id}`),
+};
+
+/** Contrats et avenants (lot 4). */
+export const contractsApi = {
+  list: (employeeId: string) => api.get(`/employees/${employeeId}/contracts`).then(r => r.data.data),
+  create: (employeeId: string, data: Record<string, any>) => api.post(`/employees/${employeeId}/contracts`, data).then(r => r.data.data),
+  avenant: (employeeId: string, data: Record<string, any>) => api.post(`/employees/${employeeId}/contracts/avenant`, data).then(r => r.data.data),
+  /** Renvoie { data, warnings } (avertissements legaux du renouvellement). */
+  renew: (employeeId: string, data: { endDate: string; notes?: string | null }) =>
+    api.post(`/employees/${employeeId}/contracts/renew`, data).then(r => ({ contract: r.data.data, warnings: (r.data.warnings ?? []) as string[] })),
+  renewTrial: (employeeId: string) => api.post(`/employees/${employeeId}/contracts/renew-trial`).then(r => r.data.data),
+  end: (employeeId: string, data: { endDate: string; reason: string }) => api.post(`/employees/${employeeId}/contracts/end`, data).then(r => r.data.data),
+};
+
+/** Documents du salarie (stockes en base). */
+export const employeeDocumentsApi = {
+  list: (employeeId: string) => api.get(`/employees/${employeeId}/documents`).then(r => r.data.data),
+  upload: (employeeId: string, form: FormData) =>
+    api.post(`/employees/${employeeId}/documents`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data),
+  file: (docId: string) => api.get(`/employees/documents/${docId}/file`, { responseType: 'blob' }),
+  remove: (docId: string) => api.delete(`/employees/documents/${docId}`).then(r => r.data.data),
 };
