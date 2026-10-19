@@ -4,13 +4,13 @@ import SearchSelect from '../../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { payrollApi, advancesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
-import { format } from 'date-fns';
 import {
-  UserCog, Users, Banknote, X, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw,
+  UserCog, Users, Banknote, X, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw, Lock, Unlock,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import { notify } from '../../../components/ui/InlineNotification';
-import { MONTH_NAMES } from '../shared';
+import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
+import PayslipLinesEditor from './PayslipLinesEditor';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const now = new Date();
@@ -34,6 +34,23 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const { data: payrolls = [], isLoading } = useQuery({
     queryKey: ['payroll', month, year],
     queryFn: () => payrollApi.list({ month: String(month), year: String(year) }),
+  });
+
+  // Cloture du mois : un mois cloture ne se regenere ni ne s'edite (paiement possible).
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const { data: period } = useQuery<Record<string, any>>({
+    queryKey: ['payroll-period', month, year],
+    queryFn: () => payrollApi.period(month, year),
+  });
+  const isClosed = period?.status === 'closed';
+  const periodMutation = useMutation({
+    mutationFn: (action: 'close' | 'reopen') => action === 'close' ? payrollApi.closePeriod(month, year) : payrollApi.reopenPeriod(month, year),
+    onSuccess: (_d, action) => {
+      queryClient.invalidateQueries({ queryKey: ['payroll-period'] });
+      notify.success(action === 'close' ? 'Mois clôturé' : 'Mois rouvert');
+    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
   });
 
   // Soldes d'avances en cours par employe (pour proposer la retenue au paiement)
@@ -66,7 +83,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           + removed.map(r => `${r.first_name} ${r.last_name} (${freq(r.pay_frequency)})`).join(', '));
       }
     },
-    onError: () => notify.error('Erreur lors de la generation'),
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de la generation')),
   });
 
   const payMutation = useMutation({
@@ -150,139 +167,19 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
     return paySortDir === 'asc' ? cmp : -cmp;
   });
 
-  // ─── PDF bulletin generation ───
-  const generatePDF = (p: Record<string, any>) => {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const W = 210;
-    const mg = 15; // margin
-    let y = 15;
-
-    const addLine = (label: string, value: string, x1 = mg, x2 = W - mg) => {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(label, x1, y);
-      doc.setFont('helvetica', 'bold');
-      doc.text(value, x2, y, { align: 'right' });
-      y += 5;
-    };
-
-    const addSection = (title: string, color: [number, number, number]) => {
-      y += 3;
-      doc.setFillColor(...color);
-      doc.rect(mg, y - 4, W - 2 * mg, 7, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(255, 255, 255);
-      doc.text(title, mg + 3, y);
-      doc.setTextColor(0, 0, 0);
-      y += 7;
-    };
-
-    const addSeparator = () => {
-      doc.setDrawColor(200, 200, 200);
-      doc.line(mg, y, W - mg, y);
-      y += 3;
-    };
-
-    // ═══ Header ═══
-    doc.setFillColor(13, 148, 136); // teal-600
-    doc.rect(0, 0, W, 38, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(255, 255, 255);
-    doc.text('BULLETIN DE PAIE', W / 2, 15, { align: 'center' });
-    doc.setFontSize(11);
-    doc.text(`${MONTH_NAMES[month - 1]} ${year}`, W / 2, 23, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text('Ofauria', W / 2, 31, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-    y = 48;
-
-    // ═══ Employee info ═══
-    doc.setFillColor(245, 245, 245);
-    doc.rect(mg, y - 5, W - 2 * mg, 18, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text(`${p.first_name} ${p.last_name}`, mg + 5, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.text(`Fonction : ${getRoleLabel(p.employee_role as string)}`, mg + 5, y + 6);
-    doc.text(`Jours trav. : ${p.worked_days}    |    Absences : ${p.absent_days}    |    H. Sup : ${pn(p.overtime_hours).toFixed(1)}h`, mg + 5, y + 11);
-    y += 20;
-
-    // ═══ Remuneration ═══
-    addSection('REMUNERATION', [59, 130, 246]); // blue
-    addLine('Salaire de base', `${pf(p.base_salary)} DH`);
-    if (pn(p.seniority_bonus) > 0) addLine("Prime d'anciennete", `${pf(p.seniority_bonus)} DH`);
-    if (pn(p.overtime_amount) > 0) addLine('Heures supplementaires', `${pf(p.overtime_amount)} DH`);
-    if (pn(p.extra_shift_amount) > 0) addLine(`Double shifts (+${p.extra_shift_days} j)`, `${pf(p.extra_shift_amount)} DH`);
-    if (pn(p.deductions) > 0) addLine('Retenue absences', `- ${pf(p.deductions)} DH`);
-    addSeparator();
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    addLine('Salaire brut', `${pf(p.gross_salary)} DH`);
-
-    // ═══ Cotisations salariales ═══
-    addSection('COTISATIONS SALARIALES', [234, 88, 12]); // orange
-    addLine('CNSS (4.48% plaf. 6 000)', `- ${pf(p.cnss_employee)} DH`);
-    addLine('AMO (2.26%)', `- ${pf(p.amo_employee)} DH`);
-    if (pn(p.cimr_employee) > 0) addLine('CIMR', `- ${pf(p.cimr_employee)} DH`);
-    addSeparator();
-    const sni = pn(p.gross_salary) - pn(p.cnss_employee) - pn(p.amo_employee) - pn(p.cimr_employee);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    addLine('Salaire net imposable', `${sni.toFixed(2)} DH`);
-
-    // ═══ IR ═══
-    addSection("IMPOT SUR LE REVENU", [220, 38, 38]); // red
-    addLine('Frais professionnels (20%)', `- ${pf(p.frais_pro)} DH`);
-    addLine('IR brut (bareme)', `${pf(p.ir_gross)} DH`);
-    if (pn(p.family_deduction) > 0) addLine(`Deduction familiale (${p.nb_dependents} pers.)`, `- ${pf(p.family_deduction)} DH`);
-    addSeparator();
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    addLine('IR net', `- ${pf(p.ir_net)} DH`);
-
-    // ═══ Net a payer ═══
-    y += 5;
-    doc.setFillColor(22, 163, 74); // green-600
-    doc.rect(mg, y - 5, W - 2 * mg, 14, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(255, 255, 255);
-    doc.text('NET A PAYER', mg + 5, y + 3);
-    doc.text(`${pf(p.net_salary)} DH`, W - mg - 5, y + 3, { align: 'right' });
-    doc.setTextColor(0, 0, 0);
-    y += 16;
-
-    // ═══ Charges patronales ═══
-    addSection('CHARGES PATRONALES', [147, 51, 234]); // purple
-    addLine('CNSS patronale (8.98%)', `${pf(p.cnss_employer)} DH`);
-    addLine('AMO patronale (4.11%)', `${pf(p.amo_employer)} DH`);
-    if (pn(p.cimr_employer) > 0) addLine('CIMR patronale', `${pf(p.cimr_employer)} DH`);
-    addLine('Allocations familiales (6.40%)', `${pf(p.alloc_familiales)} DH`);
-    addLine('Taxe form. prof. (1.60%)', `${pf(p.taxe_fp)} DH`);
-    addSeparator();
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    addLine('Total charges patronales', `${pf(p.total_charges_patron)} DH`);
-
-    // ═══ Footer ═══
-    y = 275;
-    doc.setDrawColor(200, 200, 200);
-    doc.line(mg, y, W - mg, y);
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Bulletin genere le ${format(new Date(), 'dd/MM/yyyy')} — Ofauria`, W / 2, y + 5, { align: 'center' });
-
-    doc.save(`bulletin_${(p.first_name as string).toLowerCase()}_${(p.last_name as string).toLowerCase()}_${MONTH_NAMES[month - 1].toLowerCase()}_${year}.pdf`);
+  // ─── Bulletin PDF (genere serveur : mentions legales, bases, cumuls) ───
+  const generatePDF = async (p: Record<string, any>) => {
+    try {
+      const response = await payrollApi.pdf(p.id as string);
+      saveBlobResponse(response, `bulletin_${p.last_name}_${p.first_name}_${year}-${String(month).padStart(2, '0')}.pdf`);
+    } catch (err) {
+      notify.error(apiErrorMessage(err, 'Erreur lors de la génération du PDF'));
+    }
   };
 
-  const generateAllPDF = () => {
-    sortedPayrolls.forEach(p => generatePDF(p));
-    notify.success(`${sortedPayrolls.length} bulletins PDF generes`);
+  const generateAllPDF = async () => {
+    for (const p of sortedPayrolls) await generatePDF(p);
+    notify.success(`${sortedPayrolls.length} bulletins PDF générés`);
   };
 
   return (
@@ -312,12 +209,34 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             if (confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`)) {
               generateMutation.mutate();
             }
-          }} disabled={generateMutation.isPending} className="odoo-btn-primary"
+          }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
+            title={isClosed ? 'Mois clôturé : rouvrez-le pour régénérer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> Générer les bulletins
           </button>
+          {isAdmin && (isClosed ? (
+            <button onClick={() => { if (confirm(`Rouvrir la paie de ${MONTH_NAMES[month - 1]} ${year} ? Les bulletins non payés pourront de nouveau être recalculés.`)) periodMutation.mutate('reopen'); }}
+              disabled={periodMutation.isPending} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Unlock size={13} /> Rouvrir le mois
+            </button>
+          ) : (
+            <button onClick={() => { if (confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés : plus de régénération ni de modification des rubriques. Le paiement reste possible.`)) periodMutation.mutate('close'); }}
+              disabled={periodMutation.isPending || sortedPayrolls.length === 0} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Lock size={13} /> Clôturer le mois
+            </button>
+          ))}
         </div>
       </div>
+
+      {isClosed && (
+        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
+          <Lock size={12} style={{ display: 'inline', marginRight: 4 }} />
+          Paie de {MONTH_NAMES[month - 1]} {year} clôturée
+          {period?.closed_at && <> le {new Date(period.closed_at).toLocaleDateString('fr-FR')}</>}
+          {period?.closed_by_first_name && <> par {period.closed_by_first_name} {period.closed_by_last_name}</>}
+          . Les bulletins sont figés ; le paiement reste possible.
+        </div>
+      )}
 
       {/* Stat tiles */}
       {(payrolls as Record<string, any>[]).length > 0 && (
@@ -374,6 +293,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                       <Users size={11} style={{ color: 'var(--theme-accent)' }} />
                       {p.first_name as string} {p.last_name as string}
                       <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(p.employee_role as string)}</span>
+                      {p.is_declared === false && <span className="odoo-tag odoo-tag-grey" title="Ni cotisations ni IR">Non déclaré</span>}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -515,6 +435,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   {pn(p.overtime_amount) > 0 && line('Heures supplementaires', pf(p.overtime_amount))}
                   {pn(p.extra_shift_amount) > 0 && line(`Double shifts (+${p.extra_shift_days} j)`, pf(p.extra_shift_amount))}
                   {pn(p.deductions) > 0 && line('Retenue absences', '-' + pf(p.deductions), 'text-red-600')}
+                  {pn(p.bonuses) > 0 && line('Primes et indemnités', pf(p.bonuses))}
                   <div className="border-t border-blue-200 mt-1">
                     {line('Salaire brut', pf(p.gross_salary), 'text-blue-700', true)}
                   </div>
@@ -523,24 +444,37 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 {/* Cotisations salariales */}
                 <div className="bg-orange-50 rounded-xl overflow-hidden">
                   <p className="text-xs font-semibold text-orange-600 uppercase px-3 pt-3 pb-1">Cotisations salariales</p>
-                  {line('CNSS (4.48% plaf. 6 000)', '-' + pf(p.cnss_employee), 'text-orange-700')}
-                  {line('AMO (2.26%)', '-' + pf(p.amo_employee), 'text-orange-700')}
+                  {p.is_declared === false && <p className="text-xs text-gray-500 px-3 pb-1">Salarié non déclaré : ni cotisations ni IR.</p>}
+                  {line('CNSS (plafonnée)', '-' + pf(p.cnss_employee), 'text-orange-700')}
+                  {line('AMO', '-' + pf(p.amo_employee), 'text-orange-700')}
                   {pn(p.cimr_employee) > 0 && line('CIMR', '-' + pf(p.cimr_employee), 'text-orange-700')}
                   <div className="border-t border-orange-200 mt-1">
-                    {line('= Salaire net imposable', pf(pn(p.gross_salary) - pn(p.cnss_employee) - pn(p.amo_employee) - pn(p.cimr_employee)), 'text-orange-800', true)}
+                    {line('Salaire brut imposable', pf(p.brut_imposable ?? p.gross_salary), 'text-orange-800', true)}
                   </div>
                 </div>
 
                 {/* IR */}
                 <div className="bg-red-50 rounded-xl overflow-hidden">
                   <p className="text-xs font-semibold text-red-600 uppercase px-3 pt-3 pb-1">Impot sur le revenu</p>
-                  {line('Frais professionnels (20%)', '-' + pf(p.frais_pro))}
-                  {line('IR brut (bareme)', pf(p.ir_gross))}
+                  {line('Frais professionnels', '-' + pf(p.frais_pro))}
+                  {p.net_imposable != null && line('Revenu net imposable', pf(p.net_imposable))}
+                  {line('IR brut (barème)', pf(p.ir_gross))}
                   {pn(p.family_deduction) > 0 && line(`Deduction familiale (${p.nb_dependents} pers.)`, '-' + pf(p.family_deduction))}
                   <div className="border-t border-red-200 mt-1">
                     {line('IR net', '-' + pf(p.ir_net), 'text-red-700', true)}
                   </div>
                 </div>
+
+                {pn(p.other_deductions) > 0 && (
+                  <div className="bg-red-50 rounded-xl overflow-hidden">{line('Autres retenues (rubriques)', '-' + pf(p.other_deductions), 'text-red-700', true)}</div>
+                )}
+
+                <PayslipLinesEditor
+                  payrollId={p.id as string}
+                  locked={!!p.paid || isClosed}
+                  lockReason={p.paid ? 'Bulletin payé : annulez le paiement pour modifier les rubriques.' : isClosed ? 'Mois clôturé : rouvrez-le pour modifier les rubriques.' : undefined}
+                  onRecomputed={updated => setDetailPayroll({ ...p, ...updated })}
+                />
 
                 {/* Net */}
                 <div className="bg-green-100 rounded-xl p-4 text-center">
@@ -554,16 +488,16 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     Charges patronales — {pf(p.total_charges_patron)} DH
                   </summary>
                   <div className="pb-2">
-                    {line('CNSS patronale (8.98%)', pf(p.cnss_employer), 'text-purple-700')}
-                    {line('AMO patronale (4.11%)', pf(p.amo_employer), 'text-purple-700')}
+                    {line('CNSS patronale', pf(p.cnss_employer), 'text-purple-700')}
+                    {line('AMO patronale', pf(p.amo_employer), 'text-purple-700')}
                     {pn(p.cimr_employer) > 0 && line('CIMR patronale', pf(p.cimr_employer), 'text-purple-700')}
-                    {line('Allocations familiales (6.40%)', pf(p.alloc_familiales), 'text-purple-700')}
-                    {line('Taxe form. prof. (1.60%)', pf(p.taxe_fp), 'text-purple-700')}
+                    {line('Allocations familiales', pf(p.alloc_familiales), 'text-purple-700')}
+                    {line('Taxe formation professionnelle', pf(p.taxe_fp), 'text-purple-700')}
                   </div>
                 </details>
 
                 {/* PDF download button */}
-                <button onClick={() => { generatePDF(p); notify.success('Bulletin PDF telecharge'); }}
+                <button onClick={() => generatePDF(p)}
                   className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
                   <FileText size={18} /> Telecharger le bulletin PDF
                 </button>

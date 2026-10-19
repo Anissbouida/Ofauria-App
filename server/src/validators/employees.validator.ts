@@ -58,6 +58,8 @@ export const createEmployeeSchema = z.object({
   seniorityYears: nullableNumber((n) => n.int().nonnegative()),
   nbDependents: nullableNumber((n) => n.int().min(0).max(20)),
   cimrRate: nullableNumber((n) => n.nonnegative().max(100)),
+  // Salarie declare : soumis CNSS/AMO/CIMR et IR (mig 318).
+  isDeclared: z.boolean().optional(),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
@@ -123,12 +125,85 @@ export const generatePayrollSchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100),
 });
 
+// Les montants passent par les lignes de rubriques (PUT /payroll/:id/lines) :
+// le net est toujours recalcule par le moteur. paid/paidAt/paymentMethod :
+// passer par POST /pay.
 export const updatePayrollSchema = z.object({
-  bonuses: nullableNumber((n) => n.nonnegative()),
-  deductions: nullableNumber((n) => n.nonnegative()),
   notes: z.string().max(2000).nullable().optional(),
-  // paid/paidAt/paymentMethod deliberement absents : passer par POST /pay.
-}).strict('Champ non autorise (paid/paidAt/paymentMethod : utiliser POST /pay)');
+}).strict('Champ non autorise (montants : lignes de rubriques ; paiement : POST /pay)');
+
+// ─── Paie : rubriques, lignes, parametres (mig 318) ──────────────────────
+const money = z.coerce.number().positive('Montant > 0').max(10_000_000);
+
+export const setPayrollLinesSchema = z.object({
+  lines: z.array(z.object({
+    rubriqueId: z.string().uuid('rubriqueId invalide'),
+    amount: money,
+    label: z.string().max(120).nullable().optional(),
+  })).max(50),
+});
+
+export const payrollPeriodSchema = z.object({
+  month: z.coerce.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
+});
+
+export const createRubriqueSchema = z.object({
+  code: z.string().regex(/^[A-Za-z0-9_]{2,30}$/, 'Code : lettres, chiffres, _ (2-30)'),
+  label: z.string().min(1).max(120),
+  kind: z.enum(['gain', 'retenue']),
+  soumisCnss: z.boolean().default(true),
+  soumisIr: z.boolean().default(true),
+  plafondExonerationMensuel: nullableNumber((n) => n.nonnegative()),
+  sortOrder: nullableNumber((n) => n.int().min(0).max(999)),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+export const updateRubriqueSchema = createRubriqueSchema.omit({ code: true, kind: true }).partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export const employeePayrollItemSchema = z.object({
+  rubriqueId: z.string().uuid('rubriqueId invalide'),
+  amount: money,
+  startDate: dateStrOrEmpty,
+  endDate: dateStrOrEmpty,
+  notes: z.string().max(500).nullable().optional(),
+}).refine(v => !v.startDate || !v.endDate || v.endDate >= v.startDate, { message: 'Fin >= début', path: ['endDate'] });
+
+export const updateEmployeePayrollItemSchema = z.object({
+  amount: money.optional(),
+  startDate: dateStrOrEmpty,
+  endDate: dateStrOrEmpty,
+  notes: z.string().max(500).nullable().optional(),
+});
+
+export const payrollSettingsSchema = z.object({
+  employerCnssNumber: z.string().max(30).nullable().optional(),
+  monthlyBaseDays: z.coerce.number().int().min(20).max(31).optional(),
+});
+
+const rate = z.coerce.number().min(0).max(1);
+export const updateTaxScaleSchema = z.object({
+  label: z.string().min(1).max(100).optional(),
+  cnssPlafond: z.coerce.number().positive().optional(),
+  cnssRateEmployee: rate.optional(), cnssRateEmployer: rate.optional(),
+  amoRateEmployee: rate.optional(), amoRateEmployer: rate.optional(),
+  allocFamilialesRate: rate.optional(), taxeFpRate: rate.optional(),
+  fraisProRateBas: rate.optional(), fraisProRateHaut: rate.optional(),
+  fraisProSeuilAnnuel: z.coerce.number().nonnegative().optional(),
+  fraisProPlafondAnnuel: z.coerce.number().nonnegative().optional(),
+  deductionFamilleAnnuelle: z.coerce.number().nonnegative().optional(),
+  maxPersonnesCharge: z.coerce.number().int().min(0).max(20).optional(),
+  irBrackets: z.array(z.object({
+    upTo: z.number().positive().nullable(),
+    rate: rate,
+    deduction: z.number().nonnegative(),
+  })).min(1).max(12).refine(b => b[b.length - 1].upTo === null, 'La dernière tranche doit être ouverte (upTo = null)')
+    .refine(b => b.every((x, i) => i === 0 || x.upTo === null || (b[i - 1].upTo !== null && x.upTo > (b[i - 1].upTo as number))), 'Tranches croissantes')
+    .optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
 
 // Modes acceptes par les CHECK des tables de paie (payroll / weekly_payroll /
 // biweekly_payroll : cash|bank|check) ET reconnus par le generateur d'ecritures

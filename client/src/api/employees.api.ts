@@ -65,6 +65,31 @@ export const payrollApi = {
     api.post(`/payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
   /** Annule le paiement : supprime la sortie de caisse liée + reverse les retenues d'avance. */
   unmarkPaid: (id: string) => api.post(`/payroll/${id}/unpay`).then(r => r.data.data),
+  /** Lignes de rubriques du bulletin (fixes + manuelles). */
+  lines: (id: string) => api.get(`/payroll/${id}/lines`).then(r => r.data.data),
+  /** Remplace les lignes manuelles et recalcule le bulletin. */
+  setLines: (id: string, lines: Array<{ rubriqueId: string; amount: number; label?: string | null }>) =>
+    api.put(`/payroll/${id}/lines`, { lines }).then(r => r.data.data),
+  /** Bulletin PDF genere serveur (blob). */
+  pdf: (id: string) => api.get(`/payroll/${id}/pdf`, { responseType: 'blob' }),
+  period: (month: number, year: number) =>
+    api.get('/payroll/period', { params: { month, year } }).then(r => r.data.data),
+  closePeriod: (month: number, year: number) => api.post('/payroll/period/close', { month, year }).then(r => r.data.data),
+  reopenPeriod: (month: number, year: number) => api.post('/payroll/period/reopen', { month, year }).then(r => r.data.data),
+};
+
+/** Parametrage de la paie : bareme, reglages employeur, rubriques, elements fixes. */
+export const payrollConfigApi = {
+  settings: () => api.get('/payroll/settings').then(r => r.data.data),
+  updateSettings: (data: Record<string, any>) => api.put('/payroll/settings', data).then(r => r.data.data),
+  updateTaxScale: (id: string, data: Record<string, any>) => api.put(`/payroll/tax-scales/${id}`, data).then(r => r.data.data),
+  rubriques: (all = false) => api.get('/payroll/rubriques', { params: all ? { all: 'true' } : undefined }).then(r => r.data.data),
+  createRubrique: (data: Record<string, any>) => api.post('/payroll/rubriques', data).then(r => r.data.data),
+  updateRubrique: (id: string, data: Record<string, any>) => api.put(`/payroll/rubriques/${id}`, data).then(r => r.data.data),
+  items: (employeeId: string) => api.get(`/payroll/items/employee/${employeeId}`).then(r => r.data.data),
+  createItem: (employeeId: string, data: Record<string, any>) => api.post(`/payroll/items/employee/${employeeId}`, data).then(r => r.data.data),
+  updateItem: (id: string, data: Record<string, any>) => api.put(`/payroll/items/${id}`, data).then(r => r.data.data),
+  removeItem: (id: string) => api.delete(`/payroll/items/${id}`).then(r => r.data.data),
 };
 
 export const advancesApi = {

@@ -10,6 +10,7 @@ import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { isoDate, syncSalaryFields } from '../shared';
 import EmployeeSalaryHistory from './EmployeeSalaryHistory';
+import EmployeePayrollItems from './EmployeePayrollItems';
 
 /* ═══════════════════════ EMPLOYEES TAB ═══════════════════════ */
 export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -489,6 +490,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                   ['Début contrat', (() => { const s = isoDate(viewDetail.contract_start); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Fin contrat', (() => { const s = isoDate(viewDetail.contract_end); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Date d\'embauche', (() => { const s = isoDate(viewDetail.hire_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+                  ['Déclaration', viewDetail.is_declared === false ? 'Non déclaré (ni CNSS ni IR)' : 'Déclaré CNSS + IR'],
                   ['Fréquence de paie', ({ monthly: 'Mensuelle', biweekly: 'Par quinzaine', weekly: 'Hebdomadaire' } as Record<string, string>)[(viewDetail.pay_frequency as string) || 'monthly']],
                   ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
                   ['Salaire hebdo', viewDetail.pay_frequency === 'weekly' && viewDetail.weekly_salary ? `${parseFloat(viewDetail.weekly_salary as string).toFixed(2)} DH` : null],
@@ -507,6 +509,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                   <p className="text-amber-800">{viewDetail.notes as string}</p>
                 </div>
               )}
+              {(viewDetail.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={viewDetail.id as string} />}
               <EmployeeSalaryHistory employeeId={viewDetail.id as string} />
             </div>
           </div>
@@ -524,7 +527,8 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               const data: Record<string, any> = Object.fromEntries(fd);
               if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
               if (data.weeklySalary) data.weeklySalary = parseFloat(data.weeklySalary as string);
-              if (data.seniorityYears) data.seniorityYears = parseInt(data.seniorityYears as string);
+              // Case a cocher : absente du FormData quand decochee.
+              data.isDeclared = fd.has('isDeclared');
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
               if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
               if (data.defaultShiftCode === '') data.defaultShiftCode = null;
@@ -598,7 +602,13 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                 <div><label className="block text-sm font-medium mb-1">Taux CIMR (%)</label><input name="cimrRate" type="number" min="0" max="10" step="0.5" defaultValue={editing?.cimr_rate as string || '0'} className="input" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Anciennete (annees)</label><input name="seniorityYears" type="number" min="0" defaultValue={editing?.seniority_years as string || '0'} className="input" /></div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium mt-6">
+                    <input name="isDeclared" type="checkbox" defaultChecked={editing ? editing.is_declared !== false : true} />
+                    Salarié déclaré (CNSS, AMO et IR)
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">Ancienneté calculée depuis la date d'embauche.</p>
+                </div>
                 <div><label className="block text-sm font-medium mb-1">Personnes a charge</label><input name="nbDependents" type="number" min="0" max="6" defaultValue={editing?.nb_dependents as string || '0'} className="input" /></div>
               </div>
 

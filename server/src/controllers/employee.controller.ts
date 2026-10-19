@@ -510,10 +510,15 @@ export const payrollController = {
   },
   async generate(req: AuthRequest, res: Response) {
     const { month, year } = req.body;
-    const { payrolls, removed } = await payrollRepository.generate(month, year, req.user!.storeId);
-    // `removed` : bulletins non payes retires (employe passe en hebdo/quinzaine),
-    // affiches par le client au lieu d'une suppression silencieuse.
-    res.json({ success: true, data: payrolls, removed });
+    try {
+      const { payrolls, removed } = await payrollRepository.generate(month, year, req.user!.storeId);
+      // `removed` : bulletins non payes retires (employe passe en hebdo/quinzaine),
+      // affiches par le client au lieu d'une suppression silencieuse.
+      res.json({ success: true, data: payrolls, removed });
+    } catch (err) {
+      // Mois cloture, bareme absent : erreur metier lisible, pas un 500.
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
   },
   /** Annule un paiement mensuel : supprime la sortie de caisse + reverse les retenues. */
   async unmarkPaid(req: AuthRequest, res: Response) {

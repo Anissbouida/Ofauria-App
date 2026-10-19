@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
+import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } from './payroll-config.repository.js';
 
 /**
  * Vue interne : compte les repayments d'avance rattaches a un employe.
@@ -40,14 +41,19 @@ export const employeeRepository = {
     emergencyContactName?: string; emergencyContactPhone?: string; notes?: string;
     storeId?: string; defaultShiftCode?: string;
     payFrequency?: string; weeklySalary?: number;
+    seniorityYears?: number | null; nbDependents?: number | null; cimrRate?: number | null;
+    isDeclared?: boolean;
     createdBy?: string;
   }) {
+    // nb_dependents / cimr_rate / seniority_years etaient valides mais jamais
+    // enregistres a la creation (IR et CIMR faux jusqu'a la 1re modification).
     const result = await db.query(
       `INSERT INTO employees (user_id, first_name, last_name, role, phone, monthly_salary, hire_date,
         cin, address, city, birth_date, cnss_number, contract_type, contract_start, contract_end,
         emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code,
-        pay_frequency, weekly_salary, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$23) RETURNING *`,
+        pay_frequency, weekly_salary, created_by, updated_by,
+        seniority_years, nb_dependents, cimr_rate, is_declared)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$23,$24,$25,$26,$27) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
        data.phone || null, data.monthlySalary || null, data.hireDate,
        data.cin || null, data.address || null, data.city || null, data.birthDate || null,
@@ -55,7 +61,8 @@ export const employeeRepository = {
        data.emergencyContactName || null, data.emergencyContactPhone || null, data.notes || null,
        data.storeId || null, data.defaultShiftCode || null,
        data.payFrequency || 'monthly', data.weeklySalary || null,
-       data.createdBy || null]
+       data.createdBy || null,
+       data.seniorityYears ?? null, data.nbDependents ?? 0, data.cimrRate ?? 0, data.isDeclared ?? true]
     );
     return result.rows[0];
   },
@@ -71,6 +78,7 @@ export const employeeRepository = {
       notes: 'notes', seniorityYears: 'seniority_years', nbDependents: 'nb_dependents', cimrRate: 'cimr_rate',
       defaultShiftCode: 'default_shift_code',
       payFrequency: 'pay_frequency', weeklySalary: 'weekly_salary',
+      hireDate: 'hire_date', isDeclared: 'is_declared',
     };
     // Date fields: convert empty strings to null to avoid DB type errors
     const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate'];
@@ -774,81 +782,19 @@ export const payrollRepository = {
   },
 
   /**
-   * Genere / regenere les bulletins du mois. Retourne aussi `removed` : les
-   * bulletins NON payes supprimes parce que l'employe n'est plus paye au mois
-   * (passe en hebdo/quinzaine) — l'appelant doit l'afficher, jamais en silence.
+   * Genere / regenere les bulletins du mois avec le moteur marocain
+   * (services/payroll-engine.ts) et le bareme en vigueur (payroll_tax_scales).
+   * Retourne aussi `removed` : les bulletins NON payes supprimes parce que
+   * l'employe n'est plus paye au mois (passe en hebdo/quinzaine) — l'appelant
+   * doit l'afficher, jamais en silence.
    * storeId : perimetre du gerant (meme regle que la paie hebdo/quinzaine).
    */
   async generate(month: number, year: number, storeId?: string): Promise<{ payrolls: Record<string, unknown>[]; removed: Array<{ employee_id: string; first_name: string; last_name: string; pay_frequency: string }> }> {
-    // ═══════════════════════════════════════════════════════════
-    // Modele de paie marocain — CNSS / AMO / CIMR / IR 2025
-    // Conforme aux regles de la CNSS et de la fiscalite marocaine
-    // ═══════════════════════════════════════════════════════════
+    await payrollPeriodRepository.assertOpen(month, year);
+    const ctx = await loadPayrollContext(month, year);
 
-    // ─── 1. CNSS ───
-    const CNSS_PLAFOND       = 6000;    // plafond mensuel
-    const CNSS_RATE_EMP      = 0.0448;  // 4.48% part salariale
-    const CNSS_RATE_PAT      = 0.0898;  // 8.98% part patronale
-
-    // ─── 2. AMO (Assurance Maladie Obligatoire) ───
-    const AMO_RATE_EMP       = 0.0226;  // 2.26% salariale (sans plafond)
-    const AMO_RATE_PAT       = 0.0411;  // 4.11% patronale (sans plafond)
-
-    // ─── 3. Charges patronales ───
-    const ALLOC_FAM_RATE     = 0.064;   // 6.40% allocations familiales (sans plafond)
-    const TAXE_FP_RATE       = 0.016;   // 1.60% taxe formation professionnelle
-
-    // ─── 4. Frais professionnels ───
-    const FRAIS_PRO_RATE     = 0.20;    // 20% du salaire net imposable
-    const FRAIS_PRO_PLAFOND  = 2500;    // plafond mensuel 2,500 DH
-
-    // ─── 5. Deduction charges familiales ───
-    const DEDUCTION_FAMILLE  = 30;      // 30 DH/personne/mois (max 6 personnes)
-
-    // ─── 6. Bareme IR annuel progressif 2025 ───
-    // Calcul sur base ANNUELLE puis division par 12
-    function calcIRAnnuel(baseIRMensuelle: number): number {
-      const revenuAnnuel = baseIRMensuelle * 12;
-      let irAnnuel = 0;
-
-      if (revenuAnnuel <= 30000) {
-        irAnnuel = 0;
-      } else if (revenuAnnuel <= 50000) {
-        irAnnuel = (revenuAnnuel - 30000) * 0.10;
-      } else if (revenuAnnuel <= 60000) {
-        irAnnuel = 2000 + (revenuAnnuel - 50000) * 0.20;
-      } else if (revenuAnnuel <= 80000) {
-        irAnnuel = 4000 + (revenuAnnuel - 60000) * 0.30;
-      } else if (revenuAnnuel <= 180000) {
-        irAnnuel = 10000 + (revenuAnnuel - 80000) * 0.34;
-      } else {
-        irAnnuel = 44000 + (revenuAnnuel - 180000) * 0.38;
-      }
-
-      // Retourner IR mensuel = annuel / 12
-      return irAnnuel / 12;
-    }
-
-    // Prime d'anciennete (Code du travail marocain art. 350-352)
-    function calcSeniorityRate(years: number): number {
-      if (years < 2)  return 0;
-      if (years < 5)  return 0.05;   // 5% apres 2 ans
-      if (years < 12) return 0.10;   // 10% apres 5 ans
-      if (years < 20) return 0.15;   // 15% apres 12 ans
-      if (years < 25) return 0.20;   // 20% apres 20 ans
-      return 0.25;                    // 25% apres 25 ans
-    }
-
-    const r2 = (v: number) => Math.round(v * 100) / 100;
-
-    // Cotisations sociales et IR DESACTIVES pour le moment (demande metier
-    // 07/2026 : etablissement pas encore declare) : net = brut, charges
-    // patronales a 0. Repasser a true pour reactiver le calcul marocain
-    // complet CNSS/AMO/CIMR/IR ci-dessous (le bareme reste en place).
-    const APPLY_SOCIAL_DEDUCTIONS = false;
-
-    // Seuls les employes payes AU MOIS : les hebdo ont leur propre paie
-    // (weekly_payroll), ils ne doivent pas apparaitre dans les deux.
+    // Seuls les employes payes AU MOIS : les hebdo/quinzaine ont leur propre
+    // paie, ils ne doivent pas apparaitre dans les deux.
     const employees = await db.query(
       `SELECT * FROM employees
         WHERE is_active = true
@@ -872,202 +818,58 @@ export const payrollRepository = {
         RETURNING p.employee_id, e.first_name, e.last_name, e.pay_frequency`,
       storeId ? [month, year, storeId] : [month, year]
     );
-    const results = [];
 
+    const results: Record<string, unknown>[] = [];
     for (const emp of employees.rows) {
-      // ─── Pointage du mois ───
-      const att = await db.query(
-        // Pointage REEL uniquement (is_expected = false, comme la quinzaine) :
-        // une ligne pre-remplie par le planning ne compte pas.
-        // 'repos' compte comme jour couvert (jour de repos hebdomadaire
-        // inclus dans le salaire mensuel).
-        // 'double' = deux shifts le meme jour : couvre 1 jour calendaire et
-        // ajoute 1 jour supplementaire au brut (taux journalier base/26).
-        `SELECT
-          COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos')) as present_days,
-          COUNT(*) FILTER (WHERE status = 'double') as double_days,
-          COUNT(*) FILTER (WHERE status = 'half_day') as half_days,
-          COALESCE(SUM(overtime_minutes), 0) as total_overtime
-         FROM attendance
-         WHERE employee_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
-           AND is_expected = false`,
-        [emp.id, month, year]
-      );
-      const a = att.rows[0];
-      const baseSalary = parseFloat(emp.monthly_salary);
-      const doubleDays = parseInt(a.double_days);
-      const halfDays = parseInt(a.half_days);
-      const workedDays = 26;
-      const overtimeHours = parseFloat(a.total_overtime) / 60;
-      const dailyRate = baseSalary / 26;
-      const seniorityYears = parseInt(emp.seniority_years) || 0;
-      const nbDependents = Math.min(parseInt(emp.nb_dependents) || 0, 6);
-      const cimrRate = parseFloat(emp.cimr_rate) || 0;
-
-      // ═══ ETAPE 1 : Salaire brut ═══
-      // Base pointage (regle metier 07/2026, alignee sur la quinzaine) :
-      // toute journee non couverte par un pointage reel sur la base de 26
-      // jours est retenue au taux journalier. Un jour 'absent' pointe et un
-      // jour sans pointage produisent la meme retenue ; mois pointe complet
-      // (presents + repos >= 26) = salaire plein.
-      const coveredDays = parseInt(a.present_days) + doubleDays + 0.5 * halfDays;
-      const absentDays = Math.max(0, 26 - coveredDays);
-      const absenceDeduction = r2(absentDays * dailyRate);
-      // Prime d'anciennete sur le salaire effectivement gagne (base moins
-      // retenues), pas sur le salaire theorique.
-      const seniorityBonus = r2((baseSalary - absenceDeduction) * calcSeniorityRate(seniorityYears));
-      const overtimeAmount = r2(overtimeHours * (dailyRate / 8));
-      // Double shift : le 2e service du jour est paye 1 jour supplementaire
-      // (symetrique de la retenue d'absence, meme taux journalier base/26).
-      const extraShiftAmount = r2(doubleDays * dailyRate);
-      const grossSalary = r2(baseSalary + seniorityBonus + overtimeAmount + extraShiftAmount - absenceDeduction);
-
-      // ═══ ETAPE 2 : CNSS salariale (plafonnee a 6 000 DH) ═══
-      const cnssBase = Math.min(grossSalary, CNSS_PLAFOND);
-      const cnssEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(cnssBase * CNSS_RATE_EMP) : 0;
-
-      // ═══ ETAPE 3 : AMO salariale (sans plafond) ═══
-      const amoEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * AMO_RATE_EMP) : 0;
-
-      // ═══ ETAPE 3b : CIMR salariale (si applicable) ═══
-      const cimrEmployee = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * cimrRate / 100) : 0;
-
-      // ═══ ETAPE 4 : Salaire net imposable ═══
-      // SNI = Brut - CNSS - AMO - CIMR
-      const salaireNetImposable = r2(grossSalary - cnssEmployee - amoEmployee - cimrEmployee);
-
-      // ═══ ETAPE 5 : Frais professionnels ═══
-      // 20% du SNI, plafonne a 2 500 DH/mois
-      const fraisPro = APPLY_SOCIAL_DEDUCTIONS ? r2(Math.min(salaireNetImposable * FRAIS_PRO_RATE, FRAIS_PRO_PLAFOND)) : 0;
-
-      // ═══ ETAPE 6 : Base imposable IR ═══
-      const baseIR = r2(salaireNetImposable - fraisPro);
-
-      // ═══ ETAPE 7 : IR (bareme annuel / 12) ═══
-      const irBrut = APPLY_SOCIAL_DEDUCTIONS ? r2(calcIRAnnuel(baseIR)) : 0;
-
-      // ═══ ETAPE 8 : Deduction charges familiales ═══
-      const familyDeduction = APPLY_SOCIAL_DEDUCTIONS ? r2(nbDependents * DEDUCTION_FAMILLE) : 0;
-
-      // ═══ ETAPE 9 : IR net ═══
-      const irNet = r2(Math.max(irBrut - familyDeduction, 0));
-
-      // ═══ ETAPE 10 : Salaire net a payer ═══
-      // Net = SNI - IR net = Brut - CNSS - AMO - CIMR - IR net
-      const netSalary = r2(salaireNetImposable - irNet);
-
-      // ═══ Charges patronales ═══
-      const cnssEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(cnssBase * CNSS_RATE_PAT) : 0;
-      const amoEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * AMO_RATE_PAT) : 0;
-      const cimrEmployer = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * cimrRate / 100) : 0; // meme taux que salarie par defaut
-      const allocFamiliales = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * ALLOC_FAM_RATE) : 0;
-      const taxeFP = APPLY_SOCIAL_DEDUCTIONS ? r2(grossSalary * TAXE_FP_RATE) : 0;
-      const totalChargesPatron = r2(cnssEmployer + amoEmployer + cimrEmployer + allocFamiliales + taxeFP);
-
-      const result = await db.query(
-        `INSERT INTO payroll (
-          employee_id, month, year, base_salary, worked_days, absent_days,
-          overtime_hours, overtime_amount, seniority_bonus, gross_salary, deductions,
-          cnss_employee, cnss_employer, amo_employee, amo_employer,
-          cimr_employee, cimr_employer,
-          frais_pro, ir_gross, ir_net, family_deduction, nb_dependents,
-          alloc_familiales, taxe_fp, total_charges_patron, net_salary,
-          extra_shift_days, extra_shift_amount
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
-         ON CONFLICT (employee_id, month, year) DO UPDATE SET
-           base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
-           absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
-           overtime_amount = EXCLUDED.overtime_amount, seniority_bonus = EXCLUDED.seniority_bonus,
-           gross_salary = EXCLUDED.gross_salary, deductions = EXCLUDED.deductions,
-           cnss_employee = EXCLUDED.cnss_employee, cnss_employer = EXCLUDED.cnss_employer,
-           amo_employee = EXCLUDED.amo_employee, amo_employer = EXCLUDED.amo_employer,
-           cimr_employee = EXCLUDED.cimr_employee, cimr_employer = EXCLUDED.cimr_employer,
-           frais_pro = EXCLUDED.frais_pro, ir_gross = EXCLUDED.ir_gross,
-           ir_net = EXCLUDED.ir_net, family_deduction = EXCLUDED.family_deduction,
-           nb_dependents = EXCLUDED.nb_dependents,
-           alloc_familiales = EXCLUDED.alloc_familiales, taxe_fp = EXCLUDED.taxe_fp,
-           total_charges_patron = EXCLUDED.total_charges_patron,
-           -- La prime manuelle (bonuses, saisie via PUT) survit a la
-           -- regeneration : sans ce terme, regenerer effacait la prime du net
-           -- alors que la colonne bonuses l'affichait encore.
-           net_salary = EXCLUDED.net_salary + COALESCE(payroll.bonuses, 0),
-           extra_shift_days = EXCLUDED.extra_shift_days,
-           extra_shift_amount = EXCLUDED.extra_shift_amount
-         WHERE payroll.paid = false
-         RETURNING *`,
-        [emp.id, month, year, baseSalary, workedDays, absentDays,
-         overtimeHours, overtimeAmount, seniorityBonus, grossSalary, absenceDeduction,
-         cnssEmployee, cnssEmployer, amoEmployee, amoEmployer,
-         cimrEmployee, cimrEmployer,
-         fraisPro, irBrut, irNet, familyDeduction, nbDependents,
-         allocFamiliales, taxeFP, totalChargesPatron, netSalary,
-         doubleDays, extraShiftAmount]
-      );
-      if (result.rows[0]) {
-        results.push(result.rows[0]);
-      } else {
-        // Bulletin deja paye : la garde WHERE l'a laisse intact (le net a
-        // servi a une sortie de caisse) — on renvoie la ligne existante.
-        const existing = await db.query(
-          'SELECT * FROM payroll WHERE employee_id = $1 AND month = $2 AND year = $3',
-          [emp.id, month, year]
-        );
-        if (existing.rows[0]) results.push(existing.rows[0]);
-      }
+      results.push(await computeAndSavePayslip(emp, month, year, ctx));
     }
     return { payrolls: results, removed: purge.rows };
   },
 
+  /** Lignes de rubriques d'un bulletin (fixes + manuelles). */
+  async lines(payrollId: string) {
+    const r = await db.query(
+      `SELECT l.*, r.code AS rubrique_code
+         FROM payroll_lines l JOIN payroll_rubriques r ON r.id = l.rubrique_id
+        WHERE l.payroll_id = $1
+        ORDER BY l.kind, r.sort_order, l.created_at`,
+      [payrollId]
+    );
+    return r.rows;
+  },
+
   /**
-   * Edition d'un bulletin (primes/retenues/notes).
-   *
-   * INTERDIT sur un bulletin paye : le net qui a servi a la sortie de caisse
-   * doit rester intangible. Toute correction sur une paie payee doit passer
-   * par unmarkPaid -> update -> markPaid.
-   *
-   * Champs paid/paidAt/paymentMethod SUPPRIMES du mapping : le seul chemin
-   * legitime pour marquer paye est POST /payroll/:id/pay (createur d'ecriture
-   * comptable + retenue d'avance). Autoriser paid via PUT permettrait de
-   * marquer un bulletin "paye" sans sortie de caisse ni retenue.
-   *
-   * Recalcul du net : formule alignee sur generate() (grossSalary - cotisations).
-   * L'ancienne omettait seniority_bonus, extra_shift_amount, amo_employee,
-   * cimr_employee, ir_net -> modifier une prime corrompait le net.
+   * Remplace les lignes MANUELLES d'un bulletin (primes, indemnites, retenues
+   * ponctuelles) puis recalcule tout le bulletin. Les lignes « fixe » viennent
+   * des elements fixes de l'employe et sont reprises a chaque calcul.
+   * Interdit sur un bulletin paye ou un mois cloture.
+   */
+  async setManualLines(payrollId: string, manual: Array<{ rubriqueId: string; amount: number; label?: string | null }>) {
+    const cur = await db.query(
+      `SELECT p.*, row_to_json(e.*) AS emp FROM payroll p JOIN employees e ON e.id = p.employee_id WHERE p.id = $1`,
+      [payrollId]
+    );
+    const p = cur.rows[0];
+    if (!p) return null;
+    if (p.paid) throw new Error('Bulletin deja paye : annulez le paiement avant de le modifier.');
+    await payrollPeriodRepository.assertOpen(p.month, p.year);
+    const ctx = await loadPayrollContext(p.month, p.year);
+    return computeAndSavePayslip(p.emp, p.month, p.year, ctx, manual);
+  },
+
+  /**
+   * Edition des notes d'un bulletin. Les montants passent par les lignes de
+   * rubriques (setManualLines) : le net est toujours recalcule par le moteur,
+   * jamais saisi a la main. Interdit sur un bulletin paye.
    */
   async update(id: string, data: Record<string, unknown>) {
-    // Verrou : refuse toute modification d'un bulletin deja paye.
     const current = await db.query('SELECT paid FROM payroll WHERE id = $1', [id]);
     if (!current.rows[0]) return null;
     if (current.rows[0].paid) {
-      throw new Error('Bulletin deja paye : annulez le paiement avant de modifier (unmarkPaid puis re-generation ou re-edition).');
+      throw new Error('Bulletin deja paye : annulez le paiement avant de modifier.');
     }
-
-    const mapping: Record<string, string> = {
-      bonuses: 'bonuses', deductions: 'deductions', notes: 'notes',
-    };
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
-    for (const [key, col] of Object.entries(mapping)) {
-      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
-    }
-    if (fields.length === 0) return null;
-    // Formule complete alignee sur generate() : brut - cotisations sociales - IR net.
-    // Bonuses est un ajustement manuel positif ; deductions inclut l'absence
-    // deduction calculee par generate (peut etre surchargee ici).
-    if (data.bonuses !== undefined || data.deductions !== undefined) {
-      fields.push(
-        `net_salary = base_salary + COALESCE(seniority_bonus, 0) + COALESCE(overtime_amount, 0)`
-        + ` + COALESCE(extra_shift_amount, 0)`
-        + ` + COALESCE($${i}::numeric, bonuses, 0) - COALESCE($${i + 1}::numeric, deductions, 0)`
-        + ` - COALESCE(cnss_employee, 0) - COALESCE(amo_employee, 0)`
-        + ` - COALESCE(cimr_employee, 0) - COALESCE(ir_net, 0)`
-      );
-      values.push(data.bonuses ?? null, data.deductions ?? null);
-      i += 2;
-    }
-    values.push(id);
-    const result = await db.query(`UPDATE payroll SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
+    if (data.notes === undefined) return null;
+    const result = await db.query('UPDATE payroll SET notes = $1 WHERE id = $2 RETURNING *', [data.notes, id]);
     return result.rows[0];
   },
 

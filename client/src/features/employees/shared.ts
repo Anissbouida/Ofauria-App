@@ -45,3 +45,21 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
   paternity: 'congé paternité',
   other: 'congé',
 };
+
+/** Message d'erreur API lisible (error.message du serveur) ou repli. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const msg = err && typeof err === 'object' && 'response' in err
+    ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+    : null;
+  return msg || fallback;
+}
+
+/** Telecharge une reponse axios `responseType: 'blob'` (nom tire de Content-Disposition). */
+export function saveBlobResponse(response: { data: Blob; headers: Record<string, any> }, fallbackName: string) {
+  const cd = String(response.headers?.['content-disposition'] ?? '');
+  const name = /filename="?([^"]+)"?/.exec(cd)?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(response.data);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

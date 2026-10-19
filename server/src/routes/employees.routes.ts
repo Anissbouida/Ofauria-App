@@ -3,6 +3,7 @@ import { employeeController, scheduleController, attendanceController, leaveCont
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
+import { payrollConfigController } from '../controllers/payroll-config.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
@@ -14,6 +15,8 @@ import {
   generateBiweeklyPayrollSchema, updateBiweeklyPayrollSchema,
   createAdvanceSchema, updateAdvanceSchema,
   createScheduleSchema, updateScheduleSchema, bulkWeekScheduleSchema,
+  setPayrollLinesSchema, payrollPeriodSchema, createRubriqueSchema, updateRubriqueSchema,
+  employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -87,8 +90,29 @@ biweeklyPayrollRouter.post('/:id/unpay', authenticate, authorizeModule('employee
 biweeklyPayrollRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit'), asyncHandler(biweeklyPayrollController.remove));
 payrollRouter.use('/biweekly', biweeklyPayrollRouter);
 
+// Parametrage de la paie (mig 318) — routes nommees AVANT /:id.
+// Lecture : droit Personnel ; bareme, reglages employeur, rubriques et
+// cloture : admin (impact legal et comptable sur tous les bulletins).
+payrollRouter.get('/settings', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.getSettings));
+payrollRouter.put('/settings', authenticate, authorize(ROLES.ADMIN), validate(payrollSettingsSchema), asyncHandler(payrollConfigController.updateSettings));
+payrollRouter.put('/tax-scales/:id', authenticate, authorize(ROLES.ADMIN), validate(updateTaxScaleSchema), asyncHandler(payrollConfigController.updateTaxScale));
+payrollRouter.get('/rubriques', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listRubriques));
+payrollRouter.post('/rubriques', authenticate, authorize(ROLES.ADMIN), validate(createRubriqueSchema), asyncHandler(payrollConfigController.createRubrique));
+payrollRouter.put('/rubriques/:id', authenticate, authorize(ROLES.ADMIN), validate(updateRubriqueSchema), asyncHandler(payrollConfigController.updateRubrique));
+payrollRouter.get('/period', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.period));
+payrollRouter.post('/period/close', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.closePeriod));
+payrollRouter.post('/period/reopen', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.reopenPeriod));
+// Elements fixes par employe (primes/indemnites/retenues recurrentes).
+payrollRouter.get('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listItems));
+payrollRouter.post('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'edit'), validate(employeePayrollItemSchema), asyncHandler(payrollConfigController.createItem));
+payrollRouter.put('/items/:itemId', authenticate, authorizeModule('employees', 'edit'), validate(updateEmployeePayrollItemSchema), asyncHandler(payrollConfigController.updateItem));
+payrollRouter.delete('/items/:itemId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(payrollConfigController.deleteItem));
+
 payrollRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollController.list));
 payrollRouter.post('/generate', authenticate, authorizeModule('employees', 'edit'), validate(generatePayrollSchema), asyncHandler(payrollController.generate));
+payrollRouter.get('/:id/lines', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.lines));
+payrollRouter.put('/:id/lines', authenticate, authorizeModule('employees', 'edit'), validate(setPayrollLinesSchema), asyncHandler(payrollConfigController.setLines));
+payrollRouter.get('/:id/pdf', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.pdf));
 payrollRouter.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updatePayrollSchema), asyncHandler(payrollController.update));
 payrollRouter.post('/:id/pay', authenticate, authorizeModule('employees', 'edit'), validate(markPaidSchema), asyncHandler(payrollController.markPaid));
 // Annulation d'un paiement (supprime la sortie de caisse + reverse les retenues d'avance)
