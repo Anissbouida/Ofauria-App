@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from 'express';
 import type { AuthRequest } from './auth.middleware.js';
-import { DEFAULT_ROLE_MODULES, MODULE_ALIASES, type AppModule } from '@ofauria/shared';
+import * as shared from '@ofauria/shared';
+import { DEFAULT_ROLE_MODULES, type AppModule } from '@ofauria/shared';
 import { permissionRepository } from '../repositories/permission.repository.js';
 
 export type ModuleAction = 'view' | 'create' | 'edit' | 'delete';
@@ -15,8 +16,13 @@ export type ModuleAction = 'view' | 'create' | 'edit' | 'delete';
  * Remplace les listes de roles codees en dur : donner le module « Personnel »
  * a un role suffit, sans toucher au code.
  */
+// Cles historiques d'un module (fusion Stock, cf. PermissionsContext). Lu par
+// espace de noms : MODULE_ALIASES n'existe pas dans toutes les versions de shared.
+const MODULE_ALIASES: Partial<Record<string, string[]>> =
+  (shared as unknown as { MODULE_ALIASES?: Partial<Record<string, string[]>> }).MODULE_ALIASES ?? {};
+
 export function authorizeModule(module: AppModule, action: ModuleAction = 'view') {
-  const keys: AppModule[] = [module, ...(MODULE_ALIASES[module] ?? [])];
+  const keys: string[] = [module, ...(MODULE_ALIASES[module] ?? [])];
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       res.status(401).json({ success: false, error: { message: 'Non authentifié' } });
@@ -28,7 +34,7 @@ export function authorizeModule(module: AppModule, action: ModuleAction = 'view'
       const perms = await permissionRepository.findByUserId(req.user.userId);
       let allowed: boolean;
       if (perms.length > 0) {
-        const p = perms.find(x => (keys as string[]).includes(x.module));
+        const p = perms.find(x => keys.includes(x.module));
         allowed = !!p && (
           action === 'view' ? p.can_view
           : action === 'create' ? p.can_create
@@ -37,7 +43,7 @@ export function authorizeModule(module: AppModule, action: ModuleAction = 'view'
         );
       } else {
         const defaults = DEFAULT_ROLE_MODULES[req.user.role] || [];
-        allowed = action !== 'delete' && keys.some(k => defaults.includes(k));
+        allowed = action !== 'delete' && keys.some(k => (defaults as string[]).includes(k));
       }
       if (!allowed) {
         res.status(403).json({ success: false, error: { message: 'Accès interdit' } });
