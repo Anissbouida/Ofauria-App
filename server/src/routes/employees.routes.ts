@@ -17,6 +17,7 @@ import {
   createScheduleSchema, updateScheduleSchema, bulkWeekScheduleSchema,
   setPayrollLinesSchema, payrollPeriodSchema, createRubriqueSchema, updateRubriqueSchema,
   employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
+  declarePayrollSchema, settlePayrollDeclarationSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -102,6 +103,11 @@ payrollRouter.put('/rubriques/:id', authenticate, authorize(ROLES.ADMIN), valida
 payrollRouter.get('/period', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.period));
 payrollRouter.post('/period/close', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.closePeriod));
 payrollRouter.post('/period/reopen', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.reopenPeriod));
+// Declarations CNSS / IR / CIMR : etats (droit Personnel), declarer et regler (admin).
+payrollRouter.get('/declarations', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.declarations));
+payrollRouter.get('/declarations/annual-ir', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.annualIr));
+payrollRouter.post('/declarations/declare', authenticate, authorize(ROLES.ADMIN), validate(declarePayrollSchema), asyncHandler(payrollConfigController.declare));
+payrollRouter.post('/declarations/settle', authenticate, authorize(ROLES.ADMIN), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
 // Elements fixes par employe (primes/indemnites/retenues recurrentes).
 payrollRouter.get('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listItems));
 payrollRouter.post('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'edit'), validate(employeePayrollItemSchema), asyncHandler(payrollConfigController.createItem));

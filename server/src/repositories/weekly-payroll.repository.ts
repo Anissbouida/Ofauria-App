@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
+import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -281,7 +282,7 @@ export const weeklyPayrollRepository = {
       }
     } catch (err) {
       if (createdPaymentId) {
-        try { await paymentRepository.delete(createdPaymentId); }
+        try { await cancelPayrollPayment(createdPaymentId, createdBy, 'Échec du paiement de paie (annulation automatique)'); }
         catch (cleanupErr) {
           // eslint-disable-next-line no-console
           console.error('[weeklyPayroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
@@ -305,7 +306,7 @@ export const weeklyPayrollRepository = {
    *  - reverse les retenues d'avance imputees (solde re-credite) ;
    *  - reset les flags paid/paid_at/payment_method/advance_deduction.
    */
-  async unmarkPaid(id: string) {
+  async unmarkPaid(id: string, userId?: string) {
     // Idempotence : UPDATE conditionnel + restauration si le cleanup echoue.
     const claim = await db.query(
       `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
@@ -325,7 +326,7 @@ export const weeklyPayrollRepository = {
         [wp.employee_id, `SAL-S${weekStartStr}-%`]
       );
       for (const p of payments.rows) {
-        await paymentRepository.delete(p.id);
+        await cancelPayrollPayment(p.id, userId, 'Annulation paie');
       }
       await salaryAdvanceRepository.reverseRepayments({ weeklyPayrollId: id });
     } catch (err) {

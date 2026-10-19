@@ -46,9 +46,12 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const isClosed = period?.status === 'closed';
   const periodMutation = useMutation({
     mutationFn: (action: 'close' | 'reopen') => action === 'close' ? payrollApi.closePeriod(month, year) : payrollApi.reopenPeriod(month, year),
-    onSuccess: (_d, action) => {
+    onSuccess: (d: Record<string, any>, action) => {
       queryClient.invalidateQueries({ queryKey: ['payroll-period'] });
-      notify.success(action === 'close' ? 'Mois clôturé' : 'Mois rouvert');
+      queryClient.invalidateQueries({ queryKey: ['payroll-declarations'] });
+      notify.success(action === 'close'
+        ? `Mois clôturé et comptabilisé (${d?.entriesPosted ?? 0} écriture(s) de paie)`
+        : `Mois rouvert : ${d?.entriesReversed ?? 0} écriture(s) de paie extournée(s)`);
     },
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
   });
@@ -215,12 +218,12 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             <Banknote size={13} /> Générer les bulletins
           </button>
           {isAdmin && (isClosed ? (
-            <button onClick={() => { if (confirm(`Rouvrir la paie de ${MONTH_NAMES[month - 1]} ${year} ? Les bulletins non payés pourront de nouveau être recalculés.`)) periodMutation.mutate('reopen'); }}
+            <button onClick={() => { if (confirm(`Rouvrir la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes écritures de paie du mois seront extournées et les bulletins non payés pourront être recalculés. Impossible si le mois a déjà été déclaré.`)) periodMutation.mutate('reopen'); }}
               disabled={periodMutation.isPending} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Unlock size={13} /> Rouvrir le mois
             </button>
           ) : (
-            <button onClick={() => { if (confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés : plus de régénération ni de modification des rubriques. Le paiement reste possible.`)) periodMutation.mutate('close'); }}
+            <button onClick={() => { if (confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés et comptabilisés (écriture de paie : salaires, charges sociales, CNSS, IR, net à payer). Le paiement reste possible.\n\nVérifiez d'abord les bulletins.`)) periodMutation.mutate('close'); }}
               disabled={periodMutation.isPending || sortedPayrolls.length === 0} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Lock size={13} /> Clôturer le mois
             </button>
@@ -234,7 +237,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           Paie de {MONTH_NAMES[month - 1]} {year} clôturée
           {period?.closed_at && <> le {new Date(period.closed_at).toLocaleDateString('fr-FR')}</>}
           {period?.closed_by_first_name && <> par {period.closed_by_first_name} {period.closed_by_last_name}</>}
-          . Les bulletins sont figés ; le paiement reste possible.
+          . Les bulletins sont figés et comptabilisés ; le paiement reste possible.
         </div>
       )}
 

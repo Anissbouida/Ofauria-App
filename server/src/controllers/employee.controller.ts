@@ -274,7 +274,7 @@ export const weeklyPayrollController = {
     const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     try {
-      const row = await weeklyPayrollRepository.unmarkPaid(req.params.id);
+      const row = await weeklyPayrollRepository.unmarkPaid(req.params.id, req.user!.userId);
       if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
       res.json({ success: true, data: row });
     } catch (err) {
@@ -344,7 +344,7 @@ export const biweeklyPayrollController = {
     const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     try {
-      const row = await biweeklyPayrollRepository.unmarkPaid(req.params.id);
+      const row = await biweeklyPayrollRepository.unmarkPaid(req.params.id, req.user!.userId);
       if (!row) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
       res.json({ success: true, data: row });
     } catch (err) {
@@ -525,7 +525,7 @@ export const payrollController = {
     const scoped = await loadPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
     try {
-      const row = await payrollRepository.unmarkPaid(req.params.id);
+      const row = await payrollRepository.unmarkPaid(req.params.id, req.user!.userId);
       if (!row) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
       res.json({ success: true, data: row });
     } catch (err) {
@@ -638,7 +638,7 @@ export const salaryAdvanceController = {
   },
   async remove(req: AuthRequest, res: Response) {
     try {
-      await salaryAdvanceRepository.remove(req.params.id);
+      await salaryAdvanceRepository.remove(req.params.id, req.user!.userId);
       res.json({ success: true, data: null });
     } catch (err) {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });

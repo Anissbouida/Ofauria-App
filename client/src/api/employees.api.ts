@@ -90,6 +90,14 @@ export const payrollConfigApi = {
   createItem: (employeeId: string, data: Record<string, any>) => api.post(`/payroll/items/employee/${employeeId}`, data).then(r => r.data.data),
   updateItem: (id: string, data: Record<string, any>) => api.put(`/payroll/items/${id}`, data).then(r => r.data.data),
   removeItem: (id: string) => api.delete(`/payroll/items/${id}`).then(r => r.data.data),
+  /** Etats CNSS / IR / CIMR du mois + declarations deja faites. */
+  declarations: (month: number, year: number) =>
+    api.get('/payroll/declarations', { params: { month, year } }).then(r => r.data.data),
+  annualIr: (year: number) => api.get('/payroll/declarations/annual-ir', { params: { year } }).then(r => r.data.data),
+  declare: (data: { kind: string; month: number; year: number; reference?: string | null }) =>
+    api.post('/payroll/declarations/declare', data).then(r => r.data.data),
+  settle: (data: { kind: string; month: number; year: number; paymentMethod: string; paymentDate: string }) =>
+    api.post('/payroll/declarations/settle', data).then(r => r.data.data),
 };
 
 export const advancesApi = {

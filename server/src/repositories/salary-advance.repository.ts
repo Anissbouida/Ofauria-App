@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { paymentRepository } from './accounting.repository.js';
+import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -267,7 +268,7 @@ export const salaryAdvanceRepository = {
    * si le DELETE de l'avance echoue derriere on garde une avance orpheline
    * (payment_id NULL) detectable — moins pire qu'un paiement sans avance.
    */
-  async remove(id: string) {
+  async remove(id: string, userId?: string) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -290,7 +291,7 @@ export const salaryAdvanceRepository = {
         // paymentRepository.delete a sa propre transaction (reverse ledger +
         // resync facture). Si elle echoue, on ROLLBACK notre transaction sans
         // avoir touche a l'avance -> etat coherent.
-        await paymentRepository.delete(paymentId);
+        await cancelPayrollPayment(paymentId, userId, 'Suppression de l\'avance sur salaire');
       }
       await client.query('DELETE FROM salary_advances WHERE id = $1', [id]);
       await client.query('COMMIT');

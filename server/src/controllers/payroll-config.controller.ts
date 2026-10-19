@@ -14,6 +14,8 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { serviceYears } from '../services/payroll-engine.js';
 import { generatePayslipPdf, type PayslipLineRow } from '../services/payslip-pdf.service.js';
 import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { payrollLedger } from '../services/payroll-ledger.service.js';
+import { payrollDeclarationRepository, type DeclarationKind } from '../repositories/payroll-declarations.repository.js';
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 const METHODS: Record<string, string> = { cash: 'espèces', bank: 'virement', check: 'chèque' };
@@ -182,13 +184,28 @@ export const payrollConfigController = {
   },
   async closePeriod(req: AuthRequest, res: Response) {
     const { month, year } = req.body;
-    await payrollPeriodRepository.close(month, year, req.user!.userId);
-    res.json({ success: true, data: await payrollPeriodRepository.get(month, year) });
+    // Comptabilise d'abord : si l'ecriture echoue (compte manquant, periode
+    // comptable verrouillee), le mois reste ouvert et l'erreur est affichee.
+    try {
+      const { posted } = await payrollLedger.postMonth(month, year, req.user!.userId);
+      await payrollPeriodRepository.close(month, year, req.user!.userId);
+      res.json({ success: true, data: { ...(await payrollPeriodRepository.get(month, year)), entriesPosted: posted } });
+    } catch (err) { fail(res, err); }
   },
   async reopenPeriod(req: AuthRequest, res: Response) {
     const { month, year } = req.body;
-    await payrollPeriodRepository.reopen(month, year);
-    res.json({ success: true, data: await payrollPeriodRepository.get(month, year) });
+    // Extourne les ecritures de paie (refuse si la periode comptable est verrouillee).
+    try {
+      // Un mois deja declare (CNSS/IR/CIMR) ne se rouvre pas : ses montants
+      // ont ete transmis, et un reglement solderait une dette extournee.
+      const declared = await payrollDeclarationRepository.list(month, year);
+      if (declared.length > 0) {
+        throw new Error(`Mois déjà déclaré (${declared.map((d: Record<string, any>) => d.kind.toUpperCase()).join(', ')}) : régularisez sur le mois suivant plutôt que de le rouvrir.`);
+      }
+      const { reversed } = await payrollLedger.reverseMonth(month, year);
+      await payrollPeriodRepository.reopen(month, year);
+      res.json({ success: true, data: { ...(await payrollPeriodRepository.get(month, year)), entriesReversed: reversed } });
+    } catch (err) { fail(res, err); }
   },
 
   // ─── Parametres ───
@@ -222,6 +239,39 @@ export const payrollConfigController = {
     const row = await rubriqueRepository.update(req.params.id, req.body);
     if (!row) { res.status(404).json({ success: false, error: { message: 'Rubrique introuvable' } }); return; }
     res.json({ success: true, data: row });
+  },
+
+  // ─── Declarations CNSS / IR / CIMR ───
+  async declarations(req: AuthRequest, res: Response) {
+    const month = parseInt(String(req.query.month), 10);
+    const year = parseInt(String(req.query.year), 10);
+    if (!month || !year) { res.status(400).json({ success: false, error: { message: 'month et year requis' } }); return; }
+    const [cnss, ir, cimr, declared, period] = await Promise.all([
+      payrollDeclarationRepository.cnssStatement(month, year),
+      payrollDeclarationRepository.irStatement(month, year),
+      payrollDeclarationRepository.cimrTotal(month, year),
+      payrollDeclarationRepository.list(month, year),
+      payrollPeriodRepository.get(month, year),
+    ]);
+    res.json({ success: true, data: { cnss, ir, cimr, declared, period } });
+  },
+  async annualIr(req: AuthRequest, res: Response) {
+    const year = parseInt(String(req.query.year), 10);
+    if (!year) { res.status(400).json({ success: false, error: { message: 'year requis' } }); return; }
+    res.json({ success: true, data: await payrollDeclarationRepository.annualIr(year) });
+  },
+  async declare(req: AuthRequest, res: Response) {
+    const { kind, month, year, reference } = req.body as { kind: DeclarationKind; month: number; year: number; reference?: string | null };
+    try { res.json({ success: true, data: await payrollDeclarationRepository.declare(kind, month, year, reference ?? null, req.user!.userId) }); }
+    catch (err) { fail(res, err); }
+  },
+  async settle(req: AuthRequest, res: Response) {
+    const { kind, month, year, paymentMethod, paymentDate } = req.body;
+    try {
+      res.json({ success: true, data: await payrollDeclarationRepository.settle(kind, month, year, {
+        paymentMethod, paymentDate, userId: req.user!.userId, storeId: req.user!.storeId,
+      }) });
+    } catch (err) { fail(res, err); }
   },
 
   // ─── Elements fixes par employe ───

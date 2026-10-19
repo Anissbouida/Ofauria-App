@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
+import { cancelPayrollPayment, payrollLedger } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } from './payroll-config.repository.js';
@@ -971,7 +972,7 @@ export const payrollRepository = {
       }
     } catch (err) {
       if (createdPaymentId) {
-        try { await paymentRepository.delete(createdPaymentId); }
+        try { await cancelPayrollPayment(createdPaymentId, createdBy, 'Échec du paiement de paie (annulation automatique)'); }
         catch (cleanupErr) {
           // eslint-disable-next-line no-console
           console.error('[payroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
@@ -984,6 +985,15 @@ export const payrollRepository = {
       throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
+    // Mois deja comptabilise (cloture) : solde la dette 4432 du net paye.
+    // Un echec ici n'annule pas le paiement (deja en caisse) : il est
+    // rejoue a la prochaine cloture (postMonth est idempotent).
+    try { await payrollLedger.afterPaid(id, createdBy || payroll.employee_id); }
+    catch (ledgerErr) {
+      // eslint-disable-next-line no-console
+      console.error('[payroll.markPaid] reclassement 4432 non passe', id, ledgerErr);
+    }
+
     return payroll;
   },
 
@@ -993,7 +1003,7 @@ export const payrollRepository = {
    * liees (reference SAL-{mois}/{annee}-..., ecritures reversees), reverse
    * les retenues d'avance (solde re-credite), reset les flags.
    */
-  async unmarkPaid(id: string) {
+  async unmarkPaid(id: string, userId?: string) {
     // Idempotence : deux annulations concurrentes ne doivent pas supprimer
     // deux fois les paiements. On revendique le passage a paid=false par un
     // UPDATE conditionnel ; si un autre process a deja annule, on ressort.
@@ -1017,8 +1027,11 @@ export const payrollRepository = {
         `SELECT id FROM payments WHERE type = 'salary' AND employee_id = $1 AND reference LIKE $2`,
         [p.employee_id, `SAL-${p.month}/${p.year}-%`]
       );
+      // Extourne d'abord le reclassement 4432 (il pointe sur ces paiements).
+      await payrollLedger.beforeUnpaid(id);
       for (const pay of payments.rows) {
-        await paymentRepository.delete(pay.id);
+        // Paiement execute : contre-piece + extourne (plus de suppression, mig 310).
+        await cancelPayrollPayment(pay.id, userId, `Annulation paie ${p.month}/${p.year}`);
       }
       await salaryAdvanceRepository.reverseRepayments({ payrollId: id });
     } catch (err) {

@@ -287,3 +287,18 @@ export const bulkWeekScheduleSchema = z.object({
     shiftCode: z.string().max(20).nullable(),
   })).max(2000, 'Batch max 2000 assignations'),
 });
+
+// Declarations (mig 319)
+export const declarePayrollSchema = z.object({
+  kind: z.enum(['cnss', 'ir', 'cimr']),
+  month: z.coerce.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
+  reference: z.string().max(40).nullable().optional(),
+});
+export const settlePayrollDeclarationSchema = z.object({
+  kind: z.enum(['cnss', 'ir', 'cimr']),
+  month: z.coerce.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
+  paymentMethod: payrollPaymentMethod.default('bank'),
+  paymentDate: isoDate,
+});

@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
+import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -236,7 +237,7 @@ export const biweeklyPayrollRepository = {
       }
     } catch (err) {
       if (createdPaymentId) {
-        try { await paymentRepository.delete(createdPaymentId); }
+        try { await cancelPayrollPayment(createdPaymentId, createdBy, 'Échec du paiement de paie (annulation automatique)'); }
         catch (cleanupErr) {
           // eslint-disable-next-line no-console
           console.error('[biweeklyPayroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
@@ -257,7 +258,7 @@ export const biweeklyPayrollRepository = {
    * que l'hebdo : sorties de caisse SAL-Q supprimees (ecritures reversees),
    * retenues d'avance re-creditees, flags reset.
    */
-  async unmarkPaid(id: string) {
+  async unmarkPaid(id: string, userId?: string) {
     const claim = await db.query(
       `UPDATE biweekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0
          WHERE id = $1 AND paid = true RETURNING *`,
@@ -276,7 +277,7 @@ export const biweeklyPayrollRepository = {
         [bp.employee_id, `SAL-Q${periodStartStr}-%`]
       );
       for (const p of payments.rows) {
-        await paymentRepository.delete(p.id);
+        await cancelPayrollPayment(p.id, userId, 'Annulation paie');
       }
       await salaryAdvanceRepository.reverseRepayments({ biweeklyPayrollId: id });
     } catch (err) {

@@ -63,3 +63,16 @@ export function saveBlobResponse(response: { data: Blob; headers: Record<string,
   a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Export CSV (separateur ;, BOM UTF-8 pour Excel). */
+export function downloadCsv(filename: string, headers: string[], rows: Array<Array<string | number | null | undefined>>) {
+  const cell = (v: string | number | null | undefined) => {
+    const t = v === null || v === undefined ? '' : typeof v === 'number' ? v.toFixed(2).replace('.', ',') : String(v);
+    return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const csv = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.map(cell).join(';'))].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
