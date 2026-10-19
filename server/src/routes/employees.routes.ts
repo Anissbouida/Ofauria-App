@@ -62,6 +62,7 @@ shiftsRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncH
 // Attendance
 export const attendanceRouter = Router();
 attendanceRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.list));
+attendanceRouter.get('/overtime-summary', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.overtimeSummary));
 attendanceRouter.get('/summary', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.monthlySummary));
 attendanceRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(upsertAttendanceSchema), asyncHandler(attendanceController.upsert));
 attendanceRouter.post('/bulk', authenticate, authorizeModule('employees', 'edit'), validate(bulkAttendanceSchema), asyncHandler(attendanceController.bulkUpsert));

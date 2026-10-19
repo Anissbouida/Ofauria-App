@@ -9,6 +9,7 @@ import { notify } from '../../../components/ui/InlineNotification';
 import { ROLE_LABELS, SHIFT_BADGE_COLORS, SHIFT_SHORT_LABELS } from '@ofauria/shared';
 import type { ShiftCode } from '@ofauria/shared';
 import { ATTENDANCE_STATUS, MONTH_NAMES, LEAVE_TYPE_LABELS } from '../shared';
+import OvertimeQuotaPanel from './OvertimeQuotaPanel';
 
 /* ═══════════════════════ ATTENDANCE TAB ═══════════════════════ */
 export default function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -142,6 +143,8 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
           </div>
         )}
       </div>
+
+      {attView === 'monthly' && <OvertimeQuotaPanel year={summaryYear} />}
 
       {/* Monthly summary view */}
       {attView === 'monthly' && (
@@ -364,6 +367,33 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                             overtimeMinutes: Math.round((parseFloat(e.target.value) || 0) * 60),
                           });
                         }} />
+                      {(() => {
+                        // Ventilation des heures sup (majorations 25/50/100 %) : part de nuit
+                        // calculee depuis les heures (corrigeable), jour de repos travaille.
+                        const r = rec as Record<string, any> | undefined;
+                        const otMin = parseInt(r?.overtime_minutes ?? '0', 10) || 0;
+                        if (!r || otMin <= 0) return null;
+                        const nightMin = parseInt(r.overtime_night_minutes ?? '0', 10) || 0;
+                        const rest = r.is_rest_day ?? (new Date(`${selectedDate}T12:00:00`).getDay() === 0);
+                        const base = { employeeId: emp.id, date: selectedDate, status: r.status || 'present', checkIn: r.check_in || undefined, checkOut: r.check_out || undefined };
+                        return (
+                          <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-muted)', marginTop: 3, display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                            <span style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}
+                              title="Part de nuit (21h-6h) des heures sup, calculée depuis l'arrivée et le départ. Cliquer pour corriger."
+                              onClick={() => {
+                                const v = prompt('Heures de nuit (21h-6h) parmi les heures supplémentaires', String(Math.round(nightMin / 60 * 100) / 100));
+                                if (v !== null) upsertMutation.mutate({ ...base, overtimeNightMinutes: Math.min(otMin, Math.round((parseFloat(v.replace(',', '.')) || 0) * 60)) });
+                              }}>
+                              dont nuit {Math.round(nightMin / 60 * 100) / 100} h
+                            </span>
+                            <button type="button" onClick={() => upsertMutation.mutate({ ...base, isRestDay: !rest })}
+                              className={`odoo-tag ${rest ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ border: 'none', cursor: 'pointer', fontSize: '0.5625rem' }}
+                              title="Jour de repos hebdomadaire travaillé : majoration 50 % (jour) / 100 % (nuit)">
+                              repos
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );

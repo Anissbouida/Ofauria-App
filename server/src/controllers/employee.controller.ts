@@ -5,6 +5,7 @@ import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepo
 import { shiftRepository } from '../repositories/shift.repository.js';
 import { weeklyPayrollRepository } from '../repositories/weekly-payroll.repository.js';
 import { biweeklyPayrollRepository } from '../repositories/biweekly-payroll.repository.js';
+import { overtimeYearSummary } from '../repositories/time-rules.repository.js';
 import { leaveBalanceRepository, holidayRepository, leaveAdjustmentRepository, loadLeaveConfig, typeOf, leaveDayCount } from '../repositories/leave.repository.js';
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
@@ -374,6 +375,11 @@ export const biweeklyPayrollController = {
 };
 
 export const attendanceController = {
+  /** Cumul annuel des heures sup par employe face au contingent legal. */
+  async overtimeSummary(req: AuthRequest, res: Response) {
+    const year = parseInt(String(req.query.year || new Date().getFullYear()), 10);
+    res.json({ success: true, data: await overtimeYearSummary(year, req.user!.storeId) });
+  },
   async list(req: AuthRequest, res: Response) {
     const { startDate, endDate, employeeId } = req.query as Record<string, string>;
     if (!startDate || !endDate) {

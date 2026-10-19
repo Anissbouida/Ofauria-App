@@ -425,7 +425,8 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Presence</p>
                   <div className="grid grid-cols-3 gap-2 text-center text-sm">
                     <div><p className="text-gray-500">Jours payés</p><p className="font-bold">{pn(p.worked_days)}</p>
-                      {pn(p.paid_leave_days) > 0 && <p className="text-xs text-gray-500">dont {pn(p.paid_leave_days)} j congé</p>}</div>
+                      {pn(p.paid_leave_days) > 0 && <p className="text-xs text-gray-500">dont {pn(p.paid_leave_days)} j congé</p>}
+                      {pn(p.holiday_paid_days) > 0 && <p className="text-xs text-gray-500">dont {pn(p.holiday_paid_days)} j férié</p>}</div>
                     <div><p className="text-gray-500">Absences</p><p className="font-bold text-red-600">{p.absent_days as number}</p></div>
                     <div><p className="text-gray-500">H. Sup</p><p className="font-bold">{pn(p.overtime_hours).toFixed(1)}h</p></div>
                   </div>
@@ -436,7 +437,11 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <p className="text-xs font-semibold text-blue-600 uppercase px-3 pt-3 pb-1">Remuneration</p>
                   {line('Salaire de base', pf(p.base_salary))}
                   {pn(p.seniority_bonus) > 0 && line('Prime d\'anciennete', pf(p.seniority_bonus))}
-                  {pn(p.overtime_amount) > 0 && line('Heures supplementaires', pf(p.overtime_amount))}
+                  {pn(p.overtime_amount) > 0 && line(`Heures sup. (${[
+                    pn(p.ot_day_hours) && `${pn(p.ot_day_hours)} h jour`, pn(p.ot_night_hours) && `${pn(p.ot_night_hours)} h nuit`,
+                    pn(p.ot_rest_day_hours) && `${pn(p.ot_rest_day_hours)} h repos`, pn(p.ot_rest_night_hours) && `${pn(p.ot_rest_night_hours)} h repos nuit`,
+                  ].filter(Boolean).join(', ') || `${pn(p.overtime_hours)} h`})`, pf(p.overtime_amount))}
+                  {pn(p.holiday_premium) > 0 && line(`Férié travaillé (${pn(p.holiday_worked_days)} j)`, pf(p.holiday_premium))}
                   {pn(p.extra_shift_amount) > 0 && line(`Double shifts (+${p.extra_shift_days} j)`, pf(p.extra_shift_amount))}
                   {pn(p.deductions) > 0 && line('Retenue absences', '-' + pf(p.deductions), 'text-red-600')}
                   {pn(p.bonuses) > 0 && line('Primes et indemnités', pf(p.bonuses))}

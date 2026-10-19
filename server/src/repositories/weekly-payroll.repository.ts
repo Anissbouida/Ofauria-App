@@ -2,6 +2,8 @@ import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { leaveBalanceRepository, loadLeaveConfig } from './leave.repository.js';
+import { loadTimeRules, periodTimeFacts } from './time-rules.repository.js';
+import { overtimeAmount as otAmount } from '../services/overtime-engine.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -26,7 +28,7 @@ import { getLocalISODate } from '../utils/timezone.js';
  *   automatique les couvre — sinon double comptage).
  *   baseAmount = dailyRate × paidDays  (paidDays = workedDays + reposDays)
  *   overtimeHours = SUM(attendance.overtime_minutes) / 60
- *   overtimeAmount = overtimeHours × (dailyRate / 8) × 1.25
+ *   overtimeAmount = heures sup ventilees x (salaire hebdo / 44 h) x (1 + 25/50/100 %) (lot 3)
  *   netAmount = baseAmount + overtimeAmount
  *
  * Regle centrale : cf. reposDaysFor() ci-dessous. AUCUN recalcul cote
@@ -121,7 +123,7 @@ export const weeklyPayrollRepository = {
   async generate(weekStart: string, weekEnd: string, storeId?: string) {
     const storeFilter = storeId ? 'AND (e.store_id = $1 OR e.store_id IS NULL)' : '';
     const employeesRes = await db.query(
-      `SELECT e.id, e.weekly_salary
+      `SELECT e.id, e.weekly_salary, e.hire_date
          FROM employees e
         WHERE e.is_active = true
           AND e.pay_frequency = 'weekly'
@@ -134,6 +136,7 @@ export const weeklyPayrollRepository = {
     const results: Array<Record<string, unknown>> = [];
 
     const leaveCfg = await loadLeaveConfig();
+    const timeRules = await loadTimeRules();
     for (const emp of employeesRes.rows) {
       const weeklySalary = parseFloat(emp.weekly_salary as string);
       const dailyRate = weeklySalary / 7;
@@ -158,21 +161,26 @@ export const weeklyPayrollRepository = {
       // Conges payes approuves (hors jours pointes) : comptes comme travailles.
       const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, weekStart, weekEnd, leaveCfg);
       // Demi-journee = 0.5 jour paye (un simple half_day compte donc 0.5).
-      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days + paidLeaveDays;
+      // Feries (lot 3) : non travaille = jour paye ; travaille = indemnite.
+      const tf = await periodTimeFacts(emp.id, weekStart, weekEnd, timeRules, emp.hire_date);
+      const workedDays = a.present_days + 2 * a.double_days + 0.5 * a.half_days + paidLeaveDays + tf.holidayPaid;
       const absentDays = a.absent_days;
       const overtimeHours = a.total_overtime_min / 60;
       // Repos hebdomadaire paye — regle metier centralisee (voir docblock).
       const reposDays = reposDaysFor(workedDays);
       const paidDays = workedDays + reposDays;
       const baseAmount = r2(dailyRate * paidDays);
-      const overtimeAmount = r2(overtimeHours * (dailyRate / 8) * 1.25);
-      const netAmount = r2(baseAmount + overtimeAmount);
+      // Heures sup majorees (25/50/100 %) au taux horaire legal.
+      const overtimeAmount = otAmount(tf.overtime, weeklySalary / timeRules.weeklyLegalHours, timeRules.otRates);
+      const holidayPremium = r2(tf.holidayWorked * dailyRate * timeRules.holidayWorkedRate);
+      const netAmount = r2(baseAmount + overtimeAmount + holidayPremium);
 
       const r = await db.query(
         `INSERT INTO weekly_payroll
            (employee_id, week_start, week_end, base_amount, worked_days, absent_days,
-            overtime_hours, overtime_amount, net_amount, paid_leave_days)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            overtime_hours, overtime_amount, net_amount, paid_leave_days,
+            holiday_paid_days, holiday_worked_days, holiday_premium)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (employee_id, week_start) DO UPDATE SET
            week_end = EXCLUDED.week_end,
            base_amount = EXCLUDED.base_amount,
@@ -181,12 +189,16 @@ export const weeklyPayrollRepository = {
            overtime_hours = EXCLUDED.overtime_hours,
            overtime_amount = EXCLUDED.overtime_amount,
            paid_leave_days = EXCLUDED.paid_leave_days,
+           holiday_paid_days = EXCLUDED.holiday_paid_days,
+           holiday_worked_days = EXCLUDED.holiday_worked_days,
+           holiday_premium = EXCLUDED.holiday_premium,
            net_amount = EXCLUDED.net_amount
          -- Ligne payee : intouchable (jours, base et net ont servi a la sortie de
          -- caisse). Avant, seul le net etait garde et les jours/base changeaient.
          WHERE weekly_payroll.paid = false
          RETURNING *`,
-        [emp.id, weekStart, weekEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount, paidLeaveDays]
+        [emp.id, weekStart, weekEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount, paidLeaveDays,
+         tf.holidayPaid, tf.holidayWorked, holidayPremium]
       );
       if (r.rows[0]) results.push(r.rows[0]);
       else {

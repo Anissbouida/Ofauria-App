@@ -4,6 +4,8 @@ import { cancelPayrollPayment, payrollLedger } from '../services/payroll-ledger.
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } from './payroll-config.repository.js';
+import { loadTimeRules } from './time-rules.repository.js';
+import { nightOvertimeMinutes } from '../services/overtime-engine.js';
 
 /**
  * Vue interne : compte les repayments d'avance rattaches a un employe.
@@ -581,11 +583,34 @@ export const attendanceRepository = {
   },
 
   async upsert(data: {
-    employeeId: string; date: string; checkIn?: string; checkOut?: string;
-    status: string; overtimeMinutes?: number; notes?: string;
+    employeeId: string; date: string; checkIn?: string | null; checkOut?: string | null;
+    status: string; overtimeMinutes?: number | null; notes?: string | null;
+    overtimeNightMinutes?: number | null; isRestDay?: boolean | null;
     checkInMethod?: string; checkInTerminal?: string;
     checkOutMethod?: string; checkOutTerminal?: string;
   }) {
+    // Fusion avec la ligne existante : un champ NON envoye garde sa valeur.
+    // Avant, changer le statut ou une heure remettait les heures sup a 0 et
+    // effacait la note (l'ecran n'envoie que les champs modifies).
+    const prev = (await db.query(
+      'SELECT check_in, check_out, overtime_minutes, overtime_night_minutes, notes, is_rest_day FROM attendance WHERE employee_id = $1 AND date = $2',
+      [data.employeeId, data.date]
+    )).rows[0];
+    const checkIn = data.checkIn || prev?.check_in || null;
+    const checkOut = data.checkOut || prev?.check_out || null;
+    const overtime = data.overtimeMinutes ?? prev?.overtime_minutes ?? 0;
+    const notes = data.notes !== undefined ? (data.notes || null) : (prev?.notes ?? null);
+    const isRestDay = data.isRestDay !== undefined ? data.isRestDay : (prev?.is_rest_day ?? null);
+    // Part de nuit des heures sup (21h-6h) : saisie explicite, sinon deduite
+    // des heures d'arrivee/depart (heures sup en fin de service).
+    let night: number;
+    if (data.overtimeNightMinutes !== undefined && data.overtimeNightMinutes !== null) night = data.overtimeNightMinutes;
+    else {
+      const rules = await loadTimeRules();
+      night = nightOvertimeMinutes(overtime, checkIn ? String(checkIn) : null, checkOut ? String(checkOut) : null, rules.nightStart, rules.nightEnd);
+    }
+    night = Math.min(Math.max(0, night), overtime);
+
     // is_expected: une ligne devient "reelle" (is_expected=false) des qu'un
     // pointage check_in/out est saisi, OU des que le statut est explicitement
     // autre que 'present' (absent/retard/demi-j = decision admin, pas une
@@ -593,13 +618,15 @@ export const attendanceRepository = {
     const result = await db.query(
       `INSERT INTO attendance (employee_id, date, check_in, check_out, status, overtime_minutes, notes,
                                check_in_method, check_in_terminal, check_out_method, check_out_terminal,
-                               is_expected)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false)
+                               overtime_night_minutes, is_rest_day, is_expected)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false)
        ON CONFLICT (employee_id, date) DO UPDATE SET
-         check_in = COALESCE(EXCLUDED.check_in, attendance.check_in),
-         check_out = COALESCE(EXCLUDED.check_out, attendance.check_out),
+         check_in = EXCLUDED.check_in,
+         check_out = EXCLUDED.check_out,
          status = EXCLUDED.status,
          overtime_minutes = EXCLUDED.overtime_minutes,
+         overtime_night_minutes = EXCLUDED.overtime_night_minutes,
+         is_rest_day = EXCLUDED.is_rest_day,
          notes = EXCLUDED.notes,
          check_in_method = COALESCE(EXCLUDED.check_in_method, attendance.check_in_method),
          check_in_terminal = COALESCE(EXCLUDED.check_in_terminal, attendance.check_in_terminal),
@@ -607,10 +634,11 @@ export const attendanceRepository = {
          check_out_terminal = COALESCE(EXCLUDED.check_out_terminal, attendance.check_out_terminal),
          is_expected = false
        RETURNING *`,
-      [data.employeeId, data.date, data.checkIn || null, data.checkOut || null,
-       data.status, data.overtimeMinutes || 0, data.notes || null,
+      [data.employeeId, data.date, checkIn, checkOut,
+       data.status, overtime, notes,
        data.checkInMethod || null, data.checkInTerminal || null,
-       data.checkOutMethod || null, data.checkOutTerminal || null]
+       data.checkOutMethod || null, data.checkOutTerminal || null,
+       night, isRestDay]
     );
     return result.rows[0];
   },

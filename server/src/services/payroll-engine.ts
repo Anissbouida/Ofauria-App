@@ -18,6 +18,8 @@
  * Un salarie non declare n'a ni cotisations ni IR (net = brut - retenues).
  */
 
+import { overtimeAmount as otAmount, DEFAULT_OT_RATES, type OvertimeHours, type OvertimeRates } from './overtime-engine.js';
+
 export interface IrBracket { upTo: number | null; rate: number; deduction: number }
 
 export interface TaxScale {
@@ -63,6 +65,14 @@ export interface PayslipInput {
   cimrRate: number;
   isDeclared: boolean;
   lines: RubriqueInput[];
+  /** Heures sup ventilees (lot 3). A defaut : overtimeHours en heures de jour. */
+  overtime?: OvertimeHours;
+  otRates?: OvertimeRates;
+  /** Duree legale mensuelle (191 h) : taux horaire = salaire / duree. */
+  legalMonthlyHours?: number;
+  /** Jours feries travailles et majoration (1 = un jour de plus). */
+  holidayWorkedDays?: number;
+  holidayWorkedRate?: number;
 }
 
 export interface PayslipLine extends RubriqueInput {
@@ -79,6 +89,8 @@ export interface PayslipResult {
   seniorityRate: number;
   seniorityBonus: number;
   overtimeAmount: number;
+  overtime: OvertimeHours;
+  holidayPremium: number;
   extraShiftAmount: number;
   gainsTotal: number;
   retenuesTotal: number;
@@ -142,9 +154,14 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
   const rate = seniorityRate(input.seniorityYears);
   // Anciennete sur le salaire effectivement gagne (base moins absences).
   const seniorityBonus = r2((base - absenceDeduction) * rate);
-  const overtimeAmount = r2(input.overtimeHours * (dailyRate / 8));
+  // Heures sup majorees (art. 201) au taux horaire legal (salaire / 191 h).
+  const overtime = input.overtime ?? { day: input.overtimeHours, night: 0, restDay: 0, restNight: 0 };
+  const hourlyRate = base / (input.legalMonthlyHours ?? 191);
+  const overtimeAmount = otAmount(overtime, hourlyRate, input.otRates ?? DEFAULT_OT_RATES);
+  // Ferie travaille : indemnite en plus du salaire du jour (deja couvert).
+  const holidayPremium = r2((input.holidayWorkedDays ?? 0) * dailyRate * (input.holidayWorkedRate ?? 1));
   const extraShiftAmount = r2(input.doubleDays * dailyRate);
-  const salaireFixe = base + seniorityBonus + overtimeAmount + extraShiftAmount - absenceDeduction;
+  const salaireFixe = base + seniorityBonus + overtimeAmount + holidayPremium + extraShiftAmount - absenceDeduction;
 
   // ─── Rubriques : part exoneree, part soumise CNSS / IR ───
   const lines: PayslipLine[] = input.lines.map(l => {
@@ -207,6 +224,8 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
     seniorityRate: rate,
     seniorityBonus,
     overtimeAmount,
+    overtime,
+    holidayPremium,
     extraShiftAmount,
     gainsTotal,
     retenuesTotal,

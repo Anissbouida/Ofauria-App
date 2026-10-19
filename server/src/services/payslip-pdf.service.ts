@@ -33,6 +33,7 @@ export interface PayslipPdfData {
   baseDays: number;
   absentDays: number;
   paidLeaveDays?: number;
+  holidayPaidDays?: number;
   lines: PayslipLineRow[];
   grossSalary: number;
   totalRetenues: number;
@@ -106,7 +107,7 @@ export async function generatePayslipPdf(d: PayslipPdfData): Promise<Buffer> {
   y += 66;
 
   doc.font('Helvetica').fontSize(8).fillColor(TEXT_DARK);
-  t(`Jours payés : ${d.workedDays} / ${d.baseDays}${d.paidLeaveDays ? ` (dont ${d.paidLeaveDays} j de congé payé)` : ''}${d.absentDays > 0 ? `   ·   Absences non couvertes : ${d.absentDays} j` : ''}`, M, y);
+  t(`Jours payés : ${d.workedDays} / ${d.baseDays}${d.paidLeaveDays || d.holidayPaidDays ? ` (dont ${[d.paidLeaveDays ? `${d.paidLeaveDays} j de congé payé` : '', d.holidayPaidDays ? `${d.holidayPaidDays} j férié${d.holidayPaidDays > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ')})` : ''}${d.absentDays > 0 ? `   ·   Absences non couvertes : ${d.absentDays} j` : ''}`, M, y);
   y += 14;
 
   // ─── Tableau des rubriques ───

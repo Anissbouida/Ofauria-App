@@ -4,6 +4,7 @@ import {
   type RubriqueInput, type TaxScale,
 } from '../services/payroll-engine.js';
 import { leaveBalanceRepository } from './leave.repository.js';
+import { loadTimeRules, periodTimeFacts, type TimeRules } from './time-rules.repository.js';
 
 /**
  * Parametrage et calcul de la paie mensuelle (mig 318) : bareme versionne,
@@ -20,6 +21,7 @@ export function monthBounds(month: number, year: number): { start: string; end: 
 export interface PayrollContext {
   scale: TaxScale;
   baseDays: number;
+  time: TimeRules;
 }
 
 // ─── Bareme ─────────────────────────────────────────────────────────────
@@ -77,15 +79,28 @@ export const payrollSettingsRepository = {
     const r = await db.query('SELECT * FROM payroll_settings WHERE id = 1');
     return r.rows[0] || { employer_cnss_number: null, monthly_base_days: 26 };
   },
-  async update(data: { employerCnssNumber?: string | null; monthlyBaseDays?: number }, userId?: string) {
-    const r = await db.query(
-      `UPDATE payroll_settings SET
-         employer_cnss_number = COALESCE($1, employer_cnss_number),
-         monthly_base_days = COALESCE($2, monthly_base_days),
-         updated_at = NOW(), updated_by = $3
-       WHERE id = 1 RETURNING *`,
-      [data.employerCnssNumber === undefined ? null : data.employerCnssNumber, data.monthlyBaseDays ?? null, userId ?? null]
-    );
+  async update(data: Record<string, unknown>, userId?: string) {
+    // Champ absent = inchange. Conges (lot 2) et temps de travail (lot 3) inclus.
+    const mapping: Record<string, string> = {
+      employerCnssNumber: 'employer_cnss_number', monthlyBaseDays: 'monthly_base_days',
+      leaveRestWeekday: 'leave_rest_weekday', leaveDaysPerMonth: 'leave_days_per_month',
+      leaveCarryoverYears: 'leave_carryover_years',
+      otRateDay: 'ot_rate_day', otRateNight: 'ot_rate_night', otRateRestDay: 'ot_rate_rest_day',
+      otRateRestNight: 'ot_rate_rest_night', nightStart: 'night_start', nightEnd: 'night_end',
+      monthlyLegalHours: 'monthly_legal_hours', weeklyLegalHours: 'weekly_legal_hours',
+      holidayWorkedRate: 'holiday_worked_rate', otAnnualQuotaHours: 'ot_annual_quota_hours',
+    };
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(mapping)) {
+      if (data[key] === undefined) continue;
+      fields.push(`${col} = $${i++}`);
+      values.push(data[key] === '' ? null : data[key]);
+    }
+    fields.push('updated_at = NOW()', `updated_by = $${i++}`);
+    values.push(userId ?? null);
+    const r = await db.query(`UPDATE payroll_settings SET ${fields.join(', ')} WHERE id = 1 RETURNING *`, values);
     return r.rows[0];
   },
 };
@@ -213,7 +228,11 @@ export async function loadPayrollContext(month: number, year: number): Promise<P
   const row = await taxScaleRepository.findForDate(start);
   if (!row) throw new Error(`Aucun barème de paie en vigueur au ${start} : ajoutez-le dans Paramètres de paie.`);
   const settings = await payrollSettingsRepository.get();
-  return { scale: taxScaleFromRow(row), baseDays: parseInt(String(settings.monthly_base_days ?? 26), 10) || 26 };
+  return {
+    scale: taxScaleFromRow(row),
+    baseDays: parseInt(String(settings.monthly_base_days ?? 26), 10) || 26,
+    time: await loadTimeRules(),
+  };
 }
 
 type ManualLine = { rubriqueId: string; amount: number; label?: string | null };
@@ -258,7 +277,10 @@ export async function computeAndSavePayslip(
   const a = att.rows[0];
   // Conges payes approuves (hors jours deja pointes) : jours couverts, pas d'absence retenue.
   const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, start, end);
-  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days + paidLeaveDays;
+  // Heures sup ventilees (jour/nuit, ouvrable/repos) et jours feries : un
+  // ferie non travaille est paye (couvert) ; travaille, il ouvre une indemnite.
+  const tf = await periodTimeFacts(emp.id, start, end, ctx.time, emp.hire_date);
+  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days + paidLeaveDays + tf.holidayPaid;
 
   // Elements fixes actifs sur le mois.
   const fixed = await db.query(
@@ -307,6 +329,11 @@ export async function computeAndSavePayslip(
     nbDependents: parseInt(emp.nb_dependents, 10) || 0,
     cimrRate: parseFloat(emp.cimr_rate) || 0,
     isDeclared: emp.is_declared !== false,
+    overtime: tf.overtime,
+    otRates: ctx.time.otRates,
+    legalMonthlyHours: ctx.time.monthlyLegalHours,
+    holidayWorkedDays: tf.holidayWorked,
+    holidayWorkedRate: ctx.time.holidayWorkedRate,
     lines: [
       ...fixed.rows.map((f: Record<string, any>) => toRubriqueInput(f, parseFloat(f.amount), 'fixe')),
       ...manualInputs,
@@ -324,8 +351,10 @@ export async function computeAndSavePayslip(
          cimr_employee, cimr_employer, frais_pro, ir_gross, ir_net, family_deduction, nb_dependents,
          alloc_familiales, taxe_fp, total_charges_patron, net_salary,
          extra_shift_days, extra_shift_amount,
-         tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable, paid_leave_days
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+         tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable, paid_leave_days,
+         ot_day_hours, ot_night_hours, ot_rest_day_hours, ot_rest_night_hours,
+         holiday_paid_days, holiday_worked_days, holiday_premium
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
        ON CONFLICT (employee_id, month, year) DO UPDATE SET
          base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
          absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
@@ -346,7 +375,11 @@ export async function computeAndSavePayslip(
          extra_shift_amount = EXCLUDED.extra_shift_amount,
          tax_scale_id = EXCLUDED.tax_scale_id, is_declared = EXCLUDED.is_declared,
          base_cnss = EXCLUDED.base_cnss, brut_imposable = EXCLUDED.brut_imposable,
-         net_imposable = EXCLUDED.net_imposable, paid_leave_days = EXCLUDED.paid_leave_days
+         net_imposable = EXCLUDED.net_imposable, paid_leave_days = EXCLUDED.paid_leave_days,
+         ot_day_hours = EXCLUDED.ot_day_hours, ot_night_hours = EXCLUDED.ot_night_hours,
+         ot_rest_day_hours = EXCLUDED.ot_rest_day_hours, ot_rest_night_hours = EXCLUDED.ot_rest_night_hours,
+         holiday_paid_days = EXCLUDED.holiday_paid_days, holiday_worked_days = EXCLUDED.holiday_worked_days,
+         holiday_premium = EXCLUDED.holiday_premium
        WHERE payroll.paid = false
        RETURNING *`,
       [emp.id, month, year, r.baseSalary, r.workedDays, r.absentDays,
@@ -357,7 +390,9 @@ export async function computeAndSavePayslip(
        Math.min(parseInt(emp.nb_dependents, 10) || 0, ctx.scale.maxPersonnesCharge),
        r.allocFamiliales, r.taxeFp, r.totalChargesPatron, r.netSalary,
        a.double_days, r.extraShiftAmount,
-       ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable, paidLeaveDays]
+       ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable, paidLeaveDays,
+       tf.overtime.day, tf.overtime.night, tf.overtime.restDay, tf.overtime.restNight,
+       tf.holidayPaid, tf.holidayWorked, r.holidayPremium]
     );
 
     if (!up.rows[0]) {

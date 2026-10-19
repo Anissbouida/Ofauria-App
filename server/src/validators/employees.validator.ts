@@ -83,6 +83,10 @@ export const upsertAttendanceSchema = z.object({
   checkIn: optionalTime,
   checkOut: optionalTime,
   overtimeMinutes: nullableNumber((n) => n.int().min(0).max(24 * 60, 'H.Sup max 24h')),
+  // Part de nuit (21h-6h) des heures sup ; absente = calculee depuis les heures.
+  overtimeNightMinutes: nullableNumber((n) => n.int().min(0).max(24 * 60)),
+  // Jour de repos hebdomadaire travaille (null = jour de repos des reglages).
+  isRestDay: z.boolean().nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
   checkInMethod: z.string().max(50).nullable().optional(),
   checkInTerminal: z.string().max(100).nullable().optional(),
@@ -182,9 +186,23 @@ export const updateEmployeePayrollItemSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
 });
 
+const hhmm = z.string().regex(/^\d{2}:\d{2}$/, 'Heure HH:MM');
+const pctRate = z.coerce.number().min(0).max(3);
 export const payrollSettingsSchema = z.object({
   employerCnssNumber: z.string().max(30).nullable().optional(),
   monthlyBaseDays: z.coerce.number().int().min(20).max(31).optional(),
+  // Conges (lot 2)
+  leaveRestWeekday: z.coerce.number().int().min(0).max(6).optional(),
+  leaveDaysPerMonth: z.coerce.number().positive().max(5).optional(),
+  leaveCarryoverYears: z.coerce.number().int().min(0).max(5).optional(),
+  // Temps de travail (lot 3)
+  otRateDay: pctRate.optional(), otRateNight: pctRate.optional(),
+  otRateRestDay: pctRate.optional(), otRateRestNight: pctRate.optional(),
+  nightStart: hhmm.optional(), nightEnd: hhmm.optional(),
+  monthlyLegalHours: z.coerce.number().positive().max(400).optional(),
+  weeklyLegalHours: z.coerce.number().positive().max(80).optional(),
+  holidayWorkedRate: pctRate.optional(),
+  otAnnualQuotaHours: z.coerce.number().positive().max(2000).optional(),
 });
 
 const rate = z.coerce.number().min(0).max(1);

@@ -36,13 +36,37 @@ export default function PayrollSettingsView() {
   // ─── Employeur ───
   const [cnss, setCnss] = useState('');
   const [baseDays, setBaseDays] = useState('26');
+  // Conges (lot 2) et temps de travail (lot 3) : taux saisis en %.
+  const [rules, setRules] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!data) return;
-    setCnss(data.settings.employer_cnss_number ?? '');
-    setBaseDays(String(data.settings.monthly_base_days ?? 26));
+    const st = data.settings;
+    setCnss(st.employer_cnss_number ?? '');
+    setBaseDays(String(st.monthly_base_days ?? 26));
+    setRules({
+      leaveRestWeekday: String(st.leave_rest_weekday ?? 0),
+      leaveDaysPerMonth: String(parseFloat(st.leave_days_per_month ?? 1.5)),
+      leaveCarryoverYears: String(st.leave_carryover_years ?? 1),
+      otRateDay: pctIn(st.ot_rate_day ?? 0.25), otRateNight: pctIn(st.ot_rate_night ?? 0.5),
+      otRateRestDay: pctIn(st.ot_rate_rest_day ?? 0.5), otRateRestNight: pctIn(st.ot_rate_rest_night ?? 1),
+      nightStart: String(st.night_start ?? '21:00').slice(0, 5), nightEnd: String(st.night_end ?? '06:00').slice(0, 5),
+      monthlyLegalHours: String(parseFloat(st.monthly_legal_hours ?? 191)),
+      weeklyLegalHours: String(parseFloat(st.weekly_legal_hours ?? 44)),
+      holidayWorkedRate: pctIn(st.holiday_worked_rate ?? 1),
+      otAnnualQuotaHours: String(parseFloat(st.ot_annual_quota_hours ?? 100)),
+    });
   }, [data]);
   const saveSettings = useMutation({
-    mutationFn: () => payrollConfigApi.updateSettings({ employerCnssNumber: cnss || null, monthlyBaseDays: parseInt(baseDays, 10) }),
+    mutationFn: () => payrollConfigApi.updateSettings({
+      employerCnssNumber: cnss || null, monthlyBaseDays: parseInt(baseDays, 10),
+      leaveRestWeekday: parseInt(rules.leaveRestWeekday, 10), leaveDaysPerMonth: parseFloat(rules.leaveDaysPerMonth),
+      leaveCarryoverYears: parseInt(rules.leaveCarryoverYears, 10),
+      otRateDay: pctOut(rules.otRateDay), otRateNight: pctOut(rules.otRateNight),
+      otRateRestDay: pctOut(rules.otRateRestDay), otRateRestNight: pctOut(rules.otRateRestNight),
+      nightStart: rules.nightStart, nightEnd: rules.nightEnd,
+      monthlyLegalHours: parseFloat(rules.monthlyLegalHours), weeklyLegalHours: parseFloat(rules.weeklyLegalHours),
+      holidayWorkedRate: pctOut(rules.holidayWorkedRate), otAnnualQuotaHours: parseFloat(rules.otAnnualQuotaHours),
+    }),
     onSuccess: () => { invalidate(); notify.success('Paramètres employeur enregistrés'); },
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
   });
@@ -110,6 +134,16 @@ export default function PayrollSettingsView() {
       </span>
     </label>
   );
+  const ruleField = (key: string, label: string, suffix?: string) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
+      <span style={{ color: 'var(--odoo-text-muted)' }}>{label}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <input className="input" value={rules[key] ?? ''} disabled={!isAdmin} style={{ width: 90 }}
+          onChange={e => setRules({ ...rules, [key]: e.target.value })} />
+        {suffix && <span style={{ color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
+      </span>
+    </label>
+  );
   const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 } as const;
   const card = { border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 } as const;
 
@@ -122,7 +156,7 @@ export default function PayrollSettingsView() {
       )}
 
       <section style={card}>
-        <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Employeur</h3>
+        <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Employeur et temps de travail</h3>
         <div style={grid}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
             <span style={{ color: 'var(--odoo-text-muted)' }}>N° d'affiliation CNSS</span>
@@ -132,6 +166,30 @@ export default function PayrollSettingsView() {
             <span style={{ color: 'var(--odoo-text-muted)' }}>Base journalière (jours / mois)</span>
             <input className="input" type="number" min={20} max={31} value={baseDays} disabled={!isAdmin} onChange={e => setBaseDays(e.target.value)} />
           </label>
+        </div>
+        <h4 style={{ fontWeight: 600, fontSize: '0.8125rem', marginTop: 4 }}>Congés</h4>
+        <div style={grid}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>Jour de repos hebdomadaire</span>
+            <select className="input" value={rules.leaveRestWeekday ?? '0'} disabled={!isAdmin} onChange={e => setRules({ ...rules, leaveRestWeekday: e.target.value })}>
+              {['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map((d, i) => <option key={d} value={i}>{d}</option>)}
+            </select>
+          </label>
+          {ruleField('leaveDaysPerMonth', 'Acquisition par mois', 'j')}
+          {ruleField('leaveCarryoverYears', 'Report du reliquat', 'an(s)')}
+        </div>
+        <h4 style={{ fontWeight: 600, fontSize: '0.8125rem', marginTop: 4 }}>Heures supplémentaires et jours fériés</h4>
+        <div style={grid}>
+          {ruleField('otRateDay', 'Majoration jour', '%')}
+          {ruleField('otRateNight', 'Majoration nuit', '%')}
+          {ruleField('otRateRestDay', 'Repos hebdo, jour', '%')}
+          {ruleField('otRateRestNight', 'Repos hebdo, nuit', '%')}
+          {ruleField('nightStart', 'Début de nuit')}
+          {ruleField('nightEnd', 'Fin de nuit')}
+          {ruleField('monthlyLegalHours', 'Durée légale mensuelle', 'h')}
+          {ruleField('weeklyLegalHours', 'Durée légale hebdo', 'h')}
+          {ruleField('holidayWorkedRate', 'Férié travaillé (indemnité)', '%')}
+          {ruleField('otAnnualQuotaHours', 'Contingent annuel', 'h')}
         </div>
         {isAdmin && (
           <div><button className="odoo-btn-primary" disabled={saveSettings.isPending} onClick={() => saveSettings.mutate()}

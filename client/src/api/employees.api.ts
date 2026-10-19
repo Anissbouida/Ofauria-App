@@ -41,6 +41,8 @@ export const attendanceApi = {
   monthlySummary: (employeeId: string, month: number, year: number) =>
     api.get('/attendance/summary', { params: { employeeId, month, year } }).then(r => r.data.data),
   remove: (id: string) => api.delete(`/attendance/${id}`),
+  /** Cumul annuel des heures sup par employe face au contingent legal. */
+  overtimeSummary: (year: number) => api.get('/attendance/overtime-summary', { params: { year } }).then(r => r.data.data),
 };
 
 export const leavesApi = {
