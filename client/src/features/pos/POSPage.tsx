@@ -228,6 +228,12 @@ export default function POSPage() {
   const [checkingInventory, setCheckingInventory] = useState(false);
   const [actualAmount, setActualAmount] = useState('');
   const [closeNotes, setCloseNotes] = useState('');
+  // Section 4.3 — motif d'ecart exige par le serveur au-dela de 5 DH. Comptage
+  // a l'aveugle : le client ne connait pas l'attendu, il ne decouvre qu'un motif
+  // est requis qu'apres soumission (400 DIFFERENCE_REASON_REQUIRED). Le comptage
+  // est alors fige pour ne pas pouvoir sonder l'attendu en retouchant le montant.
+  const [differenceReason, setDifferenceReason] = useState('');
+  const [reasonRequired, setReasonRequired] = useState(false);
   const [closeStep, setCloseStep] = useState<'choose-type' | 'expired' | 'inventory' | 'input' | 'result'>('choose-type');
   const [closeType, setCloseType] = useState<'passation' | 'fin_journee'>('fin_journee');
   // Phase 3 — items vitrine avec DLC ou DLV depassee, bloquent la fermeture journee
@@ -635,14 +641,25 @@ export default function POSPage() {
     mutationFn: () => cashRegisterApi.submitAmount(closeResult!.id as string, {
       actualAmount: parseFloat(actualAmount),
       notes: closeNotes || undefined,
+      differenceReason: differenceReason || undefined,
     }),
     onSuccess: (data) => {
       setCloseResult(data);
       setCloseStep('result');
+      setDifferenceReason('');
+      setReasonRequired(false);
       // Don't invalidate here — wait until user clicks "Terminer"
       // Otherwise activeSession becomes null and the result screen is hidden
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la soumission')),
+    onError: (e: unknown) => {
+      const code = (e as { response?: { data?: { error?: { code?: string } } } })?.response?.data?.error?.code;
+      if (code === 'DIFFERENCE_REASON_REQUIRED') {
+        // Pas de toast : le message serveur contient le montant de l'ecart.
+        setReasonRequired(true);
+        return;
+      }
+      notify.error(getApiErrorMessage(e, 'Erreur lors de la soumission'));
+    },
   });
 
   // Rapport Z / passation sur l'imprimante thermique (totaux figes en base).
@@ -3305,7 +3322,7 @@ export default function POSPage() {
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)' }}>
-                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setDifferenceReason(''); setReasonRequired(false); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="odoo-btn-secondary">Annuler</button>
                   <button onClick={async () => {
                     if (cannotValidate) return;
@@ -3421,6 +3438,8 @@ export default function POSPage() {
                 <h2 className="text-xl font-bold mb-1">Fermeture de caisse</h2>
                 <p className="text-sm text-gray-500 mb-4">Saisissez le montant trouve dans la caisse.</p>
 
+                {/* Comptage fige une fois l'ecart signale (comptage a l'aveugle) */}
+                <fieldset disabled={reasonRequired} className="contents">
                 {/* Mode toggle: Direct / Counting */}
                 <div className="bg-gray-100 rounded-lg p-0.5 flex mb-4">
                   <button onClick={() => { setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
@@ -3526,16 +3545,34 @@ export default function POSPage() {
                     </div>
                   </>
                 )}
+                </fieldset>
+
+                {reasonRequired && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                    <p className="text-sm font-semibold text-amber-800 mb-1">Ecart superieur a 5 DH</p>
+                    <p className="text-xs text-amber-700 mb-2">Le comptage est enregistre. Indiquez le motif de l'ecart pour cloturer.</p>
+                    <select value={differenceReason} onChange={(e) => setDifferenceReason(e.target.value)}
+                      className="input" autoFocus>
+                      <option value="">— Choisir un motif —</option>
+                      <option value="rendu_monnaie">Erreur de rendu monnaie</option>
+                      <option value="erreur_comptage">Erreur de comptage</option>
+                      <option value="depense_hors_paidout">Depense payee sans sortie de caisse</option>
+                      <option value="vol">Vol / disparition</option>
+                      <option value="autre">Autre (preciser en observation)</option>
+                    </select>
+                  </div>
+                )}
 
                 <label className="block text-xs font-medium text-gray-700 mb-1">Observations (optionnel)</label>
                 <textarea value={closeNotes} onChange={(e) => setCloseNotes(e.target.value)}
                   className="input mb-3" rows={1} placeholder="Remarques..." />
                 <div className="flex gap-3">
-                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setDifferenceReason(''); setReasonRequired(false); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="btn-secondary flex-1">Annuler</button>
                   <button onClick={() => submitAmountMutation.mutate()}
                     disabled={
                       (closeInputMode === 'direct' ? !actualAmount || parseFloat(actualAmount) < 0 : denomTotal <= 0)
+                      || (reasonRequired && !differenceReason)
                       || submitAmountMutation.isPending
                     }
                     className="btn-primary flex-1">
@@ -3721,6 +3758,8 @@ export default function POSPage() {
                   setCloseResult(null);
                   setActualAmount('');
                   setCloseNotes('');
+                  setDifferenceReason('');
+                  setReasonRequired(false);
                   setCloseStep('choose-type');
                   setCloseType('fin_journee');
                   setCloseInputMode('direct');

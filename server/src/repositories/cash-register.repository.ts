@@ -170,7 +170,7 @@ export const cashRegisterRepository = {
       const refundsResult = await client.query(
         `SELECT COALESCE(SUM(sr.refund_amount), 0) AS total_refunds
            FROM sale_returns sr
-           JOIN sales s ON s.id = sr.sale_id
+           JOIN sales s ON s.id = sr.original_sale_id
           WHERE sr.session_id = $1
             AND sr.type = 'return'
             AND (
