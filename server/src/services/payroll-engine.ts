@@ -48,7 +48,7 @@ export interface RubriqueInput {
   soumisCnss: boolean;
   soumisIr: boolean;
   plafondExonerationMensuel: number | null;
-  source: 'fixe' | 'manuel';
+  source: 'fixe' | 'manuel' | 'stc';
 }
 
 export interface PayslipInput {

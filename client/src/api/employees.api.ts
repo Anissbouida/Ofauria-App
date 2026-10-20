@@ -179,3 +179,13 @@ export const employeeDocumentsApi = {
   file: (docId: string) => api.get(`/employees/documents/${docId}/file`, { responseType: 'blob' }),
   remove: (docId: string) => api.delete(`/employees/documents/${docId}`).then(r => r.data.data),
 };
+
+/** Depart du salarie : solde de tout compte, recu et certificat (lot 6). */
+export const settlementsApi = {
+  list: (employeeId: string) => api.get(`/employees/${employeeId}/settlements`).then(r => r.data.data),
+  preview: (employeeId: string, data: Record<string, any>) => api.post(`/employees/${employeeId}/settlements/preview`, data).then(r => r.data.data),
+  validate: (employeeId: string, data: Record<string, any>) => api.post(`/employees/${employeeId}/settlements`, data).then(r => r.data.data),
+  cancel: (id: string) => api.post(`/employees/settlements/${id}/cancel`).then(r => r.data.data),
+  receipt: (id: string) => api.get(`/employees/settlements/${id}/receipt`, { responseType: 'blob' }),
+  certificate: (id: string) => api.get(`/employees/settlements/${id}/certificate`, { responseType: 'blob' }),
+};

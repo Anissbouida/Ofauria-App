@@ -5,6 +5,7 @@ import { authorize } from '../middleware/role.middleware.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
 import { payrollConfigController } from '../controllers/payroll-config.controller.js';
 import { hrContractController } from '../controllers/hr-contract.controller.js';
+import { finalSettlementController } from '../controllers/final-settlement.controller.js';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -20,7 +21,7 @@ import {
   setPayrollLinesSchema, payrollPeriodSchema, createRubriqueSchema, updateRubriqueSchema,
   employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
   declarePayrollSchema, settlePayrollDeclarationSchema, holidaySchema, leaveAdjustmentSchema,
-  createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema,
+  createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema, finalSettlementSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -35,6 +36,10 @@ const router = Router();
 router.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.list));
 // Alertes RH (fins de CDD et d'essai, pieces) — avant '/:id'.
 router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.alerts));
+// Solde de tout compte : pieces (recu, certificat) et annulation (admin).
+router.get('/settlements/:id/receipt', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.receipt));
+router.get('/settlements/:id/certificate', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.certificate));
+router.post('/settlements/:id/cancel', authenticate, authorize(ROLES.ADMIN), asyncHandler(finalSettlementController.cancel));
 router.get('/documents/:docId/file', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.download));
 router.delete('/documents/:docId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.removeDocument));
 router.get('/:id', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.getById));
@@ -48,6 +53,10 @@ router.post('/:employeeId/contracts/avenant', authenticate, authorizeModule('emp
 router.post('/:employeeId/contracts/renew', authenticate, authorizeModule('employees', 'edit'), validate(renewContractSchema), asyncHandler(hrContractController.renew));
 router.post('/:employeeId/contracts/renew-trial', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.renewTrial));
 router.post('/:employeeId/contracts/end', authenticate, authorizeModule('employees', 'edit'), validate(endContractSchema), asyncHandler(hrContractController.end));
+// Depart : apercu (droit Personnel), validation (admin : sortie des effectifs et paie).
+router.get('/:employeeId/settlements', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.list));
+router.post('/:employeeId/settlements/preview', authenticate, authorizeModule('employees', 'view'), validate(finalSettlementSchema), asyncHandler(finalSettlementController.preview));
+router.post('/:employeeId/settlements', authenticate, authorize(ROLES.ADMIN), validate(finalSettlementSchema), asyncHandler(finalSettlementController.validate));
 // Documents (stockes en base, 5 Mo max) : donnees personnelles, droit Personnel.
 const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 router.get('/:employeeId/documents', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.documents));

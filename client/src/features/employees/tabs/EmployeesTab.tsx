@@ -14,6 +14,7 @@ import EmployeePayrollItems from './EmployeePayrollItems';
 import HrAlertsPanel from '../contracts/HrAlertsPanel';
 import EmployeeContracts from '../contracts/EmployeeContracts';
 import EmployeeDocuments from '../contracts/EmployeeDocuments';
+import EmployeeDeparture from '../contracts/EmployeeDeparture';
 
 /* ═══════════════════════ EMPLOYEES TAB ═══════════════════════ */
 export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -526,6 +527,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               )}
               <EmployeeContracts employeeId={viewDetail.id as string} onChanged={() => undefined} />
               <EmployeeDocuments employeeId={viewDetail.id as string} />
+              <EmployeeDeparture employee={viewDetail} />
               {(viewDetail.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={viewDetail.id as string} />}
               <EmployeeSalaryHistory employeeId={viewDetail.id as string} />
             </div>

@@ -237,7 +237,7 @@ export async function loadPayrollContext(month: number, year: number): Promise<P
 
 type ManualLine = { rubriqueId: string; amount: number; label?: string | null };
 
-function toRubriqueInput(r: Record<string, any>, amount: number, source: 'fixe' | 'manuel', label?: string | null): RubriqueInput {
+function toRubriqueInput(r: Record<string, any>, amount: number, source: 'fixe' | 'manuel' | 'stc', label?: string | null): RubriqueInput {
   return {
     rubriqueId: r.id,
     label: label || r.label,
@@ -258,6 +258,8 @@ function toRubriqueInput(r: Record<string, any>, amount: number, source: 'fixe' 
  */
 export async function computeAndSavePayslip(
   emp: Record<string, any>, month: number, year: number, ctx: PayrollContext, manual?: ManualLine[],
+  /** Lignes du solde de tout compte (lot 6) : undefined = conserver, [] = retirer. */
+  stc?: ManualLine[],
 ): Promise<Record<string, unknown>> {
   const { start, end } = monthBounds(month, year);
 
@@ -316,6 +318,24 @@ export async function computeAndSavePayslip(
     manualInputs = existing.rows.map((r: Record<string, any>) => toRubriqueInput(r, parseFloat(r.amount), 'manuel', r.line_label));
   }
 
+  // Lignes du solde de tout compte : fournies, sinon celles du bulletin existant.
+  let stcInputs: RubriqueInput[];
+  if (stc) {
+    const rubs = stc.length
+      ? (await db.query('SELECT * FROM payroll_rubriques WHERE id = ANY($1::uuid[])', [[...new Set(stc.map(x => x.rubriqueId))]])).rows
+      : [];
+    const byId = new Map(rubs.map((r: Record<string, any>) => [r.id, r]));
+    stcInputs = stc.map(x => toRubriqueInput(byId.get(x.rubriqueId) as Record<string, any>, x.amount, 'stc', x.label));
+  } else {
+    const existingStc = await db.query(
+      `SELECT l.amount, l.label AS line_label, r.*
+         FROM payroll_lines l JOIN payroll p ON p.id = l.payroll_id JOIN payroll_rubriques r ON r.id = l.rubrique_id
+        WHERE p.employee_id = $1 AND p.month = $2 AND p.year = $3 AND l.source = 'stc'`,
+      [emp.id, month, year]
+    );
+    stcInputs = existingStc.rows.map((r: Record<string, any>) => toRubriqueInput(r, parseFloat(r.amount), 'stc', r.line_label));
+  }
+
   const years = serviceYears(emp.hire_date ? String(emp.hire_date instanceof Date ? isoOf(emp.hire_date) : emp.hire_date) : null, end)
     ?? (parseInt(emp.seniority_years, 10) || 0);
 
@@ -337,6 +357,7 @@ export async function computeAndSavePayslip(
     lines: [
       ...fixed.rows.map((f: Record<string, any>) => toRubriqueInput(f, parseFloat(f.amount), 'fixe')),
       ...manualInputs,
+      ...stcInputs,
     ],
   }, ctx.scale);
 

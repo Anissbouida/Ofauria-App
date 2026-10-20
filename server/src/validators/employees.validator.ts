@@ -364,3 +364,14 @@ export const createContractSchema = z.object({
 export const contractAvenantSchema = z.object({ ...contractChanges, effectiveDate: isoDate });
 export const renewContractSchema = z.object({ endDate: isoDate, notes: z.string().max(1000).nullable().optional() });
 export const endContractSchema = z.object({ endDate: isoDate, reason: z.string().min(3, 'Motif requis').max(200) });
+
+// Solde de tout compte (lot 6, mig 323)
+export const finalSettlementSchema = z.object({
+  exitDate: isoDate,
+  reason: z.enum(['demission', 'licenciement', 'faute_grave', 'fin_cdd', 'rupture_essai',
+    'depart_negocie', 'retraite', 'deces', 'abandon_poste']),
+  noticeWorked: z.boolean().default(true),
+  damagesMonths: z.coerce.number().min(0).max(36).optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  paymentMethod: payrollPaymentMethod.optional(),
+});
