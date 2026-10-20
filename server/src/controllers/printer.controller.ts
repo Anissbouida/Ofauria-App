@@ -4,6 +4,7 @@ import { printerRepository } from '../repositories/printer.repository.js';
 import { printerService } from '../services/printer.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
+import { COMPANY_LEGAL } from '../utils/company-legal.js';
 
 export const printerController = {
   async list(req: AuthRequest, res: Response) {
@@ -127,7 +128,7 @@ export const printerController = {
         card_part: sale.card_amount != null ? parseFloat(sale.card_amount) : null,
       },
       company: {
-        name: settings?.company_name || 'Ofauria',
+        name: settings?.company_name || COMPANY_LEGAL.name,
         subtitle: settings?.subtitle || undefined,
         receipt_header: settings?.receipt_header || undefined,
         receipt_footer: settings?.receipt_footer || undefined,

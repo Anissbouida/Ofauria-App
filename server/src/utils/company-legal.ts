@@ -6,7 +6,10 @@
 export const COMPANY_LEGAL = {
   name: 'TRIANGLE D\'ORIENT SARL',
   address: 'NR 22 RDC LOTISSEMENT FAJR MOHAMMEDIA',
+  phone: '06 49 83 77 67',
+  email: 'gestion@ofauria.ma',
   rc: '38769',
+  patente: '39503652',
   if: '68818304',
   ice: '003805857000072',
 };

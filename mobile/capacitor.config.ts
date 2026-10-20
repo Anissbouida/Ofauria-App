@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.ofauria.app',
-  appName: 'Ofauria',
+  appName: 'Kalum',
   // Pointe vers le build du client web existant
   webDir: '../client/dist',
   server: {

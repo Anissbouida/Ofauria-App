@@ -115,9 +115,9 @@ function band(ws: ExcelJS.Worksheet, text: string, opts: { fill: string; fontCol
   return row;
 }
 
-export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer> {
+export async function generateReconDayWorkbook(day: ReconDayRow, companyName: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Ofauria';
+  wb.creator = 'Kalum';
   wb.created = new Date();
 
   const dateIso = isoDateOf(day.business_date);
@@ -137,7 +137,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow): Promise<Buffer
   ];
 
   // ── Bandeaux titre + légende
-  band(ws, 'BOULANGERIE-PÂTISSERIE OFAURIA', { fill: C.darkBlue, size: 14, height: 20 });
+  band(ws, companyName.toUpperCase(), { fill: C.darkBlue, size: 14, height: 20 });
   band(ws, `CONTRÔLE DES ÉCARTS : PRODUCTION vs CAISSE vs VITRINE — ${dateFr(dateIso)}`, { fill: C.darkBlue, size: 12 });
   const legend = ws.addRow(['Écart = Vendu + Invendu − (Reçu + Reste veille).  Le reste de la veille est le stock d’ouverture, reporté automatiquement.  Négatif → manque à expliquer  |  Positif → vendu plus que le disponible  |  0 → OK ✓']);
   for (let c = 1; c <= NB_COLS; c++) {

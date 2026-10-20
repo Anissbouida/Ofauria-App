@@ -5,13 +5,11 @@ import { resolve, join } from 'path';
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
   const candidates = [
-    resolve(process.cwd(), 'server', 'assets', 'logo-ofauria.png'),
-    resolve(process.cwd(), 'assets', 'logo-ofauria.png'),
-    resolve(process.cwd(), '..', 'server', 'assets', 'logo-ofauria.png'),
+    resolve(process.cwd(), 'server', 'assets', 'company-logo.png'),
+    resolve(process.cwd(), 'assets', 'company-logo.png'),
+    resolve(process.cwd(), '..', 'server', 'assets', 'company-logo.png'),
     resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png'),
     resolve(process.cwd(), '..', 'client', 'public', 'images', 'logo-horizontal.png'),
-    // Absolute fallback
-    '/Users/anissbouida/projets/Ofauria-app/server/assets/logo-ofauria.png',
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
@@ -79,7 +77,7 @@ interface InvoiceData {
   logoPath?: string;
 }
 
-// ── Ofauria brand colors ──
+// ── Couleurs de la charte ──
 const BROWN = '#8E4A1F';
 const BEIGE = '#F5F0E8';
 const CREAM = '#FDFAF4';

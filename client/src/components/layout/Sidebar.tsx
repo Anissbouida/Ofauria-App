@@ -77,7 +77,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-bakery-chocolate text-white min-h-screen flex flex-col">
       <div className="p-6 border-b border-white/10 flex items-center gap-3">
-        <img src="/images/logo-horizontal.png" alt="Ofauria" className="h-10 brightness-0 invert" />
+        <img src="/images/logo-horizontal.png" alt="Logo de l'entreprise" className="h-10 brightness-0 invert" />
       </div>
 
       <nav className="flex-1 p-4 space-y-1">

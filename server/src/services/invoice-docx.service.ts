@@ -46,7 +46,7 @@ interface InvoiceData {
   logoPath?: string;
 }
 
-// ── Ofauria brand color palette ──
+// ── Palette de la charte ──
 const C = {
   brown:     '8E4A1F',
   beige:     'F5F0E8',

@@ -10,6 +10,6 @@ process.on('unhandledRejection', (reason) => {
 });
 
 app.listen(env.PORT, () => {
-  console.log(`🥐 Ofauria API running on http://localhost:${env.PORT}`);
+  console.log(`🥐 Kalum API running on http://localhost:${env.PORT}`);
   console.log(`   Environment: ${env.NODE_ENV}`);
 });

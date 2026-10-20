@@ -6,12 +6,11 @@ import { fileURLToPath } from 'url';
 // Resolve logo
 function findDefaultLogo(): string {
   const candidates = [
-    resolve(process.cwd(), 'server', 'assets', 'logo-ofauria.png'),
-    resolve(process.cwd(), 'assets', 'logo-ofauria.png'),
-    resolve(process.cwd(), '..', 'server', 'assets', 'logo-ofauria.png'),
+    resolve(process.cwd(), 'server', 'assets', 'company-logo.png'),
+    resolve(process.cwd(), 'assets', 'company-logo.png'),
+    resolve(process.cwd(), '..', 'server', 'assets', 'company-logo.png'),
     resolve(process.cwd(), 'client', 'public', 'images', 'logo-horizontal.png'),
     resolve(process.cwd(), '..', 'client', 'public', 'images', 'logo-horizontal.png'),
-    '/Users/anissbouida/projets/Ofauria-app/server/assets/logo-ofauria.png',
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
@@ -68,7 +67,7 @@ interface POData {
   logoPath?: string;
 }
 
-// ── Ofauria brand colors (same as invoices) ──
+// ── Couleurs de la charte (identiques aux factures) ──
 const BROWN = '#8E4A1F';
 const BEIGE = '#F5F0E8';
 const CREAM = '#FDFAF4';

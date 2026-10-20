@@ -98,7 +98,7 @@ export default function LoginPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className="input" placeholder="admin@ofauria.com" required />
+                className="input" placeholder="vous@entreprise.ma" required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>

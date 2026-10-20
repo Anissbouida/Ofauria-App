@@ -22,7 +22,7 @@ async function seed() {
   // Admin password is either taken from env (SEED_ADMIN_PASSWORD) for
   // reproducible seeding, or generated randomly and printed ONCE.
   // Jamais de valeur hardcodee.
-  const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@ofauria.com';
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@kalum.app';
   const envPassword = process.env.SEED_ADMIN_PASSWORD;
   const adminPassword = envPassword || generateStrongPassword();
   const passwordSource = envPassword ? 'SEED_ADMIN_PASSWORD env var' : 'random (shown only once)';

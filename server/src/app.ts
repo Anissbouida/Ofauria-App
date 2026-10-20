@@ -164,7 +164,7 @@ app.use('/api/v1', routes);
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', name: 'Ofauria API' });
+  res.json({ status: 'ok', name: 'Kalum API' });
 });
 
 // ─── Servir le client React (SPA) en production ──────────

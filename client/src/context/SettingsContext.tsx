@@ -11,7 +11,7 @@ interface SettingsContextType {
 const CACHE_KEY = 'ofauria_theme';
 
 const defaults: CompanySettings = {
-  companyName: 'OFAURIA',
+  companyName: 'Kalum',
   subtitle: 'Boulangerie - Patisserie',
   primaryColor: '#714B67',
   secondaryColor: '#5f3d57',

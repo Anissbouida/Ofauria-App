@@ -1,6 +1,8 @@
-# Ofauria - Gestion Boulangerie & Patisserie
+# Kalum — ERP de gestion d'entreprise
 
-Application de gestion complete pour la boulangerie-patisserie Ofauria.
+Kalum : ERP de gestion d'entreprise conçu pour la conformité marocaine (paie CNSS/IR, TVA, comptabilité). Premier client : la boulangerie-pâtisserie Ofauria.
+
+Le dépôt, la base (`ofauria_db`) et le déploiement gardent leur nom technique historique `ofauria`.
 
 ## Stack technique
 

@@ -8,6 +8,7 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { COMPANY_LEGAL } from '../utils/company-legal.js';
 
 // Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
 function effectiveStoreFilter(req: AuthRequest): string | undefined {
@@ -379,13 +380,13 @@ export const purchaseOrderController = {
         supplierAddress: supplier.address || '',
         items,
         totalHT,
-        companyName: 'TRIANGLE D\'ORIENT SARL',
-        companyAddress: 'NR 22 RDC LOTISSEMENT FAJR MOHAMMEDIA',
-        companyPhone: '06 49 83 77 67',
-        companyEmail: 'gestion@ofauria.ma',
-        companyRC: '38769',
-        companyPatente: '39503652',
-        companyIF: '68818304',
+        companyName: COMPANY_LEGAL.name,
+        companyAddress: COMPANY_LEGAL.address,
+        companyPhone: COMPANY_LEGAL.phone,
+        companyEmail: COMPANY_LEGAL.email,
+        companyRC: COMPANY_LEGAL.rc,
+        companyPatente: COMPANY_LEGAL.patente,
+        companyIF: COMPANY_LEGAL.if,
         companyICE: '003805857000072',
         logoPath,
       });

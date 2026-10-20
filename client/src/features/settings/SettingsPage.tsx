@@ -213,7 +213,7 @@ function GeneralTab({
       <SettingsSection title="Informations de l'entreprise">
         <SettingItem title="Nom de l'entreprise" description="Affiche dans l'application et sur les tickets">
           <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
-            className="input w-full" placeholder="OFAURIA" />
+            className="input w-full" placeholder="Nom de votre entreprise" />
         </SettingItem>
         <SettingItem title="Sous-titre" description="Texte affiche sous le logo">
           <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
@@ -406,7 +406,7 @@ function AppearanceTab() {
                 <div className="w-full h-16 rounded-lg overflow-hidden border border-gray-200"
                   style={{ background: preset.values.themeBgPage }}>
                   <div className="h-4 flex items-center px-2" style={{ background: preset.values.themeAccent }}>
-                    <span className="text-[6px] font-bold" style={{ color: preset.values.themeCtaText }}>OFAURIA</span>
+                    <span className="text-[6px] font-bold" style={{ color: preset.values.themeCtaText }}>{settings.companyName}</span>
                   </div>
                   <div className="p-1.5 flex gap-1">
                     <div className="w-5 h-5 rounded" style={{ background: preset.values.themeBgCard, border: `1px solid ${preset.values.themeBgSeparator}` }} />
@@ -445,7 +445,7 @@ function AppearanceTab() {
         <div className="rounded-xl overflow-hidden border border-gray-200">
           {/* Header preview */}
           <div className="h-14 flex items-center px-5" style={{ background: theme.themeAccent }}>
-            <span className="font-bold tracking-wide" style={{ color: theme.themeCtaText }}>OFAURIA</span>
+            <span className="font-bold tracking-wide" style={{ color: theme.themeCtaText }}>{settings.companyName}</span>
             <span className="text-sm ml-2" style={{ color: theme.themeCtaText, opacity: 0.6 }}>/ Caisse</span>
             <div className="flex-1" />
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"

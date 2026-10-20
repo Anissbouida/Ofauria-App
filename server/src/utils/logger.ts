@@ -13,7 +13,7 @@ const IS_PROD = env.NODE_ENV === 'production';
  */
 export const logger = pino({
   level: IS_PROD ? 'info' : 'debug',
-  base: { service: 'ofauria-server' },
+  base: { service: 'kalum-server' },
   formatters: {
     level: (label) => ({ level: label }),
   },

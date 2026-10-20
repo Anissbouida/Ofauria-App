@@ -8,6 +8,7 @@ import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
+import { COMPANY_LEGAL } from '../utils/company-legal.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
@@ -551,13 +552,13 @@ export const invoiceController = {
         totalTVA: taxAmount,
         totalTTC: totalAmount,
         tvaBreakdown,
-        companyName: 'TRIANGLE D\'ORIENT SARL',
-        companyAddress: 'NR 22 RDC LOTISSEMENT FAJR MOHAMMEDIA',
-        companyPhone: '06 49 83 77 67',
-        companyEmail: 'gestion@ofauria.ma',
-        companyRC: '38769',
-        companyPatente: '39503652',
-        companyIF: '68818304',
+        companyName: COMPANY_LEGAL.name,
+        companyAddress: COMPANY_LEGAL.address,
+        companyPhone: COMPANY_LEGAL.phone,
+        companyEmail: COMPANY_LEGAL.email,
+        companyRC: COMPANY_LEGAL.rc,
+        companyPatente: COMPANY_LEGAL.patente,
+        companyIF: COMPANY_LEGAL.if,
         companyCNSS: '',
         companyICE: '003805857000072',
         companyBankAccount: '',
