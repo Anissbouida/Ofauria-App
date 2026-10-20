@@ -40,6 +40,10 @@ type BiweeklyPayrollRow = {
   overtime_hours: string | null;
   overtime_amount: string | null;
   net_amount: string | null;
+  // Salarie declare (mig 327) : net = brut - retenue provisoire (acompte).
+  gross_amount?: string | null;
+  withholding_amount?: string | null;
+  is_declared?: boolean | null;
   advance_deduction: string | null;
   paid: boolean | null;
   paid_at: string | null;
@@ -300,7 +304,14 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                               ? parseFloat(r.advance_deduction || '0')
                               : Math.min(suggestedByEmp.get(r.employee_id) ?? 0, net);
                             const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
-                            if (ded <= 0.005) return `${net.toFixed(2)} DH`;
+                            const wh = parseFloat(r.withholding_amount || '0');
+                            const whNote = wh > 0 && (
+                              <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}
+                                title="Acompte d'un salarié déclaré : retenue provisoire CNSS / AMO / IR, régularisée sur le bulletin mensuel">
+                                brut {parseFloat(r.gross_amount || '0').toFixed(2)} − retenue prov. {wh.toFixed(2)}
+                              </div>
+                            );
+                            if (ded <= 0.005) return <>{net.toFixed(2)} DH{whNote}</>;
                             return (
                               <span title={paid
                                 ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
@@ -309,6 +320,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                                 <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
                                   net {net.toFixed(2)}
                                 </div>
+                                {whNote}
                               </span>
                             );
                           })()}

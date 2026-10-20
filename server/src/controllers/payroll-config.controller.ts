@@ -316,6 +316,7 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
     totalRetenues: totalRetenues + num(p.deductions) + Math.max(0, -num(p.ir_regularisation)),
     netSalary: num(p.net_salary),
     advanceDeduction: num(p.advance_deduction),
+    acomptes: num(p.acomptes_amount),
     bases: {
       brutImposable: num(p.brut_imposable ?? p.gross_salary), fraisPro: num(p.frais_pro),
       netImposable: num(p.net_imposable), irGross: num(p.ir_gross), familyDeduction: num(p.family_deduction),

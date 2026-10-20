@@ -3,7 +3,7 @@ import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment, payrollLedger } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
-import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } from './payroll-config.repository.js';
+import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip, loadPeriodicMonth, monthBounds as monthBoundsOf } from './payroll-config.repository.js';
 import { loadTimeRules } from './time-rules.repository.js';
 import { nightOvertimeMinutes } from '../services/overtime-engine.js';
 
@@ -825,13 +825,14 @@ export const payrollRepository = {
     await payrollPeriodRepository.assertOpen(month, year);
     const ctx = await loadPayrollContext(month, year);
 
-    // Seuls les employes payes AU MOIS : les hebdo/quinzaine ont leur propre
-    // paie, ils ne doivent pas apparaitre dans les deux.
+    // Employes payes AU MOIS, plus les hebdo/quinzaine DECLARES (mig 327) :
+    // leur bulletin mensuel cumule les paies periodiques et deduit les
+    // acomptes. Les non declares n'ont que leur paie periodique.
     const employees = await db.query(
       `SELECT * FROM employees
         WHERE is_active = true
-          AND monthly_salary IS NOT NULL
-          AND COALESCE(pay_frequency, 'monthly') = 'monthly'
+          AND ((COALESCE(pay_frequency, 'monthly') = 'monthly' AND monthly_salary IS NOT NULL)
+               OR (pay_frequency IN ('weekly', 'biweekly') AND is_declared IS NOT FALSE))
           ${storeId ? 'AND (store_id = $1 OR store_id IS NULL)' : ''}`,
       storeId ? [storeId] : []
     );
@@ -846,13 +847,22 @@ export const payrollRepository = {
           AND p.month = $1 AND p.year = $2
           AND p.paid = false
           AND COALESCE(e.pay_frequency, 'monthly') != 'monthly'
+          AND e.is_declared IS FALSE
           ${storeId ? 'AND (e.store_id = $3 OR e.store_id IS NULL)' : ''}
         RETURNING p.employee_id, e.first_name, e.last_name, e.pay_frequency`,
       storeId ? [month, year, storeId] : [month, year]
     );
 
     const results: Record<string, unknown>[] = [];
+    const { start, end } = monthBoundsOf(month, year);
     for (const emp of employees.rows) {
+      // Periodique : bulletin seulement si le mois compte des acomptes (paies
+      // calculees avec retenue provisoire). Sinon aucune paie, ou des paies de
+      // l'ancien modele deja versees sans retenue : pas de bulletin.
+      if (emp.pay_frequency === 'weekly' || emp.pay_frequency === 'biweekly') {
+        const pm = await loadPeriodicMonth(emp.id, emp.pay_frequency, start, end);
+        if (pm.withheld === 0) continue;
+      }
       results.push(await computeAndSavePayslip(emp, month, year, ctx));
     }
     return { payrolls: results, removed: purge.rows };
@@ -916,7 +926,25 @@ export const payrollRepository = {
     if (!current) return null;
     if (current.paid) return current;
 
-    const net = parseFloat(current.net_salary);
+    // Salarie hebdo / quinzaine declare (mig 327) : le net du bulletin est
+    // deja en partie verse par les acomptes periodiques ; seul le reste sort.
+    let acomptes = 0;
+    if (current.pay_frequency === 'weekly' || current.pay_frequency === 'biweekly') {
+      const { start, end } = monthBoundsOf(current.month, current.year);
+      const pm = await loadPeriodicMonth(current.employee_id, current.pay_frequency, start, end);
+      if (pm.unpaid > 0) {
+        throw new Error(`${pm.unpaid} paie(s) ${current.pay_frequency === 'weekly' ? 'hebdomadaire(s)' : 'de quinzaine'} du mois non payée(s) : réglez-les avant le bulletin mensuel.`);
+      }
+      if (Math.abs(pm.acomptes - parseFloat(current.acomptes_amount)) > 0.005) {
+        throw new Error('Les acomptes du mois ont changé depuis le calcul : régénérez le bulletin avant de le payer.');
+      }
+      acomptes = pm.acomptes;
+    }
+    const net = Math.round((parseFloat(current.net_salary) - acomptes) * 100) / 100;
+    if (net < -0.005) {
+      // Typiquement des semaines payees avant la retenue provisoire (transition).
+      throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} DH (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
+    }
     const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
     if (deduction > 0) {
       const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(current.employee_id);
@@ -973,6 +1001,7 @@ export const payrollRepository = {
           paymentMethod: paymentMethod,
           paymentDate: getLocalISODate(),
           description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
+            + (acomptes > 0 ? ` (solde après acomptes ${acomptes.toFixed(2)} DH)` : '')
             + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
           createdBy: createdBy || payroll.employee_id,
           storeId,

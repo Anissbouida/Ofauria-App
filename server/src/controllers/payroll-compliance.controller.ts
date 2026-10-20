@@ -50,7 +50,7 @@ function sendPdf(res: Response, buffer: Buffer, filename: string) {
  */
 export async function loadTransferLines(month: number, year: number, includeUnpaid: boolean, userStoreId?: string): Promise<TransferLine[]> {
   const r = await db.query(
-    `SELECT p.id, p.net_salary, p.advance_deduction, p.paid, p.payment_method,
+    `SELECT p.id, p.net_salary, p.advance_deduction, p.acomptes_amount, p.paid, p.payment_method,
             e.id AS employee_id, e.first_name, e.last_name, e.rib, e.bank_name, e.store_id
        FROM payroll p JOIN employees e ON e.id = p.employee_id
       WHERE p.month = $1 AND p.year = $2
@@ -63,8 +63,10 @@ export async function loadTransferLines(month: number, year: number, includeUnpa
     .map((x: Row) => ({
       payrollId: x.id, employeeId: x.employee_id, name: `${x.last_name} ${x.first_name}`,
       rib: x.rib, bankName: x.bank_name,
-      amount: Math.round((num(x.net_salary) - (x.paid ? num(x.advance_deduction) : 0)) * 100) / 100,
-    }));
+      // Acomptes hebdo / quinzaine deja verses (mig 327) : seul le reste est vire.
+      amount: Math.round((num(x.net_salary) - num(x.acomptes_amount) - (x.paid ? num(x.advance_deduction) : 0)) * 100) / 100,
+    }))
+    .filter(l => l.amount > 0);
 }
 
 export const payrollComplianceController = {

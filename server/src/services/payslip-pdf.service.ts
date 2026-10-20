@@ -39,6 +39,8 @@ export interface PayslipPdfData {
   totalRetenues: number;
   netSalary: number;
   advanceDeduction: number;
+  /** Acomptes hebdo / quinzaine deja verses sur le mois (mig 327). */
+  acomptes?: number;
   bases: { brutImposable: number; fraisPro: number; netImposable: number; irGross: number; familyDeduction: number };
   employer: Array<{ label: string; amount: number }>;
   totalEmployer: number;
@@ -148,9 +150,15 @@ export async function generatePayslipPdf(d: PayslipPdfData): Promise<Buffer> {
   t('NET À PAYER', M + 10, y + 8);
   t(`${money(d.netSalary)} DH`, M, y + 8, { width: CW - 10, align: 'right' });
   y += 30;
-  if (d.advanceDeduction > 0) {
+  const acomptes = d.acomptes ?? 0;
+  if (acomptes > 0 || d.advanceDeduction > 0) {
     doc.font('Helvetica').fontSize(8).fillColor(TEXT_DARK);
-    t(`Retenue sur avance(s) : ${money(d.advanceDeduction)} DH   ·   Net versé : ${money(d.netSalary - d.advanceDeduction)} DH`, M, y, { width: CW, align: 'right' });
+    const parts = [
+      acomptes > 0 ? `Acomptes versés : ${money(acomptes)} DH` : null,
+      d.advanceDeduction > 0 ? `Retenue sur avance(s) : ${money(d.advanceDeduction)} DH` : null,
+      `${acomptes > 0 ? 'Reste versé' : 'Net versé'} : ${money(d.netSalary - acomptes - d.advanceDeduction)} DH`,
+    ].filter(Boolean);
+    t(parts.join('   ·   '), M, y, { width: CW, align: 'right' });
     y += 12;
   }
   if (d.payment) {

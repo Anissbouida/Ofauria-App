@@ -141,6 +141,8 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
 
   const pf = (v: unknown) => parseFloat(v as string || '0').toFixed(2);
   const pn = (v: unknown) => parseFloat(v as string || '0');
+  /** Reste du sur le bulletin : net moins les acomptes hebdo / quinzaine deja verses (mig 327). */
+  const dueOf = (p: Record<string, any>) => Math.round((pn(p.net_salary) - pn(p.acomptes_amount)) * 100) / 100;
 
   const totalNet = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.net_salary), 0);
   const totalGross = (payrolls as Record<string, any>[]).reduce((s, p) => s + pn(p.gross_salary), 0);
@@ -203,7 +205,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const toPayRows = allRows.filter(p => !p.paid);
   const stageStats = {
     generated: { count: allRows.length, sub: `${totalGross.toFixed(0)} DH brut` },
-    topay: { count: toPayRows.length, sub: `${toPayRows.reduce((s, p) => s + pn(p.net_salary), 0).toFixed(0)} DH` },
+    topay: { count: toPayRows.length, sub: `${toPayRows.reduce((s, p) => s + dueOf(p), 0).toFixed(0)} DH` },
     paid: { count: totalPaid, sub: `${allRows.filter(p => p.paid).reduce((s, p) => s + pn(p.net_salary), 0).toFixed(0)} DH` },
   };
 
@@ -243,7 +245,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             <Banknote size={13} /> Virement groupé
           </button>
           <button onClick={async () => {
-            if (!(await confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`,
+            if (!(await confirm(`Générer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour les employés mensuels et les employés hebdo / quinzaine déclarés ?\n\nLes bulletins déjà PAYÉS ne sont jamais écrasés. Les autres sont recalculés depuis le pointage et les paies périodiques du mois.`,
               { title: 'Générer les bulletins', confirmLabel: 'Générer' }))) return;
             generateMutation.mutate();
           }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
@@ -344,6 +346,11 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                       {p.first_name as string} {p.last_name as string}
                       <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(p.employee_role as string)}</span>
                       {p.is_declared === false && <span className="odoo-tag odoo-tag-grey" title="Ni cotisations ni IR">Non déclaré</span>}
+                      {p.pay_frequency && p.pay_frequency !== 'monthly' && (
+                        <span className="odoo-tag odoo-tag-blue" title={`Payé ${p.pay_frequency === 'weekly' ? 'à la semaine' : 'à la quinzaine'} : brut cumulé des paies du mois, acomptes versés ${pf(p.acomptes_amount)} DH déduits du net`}>
+                          {p.pay_frequency === 'weekly' ? 'Hebdo' : 'Quinzaine'}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -359,19 +366,20 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724' }}>
                     {(() => {
-                      const net = pn(p.net_salary);
+                      // Reste du apres acomptes hebdo / quinzaine (mig 327).
+                      const net = dueOf(p);
                       const ded = p.paid
                         ? pn(p.advance_deduction)
                         : Math.min(suggestedByEmp.get(p.employee_id as string) ?? 0, net);
                       const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
-                      if (ded <= 0.005) return pf(p.net_salary);
+                      if (ded <= 0.005 && pn(p.acomptes_amount) <= 0) return pf(p.net_salary);
                       return (
                         <span title={p.paid
                           ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
                           : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
                           {verse.toFixed(2)}
                           <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
-                            net {net.toFixed(2)}
+                            net {pf(p.net_salary)}{pn(p.acomptes_amount) > 0 && ` − acomptes ${pf(p.acomptes_amount)}`}
                           </div>
                         </span>
                       );
@@ -431,7 +439,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         <PayrollPayDialog
           employeeName={`${payTarget.first_name} ${payTarget.last_name}`}
           periodLabel={`${MONTH_NAMES[month - 1]} ${year}`}
-          net={pn(payTarget.net_salary)}
+          net={dueOf(payTarget)}
           outstanding={outstandingByEmp.get(payTarget.employee_id as string) || 0}
           suggested={suggestedByEmp.get(payTarget.employee_id as string) ?? (outstandingByEmp.get(payTarget.employee_id as string) || 0)}
           defaultMethod="cash"
@@ -567,6 +575,16 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <td>Net à payer</td>
                   <td colSpan={2} style={{ textAlign: 'right', color: '#155724', fontSize: '0.9375rem' }}>{pf(p.net_salary)} DH</td>
                 </tr>
+                {pn(p.acomptes_amount) > 0 && (<>
+                  <tr>
+                    <td>Acomptes {p.pay_frequency === 'weekly' ? 'hebdomadaires' : 'de quinzaine'} versés</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: '#dc3545' }}>− {pf(p.acomptes_amount)} DH</td>
+                  </tr>
+                  <tr style={{ fontWeight: 700 }}>
+                    <td>Reste à payer</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: '#155724' }}>{pf(dueOf(p))} DH</td>
+                  </tr>
+                </>)}
               </tfoot>
             </table>
 

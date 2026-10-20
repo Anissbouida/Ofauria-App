@@ -79,6 +79,22 @@ export interface PayslipInput {
    * sortie) : cumul des bulletins declares ANTERIEURS de l'annee civile.
    */
   irRegularisation?: IrCumul;
+  /**
+   * Salarie paye a la semaine / quinzaine ET declare (mig 327) : le salaire du
+   * mois est la somme des paies periodiques rattachees au mois (deja calculees
+   * selon leur convention : jours payes, repos, HS, feries). Remplace alors
+   * monthlySalary / coveredDays / HS / feries ; l'anciennete s'y ajoute.
+   */
+  periodic?: PeriodicGross;
+}
+
+/** Brut du mois cumule depuis les paies hebdo / quinzaine. */
+export interface PeriodicGross {
+  base: number;
+  overtime: number;
+  holiday: number;
+  /** Jours payes (declares a la CNSS, plafonnes a la base de 26). */
+  paidDays: number;
 }
 
 /** Cumul annuel des bulletins declares anterieurs (regularisation IR). */
@@ -218,6 +234,7 @@ export function irRegularisation(
 }
 
 export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): PayslipResult {
+  if (input.periodic) return computePeriodicMonth(input, input.periodic, scale);
   const base = input.monthlySalary;
   const dailyRate = base / input.baseDays;
 
@@ -236,6 +253,40 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
   const extraShiftAmount = r2(input.doubleDays * dailyRate);
   const salaireFixe = base + seniorityBonus + overtimeAmount + holidayPremium + extraShiftAmount - absenceDeduction;
 
+  return finishPayslip(input, scale, {
+    base, absentDays, absenceDeduction, rate, seniorityBonus, overtime, overtimeAmount,
+    holidayPremium, extraShiftAmount, salaireFixe,
+    workedDays: r2(Math.min(input.coveredDays, input.baseDays)),
+  });
+}
+
+interface FixedPart {
+  base: number; absentDays: number; absenceDeduction: number; rate: number; seniorityBonus: number;
+  overtime: OvertimeHours; overtimeAmount: number; holidayPremium: number; extraShiftAmount: number;
+  salaireFixe: number; workedDays: number;
+}
+
+/**
+ * Mois d'un salarie hebdo / quinzaine declare : brut = paies periodiques du
+ * mois + anciennete (art. 350, sur le salaire de base). Pas d'absence a
+ * retenir : les paies periodiques ne paient deja que les jours dus.
+ */
+function computePeriodicMonth(input: PayslipInput, p: PeriodicGross, scale: TaxScale): PayslipResult {
+  const rate = seniorityRate(input.seniorityYears);
+  const seniorityBonus = r2(p.base * rate);
+  const salaireFixe = r2(p.base + seniorityBonus + p.overtime + p.holiday);
+  return finishPayslip(input, scale, {
+    base: r2(p.base), absentDays: 0, absenceDeduction: 0, rate, seniorityBonus,
+    overtime: { day: 0, night: 0, restDay: 0, restNight: 0 }, overtimeAmount: r2(p.overtime),
+    holidayPremium: r2(p.holiday), extraShiftAmount: 0, salaireFixe,
+    workedDays: r2(Math.min(p.paidDays, input.baseDays)),
+  });
+}
+
+/** Rubriques, cotisations, IR et charges patronales sur la part fixe calculee. */
+function finishPayslip(input: PayslipInput, scale: TaxScale, f: FixedPart): PayslipResult {
+  const { base, absentDays, absenceDeduction, rate, seniorityBonus, overtime, overtimeAmount,
+    holidayPremium, extraShiftAmount, salaireFixe } = f;
   // ─── Rubriques : part exoneree, part soumise CNSS / IR ───
   const lines: PayslipLine[] = input.lines.map(l => {
     if (l.kind === 'retenue') return { ...l, exemptAmount: 0, cnssAmount: 0, irAmount: 0 };
@@ -301,7 +352,7 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
   return {
     baseSalary: base,
     // Jours payes sur la base (doubles comptes a part dans extraShiftAmount).
-    workedDays: r2(Math.min(input.coveredDays, input.baseDays)),
+    workedDays: f.workedDays,
     absentDays,
     absenceDeduction,
     seniorityRate: rate,
@@ -357,4 +408,47 @@ export function taxScaleFromRow(row: Record<string, unknown>): TaxScale {
     maxPersonnesCharge: n(row.max_personnes_charge, 6),
     irBrackets: brackets,
   };
+}
+
+// ─── Paies hebdo / quinzaine declarees (mig 327) ────────────────────────
+// Chaque paie periodique est un ACOMPTE : on retient une provision de
+// CNSS / AMO / CIMR / IR estimee sur le salaire mensualise ; le bulletin du
+// mois calcule ensuite le montant exact et deduit les acomptes verses.
+
+/** Periodes par mois : 52 / 12 semaines, 2 quinzaines. */
+export function periodsPerMonth(frequency: 'weekly' | 'biweekly'): number {
+  return frequency === 'weekly' ? 52 / 12 : 2;
+}
+
+/**
+ * Retenue provisoire d'un acompte : cotisations et IR du brut periodique
+ * extrapole au mois, ramenes a la periode. Jamais negative ni superieure au brut.
+ */
+export function provisionalWithholding(
+  gross: number,
+  frequency: 'weekly' | 'biweekly',
+  emp: { nbDependents: number; cimrRate: number; seniorityYears?: number },
+  scale: TaxScale,
+): number {
+  if (!(gross > 0)) return 0;
+  const k = periodsPerMonth(frequency);
+  const month = computeMonthlyPayslip({
+    monthlySalary: 0, baseDays: 26, coveredDays: 26, doubleDays: 0, overtimeHours: 0,
+    seniorityYears: 0, nbDependents: emp.nbDependents, cimrRate: emp.cimrRate,
+    isDeclared: true, lines: [],
+    periodic: { base: gross * k, overtime: 0, holiday: 0, paidDays: 26 },
+  }, scale);
+  const monthly = month.cnssEmployee + month.amoEmployee + month.cimrEmployee + Math.max(0, month.irNet);
+  return r2(Math.min(gross, monthly / k));
+}
+
+/**
+ * Mois de rattachement d'une paie periodique. Quinzaine : son mois. Semaine :
+ * le mois de son jeudi (convention ISO), pour qu'une semaine a cheval ne soit
+ * comptee qu'une fois et dans le mois ou elle a le plus de jours.
+ */
+export function periodMonth(periodStart: string, frequency: 'weekly' | 'biweekly'): { month: number; year: number } {
+  const [y, m, d] = periodStart.slice(0, 10).split('-').map(Number);
+  const ref = new Date(Date.UTC(y, m - 1, d + (frequency === 'weekly' ? 3 : 0)));
+  return { month: ref.getUTCMonth() + 1, year: ref.getUTCFullYear() };
 }

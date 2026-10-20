@@ -6,6 +6,8 @@ import { loadTimeRules, periodTimeFacts } from './time-rules.repository.js';
 import { overtimeAmount as otAmount } from '../services/overtime-engine.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
+import { loadPayrollContext } from './payroll-config.repository.js';
+import { provisionalWithholding, periodMonth } from '../services/payroll-engine.js';
 
 /**
  * Paie hebdomadaire.
@@ -35,9 +37,10 @@ import { getLocalISODate } from '../utils/timezone.js';
  * frontend — la valeur est renvoyee par le serveur dans les colonnes
  * `paid_days` / `repos_days` de la vue list().
  *
- * Note : pas de CNSS/IR ici (les employes hebdo sont typiquement
- * journaliers/extras, paye au noir ou en CDD courte duree). Si besoin,
- * cumuler dans le futur via une logique similaire au mensuel.
+ * Salarie declare (mig 327) : la ligne est un ACOMPTE. net_amount = brut
+ * (gross_amount) - retenue provisoire (withholding_amount) ; le bulletin
+ * mensuel (payroll) calcule CNSS / AMO / IR exacts et deduit les acomptes.
+ * Non declare : pas de retenue, net = brut.
  */
 
 /**
@@ -85,6 +88,9 @@ export const weeklyPayrollRepository = {
          wp.overtime_hours,
          wp.overtime_amount,
          wp.net_amount,
+         wp.gross_amount,
+         wp.withholding_amount,
+         e.is_declared,
          wp.advance_deduction,
          wp.paid,
          wp.paid_at,
@@ -123,7 +129,7 @@ export const weeklyPayrollRepository = {
   async generate(weekStart: string, weekEnd: string, storeId?: string) {
     const storeFilter = storeId ? 'AND (e.store_id = $1 OR e.store_id IS NULL)' : '';
     const employeesRes = await db.query(
-      `SELECT e.id, e.weekly_salary, e.hire_date
+      `SELECT e.id, e.weekly_salary, e.hire_date, e.is_declared, e.nb_dependents, e.cimr_rate
          FROM employees e
         WHERE e.is_active = true
           AND e.pay_frequency = 'weekly'
@@ -137,6 +143,12 @@ export const weeklyPayrollRepository = {
 
     const leaveCfg = await loadLeaveConfig();
     const timeRules = await loadTimeRules();
+    // Bareme du mois de rattachement : la retenue provisoire des declares (mig 327).
+    const pm = periodMonth(weekStart, 'weekly');
+    let scale: Awaited<ReturnType<typeof loadPayrollContext>>['scale'] | null = null;
+    if (employeesRes.rows.some((e: Record<string, unknown>) => e.is_declared !== false)) {
+      scale = (await loadPayrollContext(pm.month, pm.year)).scale;
+    }
     for (const emp of employeesRes.rows) {
       const weeklySalary = parseFloat(emp.weekly_salary as string);
       const dailyRate = weeklySalary / 7;
@@ -173,14 +185,23 @@ export const weeklyPayrollRepository = {
       // Heures sup majorees (25/50/100 %) au taux horaire legal.
       const overtimeAmount = otAmount(tf.overtime, weeklySalary / timeRules.weeklyLegalHours, timeRules.otRates);
       const holidayPremium = r2(tf.holidayWorked * dailyRate * timeRules.holidayWorkedRate);
-      const netAmount = r2(baseAmount + overtimeAmount + holidayPremium);
+      const grossAmount = r2(baseAmount + overtimeAmount + holidayPremium);
+      // Declare : acompte = brut - retenue provisoire (CNSS, AMO, CIMR, IR) ;
+      // le bulletin du mois regularise au centime pres.
+      const withholding = emp.is_declared !== false && scale
+        ? provisionalWithholding(grossAmount, 'weekly', {
+            nbDependents: parseInt(String(emp.nb_dependents ?? 0), 10) || 0,
+            cimrRate: parseFloat(String(emp.cimr_rate ?? 0)) || 0,
+          }, scale)
+        : 0;
+      const netAmount = r2(grossAmount - withholding);
 
       const r = await db.query(
         `INSERT INTO weekly_payroll
            (employee_id, week_start, week_end, base_amount, worked_days, absent_days,
             overtime_hours, overtime_amount, net_amount, paid_leave_days,
-            holiday_paid_days, holiday_worked_days, holiday_premium)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            holiday_paid_days, holiday_worked_days, holiday_premium, gross_amount, withholding_amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          ON CONFLICT (employee_id, week_start) DO UPDATE SET
            week_end = EXCLUDED.week_end,
            base_amount = EXCLUDED.base_amount,
@@ -192,13 +213,15 @@ export const weeklyPayrollRepository = {
            holiday_paid_days = EXCLUDED.holiday_paid_days,
            holiday_worked_days = EXCLUDED.holiday_worked_days,
            holiday_premium = EXCLUDED.holiday_premium,
+           gross_amount = EXCLUDED.gross_amount,
+           withholding_amount = EXCLUDED.withholding_amount,
            net_amount = EXCLUDED.net_amount
          -- Ligne payee : intouchable (jours, base et net ont servi a la sortie de
          -- caisse). Avant, seul le net etait garde et les jours/base changeaient.
          WHERE weekly_payroll.paid = false
          RETURNING *`,
         [emp.id, weekStart, weekEnd, baseAmount, workedDays, absentDays, overtimeHours, overtimeAmount, netAmount, paidLeaveDays,
-         tf.holidayPaid, tf.holidayWorked, holidayPremium]
+         tf.holidayPaid, tf.holidayWorked, holidayPremium, grossAmount, withholding]
       );
       if (r.rows[0]) results.push(r.rows[0]);
       else {
@@ -329,6 +352,17 @@ export const weeklyPayrollRepository = {
    *  - reset les flags paid/paid_at/payment_method/advance_deduction.
    */
   async unmarkPaid(id: string, userId?: string) {
+    // Acompte d'un salarie declare deja deduit d'un bulletin mensuel paye :
+    // l'annuler fausserait ce bulletin (mig 327).
+    const cur = (await db.query('SELECT employee_id, week_start FROM weekly_payroll WHERE id = $1', [id])).rows[0];
+    if (cur) {
+      const pm = periodMonth(toDateStr(cur.week_start), 'weekly');
+      const slip = await db.query(
+        'SELECT 1 FROM payroll WHERE employee_id = $1 AND month = $2 AND year = $3 AND paid = true AND acomptes_amount > 0',
+        [cur.employee_id, pm.month, pm.year]
+      );
+      if (slip.rowCount) throw new Error(`Cet acompte est déduit du bulletin ${String(pm.month).padStart(2, '0')}/${pm.year} déjà payé : annulez d'abord le paiement de ce bulletin.`);
+    }
     // Idempotence : UPDATE conditionnel + restauration si le cleanup echoue.
     const claim = await db.query(
       `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0

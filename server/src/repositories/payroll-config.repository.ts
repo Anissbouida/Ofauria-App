@@ -1,10 +1,11 @@
 import { db } from '../config/database.js';
 import {
   computeMonthlyPayslip, serviceYears, taxScaleFromRow,
-  type RubriqueInput, type TaxScale, type IrCumul,
+  type RubriqueInput, type TaxScale, type IrCumul, type PeriodicGross,
 } from '../services/payroll-engine.js';
 import { leaveBalanceRepository } from './leave.repository.js';
 import { loadTimeRules, periodTimeFacts, type TimeRules } from './time-rules.repository.js';
+import { reposDaysFor } from './weekly-payroll.repository.js';
 
 /**
  * Parametrage et calcul de la paie mensuelle (mig 318) : bareme versionne,
@@ -362,8 +363,14 @@ export async function computeAndSavePayslip(
     };
   }
 
+  // Salarie hebdo / quinzaine declare (mig 327) : brut = paies periodiques
+  // rattachees au mois ; acomptes = leurs nets deja verses.
+  const periodicFreq = emp.pay_frequency === 'weekly' || emp.pay_frequency === 'biweekly' ? emp.pay_frequency as 'weekly' | 'biweekly' : null;
+  const periodicMonth = periodicFreq ? await loadPeriodicMonth(emp.id, periodicFreq, start, end) : null;
+
   const r = computeMonthlyPayslip({
-    monthlySalary: parseFloat(emp.monthly_salary),
+    periodic: periodicMonth?.gross,
+    monthlySalary: parseFloat(emp.monthly_salary ?? 0) || 0,
     baseDays: ctx.baseDays,
     coveredDays,
     doubleDays: a.double_days,
@@ -398,8 +405,9 @@ export async function computeAndSavePayslip(
          extra_shift_days, extra_shift_amount,
          tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable, paid_leave_days,
          ot_day_hours, ot_night_hours, ot_rest_day_hours, ot_rest_night_hours,
-         holiday_paid_days, holiday_worked_days, holiday_premium, ir_regularisation
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)
+         holiday_paid_days, holiday_worked_days, holiday_premium, ir_regularisation,
+         pay_frequency, acomptes_amount
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
        ON CONFLICT (employee_id, month, year) DO UPDATE SET
          base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
          absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
@@ -425,7 +433,8 @@ export async function computeAndSavePayslip(
          ot_rest_day_hours = EXCLUDED.ot_rest_day_hours, ot_rest_night_hours = EXCLUDED.ot_rest_night_hours,
          holiday_paid_days = EXCLUDED.holiday_paid_days, holiday_worked_days = EXCLUDED.holiday_worked_days,
          holiday_premium = EXCLUDED.holiday_premium,
-         ir_regularisation = EXCLUDED.ir_regularisation
+         ir_regularisation = EXCLUDED.ir_regularisation,
+         pay_frequency = EXCLUDED.pay_frequency, acomptes_amount = EXCLUDED.acomptes_amount
        WHERE payroll.paid = false
        RETURNING *`,
       [emp.id, month, year, r.baseSalary, r.workedDays, r.absentDays,
@@ -438,7 +447,8 @@ export async function computeAndSavePayslip(
        a.double_days, r.extraShiftAmount,
        ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable, paidLeaveDays,
        tf.overtime.day, tf.overtime.night, tf.overtime.restDay, tf.overtime.restNight,
-       tf.holidayPaid, tf.holidayWorked, r.holidayPremium, r.irRegularisation]
+       tf.holidayPaid, tf.holidayWorked, r.holidayPremium, r.irRegularisation,
+       periodicFreq ?? 'monthly', periodicMonth?.acomptes ?? 0]
     );
 
     if (!up.rows[0]) {
@@ -470,6 +480,38 @@ export async function computeAndSavePayslip(
   } finally {
     client.release();
   }
+}
+
+/**
+ * Paies periodiques rattachees au mois (semaine : celle dont le jeudi tombe
+ * dans le mois ; quinzaine : celles du mois). `acomptes` = nets PAYES ;
+ * `unpaid` = periodes encore a payer (le bulletin ne se paie qu'apres elles).
+ * `withheld` = periodes calculees en acompte (retenue provisoire > 0) : sans
+ * elles, le mois releve de l'ancien modele (paye sans retenue) et n'a pas de
+ * bulletin mensuel.
+ */
+export async function loadPeriodicMonth(
+  employeeId: string, frequency: 'weekly' | 'biweekly', start: string, end: string,
+): Promise<{ gross: PeriodicGross; acomptes: number; unpaid: number; periods: number; withheld: number }> {
+  const sql = frequency === 'weekly'
+    ? `SELECT * FROM weekly_payroll WHERE employee_id = $1 AND (week_start + 3) BETWEEN $2::date AND $3::date`
+    : `SELECT * FROM biweekly_payroll WHERE employee_id = $1 AND period_start BETWEEN $2::date AND $3::date`;
+  const rows = (await db.query(sql, [employeeId, start, end])).rows;
+  const n = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
+  const gross: PeriodicGross = { base: 0, overtime: 0, holiday: 0, paidDays: 0 };
+  let acomptes = 0;
+  let unpaid = 0;
+  let withheld = 0;
+  for (const w of rows) {
+    if (n(w.withholding_amount) > 0) withheld++;
+    gross.base += n(w.base_amount);
+    gross.overtime += n(w.overtime_amount);
+    gross.holiday += n(w.holiday_premium);
+    // Hebdo : repos paye en plus des jours travailles (regle reposDaysFor).
+    gross.paidDays += n(w.worked_days) + (frequency === 'weekly' ? reposDaysFor(n(w.worked_days)) : 0);
+    if (w.paid) acomptes += n(w.net_amount); else unpaid++;
+  }
+  return { gross, acomptes: Math.round(acomptes * 100) / 100, unpaid, periods: rows.length, withheld };
 }
 
 function isoOf(d: Date): string {

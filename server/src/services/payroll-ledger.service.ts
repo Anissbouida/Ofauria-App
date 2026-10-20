@@ -23,7 +23,9 @@ import { persistEntry, reverseEntriesForSource, type GeneratedEntry, type Genera
  *    n'est passe qu'une fois en charge, et 4432 revient a zero.
  * 3. Rouvrir le mois extourne les deux ; annuler un paiement extourne le
  *    reclassement.
- * Les paies hebdo/quinzaine (sans cotisations) restent en charge au paiement.
+ * Les paies hebdo/quinzaine restent en charge au paiement. Pour un salarie
+ * declare (mig 327) ce sont des acomptes : le bulletin mensuel porte l'ecriture
+ * de paie, et le reclassement du net (acomptes + solde) annule leur charge.
  */
 
 type Row = Record<string, any>;
@@ -149,9 +151,11 @@ async function ensureSettlement(client: PoolClient, p: Row, userId: string) {
   if (!p.paid) return;
   const pays = await salaryPayments(client, p);
   // Source : le paiement ; s'il n'y en a pas (net entierement retenu sur
-  // avance), la premiere retenue. Jamais le bulletin, qui porte l'ecriture de paie.
+  // avance, ou entierement verse en acomptes), la premiere retenue, puis le
+  // premier acompte. Jamais le bulletin, qui porte l'ecriture de paie.
   const reps = pays.length ? [] : await repaymentIds(client, p.id);
-  const sourceId = pays[0]?.id ?? reps[0];
+  const acs = pays.length || reps.length ? [] : await acomptePaymentIds(client, p);
+  const sourceId = pays[0]?.id ?? reps[0] ?? acs[0];
   if (!sourceId) return;
   const amount = r2(num(p.net_salary));
   if (amount <= 0) return;
@@ -177,9 +181,30 @@ async function repaymentIds(client: PoolClient, payrollId: string): Promise<stri
   return r.rows.map((x: Row) => x.id as string);
 }
 
+/** Paiements des acomptes hebdo / quinzaine rattaches au bulletin (mig 327). */
+async function acomptePaymentIds(client: PoolClient, p: Row): Promise<string[]> {
+  if (p.pay_frequency !== 'weekly' && p.pay_frequency !== 'biweekly') return [];
+  const start = `${p.year}-${pad(p.month)}-01`;
+  const end = lastDay(p.month, p.year);
+  const r = p.pay_frequency === 'weekly'
+    ? await client.query(
+      `SELECT pay.id FROM weekly_payroll w
+         JOIN payments pay ON pay.type = 'salary' AND pay.employee_id = w.employee_id
+                          AND pay.reference LIKE 'SAL-S' || to_char(w.week_start, 'YYYY-MM-DD') || '-%'
+        WHERE w.employee_id = $1 AND (w.week_start + 3) BETWEEN $2::date AND $3::date
+        ORDER BY pay.created_at, pay.id`, [p.employee_id, start, end])
+    : await client.query(
+      `SELECT pay.id FROM biweekly_payroll b
+         JOIN payments pay ON pay.type = 'salary' AND pay.employee_id = b.employee_id
+                          AND pay.reference LIKE 'SAL-Q' || to_char(b.period_start, 'YYYY-MM-DD') || '-%'
+        WHERE b.employee_id = $1 AND b.period_start BETWEEN $2::date AND $3::date
+        ORDER BY pay.created_at, pay.id`, [p.employee_id, start, end]);
+  return r.rows.map((x: Row) => x.id as string);
+}
+
 async function reverseSettlement(client: PoolClient, p: Row) {
   const pays = await salaryPayments(client, p);
-  for (const id of [...pays.map(x => x.id as string), ...(await repaymentIds(client, p.id))]) {
+  for (const id of [...pays.map(x => x.id as string), ...(await repaymentIds(client, p.id)), ...(await acomptePaymentIds(client, p))]) {
     await reverseManual(client, id, SETTLEMENT_DETAIL);
   }
 }
