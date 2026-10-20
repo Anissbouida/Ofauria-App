@@ -35,6 +35,7 @@ const router = Router();
 
 router.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.list));
 // Alertes RH (fins de CDD et d'essai, pieces) — avant '/:id'.
+router.get('/hr-analytics', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.analytics));
 router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.alerts));
 // Solde de tout compte : pieces (recu, certificat) et annulation (admin).
 router.get('/settlements/:id/receipt', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.receipt));

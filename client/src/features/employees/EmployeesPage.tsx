@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins,
+  UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import type { HrTab } from './shared';
@@ -11,6 +11,7 @@ import LeavesTab from './tabs/LeavesTab';
 import PayrollTab from './payroll/PayrollTab';
 import AdvancesTab from './tabs/AdvancesTab';
 import ScheduleTab from './tabs/ScheduleTab';
+import HrAnalyticsTab from './tabs/HrAnalyticsTab';
 
 export default function EmployeesPage() {
   const { hasModule, isLoading: permsLoading } = usePermissions();
@@ -39,6 +40,7 @@ export default function EmployeesPage() {
     { key: 'payroll', label: 'Paie', icon: Banknote },
     { key: 'advances', label: 'Avances', icon: HandCoins },
     { key: 'schedule', label: 'Planning', icon: CalendarDays },
+    { key: 'analytics', label: 'Pilotage', icon: BarChart3 },
   ];
   const currentTab = tabs.find(t => t.key === tab);
 
@@ -74,6 +76,7 @@ export default function EmployeesPage() {
         {tab === 'payroll' && <PayrollTab queryClient={queryClient} />}
         {tab === 'advances' && <AdvancesTab queryClient={queryClient} />}
         {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
+        {tab === 'analytics' && <HrAnalyticsTab />}
       </div>
     </div>
   );

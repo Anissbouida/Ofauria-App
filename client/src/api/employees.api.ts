@@ -13,6 +13,8 @@ export const employeesApi = {
   dependencies: (id: string) => api.get(`/employees/${id}/dependencies`).then(r => r.data.data),
   /** Alertes RH : fins de CDD et d'essai, pieces expirees ou manquantes. */
   hrAlerts: (days = 30) => api.get('/employees/hr-alerts', { params: { days } }).then(r => r.data.data),
+  /** Pilotage RH de l'annee : effectif, turnover, masse salariale, absenteisme, cout horaire. */
+  hrAnalytics: (year: number) => api.get('/employees/hr-analytics', { params: { year } }).then(r => r.data.data),
   /** Historique des changements de salaire / frequence (qui, quand, ancien -> nouveau). */
   salaryHistory: (id: string) => api.get(`/employees/${id}/salary-history`).then(r => r.data.data),
 };

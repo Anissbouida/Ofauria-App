@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { contractRepository, employeeDocumentRepository, hrAlerts } from '../repositories/contract.repository.js';
+import { hrAnalytics } from '../repositories/hr-analytics.repository.js';
 
 /** Contrats, avenants, documents et alertes RH (lot 4, mig 322). */
 
@@ -95,6 +96,13 @@ export const hrContractController = {
     if (!doc || !(await inScope(doc.employee_id, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Document introuvable' } }); return; }
     await employeeDocumentRepository.remove(req.params.docId);
     res.json({ success: true, data: null });
+  },
+
+  // ─── Pilotage RH (lot 7) ───
+  async analytics(req: AuthRequest, res: Response) {
+    const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
+    if (!(year >= 2000 && year <= 2100)) { res.status(400).json({ success: false, error: { message: 'Année invalide' } }); return; }
+    res.json({ success: true, data: await hrAnalytics(year, req.user!.storeId) });
   },
 
   // ─── Alertes ───

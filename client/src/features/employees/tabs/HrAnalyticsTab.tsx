@@ -1,0 +1,185 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
+import { Users, TrendingDown, Banknote, Activity, Clock, Percent, Download } from 'lucide-react';
+import { employeesApi } from '../../../api/employees.api';
+import { downloadCsv, MONTH_NAMES } from '../shared';
+
+// Palette categorielle validee (bleu, orange, vert d'eau), ordre fixe.
+const SERIES = { s1: '#2a78d6', s2: '#eb6834', s3: '#1baf7a' };
+const GRID = '#e9ecef';
+const TICK = { fontSize: 11, fill: '#6c757d' };
+const dh = (v: number) => `${Math.round(v).toLocaleString('fr-FR').replace(/ /g, ' ')}`;
+const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('fr-FR')} %`);
+const short = (m: number) => MONTH_NAMES[m - 1].slice(0, 3);
+
+type Months = Array<Record<string, any>>;
+
+/**
+ * Pilotage RH : effectif et mouvements, turnover, masse salariale et ratio au
+ * chiffre d'affaires, absentéisme, heures et coût horaire, répartitions.
+ */
+export default function HrAnalyticsTab() {
+  const [year, setYear] = useState(new Date().getFullYear());
+  const { data, isLoading } = useQuery<Record<string, any>>({
+    queryKey: ['hr-analytics', year],
+    queryFn: () => employeesApi.hrAnalytics(year),
+  });
+  const t = data?.totals;
+  const months: Months = (data?.months ?? []).map((m: Record<string, any>) => ({ ...m, label: short(m.month) }));
+
+  const exportCsv = () => downloadCsv(`pilotage_rh_${year}.csv`,
+    ['Mois', 'Effectif', 'Entrées', 'Sorties', 'Brut', 'Charges patronales', 'Autres paies', 'Coût total', 'CA', 'Ratio CA %', 'Absentéisme %', 'Heures', 'Coût horaire'],
+    months.map(m => [MONTH_NAMES[m.month - 1], String(m.headcount), String(m.entries), String(m.exits), m.grossPayroll, m.employerCharges,
+      m.otherPayroll, m.laborCost, m.revenue, m.laborCostRatio, m.absenteeismRate, m.hoursWorked, m.costPerHour]));
+
+  const card = (icon: React.ReactNode, label: string, value: string, sub?: string, title?: string) => (
+    <div className="odoo-stat-card" title={title}>
+      <div className="odoo-stat-card-label">{icon} {label}</div>
+      <div className="odoo-stat-card-value">{value}</div>
+      {sub && <div className="odoo-stat-card-sub">{sub}</div>}
+    </div>
+  );
+  const box = { border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12 } as const;
+  const h = { fontWeight: 600, fontSize: '0.8125rem', marginBottom: 6 } as const;
+
+  return (
+    <>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+        <input type="number" className="input" style={{ width: 96 }} value={year} onChange={e => setYear(parseInt(e.target.value, 10))} />
+        <button className="odoo-btn-secondary" onClick={exportCsv} disabled={!months.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Download size={13} /> CSV
+        </button>
+      </div>
+
+      {isLoading || !t ? <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p> : (
+        <>
+          <div className="odoo-stat-grid">
+            {card(<Users size={11} />, 'Effectif', String(t.headcount), `moyen ${t.averageHeadcount} · +${t.entries} / −${t.exits}`)}
+            {card(<TrendingDown size={11} />, 'Turnover', pct(t.turnoverRate), `rotation ${pct(t.rotationRate)}`, 'Sorties de l\'année / effectif moyen')}
+            {card(<Banknote size={11} />, 'Coût de main-d\'œuvre', `${dh(t.laborCost)} DH`, `brut ${dh(t.grossPayroll)} · charges ${dh(t.employerCharges)}`)}
+            {card(<Percent size={11} />, 'Masse salariale / CA', pct(t.laborCostRatio), t.revenue ? `CA ${dh(t.revenue)} DH` : 'CA comptable indisponible', 'Coût de main-d\'œuvre / chiffre d\'affaires comptable HT (comptes 71)')}
+            {card(<Activity size={11} />, 'Absentéisme', pct(t.absenteeismRate), `${t.absenceDays} j / ${t.theoreticalDays} j ouvrables pointés`)}
+            {card(<Clock size={11} />, 'Coût horaire', t.costPerHour ? `${t.costPerHour.toLocaleString('fr-FR')} DH/h` : '—', `${dh(t.hoursWorked)} h travaillées · HS ${dh(t.overtimeCost)} DH`)}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
+            <section style={box}>
+              <p style={h}>Coût de main-d'œuvre mensuel (DH)</p>
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={months} barCategoryGap="25%">
+                  <CartesianGrid vertical={false} stroke={GRID} />
+                  <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+                  <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={60} />
+                  <Tooltip formatter={(v: number) => `${dh(v)} DH`} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="grossPayroll" name="Brut (mensuels)" stackId="c" fill={SERIES.s1} stroke="#fff" strokeWidth={1} />
+                  <Bar dataKey="employerCharges" name="Charges patronales" stackId="c" fill={SERIES.s2} stroke="#fff" strokeWidth={1} />
+                  <Bar dataKey="otherPayroll" name="Hebdo / quinzaine" stackId="c" fill={SERIES.s3} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </section>
+
+            <section style={box}>
+              <p style={h}>Masse salariale / chiffre d'affaires (%)</p>
+              <ResponsiveContainer width="100%" height={230}>
+                <LineChart data={months}>
+                  <CartesianGrid vertical={false} stroke={GRID} />
+                  <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+                  <YAxis tick={TICK} axisLine={false} tickLine={false} unit=" %" width={50} />
+                  <Tooltip formatter={(v: number) => pct(v)} />
+                  <Line type="monotone" dataKey="laborCostRatio" name="Ratio" stroke={SERIES.s1} strokeWidth={2} dot={{ r: 4 }} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </section>
+
+            <section style={box}>
+              <p style={h}>Entrées et sorties</p>
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={months} barCategoryGap="30%" barGap={2}>
+                  <CartesianGrid vertical={false} stroke={GRID} />
+                  <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+                  <YAxis tick={TICK} axisLine={false} tickLine={false} allowDecimals={false} width={30} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="entries" name="Entrées" fill={SERIES.s1} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="exits" name="Sorties" fill={SERIES.s2} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </section>
+
+            <section style={box}>
+              <p style={h}>Taux d'absentéisme (%) <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>— mois non pointés exclus</span></p>
+              <ResponsiveContainer width="100%" height={230}>
+                <BarChart data={months} barCategoryGap="30%">
+                  <CartesianGrid vertical={false} stroke={GRID} />
+                  <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+                  <YAxis tick={TICK} axisLine={false} tickLine={false} unit=" %" width={50} />
+                  <Tooltip formatter={(v: number) => pct(v)} />
+                  <Bar dataKey="absenteeismRate" name="Absentéisme" fill={SERIES.s1} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </section>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            {([['Par poste', data!.breakdowns.byRole], ['Par contrat', data!.breakdowns.byContract],
+              ['Par ancienneté', data!.breakdowns.bySeniority], ['Motifs de sortie', data!.breakdowns.exitReasons]] as Array<[string, Array<{ label: string; value: number }>]>)
+              .map(([title, rows]) => (
+                <section key={title} style={box}>
+                  <p style={h}>{title}</p>
+                  {rows.length === 0 ? <p className="text-sm text-gray-400">—</p> : (
+                    <table className="odoo-table"><tbody>
+                      {rows.map(r => <tr key={r.label}><td>{r.label}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{r.value}</td></tr>)}
+                    </tbody></table>
+                  )}
+                </section>
+              ))}
+            <section style={box}>
+              <p style={h}>Plus d'absences</p>
+              {data!.topAbsentees.length === 0 ? <p className="text-sm text-gray-400">—</p> : (
+                <table className="odoo-table"><tbody>
+                  {data!.topAbsentees.map((r: Record<string, any>) => <tr key={r.employeeId}><td>{r.name}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{r.days} j</td></tr>)}
+                </tbody></table>
+              )}
+            </section>
+          </div>
+
+          <section style={box}>
+            <p style={h}>Détail mensuel</p>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="odoo-table">
+                <thead><tr>
+                  <th>Mois</th><th style={{ textAlign: 'right' }}>Effectif</th><th style={{ textAlign: 'right' }}>Entr. / Sort.</th>
+                  <th style={{ textAlign: 'right' }}>Coût total</th><th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Ratio</th>
+                  <th style={{ textAlign: 'right' }}>Absentéisme</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût horaire</th>
+                </tr></thead>
+                <tbody>
+                  {months.map(m => (
+                    <tr key={m.month}>
+                      <td>{MONTH_NAMES[m.month - 1]}</td>
+                      <td style={{ textAlign: 'right' }}>{m.headcount}</td>
+                      <td style={{ textAlign: 'right' }}>+{m.entries} / −{m.exits}</td>
+                      <td style={{ textAlign: 'right' }}>{dh(m.laborCost)}</td>
+                      <td style={{ textAlign: 'right' }}>{m.revenue ? dh(m.revenue) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{pct(m.laborCostRatio)}</td>
+                      <td style={{ textAlign: 'right' }}>{m.tracked ? pct(m.absenteeismRate) : 'non pointé'}</td>
+                      <td style={{ textAlign: 'right' }}>{m.hoursWorked ? dh(m.hoursWorked) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{m.costPerHour ? m.costPerHour.toLocaleString('fr-FR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 6 }}>
+              Coût de main-d'œuvre = brut et charges patronales des bulletins mensuels + net des paies hebdomadaires et par quinzaine.
+              CA = chiffre d'affaires comptable HT (comptes 71). Absentéisme = absences pointées, demi-journées et congés non payés par l'employeur, sur les jours ouvrables (hors repos et fériés).
+            </p>
+          </section>
+        </>
+      )}
+    </>
+  );
+}
