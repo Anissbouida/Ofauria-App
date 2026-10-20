@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import InlineNotification from './components/ui/InlineNotification';
 import { SettingsProvider } from './context/SettingsContext';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { AuthProvider } from './context/AuthContext';
 import { PermissionsProvider } from './context/PermissionsContext';
 import { ProductionTimerProvider } from './context/ProductionTimerContext';
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
+      <ConfirmProvider>
       <AuthProvider>
       <PermissionsProvider>
       <ProductionTimerProvider>
@@ -94,6 +96,7 @@ export default function App() {
       </ProductionTimerProvider>
       </PermissionsProvider>
       </AuthProvider>
+      </ConfirmProvider>
       </SettingsProvider>
     </QueryClientProvider>
   );
