@@ -15,6 +15,7 @@
  *   RNI        = brut imp. - frais pro - CNSS - AMO - CIMR
  *   IR         = bareme(RNI x 12) / 12 - charges de famille / 12
  *   net        = brut - CNSS - AMO - CIMR - IR - retenues
+ *   decembre / sortie : + regularisation annuelle de l'IR (cumul de l'annee)
  * Un salarie non declare n'a ni cotisations ni IR (net = brut - retenues).
  */
 
@@ -73,6 +74,38 @@ export interface PayslipInput {
   /** Jours feries travailles et majoration (1 = un jour de plus). */
   holidayWorkedDays?: number;
   holidayWorkedRate?: number;
+  /**
+   * Regularisation annuelle de l'IR (bulletin de decembre ou du mois de
+   * sortie) : cumul des bulletins declares ANTERIEURS de l'annee civile.
+   */
+  irRegularisation?: IrCumul;
+}
+
+/** Cumul annuel des bulletins declares anterieurs (regularisation IR). */
+export interface IrCumul {
+  /** Nombre de bulletins (mois de paie) deja etablis dans l'annee. */
+  months: number;
+  brutImposable: number;
+  /** CNSS + AMO + CIMR salariales. */
+  cotisations: number;
+  /** IR effectivement retenu (regularisations anterieures comprises). */
+  irWithheld: number;
+}
+
+export interface IrRegularisationResult {
+  months: number;
+  brutImposable: number;
+  fraisPro: number;
+  cotisations: number;
+  netImposable: number;
+  irGross: number;
+  familyDeduction: number;
+  /** IR du sur la periode (cumul), apres charges de famille. */
+  irDue: number;
+  /** IR deja retenu : mois anterieurs + IR calcule pour le mois courant. */
+  irWithheld: number;
+  /** irDue - irWithheld : > 0 complement retenu, < 0 trop-percu restitue. */
+  amount: number;
 }
 
 export interface PayslipLine extends RubriqueInput {
@@ -105,6 +138,9 @@ export interface PayslipResult {
   irGross: number;
   familyDeduction: number;
   irNet: number;
+  /** Part de irNet qui regularise l'annee (0 hors decembre / sortie). */
+  irRegularisation: number;
+  irRegularisationDetail: IrRegularisationResult | null;
   netSalary: number;
   cnssEmployer: number;
   amoEmployer: number;
@@ -142,6 +178,43 @@ export function irAnnuel(rniAnnuel: number, brackets: IrBracket[]): number {
   if (rniAnnuel <= 0) return 0;
   const b = brackets.find(x => x.upTo === null || rniAnnuel <= x.upTo) ?? brackets[brackets.length - 1];
   return Math.max(0, rniAnnuel * b.rate - b.deduction);
+}
+
+/**
+ * Regularisation annuelle de l'IR (art. 59, 73 et 74 CGI ; retenue a la
+ * source art. 156) : le bareme est ANNUEL, la retenue mensuelle n'en est
+ * qu'une approximation (primes irregulieres, changement de salaire, de
+ * charges de famille ou de taux de frais pro en cours d'annee). Sur le
+ * dernier bulletin de l'annee ou de la presence du salarie, on recalcule
+ * l'IR sur le cumul et on retient (ou restitue) la difference.
+ *
+ * Periode de n mois de paie (12 pour une annee pleine) : le revenu est
+ * annualise (x 12/n) pour determiner le taux des frais pro et la tranche du
+ * bareme, puis ramene a la periode (x n/12) ; le plafond des frais pro et la
+ * deduction pour charges de famille sont proratises de meme. Pour une annee
+ * pleine c'est exactement le calcul annuel ; pour un salarie sorti en cours
+ * d'annee, cela evite de restituer un trop-percu qu'un autre employeur
+ * devrait reprendre (meme logique que la retenue mensuelle).
+ */
+export function irRegularisation(
+  prev: IrCumul,
+  current: { brutImposable: number; cotisations: number; irNet: number },
+  nbDependents: number,
+  scale: TaxScale,
+): IrRegularisationResult {
+  const n = Math.max(1, Math.min(12, prev.months + 1));
+  const brutImposable = r2(prev.brutImposable + current.brutImposable);
+  const cotisations = r2(prev.cotisations + current.cotisations);
+  const annualise = (brutImposable * 12) / n;
+  const fpRate = annualise <= scale.fraisProSeuilAnnuel ? scale.fraisProRateBas : scale.fraisProRateHaut;
+  const fraisPro = brutImposable > 0 ? r2(Math.min(brutImposable * fpRate, (scale.fraisProPlafondAnnuel * n) / 12)) : 0;
+  const netImposable = r2(Math.max(0, brutImposable - fraisPro - cotisations));
+  const irGross = r2((irAnnuel((netImposable * 12) / n, scale.irBrackets) * n) / 12);
+  const persons = Math.min(Math.max(nbDependents, 0), scale.maxPersonnesCharge);
+  const familyDeduction = r2(Math.min((persons * scale.deductionFamilleAnnuelle * n) / 12, irGross));
+  const irDue = r2(Math.max(0, irGross - familyDeduction));
+  const irWithheld = r2(prev.irWithheld + current.irNet);
+  return { months: n, brutImposable, fraisPro, cotisations, netImposable, irGross, familyDeduction, irDue, irWithheld, amount: r2(irDue - irWithheld) };
 }
 
 export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): PayslipResult {
@@ -203,7 +276,17 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
     const persons = Math.min(Math.max(input.nbDependents, 0), scale.maxPersonnesCharge);
     familyDeduction = r2(Math.min(persons * scale.deductionFamilleAnnuelle / 12, irGross));
   }
-  const irNet = r2(Math.max(0, irGross - familyDeduction));
+  const irMonth = r2(Math.max(0, irGross - familyDeduction));
+  // Regularisation : le complement (ou la restitution) s'ajoute a l'IR du mois.
+  // irNet peut devenir negatif (trop-percu restitue au salarie, impute par
+  // l'employeur sur son versement IR du mois).
+  const irRegularisationDetail = declared && input.irRegularisation
+    ? irRegularisation(input.irRegularisation, {
+        brutImposable, cotisations: r2(cnssEmployee + amoEmployee + cimrEmployee), irNet: irMonth,
+      }, input.nbDependents, scale)
+    : null;
+  const irReg = irRegularisationDetail?.amount ?? 0;
+  const irNet = r2(irMonth + irReg);
 
   const netSalary = r2(grossSalary - cnssEmployee - amoEmployee - cimrEmployee - irNet - retenuesTotal);
 
@@ -240,6 +323,8 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
     irGross,
     familyDeduction,
     irNet,
+    irRegularisation: irReg,
+    irRegularisationDetail,
     netSalary,
     cnssEmployer,
     amoEmployer,

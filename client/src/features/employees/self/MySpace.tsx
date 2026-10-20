@@ -62,6 +62,10 @@ export default function MySpace() {
     try { saveBlobResponse(await selfApi.payslipPdf(id), 'bulletin.pdf'); }
     catch (err) { notify.error(apiErrorMessage(err, 'Bulletin indisponible')); }
   };
+  const attestation = async (kind: 'travail' | 'salaire') => {
+    try { saveBlobResponse(await selfApi.attestation(kind), `attestation_${kind}.pdf`); }
+    catch (err) { notify.error(apiErrorMessage(err, 'Attestation indisponible')); }
+  };
 
   if (isLoading) return <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>;
   if (error || !profile) {
@@ -101,6 +105,14 @@ export default function MySpace() {
           </div>
         </div>
       </div>
+
+      <section style={box}>
+        <p style={h}><FileText size={14} /> Mes attestations</p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('travail')}><FileText size={12} /> Attestation de travail</button>
+          <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('salaire')}><FileText size={12} /> Attestation de salaire</button>
+        </div>
+      </section>
 
       <section style={box}>
         <p style={h}><FileText size={14} /> Mes bulletins de paie</p>

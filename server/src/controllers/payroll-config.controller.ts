@@ -287,7 +287,11 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
     rows.push({ label: 'CNSS (prestations sociales)', base: fmt(cnssBase), rate: rate('cnss_rate_employee'), retenue: num(p.cnss_employee) });
     rows.push({ label: 'AMO', base: fmt(num(p.base_cnss ?? p.gross_salary)), rate: rate('amo_rate_employee'), retenue: num(p.amo_employee) });
     if (num(p.cimr_employee) > 0) rows.push({ label: 'CIMR', base: fmt(num(p.base_cnss ?? p.gross_salary)), retenue: num(p.cimr_employee) });
-    rows.push({ label: 'Impôt sur le revenu', base: fmt(num(p.net_imposable)), retenue: num(p.ir_net) });
+    // Regularisation annuelle (decembre / sortie, mig 325) : ligne distincte.
+    const irReg = num(p.ir_regularisation);
+    rows.push({ label: 'Impôt sur le revenu', base: fmt(num(p.net_imposable)), retenue: Math.round((num(p.ir_net) - irReg) * 100) / 100 });
+    if (irReg > 0) rows.push({ label: 'Régularisation annuelle IR', note: 'recalcul sur le cumul de l\'année', retenue: irReg });
+    if (irReg < 0) rows.push({ label: 'Régularisation annuelle IR (trop-perçu)', note: 'recalcul sur le cumul de l\'année', gain: -irReg });
   }
   for (const l of lines.filter((x: Record<string, any>) => x.kind === 'retenue')) rows.push({ label: l.label, retenue: num(l.amount) });
 
@@ -307,8 +311,9 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
     },
     workedDays: num(p.worked_days), baseDays, absentDays: num(p.absent_days), paidLeaveDays: num(p.paid_leave_days), holidayPaidDays: num(p.holiday_paid_days),
     lines: rows,
-    grossSalary: num(p.gross_salary) + num(p.deductions),
-    totalRetenues: totalRetenues + num(p.deductions),
+    // Trop-percu d'IR affiche en gain : ajoute aux deux totaux (net inchange).
+    grossSalary: num(p.gross_salary) + num(p.deductions) + Math.max(0, -num(p.ir_regularisation)),
+    totalRetenues: totalRetenues + num(p.deductions) + Math.max(0, -num(p.ir_regularisation)),
     netSalary: num(p.net_salary),
     advanceDeduction: num(p.advance_deduction),
     bases: {

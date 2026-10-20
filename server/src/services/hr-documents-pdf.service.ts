@@ -1,11 +1,14 @@
 import PDFDocument from 'pdfkit';
 
 /**
+ * Documents RH en PDF.
  * Pieces de depart du salarie (lot 6) :
  *  - recu pour solde de tout compte (Code du travail art. 73-76) : detail des
  *    sommes, mention de la faculte de denonciation sous 60 jours, signatures ;
  *  - certificat de travail (art. 72) : dates d'entree et de sortie, emplois
  *    occupes.
+ * A la demande, salarie en poste : attestation de travail, attestation de
+ * salaire (derniers mois de paie). Paie : ordre de virement groupe.
  */
 
 export interface Company { name: string; address?: string; rc?: string; if?: string; ice?: string; cnss?: string | null }
@@ -166,5 +169,147 @@ export async function generateWorkCertificatePdf(d: CertificateData): Promise<Bu
   y += 30;
   doc.font('Helvetica-Bold').text('Pour l\'employeur', M + CW / 2, y);
   doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Signature et cachet', M + CW / 2, y + 14);
+  return finish(doc, chunks);
+}
+
+// ─── Documents a la demande (salarie actif) ───────────────────────────────
+
+/** Tableau simple (en-tete + lignes + total optionnel) ; renvoie le y final. */
+function table(doc: PDFKit.PDFDocument, M: number, CW: number, y0: number, widths: number[], head: string[], rows: string[][],
+  opts: { alignRight?: number[]; total?: string[] } = {}): number {
+  let y = y0;
+  const right = new Set(opts.alignRight ?? []);
+  const cols = widths.map(w => w * CW);
+  const line = (cells: string[], bold: boolean, fill?: string) => {
+    if (y > 760) { doc.addPage(); y = M; }
+    if (fill) doc.rect(M, y - 3, CW, 16).fill(fill);
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(TEXT);
+    let x = M;
+    cells.forEach((c, i) => { doc.text(c, x + 4, y, { width: cols[i] - 8, align: right.has(i) ? 'right' : 'left', lineBreak: false, ellipsis: true }); x += cols[i]; });
+    y += 16;
+    doc.moveTo(M, y - 3).lineTo(M + CW, y - 3).lineWidth(0.3).stroke(BORDER);
+  };
+  line(head, true, '#F5F0E8');
+  for (const r of rows) line(r, false);
+  if (opts.total) line(opts.total, true, '#F5F0E8');
+  return y;
+}
+
+function signature(doc: PDFKit.PDFDocument, M: number, CW: number, y: number, place: string, issuedOn: string) {
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text(`Fait à ${place}, le ${issuedOn}`, M, y);
+  y += 30;
+  doc.font('Helvetica-Bold').text('Pour l\'employeur', M + CW / 2, y);
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Signature et cachet', M + CW / 2, y + 14);
+}
+
+export interface EmploymentAttestationData {
+  company: Company;
+  employee: EmployeeIdentity;
+  hireDate: string;            // dd/mm/yyyy
+  jobTitle: string;
+  contractLabel: string | null; // « contrat à durée indéterminée »…
+  place: string;
+  issuedOn: string;
+}
+
+/** Attestation de travail (salarie en poste), delivree a sa demande. */
+export async function generateEmploymentAttestationPdf(d: EmploymentAttestationData): Promise<Buffer> {
+  const M = 50, CW = 595.28 - 2 * M;
+  const doc = new PDFDocument({ size: 'A4', margins: { top: M, bottom: 40, left: M, right: M }, info: { Title: `Attestation de travail ${d.employee.name}` } });
+  const chunks: Buffer[] = [];
+  doc.on('data', (c: Buffer) => chunks.push(c));
+  let y = header(doc, d.company, 'ATTESTATION DE TRAVAIL', M, CW);
+  doc.font('Helvetica').fontSize(10.5).fillColor(TEXT);
+  doc.text(
+    `Nous soussignés, ${d.company.name}, attestons que ${d.employee.name}`
+    + `${d.employee.cin ? `, titulaire de la CIN n° ${d.employee.cin}` : ''}`
+    + `${d.employee.cnss ? `, immatriculé(e) à la CNSS sous le n° ${d.employee.cnss}` : ''}, `
+    + `est employé(e) au sein de notre établissement depuis le ${d.hireDate} en qualité de ${d.jobTitle}`
+    + `${d.contractLabel ? `, dans le cadre d'un ${d.contractLabel}` : ''}, et fait toujours partie de notre personnel à ce jour.`,
+    M, y, { width: CW, align: 'justify', lineGap: 4 });
+  y = doc.y + 14;
+  doc.text('La présente attestation est délivrée à l\'intéressé(e), sur sa demande, pour servir et valoir ce que de droit.', M, y, { width: CW, align: 'justify' });
+  signature(doc, M, CW, doc.y + 30, d.place, d.issuedOn);
+  return finish(doc, chunks);
+}
+
+export interface SalaryAttestationData extends EmploymentAttestationData {
+  monthlySalary: number | null;  // salaire de base contractuel
+  months: Array<{ label: string; gross: number; net: number }>;
+}
+
+/**
+ * Attestation de salaire : salaire de base contractuel et remuneration des
+ * derniers mois (brut, net verse), moyenne mensuelle.
+ */
+export async function generateSalaryAttestationPdf(d: SalaryAttestationData): Promise<Buffer> {
+  const M = 50, CW = 595.28 - 2 * M;
+  const doc = new PDFDocument({ size: 'A4', margins: { top: M, bottom: 40, left: M, right: M }, info: { Title: `Attestation de salaire ${d.employee.name}` } });
+  const chunks: Buffer[] = [];
+  doc.on('data', (c: Buffer) => chunks.push(c));
+  let y = header(doc, d.company, 'ATTESTATION DE SALAIRE', M, CW);
+  doc.font('Helvetica').fontSize(10.5).fillColor(TEXT);
+  const n = d.months.length;
+  const avgGross = n ? d.months.reduce((s, m) => s + m.gross, 0) / n : 0;
+  const avgNet = n ? d.months.reduce((s, m) => s + m.net, 0) / n : 0;
+  doc.text(
+    `Nous soussignés, ${d.company.name}, attestons que ${d.employee.name}`
+    + `${d.employee.cin ? `, titulaire de la CIN n° ${d.employee.cin}` : ''}`
+    + `${d.employee.cnss ? `, immatriculé(e) à la CNSS sous le n° ${d.employee.cnss}` : ''}, `
+    + `est employé(e) au sein de notre établissement depuis le ${d.hireDate} en qualité de ${d.jobTitle}`
+    + `${d.contractLabel ? ` (${d.contractLabel})` : ''}`
+    + `${d.monthlySalary ? `, et perçoit un salaire mensuel de base brut de ${money(d.monthlySalary).replace(/ /g, ' ')} DH (${amountInWords(d.monthlySalary)})` : ''}.`,
+    M, y, { width: CW, align: 'justify', lineGap: 4 });
+  y = doc.y + 14;
+  if (n) {
+    doc.text(`Rémunération ${n > 1 ? `des ${n} derniers mois` : 'du dernier mois'} de paie :`, M, y);
+    y = doc.y + 8;
+    y = table(doc, M, CW, y, [0.5, 0.25, 0.25], ['Mois', 'Salaire brut (DH)', 'Net versé (DH)'],
+      d.months.map(m => [m.label, money(m.gross), money(m.net)]),
+      { alignRight: [1, 2], total: [n > 1 ? `Moyenne mensuelle (${n} mois)` : 'Total', money(avgGross), money(avgNet)] });
+    y += 10;
+  }
+  doc.font('Helvetica').fontSize(10.5).fillColor(TEXT)
+    .text('La présente attestation est délivrée à l\'intéressé(e), sur sa demande, pour servir et valoir ce que de droit.', M, y, { width: CW, align: 'justify' });
+  signature(doc, M, CW, doc.y + 30, d.place, d.issuedOn);
+  return finish(doc, chunks);
+}
+
+export interface TransferOrderData {
+  company: Company;
+  employerRib: string;          // formate
+  employerBank: string | null;
+  periodLabel: string;          // « Septembre 2026 »
+  lines: Array<{ name: string; rib: string; bank: string | null; amount: number }>;
+  total: number;
+  place: string;
+  issuedOn: string;
+}
+
+/** Ordre de virement groupe des salaires (lettre au banquier + liste). */
+export async function generateTransferOrderPdf(d: TransferOrderData): Promise<Buffer> {
+  const M = 50, CW = 595.28 - 2 * M;
+  const doc = new PDFDocument({ size: 'A4', margins: { top: M, bottom: 40, left: M, right: M }, info: { Title: `Ordre de virement salaires ${d.periodLabel}` } });
+  const chunks: Buffer[] = [];
+  doc.on('data', (c: Buffer) => chunks.push(c));
+  let y = header(doc, d.company, 'ORDRE DE VIREMENT GROUPÉ', M, CW);
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT);
+  doc.text(`À l'attention de Monsieur le Directeur${d.employerBank ? ` — ${d.employerBank}` : ''}`, M, y);
+  y = doc.y + 8;
+  doc.font('Helvetica-Bold').text(`Objet : virement des salaires de ${d.periodLabel}`, M, y);
+  y = doc.y + 10;
+  doc.font('Helvetica').text(
+    `Par le débit de notre compte RIB n° ${d.employerRib}, nous vous prions de bien vouloir virer la somme totale de `
+    + `${money(d.total).replace(/ /g, ' ')} DH (${amountInWords(d.total)}) en faveur des ${d.lines.length} bénéficiaire${d.lines.length > 1 ? 's' : ''} ci-dessous, `
+    + `au titre des salaires de ${d.periodLabel}.`,
+    M, y, { width: CW, align: 'justify', lineGap: 3 });
+  y = doc.y + 12;
+  y = table(doc, M, CW, y, [0.06, 0.32, 0.36, 0.08, 0.18], ['N°', 'Bénéficiaire', 'RIB', 'Banque', 'Montant (DH)'],
+    d.lines.map((l, i) => [String(i + 1), l.name, l.rib, l.bank ?? '', money(l.amount)]),
+    { alignRight: [4], total: ['', `${d.lines.length} virement${d.lines.length > 1 ? 's' : ''}`, '', '', money(d.total)] });
+  y += 14;
+  if (y > 700) { doc.addPage(); y = M; }
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text('Veuillez agréer, Monsieur le Directeur, l\'expression de nos salutations distinguées.', M, y, { width: CW });
+  signature(doc, M, CW, doc.y + 24, d.place, d.issuedOn);
   return finish(doc, chunks);
 }

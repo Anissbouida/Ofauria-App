@@ -52,7 +52,10 @@ export function buildAccrualEntry(p: Row, retenues: Array<{ amount: unknown; acc
       + num(p.alloc_familiales) + num(p.taxe_fp),
     `CNSS / AMO ${lbl}`);
   add('4443', 0, num(p.cimr_employee) + num(p.cimr_employer), `CIMR ${lbl}`);
-  add('44525', 0, num(p.ir_net), `IR retenu ${lbl}`);
+  // IR negatif : trop-percu restitue a la regularisation annuelle (mig 325),
+  // impute sur la dette d'IR (debit 44525).
+  if (num(p.ir_net) >= 0) add('44525', 0, num(p.ir_net), `IR retenu ${lbl}`);
+  else add('44525', -num(p.ir_net), 0, `Régularisation IR (trop-perçu restitué) ${lbl}`);
   // Retenues regroupees par compte de contrepartie.
   const byAccount = new Map<string, number>();
   for (const r of retenues) {

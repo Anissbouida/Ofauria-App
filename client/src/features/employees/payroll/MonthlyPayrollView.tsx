@@ -10,6 +10,7 @@ import {
 import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
 import PayslipLinesEditor from './PayslipLinesEditor';
+import SalaryTransferDialog from './SalaryTransferDialog';
 import { useAuth } from '../../../context/AuthContext';
 
 export default function MonthlyPayrollView({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -17,6 +18,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [detailPayroll, setDetailPayroll] = useState<Record<string, any> | null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [payTarget, setPayTarget] = useState<Record<string, any> | null>(null);
   const [paySortKey, setPaySortKey] = useState<string>('name');
   const [paySortDir, setPaySortDir] = useState<'asc' | 'desc'>('asc');
@@ -207,6 +209,11 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           <button onClick={exportPayroll} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Download size={13} /> CSV
+          </button>
+          <button onClick={() => setShowTransfer(true)} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
+            title="Ordre de virement groupé : fichier banque et lettre à signer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> Virement groupé
           </button>
           <button onClick={() => {
             if (confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`)) {
@@ -515,6 +522,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           </div>
         );
       })()}
+      {showTransfer && <SalaryTransferDialog month={month} year={year} onClose={() => setShowTransfer(false)} />}
     </>
   );
 }

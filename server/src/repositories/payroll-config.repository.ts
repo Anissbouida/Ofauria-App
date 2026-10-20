@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 import {
   computeMonthlyPayslip, serviceYears, taxScaleFromRow,
-  type RubriqueInput, type TaxScale,
+  type RubriqueInput, type TaxScale, type IrCumul,
 } from '../services/payroll-engine.js';
 import { leaveBalanceRepository } from './leave.repository.js';
 import { loadTimeRules, periodTimeFacts, type TimeRules } from './time-rules.repository.js';
@@ -89,6 +89,8 @@ export const payrollSettingsRepository = {
       otRateRestNight: 'ot_rate_rest_night', nightStart: 'night_start', nightEnd: 'night_end',
       monthlyLegalHours: 'monthly_legal_hours', weeklyLegalHours: 'weekly_legal_hours',
       holidayWorkedRate: 'holiday_worked_rate', otAnnualQuotaHours: 'ot_annual_quota_hours',
+      // Virement groupe des salaires (mig 325).
+      employerRib: 'employer_rib', employerBankName: 'employer_bank_name',
     };
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -339,6 +341,27 @@ export async function computeAndSavePayslip(
   const years = serviceYears(emp.hire_date ? String(emp.hire_date instanceof Date ? isoOf(emp.hire_date) : emp.hire_date) : null, end)
     ?? (parseInt(emp.seniority_years, 10) || 0);
 
+  // Regularisation annuelle de l'IR : bulletin de decembre, ou dernier
+  // bulletin du salarie (sortie dans le mois, ou solde de tout compte porte).
+  const exitIso = emp.exit_date ? (emp.exit_date instanceof Date ? isoOf(emp.exit_date) : String(emp.exit_date).slice(0, 10)) : null;
+  const isLastPayslip = month === 12 || (exitIso !== null && exitIso >= start && exitIso <= end) || stcInputs.length > 0;
+  let irCumul: IrCumul | undefined;
+  if (isLastPayslip && emp.is_declared !== false) {
+    const c = (await db.query(
+      `SELECT COUNT(*)::int AS months,
+              COALESCE(SUM(COALESCE(brut_imposable, gross_salary)), 0) AS brut_imposable,
+              COALESCE(SUM(COALESCE(cnss_employee, 0) + COALESCE(amo_employee, 0) + COALESCE(cimr_employee, 0)), 0) AS cotisations,
+              COALESCE(SUM(ir_net), 0) AS ir
+         FROM payroll
+        WHERE employee_id = $1 AND year = $2 AND month < $3 AND COALESCE(is_declared, true) = true`,
+      [emp.id, year, month]
+    )).rows[0];
+    irCumul = {
+      months: c.months, brutImposable: parseFloat(c.brut_imposable),
+      cotisations: parseFloat(c.cotisations), irWithheld: parseFloat(c.ir),
+    };
+  }
+
   const r = computeMonthlyPayslip({
     monthlySalary: parseFloat(emp.monthly_salary),
     baseDays: ctx.baseDays,
@@ -354,6 +377,7 @@ export async function computeAndSavePayslip(
     legalMonthlyHours: ctx.time.monthlyLegalHours,
     holidayWorkedDays: tf.holidayWorked,
     holidayWorkedRate: ctx.time.holidayWorkedRate,
+    irRegularisation: irCumul,
     lines: [
       ...fixed.rows.map((f: Record<string, any>) => toRubriqueInput(f, parseFloat(f.amount), 'fixe')),
       ...manualInputs,
@@ -374,8 +398,8 @@ export async function computeAndSavePayslip(
          extra_shift_days, extra_shift_amount,
          tax_scale_id, is_declared, base_cnss, brut_imposable, net_imposable, paid_leave_days,
          ot_day_hours, ot_night_hours, ot_rest_day_hours, ot_rest_night_hours,
-         holiday_paid_days, holiday_worked_days, holiday_premium
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
+         holiday_paid_days, holiday_worked_days, holiday_premium, ir_regularisation
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)
        ON CONFLICT (employee_id, month, year) DO UPDATE SET
          base_salary = EXCLUDED.base_salary, worked_days = EXCLUDED.worked_days,
          absent_days = EXCLUDED.absent_days, overtime_hours = EXCLUDED.overtime_hours,
@@ -400,7 +424,8 @@ export async function computeAndSavePayslip(
          ot_day_hours = EXCLUDED.ot_day_hours, ot_night_hours = EXCLUDED.ot_night_hours,
          ot_rest_day_hours = EXCLUDED.ot_rest_day_hours, ot_rest_night_hours = EXCLUDED.ot_rest_night_hours,
          holiday_paid_days = EXCLUDED.holiday_paid_days, holiday_worked_days = EXCLUDED.holiday_worked_days,
-         holiday_premium = EXCLUDED.holiday_premium
+         holiday_premium = EXCLUDED.holiday_premium,
+         ir_regularisation = EXCLUDED.ir_regularisation
        WHERE payroll.paid = false
        RETURNING *`,
       [emp.id, month, year, r.baseSalary, r.workedDays, r.absentDays,
@@ -413,7 +438,7 @@ export async function computeAndSavePayslip(
        a.double_days, r.extraShiftAmount,
        ctx.scale.id ?? null, emp.is_declared !== false, r.baseCnss, r.brutImposable, r.netImposable, paidLeaveDays,
        tf.overtime.day, tf.overtime.night, tf.overtime.restDay, tf.overtime.restNight,
-       tf.holidayPaid, tf.holidayWorked, r.holidayPremium]
+       tf.holidayPaid, tf.holidayWorked, r.holidayPremium, r.irRegularisation]
     );
 
     if (!up.rows[0]) {

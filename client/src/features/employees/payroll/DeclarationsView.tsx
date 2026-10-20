@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, FileCheck2, Banknote, Lock, AlertTriangle } from 'lucide-react';
+import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Upload } from 'lucide-react';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
@@ -61,6 +61,24 @@ export default function DeclarationsView() {
     ir: data?.ir?.totals?.ir ?? 0,
     cimr: data?.cimr ?? 0,
   };
+
+  // e-BDS Damancom : le fichier se construit SUR le preetabli du mois (les
+  // zones A00-A03 sont recopiees a l'identique), d'ou l'import prealable.
+  const preetabliInput = useRef<HTMLInputElement>(null);
+  const [ebdsResult, setEbdsResult] = useState<{ fileName: string; warnings: string[]; totals: Record<string, number> } | null>(null);
+  const ebds = useMutation({
+    mutationFn: (file: File) => payrollConfigApi.ebds(month, year, file),
+    onSuccess: (r: { fileName: string; content: string; warnings: string[]; totals: Record<string, number> }) => {
+      const bytes = Uint8Array.from(atob(r.content), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'text/plain' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = r.fileName; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setEbdsResult(r);
+      notify.success(`Fichier ${r.fileName} généré`);
+    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Préétabli illisible')),
+  });
 
   const exportCnss = () => downloadCsv(`bds_cnss_${period}.csv`,
     ['N° CNSS', 'Nom et prénom', 'CIN', 'Jours', 'Salaire réel', 'Salaire plafonné', 'Prestations sal.', 'Prestations pat.', 'AMO sal.', 'AMO pat.', 'Alloc. familiales', 'TFP', 'Total'],
@@ -147,9 +165,25 @@ export default function DeclarationsView() {
             <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Bordereau CNSS — {MONTH_NAMES[month - 1]} {year}</h3>
-                <button className="odoo-btn-secondary" onClick={exportCnss} disabled={!data.cnss.rows.length}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={13} /> CSV</button>
+                <div style={{ display: 'inline-flex', gap: 6 }}>
+                  <input ref={preetabliInput} type="file" accept=".txt,text/plain" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) ebds.mutate(f); e.target.value = ''; }} />
+                  <button className="odoo-btn-primary" onClick={() => preetabliInput.current?.click()} disabled={ebds.isPending || !data.cnss.rows.length}
+                    title="Importez le préétabli AFFEBDS_… téléchargé sur Damancom : le fichier DS_… à déposer est généré à partir de lui et des bulletins du mois."
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Upload size={13} /> Fichier e-BDS (Damancom)</button>
+                  <button className="odoo-btn-secondary" onClick={exportCnss} disabled={!data.cnss.rows.length}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={13} /> CSV</button>
+                </div>
               </div>
+              {ebdsResult && (
+                <div className={`odoo-alert ${ebdsResult.warnings.length ? 'warning' : 'info'}`} style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
+                  <strong>{ebdsResult.fileName}</strong> : {ebdsResult.totals.salaries} salarié(s) dont {ebdsResult.totals.entrants} entrant(s) et {ebdsResult.totals.sortants} sortant(s),
+                  {' '}{ebdsResult.totals.jours} jours, salaire réel {fmt(ebdsResult.totals.salaireReel)} DH, plafonné {fmt(ebdsResult.totals.salairePlafonne)} DH.
+                  {ebdsResult.warnings.length > 0 && (
+                    <ul style={{ margin: '4px 0 0 16px', listStyle: 'disc' }}>{ebdsResult.warnings.map(w => <li key={w}>{w}</li>)}</ul>
+                  )}
+                </div>
+              )}
               <div style={{ overflowX: 'auto' }}>
                 <table className="odoo-table">
                   <thead><tr>
@@ -226,7 +260,7 @@ export default function DeclarationsView() {
           )}
 
           <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-            Le CSV reprend les données du bordereau à saisir sur Damancom ou SIMPL-IR ; il ne remplace pas le fichier de télédéclaration au format officiel.
+            Le fichier e-BDS (format CNSS à largeur fixe, cahier des charges e-BDS) se dépose sur Damancom ; le CSV reprend les mêmes données pour contrôle, et l'état IR ce qu'il faut saisir sur SIMPL-IR.
             À la clôture du mois, la paie est comptabilisée (OD) : 6171 / 6174 au débit, 4441, 4443, 44525 et 4432 au crédit. Régler une déclaration solde le compte de dette correspondant.
           </div>
         </>

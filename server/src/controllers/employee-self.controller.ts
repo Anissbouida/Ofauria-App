@@ -6,6 +6,7 @@ import { leaveBalanceRepository, loadLeaveConfig, typeOf, leaveDayCount } from '
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { notificationRepository } from '../repositories/notification.repository.js';
 import { loadPayrollForPdf, sendPayslipPdf } from './payroll-config.controller.js';
+import { sendAttestation } from './payroll-compliance.controller.js';
 
 /**
  * Espace employe (lot 8, mig 324) : un utilisateur lie a une fiche employe
@@ -97,6 +98,13 @@ export const employeeSelfController = {
       return;
     }
     await sendPayslipPdf(res, p);
+  },
+
+  /** Attestation de travail ou de salaire (mig 325), sur sa propre fiche. */
+  async attestation(req: AuthRequest, res: Response) {
+    const emp = await me(req);
+    if (!emp) return noProfile(res);
+    await sendAttestation(res, emp, req.params.kind, parseInt(String(req.query.months ?? '3'), 10));
   },
 
   // ─── Conges ───

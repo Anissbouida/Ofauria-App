@@ -46,6 +46,7 @@ export const employeeRepository = {
     payFrequency?: string; weeklySalary?: number;
     seniorityYears?: number | null; nbDependents?: number | null; cimrRate?: number | null;
     isDeclared?: boolean;
+    rib?: string | null; bankName?: string | null;
     createdBy?: string;
   }) {
     // nb_dependents / cimr_rate / seniority_years etaient valides mais jamais
@@ -55,8 +56,8 @@ export const employeeRepository = {
         cin, address, city, birth_date, cnss_number, contract_type, contract_start, contract_end,
         emergency_contact_name, emergency_contact_phone, notes, store_id, default_shift_code,
         pay_frequency, weekly_salary, created_by, updated_by,
-        seniority_years, nb_dependents, cimr_rate, is_declared)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$23,$24,$25,$26,$27) RETURNING *`,
+        seniority_years, nb_dependents, cimr_rate, is_declared, rib, bank_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
       [data.userId || null, data.firstName, data.lastName, data.role,
        data.phone || null, data.monthlySalary || null, data.hireDate,
        data.cin || null, data.address || null, data.city || null, data.birthDate || null,
@@ -65,7 +66,8 @@ export const employeeRepository = {
        data.storeId || null, data.defaultShiftCode || null,
        data.payFrequency || 'monthly', data.weeklySalary || null,
        data.createdBy || null,
-       data.seniorityYears ?? null, data.nbDependents ?? 0, data.cimrRate ?? 0, data.isDeclared ?? true]
+       data.seniorityYears ?? null, data.nbDependents ?? 0, data.cimrRate ?? 0, data.isDeclared ?? true,
+       data.rib || null, data.bankName || null]
     );
     return result.rows[0];
   },
@@ -82,6 +84,7 @@ export const employeeRepository = {
       defaultShiftCode: 'default_shift_code',
       payFrequency: 'pay_frequency', weeklySalary: 'weekly_salary',
       hireDate: 'hire_date', isDeclared: 'is_declared', cinExpiresOn: 'cin_expires_on',
+      rib: 'rib', bankName: 'bank_name',
     };
     // Date fields: convert empty strings to null to avoid DB type errors
     const dateFields = ['birthDate', 'contractStart', 'contractEnd', 'hireDate', 'cinExpiresOn'];

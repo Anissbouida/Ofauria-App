@@ -33,6 +33,12 @@ function nullableNumber(check: (n: z.ZodNumber) => z.ZodNumber = (n) => n) {
   }, check(z.number()).nullable().optional());
 }
 
+/** RIB marocain : 24 chiffres (espaces toleres a la saisie) ; '' -> null. */
+const ribField = z.preprocess((v) => {
+  if (v === '' || v === null || v === undefined) return v === undefined ? undefined : null;
+  return typeof v === 'string' ? v.replace(/[\s-]/g, '') : v;
+}, z.string().regex(/^\d{24}$/, 'RIB : 24 chiffres').nullable().optional());
+
 export const createEmployeeSchema = z.object({
   userId: z.string().uuid().nullable().optional(),
   firstName: z.string().min(1, 'Prenom requis').max(100),
@@ -65,6 +71,9 @@ export const createEmployeeSchema = z.object({
   cimrRate: nullableNumber((n) => n.nonnegative().max(100)),
   // Salarie declare : soumis CNSS/AMO/CIMR et IR (mig 318).
   isDeclared: z.boolean().optional(),
+  // Virement groupe des salaires (mig 325).
+  rib: ribField,
+  bankName: z.string().max(80).nullable().optional(),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
@@ -208,6 +217,9 @@ export const payrollSettingsSchema = z.object({
   weeklyLegalHours: z.coerce.number().positive().max(80).optional(),
   holidayWorkedRate: pctRate.optional(),
   otAnnualQuotaHours: z.coerce.number().positive().max(2000).optional(),
+  // Virement groupe des salaires (mig 325)
+  employerRib: ribField,
+  employerBankName: z.string().max(80).nullable().optional(),
 });
 
 const rate = z.coerce.number().min(0).max(1);

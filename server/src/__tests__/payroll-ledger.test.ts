@@ -50,4 +50,15 @@ describe('buildAccrualEntry', () => {
       amo_employer: 0, alloc_familiales: 0, taxe_fp: 0, ir_net: 0, net_salary: '8000' }, [])!;
     expect(nd.lines.map(l => l.account_code).sort()).toEqual(['4432', '6171']);
   });
+
+  it('IR negatif (trop-percu restitue a la regularisation) : debit 44525, equilibree', () => {
+    // IR du mois 276,75, regularisation -400 -> ir_net -123,25 ; net + 400.
+    const reg = buildAccrualEntry({ ...payroll, ir_net: '-123.25', net_salary: '7373.65' }, [{ amount: '300', account_code: null, label: 'Pret' }])!;
+    const l = reg.lines.find(x => x.account_code === '44525')!;
+    expect(l.debit).toBe(123.25);
+    expect(l.credit).toBe(0);
+    const d = reg.lines.reduce((s, x) => s + x.debit, 0);
+    const c = reg.lines.reduce((s, x) => s + x.credit, 0);
+    expect(Math.round(d * 100)).toBe(Math.round(c * 100));
+  });
 });

@@ -35,6 +35,8 @@ export default function PayrollSettingsView() {
 
   // ─── Employeur ───
   const [cnss, setCnss] = useState('');
+  // Virement groupe des salaires (mig 325).
+  const [bank, setBank] = useState({ employerRib: '', employerBankName: '' });
   const [baseDays, setBaseDays] = useState('26');
   // Conges (lot 2) et temps de travail (lot 3) : taux saisis en %.
   const [rules, setRules] = useState<Record<string, string>>({});
@@ -42,6 +44,7 @@ export default function PayrollSettingsView() {
     if (!data) return;
     const st = data.settings;
     setCnss(st.employer_cnss_number ?? '');
+    setBank({ employerRib: st.employer_rib ?? '', employerBankName: st.employer_bank_name ?? '' });
     setBaseDays(String(st.monthly_base_days ?? 26));
     setRules({
       leaveRestWeekday: String(st.leave_rest_weekday ?? 0),
@@ -59,6 +62,7 @@ export default function PayrollSettingsView() {
   const saveSettings = useMutation({
     mutationFn: () => payrollConfigApi.updateSettings({
       employerCnssNumber: cnss || null, monthlyBaseDays: parseInt(baseDays, 10),
+      employerRib: bank.employerRib.replace(/\s/g, '') || null, employerBankName: bank.employerBankName || null,
       leaveRestWeekday: parseInt(rules.leaveRestWeekday, 10), leaveDaysPerMonth: parseFloat(rules.leaveDaysPerMonth),
       leaveCarryoverYears: parseInt(rules.leaveCarryoverYears, 10),
       otRateDay: pctOut(rules.otRateDay), otRateNight: pctOut(rules.otRateNight),
@@ -165,6 +169,14 @@ export default function PayrollSettingsView() {
           <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
             <span style={{ color: 'var(--odoo-text-muted)' }}>Base journalière (jours / mois)</span>
             <input className="input" type="number" min={20} max={31} value={baseDays} disabled={!isAdmin} onChange={e => setBaseDays(e.target.value)} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>RIB de l'entreprise (virement des salaires)</span>
+            <input className="input" value={bank.employerRib} disabled={!isAdmin} placeholder="24 chiffres" onChange={e => setBank({ ...bank, employerRib: e.target.value })} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>Banque (agence)</span>
+            <input className="input" value={bank.employerBankName} disabled={!isAdmin} maxLength={80} onChange={e => setBank({ ...bank, employerBankName: e.target.value })} />
           </label>
         </div>
         <h4 style={{ fontWeight: 600, fontSize: '0.8125rem', marginTop: 4 }}>Congés</h4>

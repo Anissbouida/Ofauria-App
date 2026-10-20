@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, shiftsApi } from '../../../api/employees.api';
+import { employeesApi, shiftsApi, payrollConfigApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { fr } from 'date-fns/locale';
 import {
@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
-import { isoDate, syncSalaryFields } from '../shared';
+import { isoDate, syncSalaryFields, saveBlobResponse, apiErrorMessage } from '../shared';
 import EmployeeSalaryHistory from './EmployeeSalaryHistory';
 import EmployeePayrollItems from './EmployeePayrollItems';
 import HrAlertsPanel from '../contracts/HrAlertsPanel';
@@ -502,6 +502,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                   ['Date de naissance', (() => { const s = isoDate(viewDetail.birth_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
                   ['N° CNSS', viewDetail.cnss_number],
+                  ['RIB (virement)', viewDetail.rib ? `${String(viewDetail.rib).replace(/^(\d{3})(\d{3})(\d{16})(\d{2})$/, '$1 $2 $3 $4')}${viewDetail.bank_name ? ` · ${viewDetail.bank_name}` : ''}` : null],
                   ['Type de contrat', getContractLabel(viewDetail.contract_type as string || 'cdi')],
                   ['Début contrat', (() => { const s = isoDate(viewDetail.contract_start); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
                   ['Fin contrat', (() => { const s = isoDate(viewDetail.contract_end); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
@@ -523,6 +524,20 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                 <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
                   <p className="text-[11px] text-amber-600 uppercase tracking-wider mb-1">Notes</p>
                   <p className="text-amber-800">{viewDetail.notes as string}</p>
+                </div>
+              )}
+              {viewDetail.is_active !== false && !viewDetail.exit_date && (
+                <div className="mt-4 flex items-center gap-2 flex-wrap text-sm">
+                  <span className="text-gray-500">Attestations :</span>
+                  {(['travail', 'salaire'] as const).map(kind => (
+                    <button key={kind} type="button" className="odoo-btn-secondary"
+                      onClick={async () => {
+                        try { saveBlobResponse(await payrollConfigApi.attestation(viewDetail.id as string, kind), `attestation_${kind}.pdf`); }
+                        catch (err) { notify.error(apiErrorMessage(err, 'Erreur')); }
+                      }}>
+                      {kind === 'travail' ? 'Attestation de travail' : 'Attestation de salaire'}
+                    </button>
+                  ))}
                 </div>
               )}
               <EmployeeContracts employeeId={viewDetail.id as string} onChanged={() => undefined} />
@@ -553,6 +568,8 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
               if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
               if (data.defaultShiftCode === '') data.defaultShiftCode = null;
+              if (data.rib === '') data.rib = null;
+              if (data.bankName === '') data.bankName = null;
               saveMutation.mutate(data);
             }} className="space-y-4">
               <p className="text-sm font-medium text-gray-500 border-b pb-1">Informations personnelles</p>
@@ -636,6 +653,11 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">N° CNSS</label><input name="cnssNumber" defaultValue={editing?.cnss_number as string} className="input" /></div>
                 <div><label className="block text-sm font-medium mb-1">Taux CIMR (%)</label><input name="cimrRate" type="number" min="0" max="10" step="0.5" defaultValue={editing?.cimr_rate as string || '0'} className="input" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">RIB (24 chiffres, virement du salaire)</label>
+                  <input name="rib" defaultValue={editing?.rib as string} className="input" inputMode="numeric" pattern="[0-9 ]{24,30}" placeholder="000 000 0000000000000000 00" /></div>
+                <div><label className="block text-sm font-medium mb-1">Banque</label><input name="bankName" defaultValue={editing?.bank_name as string} className="input" maxLength={80} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

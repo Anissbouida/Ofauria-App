@@ -7,6 +7,7 @@ import { payrollConfigController } from '../controllers/payroll-config.controlle
 import { hrContractController } from '../controllers/hr-contract.controller.js';
 import { finalSettlementController } from '../controllers/final-settlement.controller.js';
 import { employeeSelfController, advanceRequestController } from '../controllers/employee-self.controller.js';
+import { payrollComplianceController } from '../controllers/payroll-compliance.controller.js';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -50,6 +51,7 @@ router.delete('/me/leaves/:id', authenticate, asyncHandler(employeeSelfControlle
 router.get('/me/advances', authenticate, asyncHandler(employeeSelfController.advances));
 router.post('/me/advances', authenticate, validate(selfAdvanceRequestSchema), asyncHandler(employeeSelfController.requestAdvance));
 router.delete('/me/advances/:id', authenticate, asyncHandler(employeeSelfController.cancelAdvanceRequest));
+router.get('/me/attestations/:kind', authenticate, asyncHandler(employeeSelfController.attestation));
 router.get('/hr-analytics', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.analytics));
 router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.alerts));
 // Solde de tout compte : pieces (recu, certificat) et annulation (admin).
@@ -69,6 +71,8 @@ router.post('/:employeeId/contracts/avenant', authenticate, authorizeModule('emp
 router.post('/:employeeId/contracts/renew', authenticate, authorizeModule('employees', 'edit'), validate(renewContractSchema), asyncHandler(hrContractController.renew));
 router.post('/:employeeId/contracts/renew-trial', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.renewTrial));
 router.post('/:employeeId/contracts/end', authenticate, authorizeModule('employees', 'edit'), validate(endContractSchema), asyncHandler(hrContractController.end));
+// Attestations de travail / de salaire a la demande (salarie en poste, mig 325).
+router.get('/:employeeId/attestations/:kind', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.attestation));
 // Depart : apercu (droit Personnel), validation (admin : sortie des effectifs et paie).
 router.get('/:employeeId/settlements', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.list));
 router.post('/:employeeId/settlements/preview', authenticate, authorizeModule('employees', 'view'), validate(finalSettlementSchema), asyncHandler(finalSettlementController.preview));
@@ -168,6 +172,11 @@ payrollRouter.get('/declarations', authenticate, authorizeModule('employees', 'v
 payrollRouter.get('/declarations/annual-ir', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.annualIr));
 payrollRouter.post('/declarations/declare', authenticate, authorize(ROLES.ADMIN), validate(declarePayrollSchema), asyncHandler(payrollConfigController.declare));
 payrollRouter.post('/declarations/settle', authenticate, authorize(ROLES.ADMIN), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
+// Fichier e-BDS Damancom depuis le preetabli CNSS (mig 325).
+const preetabliUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), asyncHandler(payrollComplianceController.ebds));
+// Ordre de virement groupe des salaires (mig 325) : liste, CSV banque, lettre PDF.
+payrollRouter.get('/transfer', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.transferOrder));
 // Elements fixes par employe (primes/indemnites/retenues recurrentes).
 payrollRouter.get('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listItems));
 payrollRouter.post('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'edit'), validate(employeePayrollItemSchema), asyncHandler(payrollConfigController.createItem));

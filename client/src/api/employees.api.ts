@@ -117,6 +117,22 @@ export const payrollConfigApi = {
     api.post('/payroll/declarations/declare', data).then(r => r.data.data),
   settle: (data: { kind: string; month: number; year: number; paymentMethod: string; paymentDate: string }) =>
     api.post('/payroll/declarations/settle', data).then(r => r.data.data),
+  /** Fichier e-BDS Damancom genere depuis le preetabli CNSS (mig 325). */
+  ebds: (month: number, year: number, file: File) => {
+    const form = new FormData();
+    form.append('month', String(month));
+    form.append('year', String(year));
+    form.append('file', file);
+    return api.post('/payroll/declarations/ebds', form).then(r => r.data.data);
+  },
+  /** Ordre de virement groupe : liste (json), fichier banque (csv) ou lettre (pdf). */
+  transfer: (month: number, year: number, includeUnpaid: boolean) =>
+    api.get('/payroll/transfer', { params: { month, year, includeUnpaid } }).then(r => r.data.data),
+  transferFile: (month: number, year: number, includeUnpaid: boolean, format: 'csv' | 'pdf') =>
+    api.get('/payroll/transfer', { params: { month, year, includeUnpaid, format }, responseType: 'blob' }),
+  /** Attestation de travail / de salaire (salarie en poste). */
+  attestation: (employeeId: string, kind: 'travail' | 'salaire') =>
+    api.get(`/employees/${employeeId}/attestations/${kind}`, { responseType: 'blob' }),
 };
 
 export const advancesApi = {
@@ -197,6 +213,7 @@ export const selfApi = {
   profile: () => api.get('/employees/me').then(r => r.data.data),
   payslips: () => api.get('/employees/me/payslips').then(r => r.data.data),
   payslipPdf: (id: string) => api.get(`/employees/me/payslips/${id}/pdf`, { responseType: 'blob' }),
+  attestation: (kind: 'travail' | 'salaire') => api.get(`/employees/me/attestations/${kind}`, { responseType: 'blob' }),
   leaves: () => api.get('/employees/me/leaves').then(r => r.data.data),
   leaveTypes: () => api.get('/employees/me/leave-types').then(r => r.data.data),
   leavePreview: (params: { type: string; startDate: string; endDate: string }) =>
