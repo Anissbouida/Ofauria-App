@@ -8,14 +8,18 @@
 //      mensuel, blocages (semaine impayee, acomptes perimes, annulation
 //      d'un acompte deduit), reste a payer, cloture comptable.
 //
-// Usage (depuis server/, base locale avec pointage) :
-//   npx tsx scripts/e2e-paie.ts            -> mois par defaut : juillet 2026
-//   npx tsx scripts/e2e-paie.ts 7 2026
+// Usage (base locale avec pointage) :
+//   npm run e2e:paie -w server -- 7 2026      (depuis la racine)
+//   npx tsx scripts/e2e-paie.ts 7 2026        (depuis server/)
 //
 // Pieges : les modules de l'app ouvrent leur propre pg.Pool ; on remplace
 // pg.Pool.prototype pour router toutes les requetes vers UNE connexion en
 // transaction (BEGIN/COMMIT internes -> SAVEPOINT), et on verifie le txid.
 import pg from 'pg';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+// .env racine, quel que soit le dossier d'ou le script est lance.
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 const MONTH = parseInt(process.argv[2] ?? '7', 10);
 const YEAR = parseInt(process.argv[3] ?? '2026', 10);

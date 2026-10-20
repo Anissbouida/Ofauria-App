@@ -9,7 +9,9 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/config/migrate.ts",
     "seed": "tsx src/config/seed.ts",
-    "test": "vitest"
+    "test": "vitest",
+    "e2e:paie": "tsx scripts/e2e-paie.ts",
+    "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
   },
   "dependencies": {
     "@ofauria/shared": "*",
