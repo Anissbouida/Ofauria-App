@@ -6,7 +6,7 @@ import { finalSettlementRepository } from '../repositories/final-settlement.repo
 import { payrollSettingsRepository } from '../repositories/payroll-config.repository.js';
 import { EXIT_REASON_LABELS, type ExitReason } from '../services/final-settlement.js';
 import { generateSettlementReceiptPdf, generateWorkCertificatePdf } from '../services/hr-documents-pdf.service.js';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
 
 /** Depart du salarie : solde de tout compte, recu et certificat (lot 6). */
 
@@ -19,7 +19,6 @@ const fr = (d: unknown) => {
     : String(d).slice(0, 10);
   return `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}`;
 };
-const PLACE = 'Mohammedia';
 
 async function inScope(employeeId: string, userStoreId?: string) {
   const r = await db.query('SELECT id, store_id FROM employees WHERE id = $1', [employeeId]);
@@ -82,8 +81,8 @@ export const finalSettlementController = {
       const stcRet = stc.filter(l => l.kind === 'retenue').reduce((a, l) => a + num(l.amount), 0);
       lines.push({ label: `Salaire et accessoires du dernier mois (${String(p.month).padStart(2, '0')}/${p.year})`, detail: 'brut du bulletin', gain: Math.round((num(p.gross_salary) - stcGains) * 100) / 100 });
       for (const l of stc) lines.push({ label: l.label, detail: l.detail, ...(l.kind === 'gain' ? { gain: num(l.amount) } : { retenue: num(l.amount) }) });
-      const legal = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net);
-      if (legal > 0) lines.push({ label: 'Cotisations sociales et IR', detail: 'CNSS, AMO, CIMR, IR', retenue: Math.round(legal * 100) / 100 });
+      const social = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net);
+      if (social > 0) lines.push({ label: 'Cotisations sociales et IR', detail: 'CNSS, AMO, CIMR, IR', retenue: Math.round(social * 100) / 100 });
       const other = num(p.other_deductions) - stcRet;
       if (other > 0.004) lines.push({ label: 'Autres retenues du bulletin', retenue: Math.round(other * 100) / 100 });
       if (num(p.advance_deduction) > 0) lines.push({ label: 'Remboursement d\'avances sur salaire', retenue: num(p.advance_deduction) });
@@ -92,12 +91,12 @@ export const finalSettlementController = {
       for (const l of stc) lines.push({ label: l.label, detail: l.detail, ...(l.kind === 'gain' ? { gain: num(l.amount) } : { retenue: num(l.amount) }) });
       net = Math.round((num(comp.totalGains) - num(comp.totalDeductions)) * 100) / 100;
     }
-    const settings = await payrollSettingsRepository.get();
+    const [settings, legal] = await Promise.all([payrollSettingsRepository.get(), loadCompanyLegal()]);
     const buffer = await generateSettlementReceiptPdf({
-      company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+      company: { ...legal, cnss: settings.employer_cnss_number },
       employee: { name: `${s.first_name} ${s.last_name}`, cin: s.cin, cnss: s.cnss_number },
       exitDate: fr(s.exit_date), reasonLabel: EXIT_REASON_LABELS[s.reason as ExitReason] ?? s.reason,
-      lines, netAmount: Math.max(0, net), place: PLACE, issuedOn: fr(new Date()),
+      lines, netAmount: Math.max(0, net), place: legal.city ?? null, issuedOn: fr(new Date()),
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="recu_solde_${String(s.last_name).replace(/[^\w-]/g, '_')}.pdf"`);
@@ -121,11 +120,11 @@ export const finalSettlementController = {
       if (last && last.title === title) last.to = to;
       else positions.push({ title, from: fr(c.start_date), to });
     }
-    const settings = await payrollSettingsRepository.get();
+    const [settings, legal] = await Promise.all([payrollSettingsRepository.get(), loadCompanyLegal()]);
     const buffer = await generateWorkCertificatePdf({
-      company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+      company: { ...legal, cnss: settings.employer_cnss_number },
       employee: { name: `${s.first_name} ${s.last_name}`, cin: s.cin, cnss: s.cnss_number },
-      hireDate: fr(s.hire_date), exitDate: fr(s.exit_date), positions, place: PLACE, issuedOn: fr(new Date()),
+      hireDate: fr(s.hire_date), exitDate: fr(s.exit_date), positions, place: legal.city ?? null, issuedOn: fr(new Date()),
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="certificat_travail_${String(s.last_name).replace(/[^\w-]/g, '_')}.pdf"`);

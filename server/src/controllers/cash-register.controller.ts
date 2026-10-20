@@ -4,7 +4,7 @@ import { cashRegisterRepository } from '../repositories/cash-register.repository
 import { unsoldDecisionRepository } from '../repositories/unsold-decision.repository.js';
 import { printerService } from '../services/printer.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { companyLegalFromRow } from '../utils/company-legal.js';
 
 export const cashRegisterController = {
   async list(req: AuthRequest, res: Response) {
@@ -225,7 +225,7 @@ export const cashRegisterController = {
         difference: session.difference != null ? num(session.difference) : null,
         notes: session.notes,
       },
-      company: { name: settings?.company_name || COMPANY_LEGAL.name },
+      company: { name: companyLegalFromRow(settings).name },
       options: { printerId: typeof printerId === 'string' && printerId ? printerId : undefined },
     });
 

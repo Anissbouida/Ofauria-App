@@ -13,7 +13,7 @@ import {
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { serviceYears } from '../services/payroll-engine.js';
 import { generatePayslipPdf, type PayslipLineRow } from '../services/payslip-pdf.service.js';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { companyLegalFromRow } from '../utils/company-legal.js';
 import { payrollLedger } from '../services/payroll-ledger.service.js';
 import { payrollDeclarationRepository, type DeclarationKind } from '../repositories/payroll-declarations.repository.js';
 
@@ -299,7 +299,7 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
   const totalRetenues = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net) + num(p.other_deductions);
   const c = cumulRes.rows[0];
   const buffer = await generatePayslipPdf({
-    company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+    company: { ...companyLegalFromRow(company), cnss: settings.employer_cnss_number },
     logo: resolveLogo(company?.logo_url),
     periodLabel: `${MONTHS[p.month - 1]} ${p.year}`,
     periodRange: `Du ${fr(start)} au ${fr(end)}`,

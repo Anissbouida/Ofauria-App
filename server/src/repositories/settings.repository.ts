@@ -29,6 +29,10 @@ export const settingsRepository = {
     // Arrondi prix (mig 170)
     prixArrondiStrategie?: string;
     prixArrondiSens?: string;
+    // Identite legale (mig 326)
+    legalName?: string | null; legalAddress?: string | null; legalCity?: string | null;
+    legalPhone?: string | null; legalEmail?: string | null; legalRc?: string | null;
+    legalIf?: string | null; legalIce?: string | null; legalPatente?: string | null;
   }) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -76,6 +80,10 @@ export const settingsRepository = {
       // Arrondi prix (mig 170)
       prixArrondiStrategie: 'prix_arrondi_strategie',
       prixArrondiSens: 'prix_arrondi_sens',
+      // Identite legale (mig 326)
+      legalName: 'legal_name', legalAddress: 'legal_address', legalCity: 'legal_city',
+      legalPhone: 'legal_phone', legalEmail: 'legal_email', legalRc: 'legal_rc',
+      legalIf: 'legal_if', legalIce: 'legal_ice', legalPatente: 'legal_patente',
     };
 
     const fields: string[] = [];

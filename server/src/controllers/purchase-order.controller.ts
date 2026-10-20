@@ -8,7 +8,7 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
 
 // Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
 function effectiveStoreFilter(req: AuthRequest): string | undefined {
@@ -368,6 +368,7 @@ export const purchaseOrderController = {
 
       const totalHT = items.reduce((sum: number, it: { subtotal: number | null }) => sum + (it.subtotal || 0), 0);
 
+      const legal = await loadCompanyLegal();
       const buffer = await generatePurchaseOrderPdf({
         orderNumber: po.order_number,
         orderDate: orderDateStr,
@@ -380,14 +381,14 @@ export const purchaseOrderController = {
         supplierAddress: supplier.address || '',
         items,
         totalHT,
-        companyName: COMPANY_LEGAL.name,
-        companyAddress: COMPANY_LEGAL.address,
-        companyPhone: COMPANY_LEGAL.phone,
-        companyEmail: COMPANY_LEGAL.email,
-        companyRC: COMPANY_LEGAL.rc,
-        companyPatente: COMPANY_LEGAL.patente,
-        companyIF: COMPANY_LEGAL.if,
-        companyICE: '003805857000072',
+        companyName: legal.name,
+        companyAddress: legal.address,
+        companyPhone: legal.phone,
+        companyEmail: legal.email,
+        companyRC: legal.rc,
+        companyPatente: legal.patente,
+        companyIF: legal.if,
+        companyICE: legal.ice,
         logoPath,
       });
 

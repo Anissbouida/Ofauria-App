@@ -67,6 +67,9 @@ function header(doc: PDFKit.PDFDocument, company: Company, title: string, M: num
   return M + 110;
 }
 
+/** « Fait à <ville>, le <date> » (ville de l'entreprise, facultative). */
+const fait = (place: string | null, issuedOn: string) => (place ? `Fait à ${place}, le ${issuedOn}` : `Fait le ${issuedOn}`);
+
 function finish(doc: PDFKit.PDFDocument, chunks: Buffer[]): Promise<Buffer> {
   doc.end();
   return new Promise(resolve => doc.on('end', () => resolve(Buffer.concat(chunks))));
@@ -79,7 +82,7 @@ export interface ReceiptData {
   reasonLabel: string;
   lines: Array<{ label: string; detail?: string; gain?: number; retenue?: number }>;
   netAmount: number;
-  place: string;
+  place: string | null;
   issuedOn: string;            // dd/mm/yyyy
 }
 
@@ -119,7 +122,7 @@ export async function generateSettlementReceiptPdf(d: ReceiptData): Promise<Buff
     + 'suivant sa signature (Code du travail, art. 74). Passé ce délai, il a un effet libératoire pour les sommes qui y sont détaillées.',
     M, y, { width: CW, align: 'justify', lineGap: 2 });
   y = doc.y + 24;
-  doc.text(`Fait à ${d.place}, le ${d.issuedOn}`, M, y);
+  doc.text(fait(d.place, d.issuedOn), M, y);
   y += 30;
   doc.font('Helvetica-Bold').text('L\'employeur', M, y);
   doc.text('Le salarié', M + CW / 2, y);
@@ -133,7 +136,7 @@ export interface CertificateData {
   hireDate: string;            // dd/mm/yyyy
   exitDate: string;
   positions: Array<{ title: string; from: string; to: string }>;
-  place: string;
+  place: string | null;
   issuedOn: string;
 }
 
@@ -165,7 +168,7 @@ export async function generateWorkCertificatePdf(d: CertificateData): Promise<Bu
   y = doc.y + 10;
   doc.text('Le présent certificat lui est délivré pour servir et valoir ce que de droit.', M, y, { width: CW });
   y = doc.y + 30;
-  doc.text(`Fait à ${d.place}, le ${d.issuedOn}`, M, y);
+  doc.text(fait(d.place, d.issuedOn), M, y);
   y += 30;
   doc.font('Helvetica-Bold').text('Pour l\'employeur', M + CW / 2, y);
   doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Signature et cachet', M + CW / 2, y + 14);
@@ -195,8 +198,8 @@ function table(doc: PDFKit.PDFDocument, M: number, CW: number, y0: number, width
   return y;
 }
 
-function signature(doc: PDFKit.PDFDocument, M: number, CW: number, y: number, place: string, issuedOn: string) {
-  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text(`Fait à ${place}, le ${issuedOn}`, M, y);
+function signature(doc: PDFKit.PDFDocument, M: number, CW: number, y: number, place: string | null, issuedOn: string) {
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text(fait(place, issuedOn), M, y);
   y += 30;
   doc.font('Helvetica-Bold').text('Pour l\'employeur', M + CW / 2, y);
   doc.font('Helvetica').fontSize(8).fillColor(MUTED).text('Signature et cachet', M + CW / 2, y + 14);
@@ -208,7 +211,7 @@ export interface EmploymentAttestationData {
   hireDate: string;            // dd/mm/yyyy
   jobTitle: string;
   contractLabel: string | null; // « contrat à durée indéterminée »…
-  place: string;
+  place: string | null;
   issuedOn: string;
 }
 
@@ -282,7 +285,7 @@ export interface TransferOrderData {
   periodLabel: string;          // « Septembre 2026 »
   lines: Array<{ name: string; rib: string; bank: string | null; amount: number }>;
   total: number;
-  place: string;
+  place: string | null;
   issuedOn: string;
 }
 

@@ -41,6 +41,10 @@ function toApi(row: Record<string, unknown>) {
     productionChargeAutres: parseFloat(String(row.production_charge_autres)) || 0,
     prixArrondiStrategie: (row.prix_arrondi_strategie as string) || 'aucun',
     prixArrondiSens: (row.prix_arrondi_sens as string) || 'superieur',
+    // Identite legale (mig 326)
+    legalName: row.legal_name ?? '', legalAddress: row.legal_address ?? '', legalCity: row.legal_city ?? '',
+    legalPhone: row.legal_phone ?? '', legalEmail: row.legal_email ?? '', legalRc: row.legal_rc ?? '',
+    legalIf: row.legal_if ?? '', legalIce: row.legal_ice ?? '', legalPatente: row.legal_patente ?? '',
   };
 }
 
@@ -65,6 +69,29 @@ export const settingsController = {
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
       prixArrondiStrategie, prixArrondiSens,
     } = req.body;
+
+    // Identite legale (mig 326) : texte libre borne, '' -> null ; ICE = 15 chiffres.
+    const LEGAL_MAX: Record<string, number> = {
+      legalName: 120, legalAddress: 300, legalCity: 80, legalPhone: 40, legalEmail: 120,
+      legalRc: 30, legalIf: 30, legalIce: 15, legalPatente: 30,
+    };
+    const legal: Record<string, string | null> = {};
+    for (const [key, max] of Object.entries(LEGAL_MAX)) {
+      const v = req.body[key];
+      if (v === undefined) continue;
+      if (v !== null && typeof v !== 'string') { res.status(400).json({ success: false, error: { message: `${key} invalide` } }); return; }
+      const t = (key === 'legalIce' ? (v ?? '').replace(/\s/g, '') : (v ?? '').trim());
+      if (t.length > max) { res.status(400).json({ success: false, error: { message: `${key} : ${max} caractères maximum` } }); return; }
+      legal[key] = t || null;
+    }
+    if (legal.legalIce && !/^\d{15}$/.test(legal.legalIce)) {
+      res.status(400).json({ success: false, error: { message: 'ICE invalide : 15 chiffres attendus' } });
+      return;
+    }
+    if (legal.legalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legal.legalEmail)) {
+      res.status(400).json({ success: false, error: { message: 'Email de l\'entreprise invalide' } });
+      return;
+    }
 
     if (primaryColor && !/^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
       res.status(400).json({ success: false, error: { message: 'Couleur primaire invalide (format #RRGGBB)' } });
@@ -98,6 +125,7 @@ export const settingsController = {
       themeCtaColor, themeCtaText,
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
       prixArrondiStrategie, prixArrondiSens,
+      ...legal,
     });
     res.json({ success: true, data: toApi(settings) });
   },

@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { reconciliationRepository } from '../repositories/reconciliation.repository.js';
 import { generateReconDayWorkbook } from '../services/recon-day-excel.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { companyLegalFromRow } from '../utils/company-legal.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const num = (v: unknown): number | undefined => {
@@ -42,7 +42,7 @@ export const reconciliationController = {
     const day = await reconciliationRepository.getDayById(req.params.id);
     if (!day) { res.status(404).json({ success: false, error: { message: 'Journee introuvable' } }); return; }
     const settings = await settingsRepository.get();
-    const buffer = await generateReconDayWorkbook(day, settings?.company_name || COMPANY_LEGAL.name);
+    const buffer = await generateReconDayWorkbook(day, settings?.company_name || companyLegalFromRow(settings).name);
     const dateStr = day.business_date instanceof Date
       ? `${day.business_date.getFullYear()}-${String(day.business_date.getMonth() + 1).padStart(2, '0')}-${String(day.business_date.getDate()).padStart(2, '0')}`
       : String(day.business_date).slice(0, 10);

@@ -40,6 +40,10 @@ export interface CompanySettings {
   // Arrondi prix (mig 170)
   prixArrondiStrategie?: 'aucun' | 'au_dh' | 'au_demi_dh' | 'au_5dh';
   prixArrondiSens?: 'inferieur' | 'superieur' | 'naturel';
+  // Identite legale (mig 326) : factures, bons de commande, paie, attestations.
+  legalName?: string; legalAddress?: string; legalCity?: string;
+  legalPhone?: string; legalEmail?: string; legalRc?: string;
+  legalIf?: string; legalIce?: string; legalPatente?: string;
 }
 
 export const settingsApi = {

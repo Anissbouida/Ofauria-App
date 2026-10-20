@@ -5,7 +5,7 @@ import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { payrollSettingsRepository, taxScaleRepository, monthBounds } from '../repositories/payroll-config.repository.js';
 import { payrollDeclarationRepository } from '../repositories/payroll-declarations.repository.js';
 import { buildEbds, parsePreetabli } from '../services/ebds.js';
-import { COMPANY_LEGAL } from '../utils/company-legal.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
 import {
   generateEmploymentAttestationPdf, generateSalaryAttestationPdf, generateTransferOrderPdf,
 } from '../services/hr-documents-pdf.service.js';
@@ -24,7 +24,6 @@ const CONTRACT_LABEL: Record<string, string> = {
   cdi: 'contrat à durée indéterminée', cdd: 'contrat à durée déterminée', stage: 'convention de stage',
   interim: 'contrat d\'intérim', saisonnier: 'contrat saisonnier',
 };
-const PLACE = 'Mohammedia';
 const num = (v: unknown) => parseFloat(String(v ?? 0)) || 0;
 const iso = (d: unknown) => {
   if (!d) return '';
@@ -112,7 +111,7 @@ export const payrollComplianceController = {
     const format = String(req.query.format ?? 'json');
     const { valid, issues } = splitTransferLines(await loadTransferLines(month, year, includeUnpaid, req.user!.storeId));
     const total = Math.round(valid.reduce((s, l) => s + l.amount, 0) * 100) / 100;
-    const settings = await payrollSettingsRepository.get();
+    const [settings, legal] = await Promise.all([payrollSettingsRepository.get(), loadCompanyLegal()]);
     const employerRib = normalizeRib(settings.employer_rib);
     const period = `${year}-${String(month).padStart(2, '0')}`;
     const periodLabel = `${MONTHS[month - 1]} ${year}`;
@@ -135,9 +134,9 @@ export const payrollComplianceController = {
     }
     if (!employerRib) { res.status(400).json({ success: false, error: { message: 'Renseignez le RIB de l\'entreprise dans Paramètres de paie avant d\'éditer l\'ordre de virement.' } }); return; }
     const buffer = await generateTransferOrderPdf({
-      company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+      company: { ...legal, cnss: settings.employer_cnss_number },
       employerRib: formatRib(employerRib), employerBank: settings.employer_bank_name ?? null,
-      periodLabel, total, place: PLACE, issuedOn: fr(new Date()),
+      periodLabel, total, place: legal.city ?? null, issuedOn: fr(new Date()),
       lines: valid.map(l => ({ name: l.name, rib: formatRib(l.rib as string), bank: l.bankName, amount: l.amount })),
     });
     sendPdf(res, buffer, `ordre_virement_salaires_${period}.pdf`);
@@ -165,19 +164,20 @@ export async function sendAttestation(res: Response, emp: Row, kind: string, mon
     res.status(400).json({ success: false, error: { message: 'Salarié sorti des effectifs : délivrez le certificat de travail du solde de tout compte.' } });
     return;
   }
-  const [contract, role, settings] = await Promise.all([
+  const [contract, role, settings, legal] = await Promise.all([
     db.query(`SELECT contract_type, job_title, monthly_salary FROM employee_contracts WHERE employee_id = $1 AND status = 'active' ORDER BY start_date DESC LIMIT 1`, [emp.id]),
     db.query(`SELECT label FROM ref_entries WHERE table_id = 'employee_roles' AND code = $1 LIMIT 1`, [emp.role]),
     payrollSettingsRepository.get(),
+    loadCompanyLegal(),
   ]);
   const c = contract.rows[0];
   const base = {
-    company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+    company: { ...legal, cnss: settings.employer_cnss_number },
     employee: { name: `${emp.first_name} ${emp.last_name}`, cin: emp.cin, cnss: emp.cnss_number },
     hireDate: fr(emp.hire_date),
     jobTitle: c?.job_title || role.rows[0]?.label || emp.role,
     contractLabel: CONTRACT_LABEL[c?.contract_type ?? emp.contract_type] ?? null,
-    place: PLACE,
+    place: legal.city ?? null,
     issuedOn: fr(new Date()),
   };
   const slug = `${emp.last_name}_${emp.first_name}`;

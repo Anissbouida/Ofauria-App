@@ -221,8 +221,68 @@ function GeneralTab({
         </SettingItem>
       </SettingsSection>
 
+      <LegalIdentitySection />
       <StaffDiscountSection />
     </>
+  );
+}
+
+/* ─── Identite legale (mig 326) ─── */
+const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'legalPhone' | 'legalEmail' | 'legalRc' | 'legalIf' | 'legalIce' | 'legalPatente'; title: string; description: string; placeholder?: string }> = [
+  { key: 'legalName', title: 'Raison sociale', description: 'Nom légal (ex. « SARL ») sur les factures, bons de commande, bulletins et attestations' },
+  { key: 'legalAddress', title: 'Siège social', description: 'Adresse légale complète' },
+  { key: 'legalCity', title: 'Ville', description: 'Utilisée dans « Fait à … » des attestations et pièces RH' },
+  { key: 'legalPhone', title: 'Téléphone', description: 'Pied de page des factures et bons de commande' },
+  { key: 'legalEmail', title: 'Email', description: 'Pied de page des factures et bons de commande' },
+  { key: 'legalRc', title: 'Registre de commerce (RC)', description: 'Numéro RC' },
+  { key: 'legalIf', title: 'Identifiant fiscal (IF)', description: 'Numéro IF' },
+  { key: 'legalIce', title: 'ICE', description: 'Identifiant commun de l\'entreprise : 15 chiffres', placeholder: '000000000000000' },
+  { key: 'legalPatente', title: 'Patente / Taxe professionnelle', description: 'Numéro de patente' },
+];
+
+function LegalIdentitySection() {
+  const { settings, updateSettings } = useSettings();
+  const initial = () => Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])) as Record<string, string>;
+  const [form, setForm] = useState<Record<string, string>>(initial);
+  const [saving, setSaving] = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setForm(initial()); }, [settings]);
+
+  const hasChanges = LEGAL_FIELDS.some(f => (form[f.key] ?? '') !== (settings[f.key] ?? ''));
+  const iceInvalid = !!form.legalIce && !/^\d{15}$/.test(form.legalIce.replace(/\s/g, ''));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSettings(form);
+      notify.success('Identité légale enregistrée');
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      notify.error(msg || 'Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingsSection title="Identité légale">
+      {LEGAL_FIELDS.map(f => (
+        <SettingItem key={f.key} title={f.title} description={f.description}>
+          <input type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
+            onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+            className={`input w-full${f.key === 'legalIce' && iceInvalid ? ' border-red-400' : ''}`} />
+        </SettingItem>
+      ))}
+      {hasChanges && (
+        <div className="flex justify-end">
+          <button onClick={handleSave} disabled={saving || iceInvalid}
+            className="btn-primary px-4 py-2 flex items-center gap-2 text-sm">
+            {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
+            Enregistrer l'identité légale
+          </button>
+        </div>
+      )}
+    </SettingsSection>
   );
 }
 
