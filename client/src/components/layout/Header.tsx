@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutGrid, LogOut, ChevronDown, User } from 'lucide-react';
+import { LayoutGrid, LogOut, ChevronDown, User, UserCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
@@ -75,6 +75,11 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
                 {user?.role ? ROLE_LABELS[user.role as Role] || user.role : ''}
               </span>
             </div>
+            {/* Espace employe : bulletins, conges, avances (si le compte est lie a une fiche). */}
+            <button onClick={() => { navigate('/employees?tab=me'); setShowUserMenu(false); }}
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
+              <UserCircle size={16} className="text-gray-400" /> Mon espace
+            </button>
             {user?.role === 'admin' && (
               <>
                 <button onClick={() => { navigate('/users'); setShowUserMenu(false); }}

@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
-  UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3,
+  UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3, UserCircle,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import type { HrTab } from './shared';
@@ -12,17 +13,37 @@ import PayrollTab from './payroll/PayrollTab';
 import AdvancesTab from './tabs/AdvancesTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import HrAnalyticsTab from './tabs/HrAnalyticsTab';
+import MySpace from './self/MySpace';
+import { selfApi } from '../../api/employees.api';
 
 export default function EmployeesPage() {
   const { hasModule, isLoading: permsLoading } = usePermissions();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<HrTab>('employees');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<HrTab>(params.get('tab') === 'me' ? 'me' : 'employees');
+  // Lien « Mon espace » de l'en-tete alors que la page est deja ouverte.
+  useEffect(() => { if (params.get('tab') === 'me') setTab('me'); }, [params]);
+  // Espace employe : le compte est-il lie a une fiche ? (404 sinon)
+  const { data: self, isLoading: selfLoading } = useQuery({ queryKey: ['me'], queryFn: selfApi.profile, retry: false });
+  const hasSelf = !!self;
 
   // Guard cote client, miroir de authorizeModule('employees') cote serveur :
   // le droit « Personnel » (module employees) ouvre la page, quel que soit le
-  // role. Evite les 403 en rafale et affiche un message explicite plutot que
-  // la page vide + le "aucun employe trouve".
-  if (permsLoading) return null;
+  // role. Sans ce droit, un salarie lie a une fiche n'accede qu'a son espace.
+  if (permsLoading || (!hasModule('employees') && selfLoading)) return null;
+  if (!hasModule('employees') && hasSelf) {
+    return (
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <UserCircle size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span className="odoo-breadcrumb-current">Mon espace</span>
+          </div>
+        </div>
+        <div style={{ padding: '16px 20px' }}><MySpace /></div>
+      </div>
+    );
+  }
   if (!hasModule('employees')) {
     return (
       <div className="p-8 text-center" style={{ color: 'var(--odoo-text-muted)' }}>
@@ -41,6 +62,7 @@ export default function EmployeesPage() {
     { key: 'advances', label: 'Avances', icon: HandCoins },
     { key: 'schedule', label: 'Planning', icon: CalendarDays },
     { key: 'analytics', label: 'Pilotage', icon: BarChart3 },
+    ...(hasSelf ? [{ key: 'me' as HrTab, label: 'Mon espace', icon: UserCircle }] : []),
   ];
   const currentTab = tabs.find(t => t.key === tab);
 
@@ -77,6 +99,7 @@ export default function EmployeesPage() {
         {tab === 'advances' && <AdvancesTab queryClient={queryClient} />}
         {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
         {tab === 'analytics' && <HrAnalyticsTab />}
+        {tab === 'me' && <MySpace />}
       </div>
     </div>
   );

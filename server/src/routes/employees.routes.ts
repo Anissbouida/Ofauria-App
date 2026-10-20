@@ -6,6 +6,7 @@ import { authorizeModule } from '../middleware/module.middleware.js';
 import { payrollConfigController } from '../controllers/payroll-config.controller.js';
 import { hrContractController } from '../controllers/hr-contract.controller.js';
 import { finalSettlementController } from '../controllers/final-settlement.controller.js';
+import { employeeSelfController, advanceRequestController } from '../controllers/employee-self.controller.js';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -22,6 +23,7 @@ import {
   employeePayrollItemSchema, updateEmployeePayrollItemSchema, payrollSettingsSchema, updateTaxScaleSchema,
   declarePayrollSchema, settlePayrollDeclarationSchema, holidaySchema, leaveAdjustmentSchema,
   createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema, finalSettlementSchema,
+  selfLeaveRequestSchema, selfAdvanceRequestSchema, decideAdvanceRequestSchema,
 } from '../validators/employees.validator.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -35,6 +37,19 @@ const router = Router();
 
 router.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.list));
 // Alertes RH (fins de CDD et d'essai, pieces) — avant '/:id'.
+// Espace employe (lot 8) : tout utilisateur authentifie, limite a SA fiche
+// (employees.user_id) — pas de droit de module requis. Avant '/:id'.
+router.get('/me', authenticate, asyncHandler(employeeSelfController.profile));
+router.get('/me/payslips', authenticate, asyncHandler(employeeSelfController.payslips));
+router.get('/me/payslips/:id/pdf', authenticate, asyncHandler(employeeSelfController.payslipPdf));
+router.get('/me/leaves', authenticate, asyncHandler(employeeSelfController.leaves));
+router.get('/me/leave-types', authenticate, asyncHandler(employeeSelfController.leaveTypes));
+router.get('/me/leaves/preview', authenticate, asyncHandler(employeeSelfController.leavePreview));
+router.post('/me/leaves', authenticate, validate(selfLeaveRequestSchema), asyncHandler(employeeSelfController.requestLeave));
+router.delete('/me/leaves/:id', authenticate, asyncHandler(employeeSelfController.cancelLeave));
+router.get('/me/advances', authenticate, asyncHandler(employeeSelfController.advances));
+router.post('/me/advances', authenticate, validate(selfAdvanceRequestSchema), asyncHandler(employeeSelfController.requestAdvance));
+router.delete('/me/advances/:id', authenticate, asyncHandler(employeeSelfController.cancelAdvanceRequest));
 router.get('/hr-analytics', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.analytics));
 router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.alerts));
 // Solde de tout compte : pieces (recu, certificat) et annulation (admin).
@@ -172,6 +187,10 @@ payrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edi
 // Avances sur salaire (octroi via l'onglet Paie, retenue a la paie)
 export const salaryAdvancesRouter = Router();
 salaryAdvancesRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(salaryAdvanceController.list));
+// Demandes d'avance en libre-service : traitement par le gerant (droit Personnel).
+salaryAdvancesRouter.get('/requests', authenticate, authorizeModule('employees', 'view'), asyncHandler(advanceRequestController.list));
+salaryAdvancesRouter.post('/requests/:id/approve', authenticate, authorizeModule('employees', 'create'), validate(decideAdvanceRequestSchema), asyncHandler(advanceRequestController.approve));
+salaryAdvancesRouter.post('/requests/:id/reject', authenticate, authorizeModule('employees', 'edit'), validate(decideAdvanceRequestSchema), asyncHandler(advanceRequestController.reject));
 salaryAdvancesRouter.get('/outstanding', authenticate, authorizeModule('employees', 'view'), asyncHandler(salaryAdvanceController.outstanding));
 salaryAdvancesRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(createAdvanceSchema), asyncHandler(salaryAdvanceController.create));
 // Suppression reservee admin : reverse le decaissement + son ecriture comptable.

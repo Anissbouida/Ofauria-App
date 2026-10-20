@@ -23,6 +23,17 @@ const METHODS: Record<string, string> = { cash: 'espèces', bank: 'virement', ch
 const fail = (res: Response, err: unknown, status = 400) =>
   res.status(status).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
 
+/** Bulletin + identite du salarie (pour le PDF). */
+export async function loadPayrollForPdf(id: string) {
+  const r = await db.query(
+    `SELECT p.*, e.store_id, e.first_name, e.last_name, e.cin, e.cnss_number, e.role, e.hire_date,
+            e.contract_type, e.seniority_years, e.nb_dependents AS emp_dependents
+       FROM payroll p JOIN employees e ON e.id = p.employee_id WHERE p.id = $1`,
+    [id]
+  );
+  return r.rows[0] ?? null;
+}
+
 async function payrollInScope(id: string, userStoreId?: string) {
   const r = await db.query(
     `SELECT p.*, e.store_id, e.first_name, e.last_name, e.cin, e.cnss_number, e.role, e.hire_date,
@@ -86,114 +97,7 @@ export const payrollConfigController = {
   async pdf(req: AuthRequest, res: Response) {
     const p = await payrollInScope(req.params.id, req.user!.storeId);
     if (!p) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
-    const [lines, settings, company, roleRef, cumulRes, scaleRes] = await Promise.all([
-      payrollRepository.lines(p.id),
-      payrollSettingsRepository.get(),
-      settingsRepository.get(),
-      db.query(`SELECT label FROM ref_entries WHERE table_id = 'employee_roles' AND code = $1 LIMIT 1`, [p.role]),
-      db.query(
-        `SELECT COUNT(*)::int AS months,
-                COALESCE(SUM(gross_salary), 0) AS gross, COALESCE(SUM(COALESCE(brut_imposable, gross_salary)), 0) AS brut_imposable,
-                COALESCE(SUM(COALESCE(net_imposable,
-                  gross_salary - COALESCE(cnss_employee, 0) - COALESCE(amo_employee, 0) - COALESCE(cimr_employee, 0) - COALESCE(frais_pro, 0))), 0) AS net_imposable, COALESCE(SUM(ir_net), 0) AS ir,
-                COALESCE(SUM(cnss_employee), 0) AS cnss, COALESCE(SUM(amo_employee), 0) AS amo, COALESCE(SUM(net_salary), 0) AS net
-           FROM payroll WHERE employee_id = $1 AND year = $2 AND month <= $3`,
-        [p.employee_id, p.year, p.month]
-      ),
-      db.query('SELECT * FROM payroll_tax_scales WHERE id = $1', [p.tax_scale_id]),
-    ]);
-    // Taux du bareme qui a servi au calcul (snapshot), pas ceux d'aujourd'hui.
-    const sc = scaleRes.rows[0];
-    const rate = (col: string) => (sc ? pct(num(sc[col])) : '');
-    const { start, end } = monthBounds(p.month, p.year);
-    const baseDays = num(settings.monthly_base_days) || 26;
-    const daily = num(p.base_salary) / baseDays;
-    const declared = p.is_declared !== false;
-
-    const rows: PayslipLineRow[] = [
-      { label: 'Salaire de base', base: `${baseDays} j`, rate: fmt(daily), gain: num(p.base_salary) },
-    ];
-    if (num(p.deductions) > 0) rows.push({ label: 'Absences non couvertes', base: `${num(p.absent_days)} j`, rate: fmt(daily), retenue: num(p.deductions) });
-    if (num(p.seniority_bonus) > 0) rows.push({ label: 'Prime d\'ancienneté', base: fmt(num(p.base_salary) - num(p.deductions)), rate: p.seniority_rate != null ? pct(num(p.seniority_rate)) : '', gain: num(p.seniority_bonus) });
-    if (num(p.overtime_amount) > 0) {
-      // Detail par majoration (lot 3) ; bulletins anterieurs : une seule ligne.
-      const hourly = num(p.base_salary) / (num(settings.monthly_legal_hours) || 191);
-      const cats: Array<[string, number, number]> = [
-        ['Heures sup. jour', num(p.ot_day_hours), num(settings.ot_rate_day ?? 0.25)],
-        ['Heures sup. nuit', num(p.ot_night_hours), num(settings.ot_rate_night ?? 0.5)],
-        ['Heures sup. repos (jour)', num(p.ot_rest_day_hours), num(settings.ot_rate_rest_day ?? 0.5)],
-        ['Heures sup. repos (nuit)', num(p.ot_rest_night_hours), num(settings.ot_rate_rest_night ?? 1)],
-      ];
-      const detailed = cats.filter(c => c[1] > 0);
-      if (detailed.length) {
-        for (const [label, h, rate] of detailed) {
-          rows.push({ label: `${label} (+${Math.round(rate * 100)} %)`, base: `${fmt(h)} h`, rate: fmt(hourly * (1 + rate)), gain: Math.round(h * hourly * (1 + rate) * 100) / 100 });
-        }
-        // Ecart d'arrondi eventuel : la derniere ligne porte le total exact.
-        const sum = rows.slice(-detailed.length).reduce((s2, r) => s2 + (r.gain ?? 0), 0);
-        rows[rows.length - 1].gain = Math.round(((rows[rows.length - 1].gain ?? 0) + num(p.overtime_amount) - sum) * 100) / 100;
-      } else {
-        rows.push({ label: 'Heures supplémentaires', base: `${num(p.overtime_hours).toFixed(2)} h`, gain: num(p.overtime_amount) });
-      }
-    }
-    if (num(p.holiday_premium) > 0) rows.push({ label: 'Indemnité jour férié travaillé', base: `${num(p.holiday_worked_days)} j`, rate: fmt(daily), gain: num(p.holiday_premium) });
-    if (num(p.extra_shift_amount) > 0) rows.push({ label: 'Doubles services', base: `${num(p.extra_shift_days)} j`, rate: fmt(daily), gain: num(p.extra_shift_amount) });
-    for (const l of lines.filter((x: Record<string, any>) => x.kind === 'gain')) {
-      rows.push({ label: l.label, gain: num(l.amount), note: num(l.exempt_amount) > 0 ? `dont ${fmt(num(l.exempt_amount))} exonérés` : undefined });
-    }
-    const cnssBase = Math.min(num(p.base_cnss ?? p.gross_salary), sc ? num(sc.cnss_plafond) : 6000);
-    if (declared) {
-      rows.push({ label: 'CNSS (prestations sociales)', base: fmt(cnssBase), rate: rate('cnss_rate_employee'), retenue: num(p.cnss_employee) });
-      rows.push({ label: 'AMO', base: fmt(num(p.base_cnss ?? p.gross_salary)), rate: rate('amo_rate_employee'), retenue: num(p.amo_employee) });
-      if (num(p.cimr_employee) > 0) rows.push({ label: 'CIMR', base: fmt(num(p.base_cnss ?? p.gross_salary)), retenue: num(p.cimr_employee) });
-      rows.push({ label: 'Impôt sur le revenu', base: fmt(num(p.net_imposable)), retenue: num(p.ir_net) });
-    }
-    for (const l of lines.filter((x: Record<string, any>) => x.kind === 'retenue')) rows.push({ label: l.label, retenue: num(l.amount) });
-
-    // Le brut affiche en « Totaux » : gains - absences = brut.
-    const totalRetenues = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net) + num(p.other_deductions);
-    const c = cumulRes.rows[0];
-    const buffer = await generatePayslipPdf({
-      company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
-      logo: resolveLogo(company?.logo_url),
-      periodLabel: `${MONTHS[p.month - 1]} ${p.year}`,
-      periodRange: `Du ${fr(start)} au ${fr(end)}`,
-      employee: {
-        name: `${p.first_name} ${p.last_name}`, cin: p.cin, cnss: p.cnss_number,
-        role: roleRef.rows[0]?.label ?? p.role, hireDate: fr(p.hire_date),
-        seniorityYears: serviceYears(p.hire_date ? (fr(p.hire_date) as string).split('/').reverse().join('-') : null, end) ?? (p.seniority_years ?? null),
-        dependents: num(p.nb_dependents), contract: p.contract_type ? String(p.contract_type).toUpperCase() : null, declared,
-      },
-      workedDays: num(p.worked_days), baseDays, absentDays: num(p.absent_days), paidLeaveDays: num(p.paid_leave_days), holidayPaidDays: num(p.holiday_paid_days),
-      lines: rows,
-      grossSalary: num(p.gross_salary) + num(p.deductions),
-      totalRetenues: totalRetenues + num(p.deductions),
-      netSalary: num(p.net_salary),
-      advanceDeduction: num(p.advance_deduction),
-      bases: {
-        brutImposable: num(p.brut_imposable ?? p.gross_salary), fraisPro: num(p.frais_pro),
-        netImposable: num(p.net_imposable), irGross: num(p.ir_gross), familyDeduction: num(p.family_deduction),
-      },
-      employer: declared ? [
-        { label: `CNSS patronale (${rate('cnss_rate_employer')})`, amount: num(p.cnss_employer) },
-        { label: `AMO patronale (${rate('amo_rate_employer')})`, amount: num(p.amo_employer) },
-        { label: `Allocations familiales (${rate('alloc_familiales_rate')})`, amount: num(p.alloc_familiales) },
-        { label: `Taxe formation prof. (${rate('taxe_fp_rate')})`, amount: num(p.taxe_fp) },
-        ...(num(p.cimr_employer) > 0 ? [{ label: 'CIMR patronale', amount: num(p.cimr_employer) }] : []),
-      ] : [{ label: 'Salarié non déclaré', amount: 0 }],
-      totalEmployer: num(p.total_charges_patron),
-      cumuls: {
-        months: c.months, gross: num(c.gross), brutImposable: num(c.brut_imposable), netImposable: num(c.net_imposable),
-        ir: num(c.ir), cnss: num(c.cnss), amo: num(c.amo), net: num(c.net),
-      },
-      payment: p.paid ? { method: METHODS[p.payment_method] ?? p.payment_method, date: fr(p.paid_at) as string } : null,
-      generatedAt: new Date().toLocaleDateString('fr-FR'),
-    });
-    const filename = `bulletin_${p.last_name}_${p.first_name}_${p.year}-${String(p.month).padStart(2, '0')}.pdf`.replace(/[^\w.-]/g, '_');
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', buffer.length);
-    res.send(buffer);
+    await sendPayslipPdf(res, p);
   },
 
   // ─── Cloture de periode ───
@@ -320,3 +224,115 @@ export const payrollConfigController = {
     res.json({ success: true, data: null });
   },
 };
+
+/** Genere et envoie le PDF d'un bulletin (gestion de paie ou espace employe). */
+export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
+    const [lines, settings, company, roleRef, cumulRes, scaleRes] = await Promise.all([
+    payrollRepository.lines(p.id),
+    payrollSettingsRepository.get(),
+    settingsRepository.get(),
+    db.query(`SELECT label FROM ref_entries WHERE table_id = 'employee_roles' AND code = $1 LIMIT 1`, [p.role]),
+    db.query(
+      `SELECT COUNT(*)::int AS months,
+              COALESCE(SUM(gross_salary), 0) AS gross, COALESCE(SUM(COALESCE(brut_imposable, gross_salary)), 0) AS brut_imposable,
+              COALESCE(SUM(COALESCE(net_imposable,
+                gross_salary - COALESCE(cnss_employee, 0) - COALESCE(amo_employee, 0) - COALESCE(cimr_employee, 0) - COALESCE(frais_pro, 0))), 0) AS net_imposable, COALESCE(SUM(ir_net), 0) AS ir,
+              COALESCE(SUM(cnss_employee), 0) AS cnss, COALESCE(SUM(amo_employee), 0) AS amo, COALESCE(SUM(net_salary), 0) AS net
+         FROM payroll WHERE employee_id = $1 AND year = $2 AND month <= $3`,
+      [p.employee_id, p.year, p.month]
+    ),
+    db.query('SELECT * FROM payroll_tax_scales WHERE id = $1', [p.tax_scale_id]),
+  ]);
+  // Taux du bareme qui a servi au calcul (snapshot), pas ceux d'aujourd'hui.
+  const sc = scaleRes.rows[0];
+  const rate = (col: string) => (sc ? pct(num(sc[col])) : '');
+  const { start, end } = monthBounds(p.month, p.year);
+  const baseDays = num(settings.monthly_base_days) || 26;
+  const daily = num(p.base_salary) / baseDays;
+  const declared = p.is_declared !== false;
+
+  const rows: PayslipLineRow[] = [
+    { label: 'Salaire de base', base: `${baseDays} j`, rate: fmt(daily), gain: num(p.base_salary) },
+  ];
+  if (num(p.deductions) > 0) rows.push({ label: 'Absences non couvertes', base: `${num(p.absent_days)} j`, rate: fmt(daily), retenue: num(p.deductions) });
+  if (num(p.seniority_bonus) > 0) rows.push({ label: 'Prime d\'ancienneté', base: fmt(num(p.base_salary) - num(p.deductions)), rate: p.seniority_rate != null ? pct(num(p.seniority_rate)) : '', gain: num(p.seniority_bonus) });
+  if (num(p.overtime_amount) > 0) {
+    // Detail par majoration (lot 3) ; bulletins anterieurs : une seule ligne.
+    const hourly = num(p.base_salary) / (num(settings.monthly_legal_hours) || 191);
+    const cats: Array<[string, number, number]> = [
+      ['Heures sup. jour', num(p.ot_day_hours), num(settings.ot_rate_day ?? 0.25)],
+      ['Heures sup. nuit', num(p.ot_night_hours), num(settings.ot_rate_night ?? 0.5)],
+      ['Heures sup. repos (jour)', num(p.ot_rest_day_hours), num(settings.ot_rate_rest_day ?? 0.5)],
+      ['Heures sup. repos (nuit)', num(p.ot_rest_night_hours), num(settings.ot_rate_rest_night ?? 1)],
+    ];
+    const detailed = cats.filter(c => c[1] > 0);
+    if (detailed.length) {
+      for (const [label, h, rate] of detailed) {
+        rows.push({ label: `${label} (+${Math.round(rate * 100)} %)`, base: `${fmt(h)} h`, rate: fmt(hourly * (1 + rate)), gain: Math.round(h * hourly * (1 + rate) * 100) / 100 });
+      }
+      // Ecart d'arrondi eventuel : la derniere ligne porte le total exact.
+      const sum = rows.slice(-detailed.length).reduce((s2, r) => s2 + (r.gain ?? 0), 0);
+      rows[rows.length - 1].gain = Math.round(((rows[rows.length - 1].gain ?? 0) + num(p.overtime_amount) - sum) * 100) / 100;
+    } else {
+      rows.push({ label: 'Heures supplémentaires', base: `${num(p.overtime_hours).toFixed(2)} h`, gain: num(p.overtime_amount) });
+    }
+  }
+  if (num(p.holiday_premium) > 0) rows.push({ label: 'Indemnité jour férié travaillé', base: `${num(p.holiday_worked_days)} j`, rate: fmt(daily), gain: num(p.holiday_premium) });
+  if (num(p.extra_shift_amount) > 0) rows.push({ label: 'Doubles services', base: `${num(p.extra_shift_days)} j`, rate: fmt(daily), gain: num(p.extra_shift_amount) });
+  for (const l of lines.filter((x: Record<string, any>) => x.kind === 'gain')) {
+    rows.push({ label: l.label, gain: num(l.amount), note: num(l.exempt_amount) > 0 ? `dont ${fmt(num(l.exempt_amount))} exonérés` : undefined });
+  }
+  const cnssBase = Math.min(num(p.base_cnss ?? p.gross_salary), sc ? num(sc.cnss_plafond) : 6000);
+  if (declared) {
+    rows.push({ label: 'CNSS (prestations sociales)', base: fmt(cnssBase), rate: rate('cnss_rate_employee'), retenue: num(p.cnss_employee) });
+    rows.push({ label: 'AMO', base: fmt(num(p.base_cnss ?? p.gross_salary)), rate: rate('amo_rate_employee'), retenue: num(p.amo_employee) });
+    if (num(p.cimr_employee) > 0) rows.push({ label: 'CIMR', base: fmt(num(p.base_cnss ?? p.gross_salary)), retenue: num(p.cimr_employee) });
+    rows.push({ label: 'Impôt sur le revenu', base: fmt(num(p.net_imposable)), retenue: num(p.ir_net) });
+  }
+  for (const l of lines.filter((x: Record<string, any>) => x.kind === 'retenue')) rows.push({ label: l.label, retenue: num(l.amount) });
+
+  // Le brut affiche en « Totaux » : gains - absences = brut.
+  const totalRetenues = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net) + num(p.other_deductions);
+  const c = cumulRes.rows[0];
+  const buffer = await generatePayslipPdf({
+    company: { ...COMPANY_LEGAL, cnss: settings.employer_cnss_number },
+    logo: resolveLogo(company?.logo_url),
+    periodLabel: `${MONTHS[p.month - 1]} ${p.year}`,
+    periodRange: `Du ${fr(start)} au ${fr(end)}`,
+    employee: {
+      name: `${p.first_name} ${p.last_name}`, cin: p.cin, cnss: p.cnss_number,
+      role: roleRef.rows[0]?.label ?? p.role, hireDate: fr(p.hire_date),
+      seniorityYears: serviceYears(p.hire_date ? (fr(p.hire_date) as string).split('/').reverse().join('-') : null, end) ?? (p.seniority_years ?? null),
+      dependents: num(p.nb_dependents), contract: p.contract_type ? String(p.contract_type).toUpperCase() : null, declared,
+    },
+    workedDays: num(p.worked_days), baseDays, absentDays: num(p.absent_days), paidLeaveDays: num(p.paid_leave_days), holidayPaidDays: num(p.holiday_paid_days),
+    lines: rows,
+    grossSalary: num(p.gross_salary) + num(p.deductions),
+    totalRetenues: totalRetenues + num(p.deductions),
+    netSalary: num(p.net_salary),
+    advanceDeduction: num(p.advance_deduction),
+    bases: {
+      brutImposable: num(p.brut_imposable ?? p.gross_salary), fraisPro: num(p.frais_pro),
+      netImposable: num(p.net_imposable), irGross: num(p.ir_gross), familyDeduction: num(p.family_deduction),
+    },
+    employer: declared ? [
+      { label: `CNSS patronale (${rate('cnss_rate_employer')})`, amount: num(p.cnss_employer) },
+      { label: `AMO patronale (${rate('amo_rate_employer')})`, amount: num(p.amo_employer) },
+      { label: `Allocations familiales (${rate('alloc_familiales_rate')})`, amount: num(p.alloc_familiales) },
+      { label: `Taxe formation prof. (${rate('taxe_fp_rate')})`, amount: num(p.taxe_fp) },
+      ...(num(p.cimr_employer) > 0 ? [{ label: 'CIMR patronale', amount: num(p.cimr_employer) }] : []),
+    ] : [{ label: 'Salarié non déclaré', amount: 0 }],
+    totalEmployer: num(p.total_charges_patron),
+    cumuls: {
+      months: c.months, gross: num(c.gross), brutImposable: num(c.brut_imposable), netImposable: num(c.net_imposable),
+      ir: num(c.ir), cnss: num(c.cnss), amo: num(c.amo), net: num(c.net),
+    },
+    payment: p.paid ? { method: METHODS[p.payment_method] ?? p.payment_method, date: fr(p.paid_at) as string } : null,
+    generatedAt: new Date().toLocaleDateString('fr-FR'),
+  });
+  const filename = `bulletin_${p.last_name}_${p.first_name}_${p.year}-${String(p.month).padStart(2, '0')}.pdf`.replace(/[^\w.-]/g, '_');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', buffer.length);
+  res.send(buffer);
+}

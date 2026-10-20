@@ -375,3 +375,21 @@ export const finalSettlementSchema = z.object({
   notes: z.string().max(1000).nullable().optional(),
   paymentMethod: payrollPaymentMethod.optional(),
 });
+
+// Espace employe (lot 8, mig 324)
+export const selfLeaveRequestSchema = z.object({
+  type: leaveTypeSchema,
+  startDate: isoDate,
+  endDate: isoDate,
+  reason: z.string().max(1000).nullable().optional(),
+}).refine(v => v.endDate >= v.startDate, { message: 'endDate doit etre >= startDate', path: ['endDate'] });
+export const selfAdvanceRequestSchema = z.object({
+  amount: z.coerce.number().positive('Montant > 0').max(100000),
+  monthlyDeduction: z.coerce.number().positive().max(100000).nullable().optional(),
+  reason: z.string().max(300).nullable().optional(),
+});
+export const decideAdvanceRequestSchema = z.object({
+  paymentMethod: payrollPaymentMethod.optional(),
+  monthlyDeduction: z.coerce.number().positive().nullable().optional(),
+  note: z.string().max(300).nullable().optional(),
+});

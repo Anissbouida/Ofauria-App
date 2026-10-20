@@ -191,3 +191,26 @@ export const settlementsApi = {
   receipt: (id: string) => api.get(`/employees/settlements/${id}/receipt`, { responseType: 'blob' }),
   certificate: (id: string) => api.get(`/employees/settlements/${id}/certificate`, { responseType: 'blob' }),
 };
+
+/** Espace employe : SES donnees uniquement (lot 8). */
+export const selfApi = {
+  profile: () => api.get('/employees/me').then(r => r.data.data),
+  payslips: () => api.get('/employees/me/payslips').then(r => r.data.data),
+  payslipPdf: (id: string) => api.get(`/employees/me/payslips/${id}/pdf`, { responseType: 'blob' }),
+  leaves: () => api.get('/employees/me/leaves').then(r => r.data.data),
+  leaveTypes: () => api.get('/employees/me/leave-types').then(r => r.data.data),
+  leavePreview: (params: { type: string; startDate: string; endDate: string }) =>
+    api.get('/employees/me/leaves/preview', { params }).then(r => r.data.data),
+  requestLeave: (data: Record<string, any>) => api.post('/employees/me/leaves', data).then(r => r.data.data),
+  cancelLeave: (id: string) => api.delete(`/employees/me/leaves/${id}`).then(r => r.data.data),
+  advances: () => api.get('/employees/me/advances').then(r => r.data.data),
+  requestAdvance: (data: Record<string, any>) => api.post('/employees/me/advances', data).then(r => r.data.data),
+  cancelAdvanceRequest: (id: string) => api.delete(`/employees/me/advances/${id}`).then(r => r.data.data),
+};
+
+/** Demandes d'avance a traiter (gerant). */
+export const advanceRequestsApi = {
+  list: (status = 'pending') => api.get('/salary-advances/requests', { params: { status } }).then(r => r.data.data),
+  approve: (id: string, data: Record<string, any>) => api.post(`/salary-advances/requests/${id}/approve`, data).then(r => r.data.data),
+  reject: (id: string, note: string | null) => api.post(`/salary-advances/requests/${id}/reject`, { note }).then(r => r.data.data),
+};

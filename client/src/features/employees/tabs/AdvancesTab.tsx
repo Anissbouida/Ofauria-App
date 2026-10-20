@@ -9,6 +9,7 @@ import {
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { MONTH_NAMES, isoDate } from '../shared';
+import AdvanceRequestsPanel from './AdvanceRequestsPanel';
 
 /* ═══════════════════════ ADVANCES TAB (avances sur salaire) ═══════════════════════ */
 export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -109,6 +110,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
 
   return (
     <>
+      <AdvanceRequestsPanel />
       <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
         <div className="odoo-view-switcher">
           <button onClick={() => setStatusFilter('open')} className={statusFilter === 'open' ? 'active' : ''}>En cours</button>
