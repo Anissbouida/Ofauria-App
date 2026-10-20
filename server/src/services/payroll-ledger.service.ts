@@ -186,17 +186,19 @@ async function acomptePaymentIds(client: PoolClient, p: Row): Promise<string[]> 
   if (p.pay_frequency !== 'weekly' && p.pay_frequency !== 'biweekly') return [];
   const start = `${p.year}-${pad(p.month)}-01`;
   const end = lastDay(p.month, p.year);
+  // Paiements annules (contre-piece) exclus : jamais source d'un reclassement.
+  const live = (await paymentsHaveStatus(client)) ? "AND pay.status <> 'void' AND pay.voids_payment_id IS NULL" : '';
   const r = p.pay_frequency === 'weekly'
     ? await client.query(
       `SELECT pay.id FROM weekly_payroll w
          JOIN payments pay ON pay.type = 'salary' AND pay.employee_id = w.employee_id
-                          AND pay.reference LIKE 'SAL-S' || to_char(w.week_start, 'YYYY-MM-DD') || '-%'
+                          AND pay.reference LIKE 'SAL-S' || to_char(w.week_start, 'YYYY-MM-DD') || '-%' ${live}
         WHERE w.employee_id = $1 AND (w.week_start + 3) BETWEEN $2::date AND $3::date
         ORDER BY pay.created_at, pay.id`, [p.employee_id, start, end])
     : await client.query(
       `SELECT pay.id FROM biweekly_payroll b
          JOIN payments pay ON pay.type = 'salary' AND pay.employee_id = b.employee_id
-                          AND pay.reference LIKE 'SAL-Q' || to_char(b.period_start, 'YYYY-MM-DD') || '-%'
+                          AND pay.reference LIKE 'SAL-Q' || to_char(b.period_start, 'YYYY-MM-DD') || '-%' ${live}
         WHERE b.employee_id = $1 AND b.period_start BETWEEN $2::date AND $3::date
         ORDER BY pay.created_at, pay.id`, [p.employee_id, start, end]);
   return r.rows.map((x: Row) => x.id as string);
