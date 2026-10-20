@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Upload } from 'lucide-react';
+import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Landmark, Upload } from 'lucide-react';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { HrModal, SubmitButton, PromptDialog, Field, SectionTitle, inputCls } from '../ui';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
@@ -34,6 +36,7 @@ export default function DeclarationsView() {
   const [year, setYear] = useState(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear());
   const [detail, setDetail] = useState<Kind>('cnss');
   const [settleKind, setSettleKind] = useState<Kind | null>(null);
+  const [declareKind, setDeclareKind] = useState<Kind | null>(null);
   const [settleForm, setSettleForm] = useState({ paymentMethod: 'bank', paymentDate: new Date().toISOString().slice(0, 10) });
 
   const { data, isLoading } = useQuery<Record<string, any>>({
@@ -104,7 +107,7 @@ export default function DeclarationsView() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <SearchSelect options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))} value={String(month)}
             onChange={id => id && setMonth(parseInt(id))} placeholder="Mois" width={140} />
-          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
+          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className={inputCls} style={{ width: 96 }} />
         </div>
         <button className="odoo-btn-secondary" onClick={exportAnnual} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           title="Cumuls annuels par salarié : contenu de l'état 9421 (traitements et salaires)">
@@ -113,16 +116,14 @@ export default function DeclarationsView() {
       </div>
 
       {!closed && (
-        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
-          <Lock size={12} style={{ display: 'inline', marginRight: 4 }} />
-          Paie de {MONTH_NAMES[month - 1]} {year} non clôturée : les montants sont provisoires. Clôturez le mois (Paie mensuelle) pour comptabiliser et déclarer.
-        </div>
+        <StatusBanner tone="warning" icon={Lock} title={`Paie de ${MONTH_NAMES[month - 1]} ${year} non clôturée`}>
+          Les montants sont provisoires. Clôturez le mois (Paie mensuelle) pour comptabiliser et déclarer.
+        </StatusBanner>
       )}
       {(data?.cnss?.missingCnssNumber?.length ?? 0) > 0 && (
-        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
-          <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
-          N° CNSS manquant : {data!.cnss.missingCnssNumber.join(', ')}. Renseignez-le dans la fiche employé avant la déclaration.
-        </div>
+        <StatusBanner tone="danger" icon={AlertTriangle} title="N° CNSS manquant">
+          {data!.cnss.missingCnssNumber.join(', ')}. Renseignez-le dans la fiche employé avant la déclaration.
+        </StatusBanner>
       )}
 
       {isLoading || !data ? (
@@ -133,7 +134,7 @@ export default function DeclarationsView() {
             {(['cnss', 'ir', 'cimr'] as Kind[]).map(k => {
               const d = declared(k);
               return (
-                <div key={k} className="odoo-stat-card" style={{ cursor: k !== 'cimr' ? 'pointer' : undefined, outline: detail === k ? '2px solid var(--theme-accent)' : undefined }}
+                <div key={k} className={`odoo-stat-card ${detail === k ? 'active' : ''}`} style={{ cursor: k !== 'cimr' ? 'pointer' : undefined }}
                   onClick={() => k !== 'cimr' && setDetail(k)}>
                   <div className="odoo-stat-card-label">{KIND_LABEL[k]} <span style={{ color: 'var(--odoo-text-light)' }}>· {KIND_ACCOUNT[k]}</span></div>
                   <div className="odoo-stat-card-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
@@ -144,7 +145,7 @@ export default function DeclarationsView() {
                     {isAdmin && closed && !d && due[k] > 0 && (
                       <button className="odoo-btn-secondary" style={{ padding: '0.15rem 0.5rem', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                         disabled={declare.isPending}
-                        onClick={e => { e.stopPropagation(); const ref = prompt(`Référence de la déclaration ${KIND_LABEL[k]} (n° de bordereau, quittance…) — facultatif`); if (ref !== null) declare.mutate({ kind: k, reference: ref || null }); }}>
+                        onClick={e => { e.stopPropagation(); setDeclareKind(k); }}>
                         <FileCheck2 size={11} /> Déclarer
                       </button>
                     )}
@@ -164,7 +165,7 @@ export default function DeclarationsView() {
           {detail === 'cnss' ? (
             <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Bordereau CNSS — {MONTH_NAMES[month - 1]} {year}</h3>
+                <SectionTitle icon={FileCheck2}>Bordereau CNSS — {MONTH_NAMES[month - 1]} {year}</SectionTitle>
                 <div style={{ display: 'inline-flex', gap: 6 }}>
                   <input ref={preetabliInput} type="file" accept=".txt,text/plain" style={{ display: 'none' }}
                     onChange={e => { const f = e.target.files?.[0]; if (f) ebds.mutate(f); e.target.value = ''; }} />
@@ -223,7 +224,7 @@ export default function DeclarationsView() {
           ) : (
             <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>État IR — {MONTH_NAMES[month - 1]} {year}</h3>
+                <SectionTitle icon={FileCheck2}>État IR — {MONTH_NAMES[month - 1]} {year}</SectionTitle>
                 <button className="odoo-btn-secondary" onClick={exportIr} disabled={!data.ir.rows.length}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={13} /> CSV</button>
               </div>
@@ -266,27 +267,36 @@ export default function DeclarationsView() {
         </>
       )}
 
+      {declareKind && (
+        <PromptDialog icon={FileCheck2} crumb="Déclaration" title={`${KIND_LABEL[declareKind]} — ${MONTH_NAMES[month - 1]} ${year}`}
+          label="Référence (n° de bordereau, quittance…) — facultatif" confirmLabel="Déclarer"
+          onCancel={() => setDeclareKind(null)}
+          onConfirm={ref => { const k = declareKind; setDeclareKind(null); declare.mutate({ kind: k, reference: ref || null }); }} />
+      )}
+
       {settleKind && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSettleKind(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <h2 className="text-lg font-bold">Régler {KIND_LABEL[settleKind]} — {MONTH_NAMES[month - 1]} {year}</h2>
-            <p className="text-sm">Montant : <strong>{fmt(parseFloat(declared(settleKind)?.amount ?? '0'))} DH</strong> (compte {KIND_ACCOUNT[settleKind]})</p>
-            <label className="text-sm">Mode
-              <select className="input" value={settleForm.paymentMethod} onChange={e => setSettleForm({ ...settleForm, paymentMethod: e.target.value })}>
-                <option value="bank">Virement / prélèvement</option>
-                <option value="check">Chèque</option>
-                <option value="cash">Espèces</option>
-              </select>
-            </label>
-            <label className="text-sm">Date
-              <input className="input" type="date" value={settleForm.paymentDate} onChange={e => setSettleForm({ ...settleForm, paymentDate: e.target.value })} />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button className="odoo-btn-secondary" onClick={() => setSettleKind(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={settle.isPending} onClick={() => settle.mutate(settleKind)}>Enregistrer le règlement</button>
-            </div>
+        <HrModal icon={Landmark} crumb="Règlement" title={`${KIND_LABEL[settleKind]} — ${MONTH_NAMES[month - 1]} ${year}`}
+          tag={<span className="odoo-tag odoo-tag-grey">compte {KIND_ACCOUNT[settleKind]}</span>}
+          width={440} onClose={() => setSettleKind(null)}
+          footer={<>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setSettleKind(null)}>Annuler</button>
+            <SubmitButton pending={settle.isPending} onClick={() => settle.mutate(settleKind)}>Enregistrer le règlement</SubmitButton>
+          </>}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem' }}>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>Montant</span>
+            <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{fmt(parseFloat(declared(settleKind)?.amount ?? '0'))} DH</strong>
           </div>
-        </div>
+          <Field label="Mode">
+            <select className={inputCls} value={settleForm.paymentMethod} onChange={e => setSettleForm({ ...settleForm, paymentMethod: e.target.value })}>
+              <option value="bank">Virement / prélèvement</option>
+              <option value="check">Chèque</option>
+              <option value="cash">Espèces</option>
+            </select>
+          </Field>
+          <Field label="Date">
+            <input className={inputCls} type="date" value={settleForm.paymentDate} onChange={e => setSettleForm({ ...settleForm, paymentDate: e.target.value })} />
+          </Field>
+        </HrModal>
       )}
     </>
   );

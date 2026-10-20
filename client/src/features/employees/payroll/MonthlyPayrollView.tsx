@@ -5,8 +5,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { payrollApi, advancesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import {
-  UserCog, Users, Banknote, X, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw, Lock, Unlock,
+  UserCog, Users, Banknote, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw, Lock, Unlock,
+  CheckCircle2, Clock, Wallet, Receipt,
 } from 'lucide-react';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StagePipeline, StageProgress, type StageDef } from '../../../components/purchasing/ProcessBoard';
+import { HrModal, EmptyState, SectionTitle, inputCls } from '../ui';
+
+type PayStage = 'generated' | 'topay' | 'paid';
+const PAY_STAGES: StageDef[] = [
+  { key: 'generated', label: 'Générés', hint: 'bulletins du mois', icon: Receipt },
+  { key: 'topay', label: 'À payer', hint: 'net non versé', icon: Clock },
+  { key: 'paid', label: 'Payés', hint: 'paiement enregistré', icon: CheckCircle2 },
+];
 import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
 import PayslipLinesEditor from './PayslipLinesEditor';
@@ -22,15 +34,17 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const [payTarget, setPayTarget] = useState<Record<string, any> | null>(null);
   const [paySortKey, setPaySortKey] = useState<string>('name');
   const [paySortDir, setPaySortDir] = useState<'asc' | 'desc'>('asc');
+  const [stageFilter, setStageFilter] = useState<PayStage | null>(null);
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
+  const confirm = useConfirm();
 
   const togglePaySort = (key: string) => {
     if (paySortKey === key) setPaySortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setPaySortKey(key); setPaySortDir('asc'); }
   };
   const PaySortIcon = ({ col }: { col: string }) => {
-    if (paySortKey !== col) return <ArrowUpDown size={13} className="text-gray-300 ml-1 inline" />;
-    return paySortDir === 'asc' ? <ArrowUp size={13} className="text-teal-600 ml-1 inline" /> : <ArrowDown size={13} className="text-teal-600 ml-1 inline" />;
+    if (paySortKey !== col) return <ArrowUpDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-text-light)" }} />;
+    return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-purple)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-purple)" }} />;
   };
 
   const { data: payrolls = [], isLoading } = useQuery({
@@ -182,10 +196,23 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
     }
   };
 
+  // Filtre client issu du pipeline (n'affecte ni les exports ni la cloture).
+  const visiblePayrolls = sortedPayrolls.filter(p =>
+    stageFilter === 'topay' ? !p.paid : stageFilter === 'paid' ? !!p.paid : true);
+  const allRows = payrolls as Record<string, any>[];
+  const toPayRows = allRows.filter(p => !p.paid);
+  const stageStats = {
+    generated: { count: allRows.length, sub: `${totalGross.toFixed(0)} DH brut` },
+    topay: { count: toPayRows.length, sub: `${toPayRows.reduce((s, p) => s + pn(p.net_salary), 0).toFixed(0)} DH` },
+    paid: { count: totalPaid, sub: `${allRows.filter(p => p.paid).reduce((s, p) => s + pn(p.net_salary), 0).toFixed(0)} DH` },
+  };
+
   const generateAllPDF = async () => {
     for (const p of sortedPayrolls) await generatePDF(p);
     notify.success(`${sortedPayrolls.length} bulletins PDF générés`);
   };
+
+  const dh = <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>;
 
   return (
     <>
@@ -199,7 +226,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             placeholder="Mois"
             width={140}
           />
-          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="input" style={{ width: 96 }} />
+          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className={inputCls} style={{ width: 96 }} />
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <button onClick={generateAllPDF} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
@@ -215,68 +242,81 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> Virement groupé
           </button>
-          <button onClick={() => {
-            if (confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`)) {
-              generateMutation.mutate();
-            }
+          <button onClick={async () => {
+            if (!(await confirm(`Generer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour tous les employes mensuels ?\n\nLes bulletins deja PAYES ne sont jamais ecrases. Les autres sont recalcules depuis le pointage.`,
+              { title: 'Générer les bulletins', confirmLabel: 'Générer' }))) return;
+            generateMutation.mutate();
           }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
             title={isClosed ? 'Mois clôturé : rouvrez-le pour régénérer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> Générer les bulletins
           </button>
-          {isAdmin && (isClosed ? (
-            <button onClick={() => { if (confirm(`Rouvrir la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes écritures de paie du mois seront extournées et les bulletins non payés pourront être recalculés. Impossible si le mois a déjà été déclaré.`)) periodMutation.mutate('reopen'); }}
-              disabled={periodMutation.isPending} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Unlock size={13} /> Rouvrir le mois
-            </button>
-          ) : (
-            <button onClick={() => { if (confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés et comptabilisés (écriture de paie : salaires, charges sociales, CNSS, IR, net à payer). Le paiement reste possible.\n\nVérifiez d'abord les bulletins.`)) periodMutation.mutate('close'); }}
+          {isAdmin && !isClosed && (
+            <button onClick={async () => {
+              if (!(await confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés et comptabilisés (écriture de paie : salaires, charges sociales, CNSS, IR, net à payer). Le paiement reste possible.\n\nVérifiez d'abord les bulletins.`,
+                { title: 'Clôturer le mois', confirmLabel: 'Clôturer', danger: true }))) return;
+              periodMutation.mutate('close');
+            }}
               disabled={periodMutation.isPending || sortedPayrolls.length === 0} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Lock size={13} /> Clôturer le mois
             </button>
-          ))}
+          )}
         </div>
       </div>
 
       {isClosed && (
-        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
-          <Lock size={12} style={{ display: 'inline', marginRight: 4 }} />
-          Paie de {MONTH_NAMES[month - 1]} {year} clôturée
-          {period?.closed_at && <> le {new Date(period.closed_at).toLocaleDateString('fr-FR')}</>}
+        <StatusBanner tone="neutral" icon={Lock} title={`Paie de ${MONTH_NAMES[month - 1]} ${year} clôturée`}
+          actions={isAdmin ? (
+            <button onClick={async () => {
+              if (!(await confirm(`Rouvrir la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes écritures de paie du mois seront extournées et les bulletins non payés pourront être recalculés. Impossible si le mois a déjà été déclaré.`,
+                { title: 'Rouvrir le mois', confirmLabel: 'Rouvrir', danger: true }))) return;
+              periodMutation.mutate('reopen');
+            }}
+              disabled={periodMutation.isPending} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Unlock size={13} /> Rouvrir le mois
+            </button>
+          ) : undefined}>
+          {period?.closed_at && <>Clôturée le {new Date(period.closed_at).toLocaleDateString('fr-FR')}</>}
           {period?.closed_by_first_name && <> par {period.closed_by_first_name} {period.closed_by_last_name}</>}
-          . Les bulletins sont figés et comptabilisés ; le paiement reste possible.
-        </div>
+          {period?.closed_at ? '. ' : ''}Les bulletins sont figés et comptabilisés ; le paiement reste possible.
+        </StatusBanner>
       )}
 
-      {/* Stat tiles */}
-      {(payrolls as Record<string, any>[]).length > 0 && (
-        <div className="odoo-stat-grid">
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Masse salariale brute</div>
-            <div className="odoo-stat-card-value">{totalGross.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+      {/* Pipeline + montants */}
+      {allRows.length > 0 && (
+        <>
+          <StagePipeline title={`Bulletins — ${MONTH_NAMES[month - 1]} ${year}`}
+            summary={stageFilter ? 'Cliquez à nouveau pour tout afficher' : `${totalPaid}/${allRows.length} payés`}
+            stages={PAY_STAGES} stats={stageStats}
+            isActive={k => stageFilter === k}
+            onPick={k => setStageFilter(f => (f === k || k === 'generated') ? null : k as PayStage)} />
+          <div className="odoo-stat-grid">
+            <div className="odoo-stat-card">
+              <div className="odoo-stat-card-label">Masse salariale brute</div>
+              <div className="odoo-stat-card-value">{totalGross.toFixed(2)} {dh}</div>
+            </div>
+            <div className="odoo-stat-card">
+              <div className="odoo-stat-card-label">Total net à payer</div>
+              <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{totalNet.toFixed(2)} {dh}</div>
+            </div>
+            <div className="odoo-stat-card">
+              <div className="odoo-stat-card-label">CNSS + AMO + IR (sal.)</div>
+              <div className="odoo-stat-card-value" style={{ color: '#b85d1a' }}>{(totalCNSS + totalAMO + totalIR).toFixed(2)} {dh}</div>
+            </div>
+            <div className="odoo-stat-card">
+              <div className="odoo-stat-card-label">Charges patronales</div>
+              <div className="odoo-stat-card-value" style={{ color: 'var(--theme-accent)' }}>{totalChargesPatron.toFixed(2)} {dh}</div>
+            </div>
           </div>
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Total net à payer</div>
-            <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{totalNet.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
-          </div>
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">CNSS + AMO + IR (sal.)</div>
-            <div className="odoo-stat-card-value" style={{ color: '#b85d1a' }}>{(totalCNSS + totalAMO + totalIR).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
-          </div>
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Charges patronales</div>
-            <div className="odoo-stat-card-value" style={{ color: 'var(--theme-accent)' }}>{totalChargesPatron.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
-          </div>
-        </div>
+        </>
       )}
 
       {isLoading ? (
         <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
       ) : sortedPayrolls.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-          <Banknote size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun bulletin pour cette période. Cliquez sur « Générer les bulletins ».</p>
-        </div>
+        <EmptyState icon={Banknote}>Aucun bulletin pour cette période. Cliquez sur « Générer les bulletins ».</EmptyState>
+      ) : visiblePayrolls.length === 0 ? (
+        <EmptyState icon={Banknote}>Aucun bulletin à cette étape.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -289,14 +329,14 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 <th onClick={() => togglePaySort('cnss')} style={{ cursor: 'pointer', textAlign: 'right' }}>CNSS <PaySortIcon col="cnss" /></th>
                 <th onClick={() => togglePaySort('amo')} style={{ cursor: 'pointer', textAlign: 'right' }}>AMO <PaySortIcon col="amo" /></th>
                 <th onClick={() => togglePaySort('ir')} style={{ cursor: 'pointer', textAlign: 'right' }}>IR <PaySortIcon col="ir" /></th>
-                <th onClick={() => togglePaySort('net')} style={{ cursor: 'pointer', textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net <PaySortIcon col="net" /></th>
+                <th onClick={() => togglePaySort('net')} style={{ cursor: 'pointer', textAlign: 'right' }}>Net <PaySortIcon col="net" /></th>
                 <th style={{ textAlign: 'right' }}>Avance</th>
                 <th onClick={() => togglePaySort('status')} style={{ cursor: 'pointer', textAlign: 'center' }}>Statut <PaySortIcon col="status" /></th>
                 <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sortedPayrolls.map(p => (
+              {visiblePayrolls.map(p => (
                 <tr key={p.id as string}>
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
@@ -317,7 +357,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.cnss_employee)}</td>
                   <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.amo_employee)}</td>
                   <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724' }}>
                     {(() => {
                       const net = pn(p.net_salary);
                       const ded = p.paid
@@ -351,20 +391,20 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
+                    <StageProgress count={3} current={p.paid ? 3 : isClosed ? 2 : 1} done={!!p.paid} />
                     {p.paid ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <span className="odoo-tag odoo-tag-green">Payé</span>
-                        <button onClick={() => {
-                          if (confirm(`Annuler le paiement de ${p.first_name} ${p.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`)) {
-                            unpayMutation.mutate(p.id as string);
-                          }
+                        <button onClick={async () => {
+                          if (!(await confirm(`Annuler le paiement de ${p.first_name} ${p.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
+                            { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
+                          unpayMutation.mutate(p.id as string);
                         }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
                           <RotateCcw size={12} />
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => setPayTarget(p)}
-                        className="odoo-tag odoo-tag-purple" style={{ cursor: 'pointer', border: 'none' }}>
+                      <button onClick={() => setPayTarget(p)} className="odoo-btn-primary" style={{ padding: '0.15rem 0.6rem', fontSize: '0.75rem' }}>
                         Payer
                       </button>
                     )}
@@ -374,7 +414,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                       <button onClick={() => setDetailPayroll(p)} className="odoo-pager-btn" title="Voir le détail">
                         <UserCog size={13} />
                       </button>
-                      <button onClick={() => generatePDF(p)} className="odoo-pager-btn" title="Télécharger PDF" style={{ color: '#dc3545' }}>
+                      <button onClick={() => generatePDF(p)} className="odoo-pager-btn" title="Télécharger PDF">
                         <FileText size={13} />
                       </button>
                     </div>
@@ -404,122 +444,163 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
       {/* ─── Bulletin de paie detail modal ─── */}
       {detailPayroll && (() => {
         const p = detailPayroll;
-        const line = (label: string, value: string, color = 'text-gray-800', bold = false) => (
-          <div className="flex justify-between py-1.5 px-3">
-            <span className="text-gray-500 text-sm">{label}</span>
-            <span className={`text-sm ${color} ${bold ? 'font-bold' : 'font-medium'}`}>{value} DH</span>
-          </div>
+        const notDeclared = p.is_declared === false;
+        const tag = p.paid ? <span className="odoo-tag odoo-tag-green">Payé</span>
+          : notDeclared ? <span className="odoo-tag odoo-tag-grey">Non déclaré</span>
+          : <span className="odoo-tag odoo-tag-orange">À payer</span>;
+        // Cycle de vie du bulletin : Généré → Mois clôturé → Payé (le paiement
+        // peut preceder la cloture : chaque etape est franchie independamment).
+        const steps = [
+          { label: 'Généré', detail: `${MONTH_NAMES[month - 1]} ${year}`, done: true },
+          { label: 'Mois clôturé', detail: isClosed ? (period?.closed_at ? new Date(period.closed_at).toLocaleDateString('fr-FR') : 'comptabilisé') : 'en saisie', done: isClosed },
+          { label: 'Payé', detail: p.paid ? (pn(p.advance_deduction) > 0 ? `retenue ${pf(p.advance_deduction)} DH` : 'versé') : 'à payer', done: !!p.paid },
+        ];
+        const currentIdx = steps.findIndex(s => !s.done);
+        const otLabel = [
+          pn(p.ot_day_hours) && `${pn(p.ot_day_hours)} h jour`, pn(p.ot_night_hours) && `${pn(p.ot_night_hours)} h nuit`,
+          pn(p.ot_rest_day_hours) && `${pn(p.ot_rest_day_hours)} h repos`, pn(p.ot_rest_night_hours) && `${pn(p.ot_rest_night_hours)} h repos nuit`,
+        ].filter(Boolean).join(', ') || `${pn(p.overtime_hours)} h`;
+        // Lignes du bulletin : [désignation, gain, retenue]
+        const rows: Array<[string, number | null, number | null]> = [
+          ['Salaire de base', pn(p.base_salary), null],
+          ...(pn(p.seniority_bonus) > 0 ? [['Prime d\'anciennete', pn(p.seniority_bonus), null] as [string, number, null]] : []),
+          ...(pn(p.overtime_amount) > 0 ? [[`Heures sup. (${otLabel})`, pn(p.overtime_amount), null] as [string, number, null]] : []),
+          ...(pn(p.holiday_premium) > 0 ? [[`Férié travaillé (${pn(p.holiday_worked_days)} j)`, pn(p.holiday_premium), null] as [string, number, null]] : []),
+          ...(pn(p.extra_shift_amount) > 0 ? [[`Double shifts (+${p.extra_shift_days} j)`, pn(p.extra_shift_amount), null] as [string, number, null]] : []),
+          ...(pn(p.bonuses) > 0 ? [['Primes et indemnités', pn(p.bonuses), null] as [string, number, null]] : []),
+          ...(pn(p.deductions) > 0 ? [['Retenue absences', null, pn(p.deductions)] as [string, null, number]] : []),
+        ];
+        const cotis: Array<[string, null, number]> = [
+          ['CNSS (plafonnée)', null, pn(p.cnss_employee)],
+          ['AMO', null, pn(p.amo_employee)],
+          ...(pn(p.cimr_employee) > 0 ? [['CIMR', null, pn(p.cimr_employee)] as [string, null, number]] : []),
+          ['IR net', null, pn(p.ir_net)],
+          ...(pn(p.other_deductions) > 0 ? [['Autres retenues (rubriques)', null, pn(p.other_deductions)] as [string, null, number]] : []),
+        ];
+        const num = (v: number | null, neg = false) => v == null ? '' : `${neg ? '− ' : ''}${v.toFixed(2)}`;
+        const twoCol = (lines: Array<[string, string] | false>) => (
+          <table className="odoo-table">
+            <tbody>
+              {lines.filter((l): l is [string, string] => !!l).map(([k, v]) => (
+                <tr key={k}><td>{k}</td><td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{v} DH</td></tr>
+              ))}
+            </tbody>
+          </table>
         );
         return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDetailPayroll(null)}>
-            <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl" onClick={ev => ev.stopPropagation()}>
-              {/* Header */}
-              <div className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white p-5 rounded-t-2xl">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-bold">{p.first_name as string} {p.last_name as string}</h2>
-                    <p className="text-teal-100 text-sm">{getRoleLabel(p.employee_role as string)} — {MONTH_NAMES[month - 1]} {year}</p>
-                  </div>
-                  <button onClick={() => setDetailPayroll(null)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
-                    <X size={16} />
-                  </button>
-                </div>
+          <HrModal icon={Wallet} crumb="Bulletin" width={760} onClose={() => setDetailPayroll(null)}
+            title={`${p.first_name as string} ${p.last_name as string} — ${MONTH_NAMES[month - 1]} ${year}`}
+            tag={tag}
+            headerActions={
+              <button type="button" onClick={() => generatePDF(p)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <FileText size={12} /> PDF
+              </button>
+            }
+            footer={<>
+              <button type="button" className="odoo-btn-secondary" onClick={() => setDetailPayroll(null)}>Fermer</button>
+              <button type="button" className="odoo-btn-primary" onClick={() => generatePDF(p)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Download size={12} /> Telecharger le bulletin PDF
+              </button>
+            </>}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '0.8125rem' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{p.first_name as string} {p.last_name as string}</span>
+              <span style={{ color: 'var(--odoo-text-muted)' }}>
+                {getRoleLabel(p.employee_role as string)} · <strong style={{ color: 'var(--odoo-text)' }}>{pf(p.net_salary)} DH</strong> net
+              </span>
+            </div>
+
+            <ol className="ui-timeline" aria-label="Cycle de vie du bulletin" style={{ margin: '0 -16px' }}>
+              {steps.map((s, i) => (
+                <li key={s.label} className={`ui-timeline-step ${s.done ? 'is-done' : i === currentIdx ? 'is-current' : ''}`} aria-current={i === currentIdx ? 'step' : undefined}>
+                  <span className="ui-timeline-dot">{s.done ? <CheckCircle2 size={14} /> : i + 1}</span>
+                  <span className="ui-timeline-label">{s.label}</span>
+                  <span className="ui-timeline-detail">{s.detail}</span>
+                </li>
+              ))}
+            </ol>
+
+            <SectionTitle icon={Clock}>Présence</SectionTitle>
+            <table className="odoo-table">
+              <thead><tr><th style={{ textAlign: 'center' }}>Jours payés</th><th style={{ textAlign: 'center' }}>Absences</th><th style={{ textAlign: 'center' }}>H. Sup</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'center' }}>
+                    <strong>{pn(p.worked_days)}</strong>
+                    {pn(p.paid_leave_days) > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>dont {pn(p.paid_leave_days)} j congé</div>}
+                    {pn(p.holiday_paid_days) > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>dont {pn(p.holiday_paid_days)} j férié</div>}
+                  </td>
+                  <td style={{ textAlign: 'center', color: '#dc3545', fontWeight: 600 }}>{p.absent_days as number}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{pn(p.overtime_hours).toFixed(1)}h</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <SectionTitle icon={Receipt}>Éléments de paie</SectionTitle>
+            {notDeclared && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Salarié non déclaré : ni cotisations ni IR.</span>}
+            <table className="odoo-table">
+              <thead>
+                <tr><th>Désignation</th><th style={{ textAlign: 'right', width: 130 }}>Gains</th><th style={{ textAlign: 'right', width: 130 }}>Retenues</th></tr>
+              </thead>
+              <tbody>
+                {rows.map(([label, gain, ret]) => (
+                  <tr key={label}>
+                    <td>{label}</td>
+                    <td style={{ textAlign: 'right' }}>{num(gain)}</td>
+                    <td style={{ textAlign: 'right', color: '#dc3545' }}>{num(ret, true)}</td>
+                  </tr>
+                ))}
+                <tr style={{ fontWeight: 600 }}>
+                  <td>Salaire brut</td>
+                  <td style={{ textAlign: 'right' }}>{pf(p.gross_salary)}</td>
+                  <td />
+                </tr>
+                {cotis.map(([label, , ret]) => (
+                  <tr key={label}>
+                    <td>{label}</td>
+                    <td />
+                    <td style={{ textAlign: 'right', color: '#dc3545' }}>{num(ret, true)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 700 }}>
+                  <td>Net à payer</td>
+                  <td colSpan={2} style={{ textAlign: 'right', color: '#155724', fontSize: '0.9375rem' }}>{pf(p.net_salary)} DH</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <SectionTitle>Bases IR</SectionTitle>
+                {twoCol([
+                  ['Salaire brut imposable', pf(p.brut_imposable ?? p.gross_salary)],
+                  ['Frais professionnels', '− ' + pf(p.frais_pro)],
+                  p.net_imposable != null && ['Revenu net imposable', pf(p.net_imposable)],
+                  ['IR brut (barème)', pf(p.ir_gross)],
+                  pn(p.family_deduction) > 0 && [`Deduction familiale (${p.nb_dependents} pers.)`, '− ' + pf(p.family_deduction)],
+                  ['IR net', '− ' + pf(p.ir_net)],
+                ])}
               </div>
-
-              <div className="p-5 space-y-4">
-                {/* Presence */}
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Presence</p>
-                  <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                    <div><p className="text-gray-500">Jours payés</p><p className="font-bold">{pn(p.worked_days)}</p>
-                      {pn(p.paid_leave_days) > 0 && <p className="text-xs text-gray-500">dont {pn(p.paid_leave_days)} j congé</p>}
-                      {pn(p.holiday_paid_days) > 0 && <p className="text-xs text-gray-500">dont {pn(p.holiday_paid_days)} j férié</p>}</div>
-                    <div><p className="text-gray-500">Absences</p><p className="font-bold text-red-600">{p.absent_days as number}</p></div>
-                    <div><p className="text-gray-500">H. Sup</p><p className="font-bold">{pn(p.overtime_hours).toFixed(1)}h</p></div>
-                  </div>
-                </div>
-
-                {/* Remuneration */}
-                <div className="bg-blue-50 rounded-xl overflow-hidden">
-                  <p className="text-xs font-semibold text-blue-600 uppercase px-3 pt-3 pb-1">Remuneration</p>
-                  {line('Salaire de base', pf(p.base_salary))}
-                  {pn(p.seniority_bonus) > 0 && line('Prime d\'anciennete', pf(p.seniority_bonus))}
-                  {pn(p.overtime_amount) > 0 && line(`Heures sup. (${[
-                    pn(p.ot_day_hours) && `${pn(p.ot_day_hours)} h jour`, pn(p.ot_night_hours) && `${pn(p.ot_night_hours)} h nuit`,
-                    pn(p.ot_rest_day_hours) && `${pn(p.ot_rest_day_hours)} h repos`, pn(p.ot_rest_night_hours) && `${pn(p.ot_rest_night_hours)} h repos nuit`,
-                  ].filter(Boolean).join(', ') || `${pn(p.overtime_hours)} h`})`, pf(p.overtime_amount))}
-                  {pn(p.holiday_premium) > 0 && line(`Férié travaillé (${pn(p.holiday_worked_days)} j)`, pf(p.holiday_premium))}
-                  {pn(p.extra_shift_amount) > 0 && line(`Double shifts (+${p.extra_shift_days} j)`, pf(p.extra_shift_amount))}
-                  {pn(p.deductions) > 0 && line('Retenue absences', '-' + pf(p.deductions), 'text-red-600')}
-                  {pn(p.bonuses) > 0 && line('Primes et indemnités', pf(p.bonuses))}
-                  <div className="border-t border-blue-200 mt-1">
-                    {line('Salaire brut', pf(p.gross_salary), 'text-blue-700', true)}
-                  </div>
-                </div>
-
-                {/* Cotisations salariales */}
-                <div className="bg-orange-50 rounded-xl overflow-hidden">
-                  <p className="text-xs font-semibold text-orange-600 uppercase px-3 pt-3 pb-1">Cotisations salariales</p>
-                  {p.is_declared === false && <p className="text-xs text-gray-500 px-3 pb-1">Salarié non déclaré : ni cotisations ni IR.</p>}
-                  {line('CNSS (plafonnée)', '-' + pf(p.cnss_employee), 'text-orange-700')}
-                  {line('AMO', '-' + pf(p.amo_employee), 'text-orange-700')}
-                  {pn(p.cimr_employee) > 0 && line('CIMR', '-' + pf(p.cimr_employee), 'text-orange-700')}
-                  <div className="border-t border-orange-200 mt-1">
-                    {line('Salaire brut imposable', pf(p.brut_imposable ?? p.gross_salary), 'text-orange-800', true)}
-                  </div>
-                </div>
-
-                {/* IR */}
-                <div className="bg-red-50 rounded-xl overflow-hidden">
-                  <p className="text-xs font-semibold text-red-600 uppercase px-3 pt-3 pb-1">Impot sur le revenu</p>
-                  {line('Frais professionnels', '-' + pf(p.frais_pro))}
-                  {p.net_imposable != null && line('Revenu net imposable', pf(p.net_imposable))}
-                  {line('IR brut (barème)', pf(p.ir_gross))}
-                  {pn(p.family_deduction) > 0 && line(`Deduction familiale (${p.nb_dependents} pers.)`, '-' + pf(p.family_deduction))}
-                  <div className="border-t border-red-200 mt-1">
-                    {line('IR net', '-' + pf(p.ir_net), 'text-red-700', true)}
-                  </div>
-                </div>
-
-                {pn(p.other_deductions) > 0 && (
-                  <div className="bg-red-50 rounded-xl overflow-hidden">{line('Autres retenues (rubriques)', '-' + pf(p.other_deductions), 'text-red-700', true)}</div>
-                )}
-
-                <PayslipLinesEditor
-                  payrollId={p.id as string}
-                  locked={!!p.paid || isClosed}
-                  lockReason={p.paid ? 'Bulletin payé : annulez le paiement pour modifier les rubriques.' : isClosed ? 'Mois clôturé : rouvrez-le pour modifier les rubriques.' : undefined}
-                  onRecomputed={updated => setDetailPayroll({ ...p, ...updated })}
-                />
-
-                {/* Net */}
-                <div className="bg-green-100 rounded-xl p-4 text-center">
-                  <p className="text-xs text-green-600 uppercase font-semibold mb-1">Net a payer</p>
-                  <p className="text-3xl font-bold text-green-700">{pf(p.net_salary)} <span className="text-base">DH</span></p>
-                </div>
-
-                {/* Charges patronales */}
-                <details className="bg-purple-50 rounded-xl overflow-hidden">
-                  <summary className="text-xs font-semibold text-purple-600 uppercase px-3 py-3 cursor-pointer hover:bg-purple-100 transition-colors">
-                    Charges patronales — {pf(p.total_charges_patron)} DH
-                  </summary>
-                  <div className="pb-2">
-                    {line('CNSS patronale', pf(p.cnss_employer), 'text-purple-700')}
-                    {line('AMO patronale', pf(p.amo_employer), 'text-purple-700')}
-                    {pn(p.cimr_employer) > 0 && line('CIMR patronale', pf(p.cimr_employer), 'text-purple-700')}
-                    {line('Allocations familiales', pf(p.alloc_familiales), 'text-purple-700')}
-                    {line('Taxe formation professionnelle', pf(p.taxe_fp), 'text-purple-700')}
-                  </div>
-                </details>
-
-                {/* PDF download button */}
-                <button onClick={() => generatePDF(p)}
-                  className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
-                  <FileText size={18} /> Telecharger le bulletin PDF
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <SectionTitle>Charges patronales — {pf(p.total_charges_patron)} DH</SectionTitle>
+                {twoCol([
+                  ['CNSS patronale', pf(p.cnss_employer)],
+                  ['AMO patronale', pf(p.amo_employer)],
+                  pn(p.cimr_employer) > 0 && ['CIMR patronale', pf(p.cimr_employer)],
+                  ['Allocations familiales', pf(p.alloc_familiales)],
+                  ['Taxe formation professionnelle', pf(p.taxe_fp)],
+                ])}
               </div>
             </div>
-          </div>
+
+            <PayslipLinesEditor
+              payrollId={p.id as string}
+              locked={!!p.paid || isClosed}
+              lockReason={p.paid ? 'Bulletin payé : annulez le paiement pour modifier les rubriques.' : isClosed ? 'Mois clôturé : rouvrez-le pour modifier les rubriques.' : undefined}
+              onRecomputed={updated => setDetailPayroll({ ...p, ...updated })}
+            />
+          </HrModal>
         );
       })()}
       {showTransfer && <SalaryTransferDialog month={month} year={year} onClose={() => setShowTransfer(false)} />}

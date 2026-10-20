@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, CalendarOff, HandCoins, Plus, X } from 'lucide-react';
+import { FileText, CalendarOff, HandCoins, Plus, X, Loader2, UserX, CalendarDays } from 'lucide-react';
 import { selfApi } from '../../../api/employees.api';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { Field, SectionTitle, EmptyState, inputCls, panel, smallBtn } from '../ui';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const frd = (s?: string | null) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : '—');
@@ -19,6 +22,7 @@ const tag = (s: string) => <span className={`odoo-tag ${STATUS[s]?.[1] ?? ''}`}>
  * connecté (fiche liée par employees.user_id).
  */
 export default function MySpace() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data: profile, isLoading, error } = useQuery<Record<string, any>>({ queryKey: ['me'], queryFn: selfApi.profile, retry: false });
   const { data: slips } = useQuery<Record<string, any>>({ queryKey: ['me-payslips'], queryFn: selfApi.payslips, enabled: !!profile });
@@ -67,15 +71,27 @@ export default function MySpace() {
     catch (err) { notify.error(apiErrorMessage(err, 'Attestation indisponible')); }
   };
 
-  if (isLoading) return <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>;
+  if (isLoading) {
+    return (
+      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+        <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+        <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
+      </div>
+    );
+  }
   if (error || !profile) {
-    return <div className="odoo-alert info" style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem' }}>{apiErrorMessage(error, 'Aucune fiche employé liée à votre compte.')}</div>;
+    return (
+      <StatusBanner tone="info" icon={UserX} title="Espace employé indisponible">
+        {apiErrorMessage(error, 'Aucune fiche employé liée à votre compte.')}
+      </StatusBanner>
+    );
   }
   const e = profile.employee;
   const pendingAdvance = (adv?.requests ?? []).some((r: Record<string, any>) => r.status === 'pending');
-  const box = { border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 } as const;
-  const h = { fontWeight: 600, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 6 } as const;
-  const smallBtn = { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0.2rem 0.5rem', fontSize: '0.6875rem' } as const;
+  const box = { ...panel, display: 'flex', flexDirection: 'column', gap: 8 } as const;
+  const formBox = { ...panel, background: 'var(--odoo-bg-hover)', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 } as const;
+  const full = { gridColumn: '1 / -1' } as const;
+  const empty = { fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 } as const;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -107,7 +123,7 @@ export default function MySpace() {
       </div>
 
       <section style={box}>
-        <p style={h}><FileText size={14} /> Mes attestations</p>
+        <SectionTitle icon={FileText}>Mes attestations</SectionTitle>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('travail')}><FileText size={12} /> Attestation de travail</button>
           <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('salaire')}><FileText size={12} /> Attestation de salaire</button>
@@ -115,8 +131,8 @@ export default function MySpace() {
       </section>
 
       <section style={box}>
-        <p style={h}><FileText size={14} /> Mes bulletins de paie</p>
-        {!slips || (slips.monthly.length === 0 && slips.periodic.length === 0) ? <p className="text-sm text-gray-400">Aucun bulletin disponible.</p> : (
+        <SectionTitle icon={FileText}>Mes bulletins de paie</SectionTitle>
+        {!slips || (slips.monthly.length === 0 && slips.periodic.length === 0) ? <EmptyState icon={FileText}>Aucun bulletin disponible.</EmptyState> : (
           <table className="odoo-table">
             <thead><tr><th>Période</th><th style={{ textAlign: 'right' }}>Brut</th><th style={{ textAlign: 'right' }}>Net</th><th style={{ textAlign: 'right' }}>Avance retenue</th><th>Payé</th><th style={{ width: 40 }}></th></tr></thead>
             <tbody>
@@ -146,35 +162,36 @@ export default function MySpace() {
       </section>
 
       <section style={box}>
-        <div className="flex justify-between items-center">
-          <p style={h}><CalendarOff size={14} /> Mes congés</p>
-          {!leaveForm && e.isActive && <button className="odoo-btn-primary" style={smallBtn} onClick={() => setLeaveForm({ type: 'annual', startDate: '', endDate: '', reason: '' })}><Plus size={11} /> Demander un congé</button>}
-        </div>
+        <SectionTitle icon={CalendarOff} actions={!leaveForm && e.isActive ? (
+          <button className="odoo-btn-primary" style={smallBtn} onClick={() => setLeaveForm({ type: 'annual', startDate: '', endDate: '', reason: '' })}><Plus size={11} /> Demander un congé</button>
+        ) : undefined}>Mes congés</SectionTitle>
         {leaveForm && (
-          <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-3 gap-2">
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Type
-              <select className="input" value={leaveForm.type} onChange={ev => setLeaveForm({ ...leaveForm, type: ev.target.value })}>
+          <div style={formBox}>
+            <Field label="Type">
+              <select className={inputCls} value={leaveForm.type} onChange={ev => setLeaveForm({ ...leaveForm, type: ev.target.value })}>
                 {leaveTypes.map(lt => <option key={lt.code} value={lt.code}>{lt.label}</option>)}
-              </select></label>
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Du
-              <input className="input" type="date" value={leaveForm.startDate} onChange={ev => setLeaveForm({ ...leaveForm, startDate: ev.target.value, endDate: leaveForm.endDate || ev.target.value })} /></label>
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Au
-              <input className="input" type="date" min={leaveForm.startDate} value={leaveForm.endDate} onChange={ev => setLeaveForm({ ...leaveForm, endDate: ev.target.value })} /></label>
-            <label className="text-xs col-span-3" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Motif
-              <input className="input" value={leaveForm.reason} onChange={ev => setLeaveForm({ ...leaveForm, reason: ev.target.value })} /></label>
+              </select></Field>
+            <Field label="Du">
+              <input className={inputCls} type="date" value={leaveForm.startDate} onChange={ev => setLeaveForm({ ...leaveForm, startDate: ev.target.value, endDate: leaveForm.endDate || ev.target.value })} /></Field>
+            <Field label="Au">
+              <input className={inputCls} type="date" min={leaveForm.startDate} value={leaveForm.endDate} onChange={ev => setLeaveForm({ ...leaveForm, endDate: ev.target.value })} /></Field>
+            <Field label="Motif" style={full}>
+              <input className={inputCls} value={leaveForm.reason} onChange={ev => setLeaveForm({ ...leaveForm, reason: ev.target.value })} /></Field>
             {leaveReady && preview && (
-              <p className="text-sm col-span-3">
-                <strong>{preview.days} jour(s)</strong>{preview.unit === 'ouvrable' && ' ouvrables (hors repos et fériés)'}
-                {preview.deductsBalance && <> · disponible {fmt((preview.available ?? 0) - (preview.pending ?? 0))} j</>}
-              </p>
+              <div style={full}>
+                <StatusBanner tone="info" icon={CalendarDays}
+                  title={`${preview.days} jour(s)${preview.unit === 'ouvrable' ? ' ouvrables (hors repos et fériés)' : ''}`}>
+                  {preview.deductsBalance && <>Disponible {fmt((preview.available ?? 0) - (preview.pending ?? 0))} j</>}
+                </StatusBanner>
+              </div>
             )}
-            <div className="col-span-3 flex justify-end gap-2">
+            <div style={{ ...full, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="odoo-btn-secondary" onClick={() => setLeaveForm(null)}>Annuler</button>
               <button className="odoo-btn-primary" disabled={!leaveReady || requestLeave.isPending || (preview?.days ?? 1) <= 0} onClick={() => requestLeave.mutate()}>Envoyer la demande</button>
             </div>
           </div>
         )}
-        {leaves.length === 0 ? <p className="text-sm text-gray-400">Aucune demande.</p> : (
+        {leaves.length === 0 ? <p style={empty}>Aucune demande.</p> : (
           <table className="odoo-table">
             <thead><tr><th>Type</th><th>Période</th><th style={{ textAlign: 'right' }}>Jours</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
             <tbody>
@@ -182,7 +199,7 @@ export default function MySpace() {
                 <tr key={l.id}>
                   <td>{leaveLabel(l.type)}</td><td>{frd(l.start_date)} → {frd(l.end_date)}</td>
                   <td style={{ textAlign: 'right' }}>{parseFloat(l.days)}</td><td>{tag(l.status)}</td>
-                  <td>{l.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: '#dc3545' }} onClick={() => cancelLeave.mutate(l.id)}><X size={13} /></button>}</td>
+                  <td>{l.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: '#dc3545' }} onClick={async () => { if (await confirm('Annuler cette demande de congé ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelLeave.mutate(l.id); }}><X size={13} /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -191,25 +208,24 @@ export default function MySpace() {
       </section>
 
       <section style={box}>
-        <div className="flex justify-between items-center">
-          <p style={h}><HandCoins size={14} /> Mes avances sur salaire</p>
-          {!advForm && !pendingAdvance && e.isActive && <button className="odoo-btn-primary" style={smallBtn} onClick={() => setAdvForm({ amount: '', monthlyDeduction: '', reason: '' })}><Plus size={11} /> Demander une avance</button>}
-        </div>
+        <SectionTitle icon={HandCoins} actions={!advForm && !pendingAdvance && e.isActive ? (
+          <button className="odoo-btn-primary" style={smallBtn} onClick={() => setAdvForm({ amount: '', monthlyDeduction: '', reason: '' })}><Plus size={11} /> Demander une avance</button>
+        ) : undefined}>Mes avances sur salaire</SectionTitle>
         {advForm && (
-          <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-3 gap-2">
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Montant (DH)
-              <input className="input" type="number" min="0" step="10" value={advForm.amount} onChange={ev => setAdvForm({ ...advForm, amount: ev.target.value })} /></label>
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Retenue par paie (facultatif)
-              <input className="input" type="number" min="0" step="10" value={advForm.monthlyDeduction} onChange={ev => setAdvForm({ ...advForm, monthlyDeduction: ev.target.value })} /></label>
-            <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Motif
-              <input className="input" value={advForm.reason} onChange={ev => setAdvForm({ ...advForm, reason: ev.target.value })} /></label>
-            <div className="col-span-3 flex justify-end gap-2">
+          <div style={formBox}>
+            <Field label="Montant (DH)">
+              <input className={inputCls} type="number" min="0" step="10" value={advForm.amount} onChange={ev => setAdvForm({ ...advForm, amount: ev.target.value })} /></Field>
+            <Field label="Retenue par paie (facultatif)">
+              <input className={inputCls} type="number" min="0" step="10" value={advForm.monthlyDeduction} onChange={ev => setAdvForm({ ...advForm, monthlyDeduction: ev.target.value })} /></Field>
+            <Field label="Motif">
+              <input className={inputCls} value={advForm.reason} onChange={ev => setAdvForm({ ...advForm, reason: ev.target.value })} /></Field>
+            <div style={{ ...full, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="odoo-btn-secondary" onClick={() => setAdvForm(null)}>Annuler</button>
               <button className="odoo-btn-primary" disabled={!(parseFloat(advForm.amount) > 0) || requestAdvance.isPending} onClick={() => requestAdvance.mutate()}>Envoyer la demande</button>
             </div>
           </div>
         )}
-        {(adv?.requests ?? []).length === 0 && (adv?.advances ?? []).length === 0 ? <p className="text-sm text-gray-400">Aucune avance.</p> : (
+        {(adv?.requests ?? []).length === 0 && (adv?.advances ?? []).length === 0 ? <p style={empty}>Aucune avance.</p> : (
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Objet</th><th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'right' }}>Reste dû</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
             <tbody>
@@ -217,7 +233,7 @@ export default function MySpace() {
                 <tr key={r.id} title={r.decision_note ?? undefined}>
                   <td>{frd(String(r.created_at).slice(0, 10))}</td><td>Demande{r.reason ? ` · ${r.reason}` : ''}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(r.amount)}</td><td style={{ textAlign: 'right' }}>—</td><td>{tag(r.status)}</td>
-                  <td>{r.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: '#dc3545' }} onClick={() => cancelAdvance.mutate(r.id)}><X size={13} /></button>}</td>
+                  <td>{r.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: '#dc3545' }} onClick={async () => { if (await confirm('Annuler cette demande d\'avance ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelAdvance.mutate(r.id); }}><X size={13} /></button>}</td>
                 </tr>
               ))}
               {(adv?.advances ?? []).map((a: Record<string, any>) => (

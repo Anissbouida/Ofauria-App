@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { History } from 'lucide-react';
 import { employeesApi } from '../../../api/employees.api';
+import { SectionTitle } from '../ui';
 
 const FREQ_LABELS: Record<string, string> = { monthly: 'mensuelle', biweekly: 'quinzaine', weekly: 'hebdo' };
 
@@ -17,12 +19,12 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
   });
 
   return (
-    <div className="mt-4">
-      <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-2">Historique du salaire</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <SectionTitle icon={History}>Historique du salaire</SectionTitle>
       {isLoading ? (
-        <p className="text-sm text-gray-400">Chargement...</p>
+        <p style={muted}>Chargement...</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-400">Aucune modification enregistrée.</p>
+        <p style={muted}>Aucune modification enregistrée.</p>
       ) : (
         <table className="odoo-table">
           <thead>
@@ -56,3 +58,5 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
     </div>
   );
 }
+
+const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;

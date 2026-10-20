@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, Download, Trash2 } from 'lucide-react';
+import { Upload, Download, Trash2, FolderOpen } from 'lucide-react';
 import { employeeDocumentsApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage, saveBlobResponse } from '../shared';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { SectionTitle, SubmitButton, fieldLabel, inputCls, panel, smallBtn } from '../ui';
 
 export const DOC_TYPES: Record<string, string> = {
   cin: 'CIN', contrat: 'Contrat signé', avenant: 'Avenant signé', cnss: 'Attestation CNSS', diplome: 'Diplôme',
@@ -17,6 +19,7 @@ export const DOC_TYPES: Record<string, string> = {
  */
 export default function EmployeeDocuments({ employeeId }: { employeeId: string }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<{ docType: string; title: string; expiresOn: string } | null>(null);
   const { data: docs = [] } = useQuery<Record<string, any>[]>({
@@ -51,38 +54,35 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-[11px] text-gray-400 uppercase tracking-wider">Documents</p>
-        {!draft && (
-          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0.2rem 0.5rem', fontSize: '0.6875rem' }}
-            onClick={() => setDraft({ docType: 'contrat', title: '', expiresOn: '' })}><Upload size={11} /> Ajouter</button>
-        )}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <SectionTitle icon={FolderOpen} actions={!draft && (
+        <button type="button" className="odoo-btn-secondary" style={smallBtn}
+          onClick={() => setDraft({ docType: 'contrat', title: '', expiresOn: '' })}><Upload size={11} /> Ajouter</button>
+      )}>Documents</SectionTitle>
       {draft && (
-        <div className="bg-gray-50 rounded-xl p-3 mb-2 grid grid-cols-3 gap-2 items-end">
-          <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Type
-            <select className="input" value={draft.docType} onChange={e => setDraft({ ...draft, docType: e.target.value })}>
+        <div className="grid grid-cols-3 gap-3 items-end" style={panel}>
+          <div><label style={fieldLabel}>Type</label>
+            <select className={inputCls} value={draft.docType} onChange={e => setDraft({ ...draft, docType: e.target.value })}>
               {Object.entries(DOC_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-          </label>
-          <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Titre
-            <input className="input" value={draft.title} placeholder={DOC_TYPES[draft.docType]} onChange={e => setDraft({ ...draft, title: e.target.value })} />
-          </label>
-          <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Échéance (si elle expire)
-            <input className="input" type="date" value={draft.expiresOn} onChange={e => setDraft({ ...draft, expiresOn: e.target.value })} />
-          </label>
+          </div>
+          <div><label style={fieldLabel}>Titre</label>
+            <input className={inputCls} value={draft.title} placeholder={DOC_TYPES[draft.docType]} onChange={e => setDraft({ ...draft, title: e.target.value })} />
+          </div>
+          <div><label style={fieldLabel}>Échéance (si elle expire)</label>
+            <input className={inputCls} type="date" value={draft.expiresOn} onChange={e => setDraft({ ...draft, expiresOn: e.target.value })} />
+          </div>
           <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ''; }} />
-          <div className="col-span-3 flex justify-end gap-2">
-            <button className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={upload.isPending} onClick={() => fileRef.current?.click()}>
+          <div className="col-span-3" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
+            <SubmitButton pending={upload.isPending} onClick={() => fileRef.current?.click()}>
               {upload.isPending ? 'Envoi...' : 'Choisir le fichier (PDF/image, 5 Mo)'}
-            </button>
+            </SubmitButton>
           </div>
         </div>
       )}
-      {docs.length === 0 ? <p className="text-sm text-gray-400">Aucun document.</p> : (
+      {docs.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun document.</p> : (
         <table className="odoo-table">
           <thead><tr><th>Type</th><th>Titre</th><th>Échéance</th><th style={{ textAlign: 'right' }}>Taille</th><th style={{ width: 60 }}></th></tr></thead>
           <tbody>
@@ -100,7 +100,10 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
                     <div style={{ display: 'inline-flex', gap: 2 }}>
                       <button className="odoo-pager-btn" title="Télécharger" onClick={() => download(d)}><Download size={12} /></button>
                       <button className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}
-                        onClick={() => { if (confirm(`Supprimer « ${d.title} » ?`)) remove.mutate(d.id); }}><Trash2 size={12} /></button>
+                        onClick={async () => {
+                          if (!(await confirm(`Supprimer « ${d.title} » ?`, { title: 'Supprimer le document', confirmLabel: 'Supprimer', danger: true }))) return;
+                          remove.mutate(d.id);
+                        }}><Trash2 size={12} /></button>
                     </div>
                   </td>
                 </tr>

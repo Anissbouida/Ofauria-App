@@ -8,9 +8,12 @@ import {
   UserCog, Users, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Copy, Eraser, Save, Sparkles, Printer,
 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
-import { ROLE_LABELS, SHIFT_BADGE_COLORS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
+import { ROLE_LABELS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
 import type { ShiftCode } from '@ofauria/shared';
-import { LEAVE_TYPE_LABELS } from '../shared';
+import { LEAVE_TYPE_LABELS, shiftStyle } from '../shared';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { EmptyState } from '../ui';
 
 /* ═══════════════════════ SCHEDULE TAB (planning hebdomadaire) ═══════════════════════ */
 type LeaveInfoUI = { type: string; status: 'approved' | 'pending'; startDate: string; endDate: string };
@@ -44,6 +47,7 @@ function leaveTooltip(info: LeaveInfoUI): string {
 export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const confirm = useConfirm();
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
@@ -216,8 +220,9 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
     }
   };
 
-  const clearWeek = () => {
-    if (!confirm('Vider toute la semaine affichee ? (sera sauvegardable apres validation)')) return;
+  const clearWeek = async () => {
+    if (!(await confirm('Vider toute la semaine affichee ? (sera sauvegardable apres validation)',
+      { title: 'Vider la semaine', confirmLabel: 'Vider', danger: true }))) return;
     const next: typeof draft = { ...draft };
     for (const row of rows) {
       const empMap = { ...(next[row.employeeId] ?? {}) };
@@ -269,9 +274,10 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
   // (affecte une fois la sauvegarde validee — on imprime y compris le brouillon).
   // Les `<select>` ne s'imprimant pas correctement, on regenere une table HTML
   // plate (libelle de shift + horaires, ou Conge/Repos).
-  const printSchedule = () => {
+  const printSchedule = async () => {
     if (hasChanges) {
-      const ok = confirm('Vous avez des modifications non sauvegardees. Imprimer quand meme (le brouillon sera inclus) ?');
+      const ok = await confirm('Vous avez des modifications non sauvegardees. Imprimer quand meme (le brouillon sera inclus) ?',
+        { title: 'Imprimer le planning', confirmLabel: 'Imprimer' });
       if (!ok) return;
     }
     const escapeHtml = (s: string) =>
@@ -388,7 +394,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
+      <div className="odoo-search-panel" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 8 }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <button onClick={() => setWeekOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Semaine précédente"><ChevronLeft size={14} /></button>
           <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
@@ -402,7 +408,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
           )}
         </div>
 
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <SearchSelect
             options={allRoles.map(r => ({ id: r, label: ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r }))}
             value={roleFilter === 'all' ? '' : roleFilter}
@@ -434,29 +440,26 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
         </div>
       </div>
 
-      {/* Bannière récap des congés sur la semaine — style Odoo alert */}
+      {/* Bannière récap des congés sur la semaine */}
       {weekLeaveSummary.length > 0 && (
-        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>
-            <CalendarOff size={13} />
-            Congés cette semaine ({weekLeaveSummary.length})
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <StatusBanner tone="warning" icon={CalendarOff} title={`Congés cette semaine (${weekLeaveSummary.length})`}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {weekLeaveSummary.map((l, i) => (
               <span
                 key={i}
                 className={`odoo-tag ${l.status === 'approved' ? 'odoo-tag-purple' : 'odoo-tag-orange'}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 title={`${l.name} • ${l.days.join(', ')} • ${LEAVE_TYPE_LABELS[l.type] ?? l.type}${l.status === 'pending' ? ' (en attente)' : ''}`}
               >
                 <span style={{ fontWeight: 600 }}>{l.name}</span>
-                <span style={{ opacity: 0.75, marginLeft: 4 }}>
+                <span style={{ opacity: 0.75 }}>
                   {l.days.length === 1 ? `1 jour` : `${l.days.length} jours`}
                 </span>
                 {l.status === 'pending' && <AlertTriangle size={11} />}
               </span>
             ))}
           </div>
-        </div>
+        </StatusBanner>
       )}
 
       <div style={{ overflowX: 'auto' }}>
@@ -474,7 +477,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--odoo-text-muted)' }}>Aucun employé pour cette catégorie</td></tr>
+              <tr><td colSpan={8}><EmptyState icon={Users}>Aucun employé pour cette catégorie</EmptyState></td></tr>
             )}
             {groupedRows.map(group => {
               const collapsed = !!collapsedGroups[group.role];
@@ -530,16 +533,17 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                   // Conge approuve = cellule verrouillee (interaction impossible)
                   if (leaveInfo?.status === 'approved') {
                     return (
-                      <td key={dateStr} className="px-1 py-1 text-center">
+                      <td key={dateStr} style={{ padding: 4, textAlign: 'center' }}>
                         <div
-                          className="bg-purple-100 text-purple-800 border border-purple-300 rounded-lg px-2 py-2 text-xs font-medium cursor-not-allowed"
+                          className="odoo-tag odoo-tag-purple"
+                          style={{ display: 'block', padding: '6px 8px', cursor: 'not-allowed', fontWeight: 500 }}
                           title={leaveTooltip(leaveInfo)}
                         >
-                          <div className="flex items-center justify-center gap-1">
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                             <CalendarOff size={11} />
                             <span>Congé</span>
                           </div>
-                          <div className="text-[9px] font-normal opacity-80 mt-0.5 capitalize">
+                          <div style={{ fontSize: '0.5625rem', fontWeight: 400, opacity: 0.8, marginTop: 2, textTransform: 'capitalize' }}>
                             {LEAVE_TYPE_LABELS[leaveInfo.type] ?? leaveInfo.type}
                           </div>
                         </div>
@@ -550,22 +554,23 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                   // assumer que le conge sera refuse). On confirme avant d'affecter.
                   if (leaveInfo?.status === 'pending') {
                     return (
-                      <td key={dateStr} className={`px-1 py-1 text-center ${dirty ? 'bg-yellow-50' : ''}`}>
+                      <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? '#fff8e8' : undefined }}>
                         <select
                           value={current ?? REPOS}
-                          onChange={e => {
+                          onChange={async e => {
                             const v = e.target.value;
                             if (v !== REPOS) {
-                              const ok = confirm(`⚠️ ${row.firstName} ${row.lastName} a une demande de ${LEAVE_TYPE_LABELS[leaveInfo.type] ?? 'congé'} EN ATTENTE pour ce jour (${leaveTooltip(leaveInfo)}).\n\nAffecter quand même un shift ?`);
+                              const ok = await confirm(`${row.firstName} ${row.lastName} a une demande de ${LEAVE_TYPE_LABELS[leaveInfo.type] ?? 'congé'} EN ATTENTE pour ce jour (${leaveTooltip(leaveInfo)}).\n\nAffecter quand même un shift ?`,
+                                { title: 'Congé en attente', confirmLabel: 'Affecter' });
                               if (!ok) return;
                             }
                             setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
                           }}
-                          className={`w-full text-xs rounded-lg border-2 px-2 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-                            current
-                              ? (SHIFT_BADGE_COLORS[current] + ' font-medium border-amber-400')
-                              : 'bg-amber-50 text-amber-800 border-amber-300'
-                          }`}
+                          className={`w-full text-xs rounded border px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${current ? 'font-medium' : ''}`}
+                          style={{
+                            borderStyle: 'dashed', borderColor: '#ffb381',
+                            ...(current ? shiftStyle(current) : { background: 'var(--odoo-bg-hover)', color: '#b85d1a' }),
+                          }}
                           title={`⚠ ${leaveTooltip(leaveInfo)}`}
                         >
                           <option value={REPOS}>Congé (en attente)</option>
@@ -576,24 +581,23 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                           ))}
                         </select>
                         {current && (
-                          <div className="text-[10px] text-amber-700 mt-0.5">
-                            ⚠ {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
-                          </div>
+                          <span className="odoo-tag odoo-tag-orange" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3, fontSize: '0.625rem' }}>
+                            <AlertTriangle size={9} /> {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
+                          </span>
                         )}
                       </td>
                     );
                   }
                   return (
-                    <td key={dateStr} className={`px-1 py-1 text-center ${dirty ? 'bg-yellow-50' : ''}`}>
+                    <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? '#fff8e8' : undefined }}>
                       <select
                         value={current ?? REPOS}
                         onChange={e => {
                           const v = e.target.value;
                           setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
                         }}
-                        className={`w-full text-xs rounded-lg border px-2 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                          current ? (SHIFT_BADGE_COLORS[current] + ' font-medium') : 'bg-white text-gray-400 border-gray-200'
-                        }`}
+                        className={`w-full text-xs rounded border border-gray-200 px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${current ? 'font-medium' : 'bg-white text-gray-400'}`}
+                        style={current ? { ...shiftStyle(current), borderColor: 'transparent' } : undefined}
                       >
                         <option value={REPOS}>Repos</option>
                         {(shifts as Record<string, any>[]).map(s => (
@@ -603,7 +607,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                         ))}
                       </select>
                       {current && (
-                        <div className="text-[10px] text-gray-500 mt-0.5">
+                        <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>
                           {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
                         </div>
                       )}
@@ -622,7 +626,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#fff8e8', border: '1px solid #ffeeba', marginRight: 4, verticalAlign: 'middle' }} /> cellule modifiée (non sauvegardée)</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--theme-accent-light)', border: '1px solid var(--theme-accent)', marginRight: 4, verticalAlign: 'middle' }} /> congé approuvé — affectation impossible</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#ffe5d0', border: '1px solid #ffb381', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--odoo-bg-hover)', border: '1px dashed #ffb381', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
         <span style={{ color: 'var(--odoo-text-light)' }}>Sauvegarder pré-remplit aussi le pointage attendu.</span>
       </div>
     </>

@@ -4,12 +4,18 @@ import { employeesApi, advancesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import {
-  Plus, Pencil, Users, Check, X, ChevronDown, ChevronUp, Trash2, RotateCcw, HandCoins,
+  Plus, Pencil, Users, Check, ChevronDown, ChevronUp, Trash2, RotateCcw, HandCoins, Info,
 } from 'lucide-react';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { ViewSwitch } from '../../../components/purchasing/ProcessBoard';
+import { HrModal, Field, EmptyState, inputCls } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { MONTH_NAMES, isoDate } from '../shared';
 import AdvanceRequestsPanel from './AdvanceRequestsPanel';
+
+const HINT = { fontSize: '0.75rem', marginTop: 4, color: 'var(--odoo-text-muted)' } as const;
 
 /* ═══════════════════════ ADVANCES TAB (avances sur salaire) ═══════════════════════ */
 export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -29,6 +35,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   const { getLabel: getRoleLabel } = useReferentiel('employee_roles');
   const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
   const { user } = useAuth();
+  const confirm = useConfirm();
 
   const { data: advances = [], isLoading } = useQuery({
     queryKey: ['salary-advances', statusFilter],
@@ -112,10 +119,8 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
     <>
       <AdvanceRequestsPanel />
       <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <div className="odoo-view-switcher">
-          <button onClick={() => setStatusFilter('open')} className={statusFilter === 'open' ? 'active' : ''}>En cours</button>
-          <button onClick={() => setStatusFilter('all')} className={statusFilter === 'all' ? 'active' : ''}>Toutes</button>
-        </div>
+        <ViewSwitch view={statusFilter === 'open' ? 'open' : 'history'} onChange={v => setStatusFilter(v === 'open' ? 'open' : 'all')}
+          openLabel="En cours" historyLabel="Toutes" ariaLabel="Filtre des avances" />
         <button onClick={() => { setFormAmount(''); setFormMonthly(''); setShowForm(true); }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Accorder une avance
@@ -150,13 +155,10 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
       {isLoading ? (
         <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-          <HandCoins size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>
-            {statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
-          </p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>La retenue se fait automatiquement au moment de payer le salaire (onglet Paie).</p>
-        </div>
+        <EmptyState icon={HandCoins}>
+          {statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
+          <div style={{ fontSize: '0.75rem', marginTop: 4 }}>La retenue se fait automatiquement au moment de payer le salaire (onglet Paie).</div>
+        </EmptyState>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -167,7 +169,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 <th>Date</th>
                 <th style={{ textAlign: 'right' }}>Montant</th>
                 <th style={{ textAlign: 'right' }}>Remboursé</th>
-                <th style={{ textAlign: 'right', background: '#fdf3e7', color: '#b85d1a' }}>Solde</th>
+                <th style={{ textAlign: 'right' }}>Solde</th>
                 <th style={{ textAlign: 'right' }} title="Plan d'étalement : retenue proposée à chaque paie">Retenue/mois</th>
                 <th style={{ textAlign: 'center' }}>Statut</th>
                 <th>Mode</th>
@@ -193,7 +195,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                       <td style={{ color: 'var(--odoo-text-muted)' }}>{isoDate(a.advance_date) ? format(new Date(isoDate(a.advance_date)), 'dd/MM/yyyy') : ''}</td>
                       <td style={{ textAlign: 'right', fontWeight: 500 }}>{pn(a.amount).toFixed(2)}</td>
                       <td style={{ textAlign: 'right', color: '#28a745' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#b85d1a', background: '#fdf3e7' }}>{pn(a.remaining_amount).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#b85d1a' }}>{pn(a.remaining_amount).toFixed(2)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {pn(a.monthly_deduction) > 0 ? (
                           <span title={pn(a.remaining_amount) > 0 ? `≈ ${Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paie(s) restante(s)` : 'Plan soldé'}>
@@ -221,11 +223,11 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                               <Pencil size={12} />
                             </button>
                             {reps.length === 0 && (
-                              <button onClick={ev => {
+                              <button onClick={async ev => {
                                 ev.stopPropagation();
-                                if (confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`)) {
-                                  deleteMutation.mutate(a.id as string);
-                                }
+                                if (!(await confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
+                                  { title: 'Supprimer l\'avance', confirmLabel: 'Supprimer', danger: true }))) return;
+                                deleteMutation.mutate(a.id as string);
                               }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
                                 <Trash2 size={12} />
                               </button>
@@ -260,205 +262,172 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
 
       {/* ─── Grant advance modal ─── */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={ev => ev.stopPropagation()}>
-            <div className="bg-gradient-to-r from-teal-600 to-cyan-600 text-white p-5 rounded-t-2xl flex items-center justify-between">
-              <h2 className="text-lg font-bold">Accorder une avance</h2>
-              <button onClick={() => setShowForm(false)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
-                <X size={16} />
-              </button>
+        <HrModal icon={HandCoins} crumb="Avance" title="Accorder une avance" width={520} onClose={() => setShowForm(false)}
+          footer={<>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setShowForm(false)}>Annuler</button>
+            <button type="submit" form="advance-grant-form" disabled={createMutation.isPending} className="odoo-btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <HandCoins size={13} /> {createMutation.isPending ? 'Enregistrement...' : 'Accorder l\'avance'}
+            </button>
+          </>}>
+          <form id="advance-grant-form" onSubmit={e => {
+            e.preventDefault();
+            const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
+            if (!fd.employeeId) { notify.error('Sélectionnez un employé'); return; }
+            const amount = parseFloat(fd.amount as string);
+            if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
+            const monthly = parseFloat(formMonthly) || 0;
+            if (formMonthly && (monthly <= 0 || monthly > amount)) {
+              notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
+              return;
+            }
+            createMutation.mutate({
+              employeeId: fd.employeeId, amount,
+              paymentMethod: fd.paymentMethod || 'cash',
+              advanceDate: fd.advanceDate || undefined,
+              notes: fd.notes || undefined,
+              monthlyDeduction: monthly > 0 ? monthly : undefined,
+            });
+          }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Field label="Employé *">
+              <select name="employeeId" required className={inputCls}>
+                <option value="">Sélectionner...</option>
+                {(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => (
+                  <option key={e2.id as string} value={e2.id as string}>{e2.first_name as string} {e2.last_name as string}</option>
+                ))}
+              </select>
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="Montant (DH) *">
+                <input name="amount" type="number" step="0.01" min="0.01" required
+                  value={formAmount} onChange={e => setFormAmount(e.target.value)} className={inputCls} />
+              </Field>
+              <Field label="Date *">
+                <input name="advanceDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} className={inputCls} />
+              </Field>
             </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
-              if (!fd.employeeId) { notify.error('Sélectionnez un employé'); return; }
-              const amount = parseFloat(fd.amount as string);
-              if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
-              const monthly = parseFloat(formMonthly) || 0;
-              if (formMonthly && (monthly <= 0 || monthly > amount)) {
-                notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
-                return;
-              }
-              createMutation.mutate({
-                employeeId: fd.employeeId, amount,
-                paymentMethod: fd.paymentMethod || 'cash',
-                advanceDate: fd.advanceDate || undefined,
-                notes: fd.notes || undefined,
-                monthlyDeduction: monthly > 0 ? monthly : undefined,
-              });
-            }} className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Employé *</label>
-                <select name="employeeId" required
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  <option value="">Sélectionner...</option>
-                  {(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => (
-                    <option key={e2.id as string} value={e2.id as string}>{e2.first_name as string} {e2.last_name as string}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
-                  <input name="amount" type="number" step="0.01" min="0.01" required
-                    value={formAmount} onChange={e => setFormAmount(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="advanceDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de paiement</label>
-                <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  {paymentMethods.length > 0
-                    ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
-                    : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Retenue par mois (optionnel)
-                </label>
-                <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
-                  value={formMonthly} onChange={e => setFormMonthly(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                {(() => {
-                  const amountNum = parseFloat(formAmount) || 0;
-                  const monthlyNum = parseFloat(formMonthly) || 0;
-                  if (amountNum <= 0 || monthlyNum <= 0) return (
-                    <p className="text-xs text-gray-400 mt-1">Le système proposera ce montant à chaque paie jusqu'au solde de l'avance (modifiable au moment du paiement).</p>
-                  );
-                  if (monthlyNum > amountNum) return (
-                    <p className="text-xs text-red-600 mt-1">La retenue par mois dépasse le montant de l'avance.</p>
-                  );
-                  const nbMonths = Math.ceil(amountNum / monthlyNum);
-                  const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
-                  return (
-                    <p className="text-xs text-teal-700 mt-1">
-                      Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${monthlyNum.toFixed(2)} DH` : `${monthlyNum.toFixed(2)} DH`}
-                      {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${lastAmount.toFixed(2)} DH` : ''}
-                    </p>
-                  );
-                })()}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                <input name="notes" type="text" placeholder="Motif, accord de remboursement..."
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-              </div>
-              <button type="submit" disabled={createMutation.isPending}
-                className="w-full py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
-                <HandCoins size={16} /> {createMutation.isPending ? 'Enregistrement...' : 'Accorder l\'avance'}
-              </button>
-            </form>
-          </div>
-        </div>
+            <Field label="Mode de paiement">
+              <select name="paymentMethod" className={inputCls}>
+                {paymentMethods.length > 0
+                  ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
+                  : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
+              </select>
+            </Field>
+            <Field label="Retenue par mois (optionnel)">
+              <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
+                value={formMonthly} onChange={e => setFormMonthly(e.target.value)} className={inputCls} />
+              {(() => {
+                const amountNum = parseFloat(formAmount) || 0;
+                const monthlyNum = parseFloat(formMonthly) || 0;
+                if (amountNum <= 0 || monthlyNum <= 0) return (
+                  <p style={HINT}>Le système proposera ce montant à chaque paie jusqu'au solde de l'avance (modifiable au moment du paiement).</p>
+                );
+                if (monthlyNum > amountNum) return (
+                  <p style={{ ...HINT, color: '#dc3545' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                );
+                const nbMonths = Math.ceil(amountNum / monthlyNum);
+                const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
+                return (
+                  <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
+                    Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${monthlyNum.toFixed(2)} DH` : `${monthlyNum.toFixed(2)} DH`}
+                    {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${lastAmount.toFixed(2)} DH` : ''}
+                  </p>
+                );
+              })()}
+            </Field>
+            <Field label="Notes">
+              <input name="notes" type="text" placeholder="Motif, accord de remboursement..." className={inputCls} />
+            </Field>
+          </form>
+        </HrModal>
       )}
 
       {/* ─── Edit advance modal (admin) ─── */}
       {editingAdvance && (() => {
         const hasReps = ((editingAdvance.repayments || []) as Record<string, any>[]).length > 0;
         const remaining = pn(editingAdvance.remaining_amount);
+        const meta = STATUS_META[editingAdvance.status as string] || STATUS_META.open;
         return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingAdvance(null)}>
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={ev => ev.stopPropagation()}>
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-5 rounded-t-2xl flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">Modifier l'avance</h2>
-                  <p className="text-blue-100 text-sm">{editingAdvance.first_name as string} {editingAdvance.last_name as string}</p>
-                </div>
-                <button onClick={() => setEditingAdvance(null)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
-                  <X size={16} />
-                </button>
+          <HrModal icon={HandCoins} crumb="Avance" width={520} onClose={() => setEditingAdvance(null)}
+            title={`Modifier — ${editingAdvance.first_name as string} ${editingAdvance.last_name as string}`}
+            tag={<span className={`odoo-tag ${meta.cls}`}>{meta.label}</span>}
+            footer={<>
+              <button type="button" className="odoo-btn-secondary" onClick={() => setEditingAdvance(null)}>Annuler</button>
+              <button type="submit" form="advance-edit-form" disabled={updateMutation.isPending} className="odoo-btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Check size={13} /> {updateMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications'}
+              </button>
+            </>}>
+            <form id="advance-edit-form" onSubmit={e => {
+              e.preventDefault();
+              const amount = parseFloat(editAmount) || 0;
+              const monthly = parseFloat(editMonthly) || 0;
+              if (!hasReps && amount <= 0) { notify.error('Montant invalide'); return; }
+              const refAmount = hasReps ? pn(editingAdvance.amount) : amount;
+              if (editMonthly && (monthly <= 0 || monthly > refAmount)) {
+                notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
+                return;
+              }
+              const data: Record<string, any> = {
+                monthlyDeduction: monthly > 0 ? monthly : null,
+                notes: editNotes,
+              };
+              if (!hasReps) {
+                data.amount = amount;
+                data.paymentMethod = editMethod;
+                data.advanceDate = editDate || undefined;
+              }
+              updateMutation.mutate({ id: editingAdvance.id as string, data });
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {hasReps && (
+                <StatusBanner tone="info" icon={Info} title="Retenues déjà imputées">
+                  Le montant, la date et le mode ne sont plus modifiables.
+                  Le plan de retenue et les notes restent ajustables — les prochaines paies suivront le nouveau plan.
+                </StatusBanner>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Montant (DH) *">
+                  <input type="number" step="0.01" min="0.01" required disabled={hasReps}
+                    value={editAmount} onChange={e => setEditAmount(e.target.value)} className={inputCls} />
+                </Field>
+                <Field label="Date">
+                  <input type="date" disabled={hasReps} value={editDate} onChange={e => setEditDate(e.target.value)} className={inputCls} />
+                </Field>
               </div>
-              <form onSubmit={e => {
-                e.preventDefault();
-                const amount = parseFloat(editAmount) || 0;
-                const monthly = parseFloat(editMonthly) || 0;
-                if (!hasReps && amount <= 0) { notify.error('Montant invalide'); return; }
-                const refAmount = hasReps ? pn(editingAdvance.amount) : amount;
-                if (editMonthly && (monthly <= 0 || monthly > refAmount)) {
-                  notify.error('La retenue par mois doit être comprise entre 0 et le montant de l\'avance');
-                  return;
-                }
-                const data: Record<string, any> = {
-                  monthlyDeduction: monthly > 0 ? monthly : null,
-                  notes: editNotes,
-                };
-                if (!hasReps) {
-                  data.amount = amount;
-                  data.paymentMethod = editMethod;
-                  data.advanceDate = editDate || undefined;
-                }
-                updateMutation.mutate({ id: editingAdvance.id as string, data });
-              }} className="p-5 space-y-4">
-                {hasReps && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                    Des retenues ont déjà été imputées sur cette avance : le montant, la date et le mode ne sont plus modifiables.
-                    Le plan de retenue et les notes restent ajustables — les prochaines paies suivront le nouveau plan.
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
-                    <input type="number" step="0.01" min="0.01" required disabled={hasReps}
-                      value={editAmount} onChange={e => setEditAmount(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
-                    <input type="date" disabled={hasReps} value={editDate} onChange={e => setEditDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de paiement</label>
-                  <select disabled={hasReps} value={editMethod} onChange={e => setEditMethod(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                    {paymentMethods.length > 0
-                      ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
-                      : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Retenue par mois (vide = tout à la prochaine paie)</label>
-                  <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
-                    value={editMonthly} onChange={e => setEditMonthly(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  {(() => {
-                    const monthlyNum = parseFloat(editMonthly) || 0;
-                    if (monthlyNum <= 0) return (
-                      <p className="text-xs text-gray-400 mt-1">Sans plan, tout le solde ({remaining.toFixed(2)} DH) sera proposé à la prochaine paie.</p>
-                    );
-                    const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
-                    if (monthlyNum > refAmount) return (
-                      <p className="text-xs text-red-600 mt-1">La retenue par mois dépasse le montant de l'avance.</p>
-                    );
-                    if (remaining <= 0) return null;
-                    const nbLeft = Math.ceil(remaining / monthlyNum);
-                    return (
-                      <p className="text-xs text-blue-700 mt-1">
-                        Solde restant {remaining.toFixed(2)} DH → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {monthlyNum.toFixed(2)} DH max.
-                      </p>
-                    );
-                  })()}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-                  <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)}
-                    placeholder="Motif, accord de remboursement..."
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button type="submit" disabled={updateMutation.isPending}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors">
-                  <Check size={16} /> {updateMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications'}
-                </button>
-              </form>
-            </div>
-          </div>
+              <Field label="Mode de paiement">
+                <select disabled={hasReps} value={editMethod} onChange={e => setEditMethod(e.target.value)} className={inputCls}>
+                  {paymentMethods.length > 0
+                    ? paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)
+                    : <><option value="cash">Espèces</option><option value="bank">Virement</option></>}
+                </select>
+              </Field>
+              <Field label="Retenue par mois (vide = tout à la prochaine paie)">
+                <input type="number" step="0.01" min="0.01" placeholder="Vide = tout retenir à la prochaine paie"
+                  value={editMonthly} onChange={e => setEditMonthly(e.target.value)} className={inputCls} />
+                {(() => {
+                  const monthlyNum = parseFloat(editMonthly) || 0;
+                  if (monthlyNum <= 0) return (
+                    <p style={HINT}>Sans plan, tout le solde ({remaining.toFixed(2)} DH) sera proposé à la prochaine paie.</p>
+                  );
+                  const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
+                  if (monthlyNum > refAmount) return (
+                    <p style={{ ...HINT, color: '#dc3545' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                  );
+                  if (remaining <= 0) return null;
+                  const nbLeft = Math.ceil(remaining / monthlyNum);
+                  return (
+                    <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
+                      Solde restant {remaining.toFixed(2)} DH → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {monthlyNum.toFixed(2)} DH max.
+                    </p>
+                  );
+                })()}
+              </Field>
+              <Field label="Notes">
+                <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                  placeholder="Motif, accord de remboursement..." className={inputCls} />
+              </Field>
+            </form>
+          </HrModal>
         );
       })()}
     </>

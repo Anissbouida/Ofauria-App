@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, X, HandCoins } from 'lucide-react';
 import { advanceRequestsApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../shared';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { PromptDialog } from '../ui';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -13,6 +17,8 @@ const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr
  */
 export default function AdvanceRequestsPanel() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const [rejecting, setRejecting] = useState<Record<string, any> | null>(null);
   const { data: rows = [] } = useQuery<Record<string, any>[]>({ queryKey: ['advance-requests'], queryFn: () => advanceRequestsApi.list('pending') });
   const refresh = () => ['advance-requests', 'salary-advances', 'advances-outstanding'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
   const approve = useMutation({
@@ -27,9 +33,8 @@ export default function AdvanceRequestsPanel() {
   });
   if (!rows.length) return null;
   return (
-    <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
-      <p style={{ fontWeight: 600, marginBottom: 6 }}><HandCoins size={12} style={{ display: 'inline', marginRight: 4 }} />{rows.length} demande(s) d'avance à traiter</p>
-      <table className="odoo-table">
+    <StatusBanner tone="orange" icon={HandCoins} title={`${rows.length} demande(s) d'avance à traiter`}>
+      <table className="odoo-table" style={{ marginTop: 6 }}>
         <thead><tr><th>Salarié</th><th>Demandée le</th><th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'right' }}>Retenue / paie</th><th>Motif</th><th style={{ width: 170 }}></th></tr></thead>
         <tbody>
           {rows.map(r => (
@@ -43,15 +48,21 @@ export default function AdvanceRequestsPanel() {
                 <div style={{ display: 'inline-flex', gap: 4 }}>
                   <button className="odoo-btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                     disabled={approve.isPending}
-                    onClick={() => { if (confirm(`Verser ${fmt(r.amount)} DH en espèces à ${r.first_name} ${r.last_name} ?`)) approve.mutate({ id: r.id, method: 'cash' }); }}>
+                    onClick={async () => {
+                      if (!(await confirm(`Verser ${fmt(r.amount)} DH en espèces à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                      approve.mutate({ id: r.id, method: 'cash' });
+                    }}>
                     <Check size={11} /> Espèces
                   </button>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem' }} disabled={approve.isPending}
-                    onClick={() => { if (confirm(`Verser ${fmt(r.amount)} DH par virement à ${r.first_name} ${r.last_name} ?`)) approve.mutate({ id: r.id, method: 'bank' }); }}>
+                    onClick={async () => {
+                      if (!(await confirm(`Verser ${fmt(r.amount)} DH par virement à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                      approve.mutate({ id: r.id, method: 'bank' });
+                    }}>
                     Virement
                   </button>
                   <button className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }} disabled={reject.isPending}
-                    onClick={() => { const note = prompt('Motif du refus (communiqué au salarié)'); if (note !== null) reject.mutate({ id: r.id, note: note || null }); }}>
+                    onClick={() => setRejecting(r)}>
                     <X size={13} />
                   </button>
                 </div>
@@ -60,6 +71,12 @@ export default function AdvanceRequestsPanel() {
           ))}
         </tbody>
       </table>
-    </div>
+      {rejecting && (
+        <PromptDialog icon={HandCoins} crumb="Avance" title={`Refuser la demande de ${rejecting.first_name} ${rejecting.last_name}`}
+          label="Motif du refus (communiqué au salarié)" confirmLabel="Refuser"
+          onCancel={() => setRejecting(null)}
+          onConfirm={note => { const id = rejecting.id as string; setRejecting(null); reject.mutate({ id, note: note || null }); }} />
+      )}
+    </StatusBanner>
   );
 }

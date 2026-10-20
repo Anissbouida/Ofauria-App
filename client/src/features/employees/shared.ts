@@ -1,15 +1,15 @@
 export type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'advances' | 'schedule' | 'analytics' | 'me';
 
-export const LEAVE_STATUS_COLORS: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', approved: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700' };
+export const LEAVE_STATUS_COLORS: Record<string, string> = { pending: 'odoo-tag-yellow', approved: 'odoo-tag-green', rejected: 'odoo-tag-red' };
 export const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
-  { value: 'present', label: 'Présent', color: 'bg-green-100 text-green-700' },
-  { value: 'absent', label: 'Absent', color: 'bg-red-100 text-red-700' },
-  { value: 'late', label: 'Retard', color: 'bg-yellow-100 text-yellow-700' },
-  { value: 'half_day', label: 'Demi-journée', color: 'bg-blue-100 text-blue-700' },
+  { value: 'present', label: 'Présent', color: 'odoo-tag-green' },
+  { value: 'absent', label: 'Absent', color: 'odoo-tag-red' },
+  { value: 'late', label: 'Retard', color: 'odoo-tag-yellow' },
+  { value: 'half_day', label: 'Demi-journée', color: 'odoo-tag-blue' },
   // Repos hebdomadaire paye (comptabilise comme jour travaille pour la paie).
-  { value: 'repos', label: 'Repos', color: 'bg-purple-100 text-purple-700' },
+  { value: 'repos', label: 'Repos', color: 'odoo-tag-purple' },
   // Deux shifts le meme jour : compte 2 jours payes dans la paie.
-  { value: 'double', label: 'Double shift', color: 'bg-indigo-100 text-indigo-700' },
+  { value: 'double', label: 'Double shift', color: 'odoo-tag-orange' },
 ];
 export const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -75,4 +75,28 @@ export function downloadCsv(filename: string, headers: string[], rows: Array<Arr
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Couleur des shifts sur la palette des etiquettes odoo (meme rendu que les
+ * statuts du module Achats), a la place des classes Tailwind du paquet partage.
+ */
+const SHIFT_TONES = {
+  SALES_AM: 'yellow', SALES_PM: 'orange', PROD_EARLY: 'green', PROD_MID: 'blue', NIGHT: 'purple', ADMIN_DAY: 'grey',
+} as const;
+const TONE_STYLE: Record<string, { background: string; color: string }> = {
+  yellow: { background: '#fff3cd', color: '#856404' },
+  orange: { background: '#ffe5d0', color: '#b85d1a' },
+  green: { background: '#d4edda', color: '#155724' },
+  blue: { background: '#d6e9f8', color: '#1f6391' },
+  purple: { background: 'var(--theme-accent-light)', color: 'var(--theme-accent)' },
+  grey: { background: '#e9ecef', color: '#495057' },
+};
+/** Classe d'etiquette d'un shift (`odoo-tag ${shiftTag(code)}`). */
+export function shiftTag(code: string): string {
+  return `odoo-tag-${SHIFT_TONES[code as keyof typeof SHIFT_TONES] ?? 'grey'}`;
+}
+/** Style de fond/texte d'un shift pour une cellule ou une liste deroulante. */
+export function shiftStyle(code: string): { background: string; color: string } {
+  return TONE_STYLE[SHIFT_TONES[code as keyof typeof SHIFT_TONES] ?? 'grey'];
 }

@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, Plus, Trash2, X } from 'lucide-react';
+import { Download, Plus, Trash2, Loader2, CalendarCheck, Info, History, SlidersHorizontal } from 'lucide-react';
 import { leavesApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage, downloadCsv } from '../shared';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { HrModal, Field, SectionTitle, EmptyState, inputCls, panel, smallBtn } from '../ui';
 
 const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 
@@ -27,15 +30,20 @@ export default function LeaveBalancesView() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-          1,5 jour ouvrable par mois de service, +1,5 jour par 5 ans d'ancienneté (plafond 30 j/an). Un reliquat se cumule sur deux années consécutives.
-        </span>
-        <button className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={13} /> CSV
-        </button>
-      </div>
-      {isLoading ? <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p> : (
+      <StatusBanner tone="neutral" icon={Info} title="Acquisition des congés payés"
+        actions={<button className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Download size={12} /> CSV
+        </button>}>
+        1,5 jour ouvrable par mois de service, +1,5 jour par 5 ans d'ancienneté (plafond 30 j/an). Un reliquat se cumule sur deux années consécutives.
+      </StatusBanner>
+      {isLoading ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+          <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
+        </div>
+      ) : rows.length === 0 ? (
+        <EmptyState icon={CalendarCheck}>Aucun solde de congés à afficher</EmptyState>
+      ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
             <thead><tr>
@@ -88,6 +96,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
     onSuccess: () => { invalidate(); setAdj(null); notify.success('Ajustement enregistré'); },
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
   });
+  const confirm = useConfirm();
   const remove = useMutation({
     mutationFn: (id: string) => leavesApi.removeAdjustment(id),
     onSuccess: () => { invalidate(); notify.success('Ajustement supprimé'); },
@@ -95,15 +104,13 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="flex justify-between items-start">
-          <div>
-            <h2 className="text-lg font-bold">{employee.name}</h2>
-            <p className="text-sm text-gray-500">Embauché le {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('fr-FR') : '—'} · disponible {balance ? d2(balance.available) : '…'} j</p>
-          </div>
-          <button onClick={onClose} className="odoo-pager-btn"><X size={16} /></button>
-        </div>
+    <HrModal icon={CalendarCheck} crumb="Solde de congés" title={employee.name} width={760} onClose={onClose}
+      tag={<span className={`odoo-tag ${balance && balance.available < 0 ? 'odoo-tag-red' : 'odoo-tag-green'}`}>Disponible {balance ? d2(balance.available) : '…'} j</span>}
+      footer={<button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>}>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+          Embauché le {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('fr-FR') : '—'} · disponible {balance ? d2(balance.available) : '…'} j
+        </p>
+        <SectionTitle icon={History}>Détail par année</SectionTitle>
         <table className="odoo-table">
           <thead><tr>
             <th>Année</th><th style={{ textAlign: 'center' }}>Mois</th><th style={{ textAlign: 'right' }}>Droit annuel</th>
@@ -123,23 +130,20 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
           </tbody>
         </table>
 
-        <div className="flex justify-between items-center">
-          <p className="text-[11px] text-gray-400 uppercase tracking-wider">Ajustements</p>
-          {isAdmin && !adj && (
-            <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.2rem 0.5rem', fontSize: '0.6875rem' }}
-              onClick={() => setAdj({ year: String(new Date().getFullYear()), days: '', reason: '' })}><Plus size={11} /> Ajouter</button>
-          )}
-        </div>
+        <SectionTitle icon={SlidersHorizontal} actions={isAdmin && !adj ? (
+          <button className="odoo-btn-secondary" style={smallBtn}
+            onClick={() => setAdj({ year: String(new Date().getFullYear()), days: '', reason: '' })}><Plus size={11} /> Ajouter</button>
+        ) : undefined}>Ajustements</SectionTitle>
         {adj && (
-          <div className="flex gap-2 items-end flex-wrap">
-            <label className="text-xs">Année<input className="input" type="number" style={{ width: 90 }} value={adj.year} onChange={e => setAdj({ ...adj, year: e.target.value })} /></label>
-            <label className="text-xs">Jours (±)<input className="input" type="number" step="0.5" style={{ width: 90 }} value={adj.days} onChange={e => setAdj({ ...adj, days: e.target.value })} /></label>
-            <label className="text-xs" style={{ flex: 1 }}>Motif<input className="input" value={adj.reason} placeholder="Reprise du solde au 01/01, régularisation…" onChange={e => setAdj({ ...adj, reason: e.target.value })} /></label>
-            <button className="odoo-btn-primary" disabled={create.isPending || !parseFloat(adj.days) || adj.reason.length < 3} onClick={() => create.mutate()}>OK</button>
+          <div style={{ ...panel, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <Field label="Année"><input className={inputCls} type="number" style={{ width: 90 }} value={adj.year} onChange={e => setAdj({ ...adj, year: e.target.value })} /></Field>
+            <Field label="Jours (±)"><input className={inputCls} type="number" step="0.5" style={{ width: 90 }} value={adj.days} onChange={e => setAdj({ ...adj, days: e.target.value })} /></Field>
+            <Field label="Motif" style={{ flex: 1, minWidth: 200 }}><input className={inputCls} value={adj.reason} placeholder="Reprise du solde au 01/01, régularisation…" onChange={e => setAdj({ ...adj, reason: e.target.value })} /></Field>
             <button className="odoo-btn-secondary" onClick={() => setAdj(null)}>Annuler</button>
+            <button className="odoo-btn-primary" disabled={create.isPending || !parseFloat(adj.days) || adj.reason.length < 3} onClick={() => create.mutate()}>OK</button>
           </div>
         )}
-        {adjustments.length === 0 ? <p className="text-sm text-gray-400">Aucun ajustement.</p> : (
+        {adjustments.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun ajustement.</p> : (
           <table className="odoo-table">
             <thead><tr><th>Année</th><th style={{ textAlign: 'right' }}>Jours</th><th>Motif</th><th>Par</th>{isAdmin && <th style={{ width: 32 }}></th>}</tr></thead>
             <tbody>
@@ -147,13 +151,12 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
                 <tr key={a.id}>
                   <td>{a.year}</td><td style={{ textAlign: 'right' }}>{parseFloat(a.days) > 0 ? '+' : ''}{d2(parseFloat(a.days))}</td>
                   <td>{a.reason}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{a.created_by_first_name ?? '—'}</td>
-                  {isAdmin && <td><button className="odoo-pager-btn" style={{ color: '#dc3545' }} onClick={() => { if (confirm('Supprimer cet ajustement ?')) remove.mutate(a.id); }}><Trash2 size={12} /></button></td>}
+                  {isAdmin && <td><button className="odoo-pager-btn" style={{ color: '#dc3545' }} onClick={async () => { if (!(await confirm('Supprimer cet ajustement ?', { title: 'Supprimer l\'ajustement', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(a.id); }}><Trash2 size={12} /></button></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
-    </div>
+    </HrModal>
   );
 }

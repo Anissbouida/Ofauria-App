@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FilePlus2, RefreshCw, Hourglass, CircleStop, Plus } from 'lucide-react';
+import { FilePlus2, RefreshCw, Hourglass, CircleStop, Plus, FileSignature } from 'lucide-react';
 import { contractsApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage, isoDate } from '../shared';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { SectionTitle, SubmitButton, fieldLabel, inputCls, panel, smallBtn } from '../ui';
 
 const fr = (d: unknown) => { const s = isoDate(d); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 const KIND: Record<string, string> = { contrat: 'Contrat', avenant: 'Avenant', renouvellement: 'Renouvellement' };
@@ -21,6 +23,7 @@ type Action = 'create' | 'avenant' | 'renew' | 'end' | null;
  */
 export default function EmployeeContracts({ employeeId, onChanged }: { employeeId: string; onChanged: () => void }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { entries: contractTypes, getLabel: typeLabel } = useReferentiel('contract_types');
   const { data: contracts = [] } = useQuery<Record<string, any>[]>({
     queryKey: ['employee-contracts', employeeId],
@@ -84,57 +87,57 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
         : a === 'renew' ? { endDate: '' } : { endDate: today, reason: '' });
   };
   const field = (key: string, label: string, type = 'text', extra: Record<string, any> = {}) => (
-    <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {label}
-      <input className="input" type={type} value={form[key] ?? ''} onChange={e => setForm({ ...form, [key]: e.target.value })} {...extra} />
-    </label>
+    <div>
+      <label style={fieldLabel}>{label}</label>
+      <input className={inputCls} type={type} value={form[key] ?? ''} onChange={e => setForm({ ...form, [key]: e.target.value })} {...extra} />
+    </div>
   );
   const trialLeft = active?.trial_end_date ? Math.round((Date.parse(isoDate(active.trial_end_date)) - Date.parse(today)) / 86400000) : null;
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-[11px] text-gray-400 uppercase tracking-wider">Contrats et avenants</p>
-        <div style={{ display: 'inline-flex', gap: 4 }}>
-          {!active && <button className="odoo-btn-secondary" style={btn} onClick={() => open('create')}><Plus size={11} /> Contrat</button>}
-          {active && <button className="odoo-btn-secondary" style={btn} onClick={() => open('avenant')}><FilePlus2 size={11} /> Avenant</button>}
-          {active && active.contract_type !== 'cdi' && active.end_date && (
-            <button className="odoo-btn-secondary" style={btn} onClick={() => open('renew')}><RefreshCw size={11} /> Renouveler</button>
-          )}
-          {active && trialLeft !== null && trialLeft >= 0 && !active.trial_renewed && (
-            <button className="odoo-btn-secondary" style={btn} disabled={renewTrial.isPending}
-              onClick={() => { if (confirm('Renouveler la période d\'essai (une seule fois, pour la même durée) ?')) renewTrial.mutate(); }}>
-              <Hourglass size={11} /> Renouveler l'essai
-            </button>
-          )}
-          {active && <button className="odoo-btn-secondary" style={{ ...btn, color: '#dc3545' }} onClick={() => open('end')}><CircleStop size={11} /> Clôturer</button>}
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <SectionTitle icon={FileSignature} actions={<>
+        {!active && <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => open('create')}><Plus size={11} /> Contrat</button>}
+        {active && <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => open('avenant')}><FilePlus2 size={11} /> Avenant</button>}
+        {active && active.contract_type !== 'cdi' && active.end_date && (
+          <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => open('renew')}><RefreshCw size={11} /> Renouveler</button>
+        )}
+        {active && trialLeft !== null && trialLeft >= 0 && !active.trial_renewed && (
+          <button type="button" className="odoo-btn-secondary" style={smallBtn} disabled={renewTrial.isPending}
+            onClick={async () => {
+              if (!(await confirm('Renouveler la période d\'essai (une seule fois, pour la même durée) ?', { title: 'Renouveler l\'essai', confirmLabel: 'Renouveler' }))) return;
+              renewTrial.mutate();
+            }}>
+            <Hourglass size={11} /> Renouveler l'essai
+          </button>
+        )}
+        {active && <button type="button" className="odoo-btn-danger" style={smallBtn} onClick={() => open('end')}><CircleStop size={11} /> Clôturer</button>}
+      </>}>Contrats et avenants</SectionTitle>
 
       {action && (
-        <div className="bg-gray-50 rounded-xl p-3 mb-2" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <p className="text-sm font-semibold">
+        <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
             {action === 'create' ? 'Nouveau contrat' : action === 'avenant' ? 'Avenant au contrat' : action === 'renew' ? 'Renouvellement' : 'Clôture du contrat'}
-          </p>
+          </div>
           {(action === 'create' || action === 'avenant') && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-3">
               {action === 'create' ? field('startDate', 'Début', 'date') : field('effectiveDate', 'Prise d\'effet', 'date')}
-              <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Type
-                <select className="input" value={form.contractType} onChange={e => setForm({ ...form, contractType: e.target.value })}>
+              <div><label style={fieldLabel}>Type</label>
+                <select className={inputCls} value={form.contractType} onChange={e => setForm({ ...form, contractType: e.target.value })}>
                   {contractTypes.map(ct => <option key={ct.code} value={ct.code}>{ct.label}</option>)}
                 </select>
-              </label>
-              <label className="text-xs" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>Catégorie
-                <select className="input" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              </div>
+              <div><label style={fieldLabel}>Catégorie</label>
+                <select className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
                   {Object.entries(CATEGORY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
-              </label>
+              </div>
               {form.contractType !== 'cdi' && field('endDate', 'Fin du contrat *', 'date')}
               {field('jobTitle', 'Poste')}
               {field('monthlySalary', 'Salaire mensuel (DH)', 'number', { step: '0.01' })}
               {field('weeklyHours', 'Heures / semaine', 'number', { step: '0.5' })}
               {action === 'create' && (
-                <label className="text-xs flex items-center gap-2 mt-4">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', marginTop: 20 }}>
                   <input type="checkbox" checked={!!form.withTrial} onChange={e => setForm({ ...form, withTrial: e.target.checked })} />
                   Période d'essai légale
                 </label>
@@ -142,28 +145,28 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
             </div>
           )}
           {action === 'renew' && (
-            <div className="grid grid-cols-2 gap-2">{field('endDate', `Nouvelle fin (actuelle : ${fr(active?.end_date)})`, 'date')}{field('notes', 'Motif')}</div>
+            <div className="grid grid-cols-2 gap-3">{field('endDate', `Nouvelle fin (actuelle : ${fr(active?.end_date)})`, 'date')}{field('notes', 'Motif')}</div>
           )}
           {action === 'end' && (
-            <div className="grid grid-cols-2 gap-2">{field('endDate', 'Date de fin', 'date')}{field('reason', 'Motif (fin de CDD, démission…) *')}</div>
+            <div className="grid grid-cols-2 gap-3">{field('endDate', 'Date de fin', 'date')}{field('reason', 'Motif (fin de CDD, démission…) *')}</div>
           )}
           {action === 'avenant' && field('notes', 'Objet de l\'avenant')}
-          <div className="flex justify-end gap-2">
-            <button className="odoo-btn-secondary" onClick={() => setAction(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={run.isPending} onClick={() => run.mutate()}>Enregistrer</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setAction(null)}>Annuler</button>
+            <SubmitButton pending={run.isPending} danger={action === 'end'} onClick={() => run.mutate()}>Enregistrer</SubmitButton>
           </div>
-          {action === 'end' && <p className="text-xs text-gray-500">Le solde de tout compte se calcule à part ; pensez à désactiver l'employé une fois parti.</p>}
+          {action === 'end' && <p style={hint}>Le solde de tout compte se calcule à part ; pensez à désactiver l'employé une fois parti.</p>}
         </div>
       )}
 
-      {contracts.length === 0 ? <p className="text-sm text-gray-400">Aucun contrat enregistré.</p> : (
+      {contracts.length === 0 ? <p style={muted}>Aucun contrat enregistré.</p> : (
         <table className="odoo-table">
           <thead><tr><th>Pièce</th><th>Type</th><th>Période</th><th style={{ textAlign: 'right' }}>Salaire</th><th>Essai</th><th>Statut</th></tr></thead>
           <tbody>
             {contracts.map(c => (
               <tr key={c.id} title={c.notes ?? c.end_reason ?? undefined}>
-                <td>{KIND[c.kind] ?? c.kind}{c.job_title ? <span className="text-xs text-gray-500"> · {c.job_title}</span> : null}</td>
-                <td>{typeLabel(c.contract_type)} <span className="text-xs text-gray-500">{CATEGORY[c.category]}</span></td>
+                <td>{KIND[c.kind] ?? c.kind}{c.job_title ? <span style={sub}> · {c.job_title}</span> : null}</td>
+                <td>{typeLabel(c.contract_type)} <span style={sub}>{CATEGORY[c.category]}</span></td>
                 <td style={{ fontSize: '0.75rem' }}>{fr(c.start_date)} → {c.end_date ? fr(c.end_date) : 'indéterminée'}</td>
                 <td style={{ textAlign: 'right' }}>{c.monthly_salary ? `${parseFloat(c.monthly_salary).toFixed(2)}` : '—'}</td>
                 <td style={{ fontSize: '0.75rem' }}>{c.trial_end_date ? `${fr(c.trial_end_date)}${c.trial_renewed ? ' (renouvelé)' : ''}` : '—'}</td>
@@ -177,4 +180,6 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
   );
 }
 
-const btn = { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0.2rem 0.5rem', fontSize: '0.6875rem' } as const;
+const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const hint = { fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const sub = { fontSize: '0.75rem', color: 'var(--odoo-text-muted)' } as const;

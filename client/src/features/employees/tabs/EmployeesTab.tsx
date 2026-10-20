@@ -4,8 +4,12 @@ import { employeesApi, shiftsApi, payrollConfigApi } from '../../../api/employee
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, UserCog, Users, Banknote, X, Search, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
+  Plus, Pencil, UserCog, Users, Banknote, Search, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
+  StickyNote, UserRound, Briefcase, Phone, Loader2,
 } from 'lucide-react';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { HrModal, SectionTitle, EmptyState, fieldLabel, inputCls } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { isoDate, syncSalaryFields, saveBlobResponse, apiErrorMessage } from '../shared';
@@ -37,6 +41,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
   // boutons aux non-admins pour eviter d'afficher une action qui retournerait 403.
   const { user } = useAuth();
   const canDeleteEmployee = user?.role === 'admin';
+  const confirm = useConfirm();
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, any>) =>
@@ -108,15 +113,15 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
   async function handleHardDelete(emp: Record<string, any>) {
     const fullName = `${emp.first_name} ${emp.last_name}`;
 
-    if (!confirm(
-      `⚠️ SUPPRESSION DÉFINITIVE\n\n` +
+    if (!(await confirm(
       `Vous êtes sur le point d'effacer ${fullName} DE LA BASE DE DONNÉES.\n\n` +
       `Cette action est IRRÉVERSIBLE. Toutes les références (paie, présence,\n` +
       `congés, paiements) seront aussi supprimées.\n\n` +
       `Si vous voulez juste masquer l'employé en gardant l'historique,\n` +
       `utilisez plutôt le bouton "Désactiver".\n\n` +
-      `Continuer vers le détail des données qui seront supprimées ?`
-    )) return;
+      `Continuer vers le détail des données qui seront supprimées ?`,
+      { title: 'Suppression définitive', confirmLabel: 'Continuer', danger: true },
+    ))) return;
 
     // Fetch counts pour montrer ce qui sera detruit
     let counts: Record<string, number>;
@@ -154,12 +159,12 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
       ? `Données qui seront EFFACÉES en cascade :\n${deleteLines.join('\n')}\n${salesNote}\n`
       : `Aucune donnée liée à effacer.${salesNote}\n`;
 
-    if (!confirm(
+    if (!(await confirm(
       `${details}` +
       `Confirmer la suppression DÉFINITIVE de ${fullName} ?\n\n` +
-      `OK = supprimer (action irréversible)\n` +
-      `Annuler = abandonner`
-    )) return;
+      `Action irréversible.`,
+      { title: 'Suppression définitive', confirmLabel: 'Supprimer définitivement', danger: true },
+    ))) return;
 
     hardDeleteMutation.mutate(emp.id as string);
   }
@@ -243,16 +248,6 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     return 0;
   });
 
-  const ROLE_COLORS: Record<string, string> = {
-    admin: 'bg-purple-100 text-purple-700',
-    baker: 'bg-amber-100 text-amber-700',
-    pastry_chef: 'bg-pink-100 text-pink-700',
-    cashier: 'bg-blue-100 text-blue-700',
-    viennoiserie: 'bg-orange-100 text-orange-700',
-    beldi_sale: 'bg-teal-100 text-teal-700',
-    manager: 'bg-indigo-100 text-indigo-700',
-  };
-
   // La fiche ouverte suit les mises a jour (contrat, salaire) de la liste.
   useEffect(() => {
     if (!viewDetail) return;
@@ -321,16 +316,18 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
 
       {/* Search panel + action */}
       <div className="odoo-search-panel">
-        <div className="odoo-view-switcher">
-          <button onClick={() => setStatusFilter('active')} className={statusFilter === 'active' ? 'active' : ''}>
-            Actifs <span style={{ opacity: 0.6, marginLeft: 4 }}>({activeCount})</span>
-          </button>
-          <button onClick={() => setStatusFilter('inactive')} className={statusFilter === 'inactive' ? 'active' : ''}>
-            Inactifs <span style={{ opacity: 0.6, marginLeft: 4 }}>({inactiveCount})</span>
-          </button>
-          <button onClick={() => setStatusFilter('all')} className={statusFilter === 'all' ? 'active' : ''}>
-            Tous <span style={{ opacity: 0.6, marginLeft: 4 }}>({employees.length})</span>
-          </button>
+        <div className="odoo-view-switcher" role="tablist" aria-label="Statut des employés">
+          {([['active', 'Actifs', activeCount], ['inactive', 'Inactifs', inactiveCount], ['all', 'Tous', employees.length]] as const).map(([key, label, count]) => (
+            <button key={key} type="button" role="tab" aria-selected={statusFilter === key} onClick={() => setStatusFilter(key)}
+              style={{
+                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
+                background: statusFilter === key ? 'var(--odoo-purple-light)' : 'transparent',
+                color: statusFilter === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                fontWeight: statusFilter === key ? 600 : 400,
+              }}>
+              {label} <span style={{ opacity: 0.6, marginLeft: 4 }}>({count})</span>
+            </button>
+          ))}
         </div>
         <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
         <input type="text" placeholder="Rechercher employé, CIN..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
@@ -347,10 +344,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
           <p style={{ fontSize: '0.8125rem' }}>Chargement des employés...</p>
         </div>
       ) : sortedEmp.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-          <Users size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun employé trouvé</p>
-        </div>
+        <EmptyState icon={Users}>Aucun employé trouvé</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -423,11 +417,11 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                       </button>
                       {e.is_active && canDeleteEmployee && (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const fullName = `${e.first_name} ${e.last_name}`;
-                            if (confirm(`Désactiver ${fullName} ?\n\nL'employé sera masqué des listes actives.\nSon historique (paie, présence, paiements) reste préservé.\nVous pourrez le réactiver à tout moment.`)) {
-                              deactivateMutation.mutate(e.id as string);
-                            }
+                            if (!(await confirm(`Désactiver ${fullName} ?\n\nL'employé sera masqué des listes actives.\nSon historique (paie, présence, paiements) reste préservé.\nVous pourrez le réactiver à tout moment.`,
+                              { title: 'Désactiver l\'employé', confirmLabel: 'Désactiver', danger: true }))) return;
+                            deactivateMutation.mutate(e.id as string);
                           }}
                           disabled={deactivateMutation.isPending}
                           className="odoo-pager-btn" title="Désactiver" style={{ color: '#dc3545' }}>
@@ -444,11 +438,11 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                       )}
                       {!e.is_active && canDeleteEmployee && (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const fullName = `${e.first_name} ${e.last_name}`;
-                            if (confirm(`Réactiver ${fullName} ? Il réapparaitra dans les listes actives.`)) {
-                              reactivateMutation.mutate(e.id as string);
-                            }
+                            if (!(await confirm(`Réactiver ${fullName} ? Il réapparaitra dans les listes actives.`,
+                              { title: 'Réactiver l\'employé', confirmLabel: 'Réactiver' }))) return;
+                            reactivateMutation.mutate(e.id as string);
                           }}
                           disabled={reactivateMutation.isPending}
                           className="odoo-pager-btn" title="Réactiver" style={{ color: '#28a745' }}>
@@ -464,228 +458,208 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
         </div>
       )}
 
-      {/* Detail modal — redesigned */}
+      {/* Fiche employé */}
       {viewDetail && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewDetail(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={ev => ev.stopPropagation()}>
-            {/* Header */}
-            <div className="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 border-b border-teal-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 text-lg font-bold border-2 border-teal-200">
-                    {(viewDetail.first_name as string).charAt(0)}{(viewDetail.last_name as string).charAt(0)}
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{viewDetail.first_name as string} {viewDetail.last_name as string}</h2>
-                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${ROLE_COLORS[viewDetail.role as string] || 'bg-gray-100 text-gray-600'}`}
-                      style={getRoleColor(viewDetail.role as string) && !ROLE_COLORS[viewDetail.role as string] ? { backgroundColor: getRoleColor(viewDetail.role as string) + '20', color: getRoleColor(viewDetail.role as string) } : undefined}>
-                      {getRoleLabel(viewDetail.role as string)}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { setViewDetail(null); setEditing(viewDetail); setShowForm(true); }}
-                    className="px-3 py-2 bg-white/70 hover:bg-white rounded-lg text-sm font-medium text-gray-600 transition-colors flex items-center gap-1.5">
-                    <Pencil size={14} /> Modifier
-                  </button>
-                  <button onClick={() => setViewDetail(null)} className="w-9 h-9 bg-white/70 hover:bg-white rounded-lg flex items-center justify-center transition-colors">
-                    <X size={18} className="text-gray-500" />
-                  </button>
-                </div>
+        <HrModal icon={UserCog} crumb="Employé" width={860}
+          title={`${viewDetail.first_name as string} ${viewDetail.last_name as string}`}
+          tag={<span className="odoo-tag odoo-tag-purple">{getRoleLabel(viewDetail.role as string)}</span>}
+          onClose={() => setViewDetail(null)}
+          headerActions={
+            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px' }}
+              onClick={() => { setViewDetail(null); setEditing(viewDetail); setShowForm(true); }}>
+              <Pencil size={12} /> Modifier
+            </button>
+          }>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3" style={{ fontSize: '0.8125rem' }}>
+            {([
+              ['CIN', viewDetail.cin], ['Téléphone', viewDetail.phone],
+              ['Date de naissance', (() => { const s = isoDate(viewDetail.birth_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+              ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
+              ['N° CNSS', viewDetail.cnss_number],
+              ['RIB (virement)', viewDetail.rib ? `${String(viewDetail.rib).replace(/^(\d{3})(\d{3})(\d{16})(\d{2})$/, '$1 $2 $3 $4')}${viewDetail.bank_name ? ` · ${viewDetail.bank_name}` : ''}` : null],
+              ['Type de contrat', getContractLabel(viewDetail.contract_type as string || 'cdi')],
+              ['Début contrat', (() => { const s = isoDate(viewDetail.contract_start); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+              ['Fin contrat', (() => { const s = isoDate(viewDetail.contract_end); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+              ['Date d\'embauche', (() => { const s = isoDate(viewDetail.hire_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
+              ['Déclaration', viewDetail.is_declared === false ? 'Non déclaré (ni CNSS ni IR)' : 'Déclaré CNSS + IR'],
+              ['Fréquence de paie', ({ monthly: 'Mensuelle', biweekly: 'Par quinzaine', weekly: 'Hebdomadaire' } as Record<string, string>)[(viewDetail.pay_frequency as string) || 'monthly']],
+              ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
+              ['Salaire hebdo', viewDetail.pay_frequency === 'weekly' && viewDetail.weekly_salary ? `${parseFloat(viewDetail.weekly_salary as string).toFixed(2)} DH` : null],
+              ['Contact urgence', viewDetail.emergency_contact_name],
+              ['Tel. urgence', viewDetail.emergency_contact_phone],
+            ] as [string, unknown][]).map(([label, val]) => val ? (
+              <div key={label}>
+                <div style={fieldLabel}>{label}</div>
+                <div style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{val as string}</div>
               </div>
-            </div>
-            {/* Details */}
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                {([
-                  ['CIN', viewDetail.cin], ['Téléphone', viewDetail.phone],
-                  ['Date de naissance', (() => { const s = isoDate(viewDetail.birth_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
-                  ['Adresse', viewDetail.address], ['Ville', viewDetail.city],
-                  ['N° CNSS', viewDetail.cnss_number],
-                  ['RIB (virement)', viewDetail.rib ? `${String(viewDetail.rib).replace(/^(\d{3})(\d{3})(\d{16})(\d{2})$/, '$1 $2 $3 $4')}${viewDetail.bank_name ? ` · ${viewDetail.bank_name}` : ''}` : null],
-                  ['Type de contrat', getContractLabel(viewDetail.contract_type as string || 'cdi')],
-                  ['Début contrat', (() => { const s = isoDate(viewDetail.contract_start); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
-                  ['Fin contrat', (() => { const s = isoDate(viewDetail.contract_end); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
-                  ['Date d\'embauche', (() => { const s = isoDate(viewDetail.hire_date); return s ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : null; })()],
-                  ['Déclaration', viewDetail.is_declared === false ? 'Non déclaré (ni CNSS ni IR)' : 'Déclaré CNSS + IR'],
-                  ['Fréquence de paie', ({ monthly: 'Mensuelle', biweekly: 'Par quinzaine', weekly: 'Hebdomadaire' } as Record<string, string>)[(viewDetail.pay_frequency as string) || 'monthly']],
-                  ['Salaire mensuel', viewDetail.monthly_salary ? `${parseFloat(viewDetail.monthly_salary as string).toFixed(2)} DH` : null],
-                  ['Salaire hebdo', viewDetail.pay_frequency === 'weekly' && viewDetail.weekly_salary ? `${parseFloat(viewDetail.weekly_salary as string).toFixed(2)} DH` : null],
-                  ['Contact urgence', viewDetail.emergency_contact_name],
-                  ['Tel. urgence', viewDetail.emergency_contact_phone],
-                ] as [string, unknown][]).map(([label, val]) => val ? (
-                  <div key={label} className="bg-gray-50 rounded-xl p-3.5">
-                    <p className="text-[11px] text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-                    <p className="font-semibold text-gray-800">{val as string}</p>
-                  </div>
-                ) : null)}
-              </div>
-              {viewDetail.notes && (
-                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
-                  <p className="text-[11px] text-amber-600 uppercase tracking-wider mb-1">Notes</p>
-                  <p className="text-amber-800">{viewDetail.notes as string}</p>
-                </div>
-              )}
-              {viewDetail.is_active !== false && !viewDetail.exit_date && (
-                <div className="mt-4 flex items-center gap-2 flex-wrap text-sm">
-                  <span className="text-gray-500">Attestations :</span>
-                  {(['travail', 'salaire'] as const).map(kind => (
-                    <button key={kind} type="button" className="odoo-btn-secondary"
-                      onClick={async () => {
-                        try { saveBlobResponse(await payrollConfigApi.attestation(viewDetail.id as string, kind), `attestation_${kind}.pdf`); }
-                        catch (err) { notify.error(apiErrorMessage(err, 'Erreur')); }
-                      }}>
-                      {kind === 'travail' ? 'Attestation de travail' : 'Attestation de salaire'}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <EmployeeContracts employeeId={viewDetail.id as string} onChanged={() => undefined} />
-              <EmployeeDocuments employeeId={viewDetail.id as string} />
-              <EmployeeDeparture employee={viewDetail} />
-              {(viewDetail.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={viewDetail.id as string} />}
-              <EmployeeSalaryHistory employeeId={viewDetail.id as string} />
-            </div>
+            ) : null)}
           </div>
-        </div>
+          {viewDetail.notes && (
+            <StatusBanner tone="neutral" icon={StickyNote} title="Notes">{viewDetail.notes as string}</StatusBanner>
+          )}
+          {viewDetail.is_active !== false && !viewDetail.exit_date && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+              <span style={{ color: 'var(--odoo-text-muted)' }}>Attestations :</span>
+              {(['travail', 'salaire'] as const).map(kind => (
+                <button key={kind} type="button" className="odoo-btn-secondary"
+                  onClick={async () => {
+                    try { saveBlobResponse(await payrollConfigApi.attestation(viewDetail.id as string, kind), `attestation_${kind}.pdf`); }
+                    catch (err) { notify.error(apiErrorMessage(err, 'Erreur')); }
+                  }}>
+                  {kind === 'travail' ? 'Attestation de travail' : 'Attestation de salaire'}
+                </button>
+              ))}
+            </div>
+          )}
+          <EmployeeContracts employeeId={viewDetail.id as string} onChanged={() => undefined} />
+          <EmployeeDocuments employeeId={viewDetail.id as string} />
+          <EmployeeDeparture employee={viewDetail} />
+          {(viewDetail.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={viewDetail.id as string} />}
+          <EmployeeSalaryHistory employeeId={viewDetail.id as string} />
+        </HrModal>
       )}
 
-      {/* Form modal */}
+      {/* Formulaire employé */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
-            <h2 className="text-xl font-bold mb-4">{editing ? 'Modifier l\'employé' : 'Nouvel employé'}</h2>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const data: Record<string, any> = Object.fromEntries(fd);
-              if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
-              if (data.weeklySalary) data.weeklySalary = parseFloat(data.weeklySalary as string);
-              // Case a cocher : absente du FormData quand decochee.
-              data.isDeclared = fd.has('isDeclared');
-              if (!editing) data.withTrial = fd.has('withTrial');
-              if (data.jobTitle === '') delete data.jobTitle;
-              if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
-              if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
-              if (data.defaultShiftCode === '') data.defaultShiftCode = null;
-              if (data.rib === '') data.rib = null;
-              if (data.bankName === '') data.bankName = null;
-              saveMutation.mutate(data);
-            }} className="space-y-4">
-              <p className="text-sm font-medium text-gray-500 border-b pb-1">Informations personnelles</p>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Prénom *</label><input name="firstName" defaultValue={editing?.first_name as string} className="input" required /></div>
-                <div><label className="block text-sm font-medium mb-1">Nom *</label><input name="lastName" defaultValue={editing?.last_name as string} className="input" required /></div>
-                <div><label className="block text-sm font-medium mb-1">CIN</label><input name="cin" defaultValue={editing?.cin as string} className="input" />
-                  <label className="block text-xs text-gray-500 mt-1">Expire le <input name="cinExpiresOn" type="date" defaultValue={isoDate(editing?.cin_expires_on)} className="input" style={{ display: 'inline-block', width: 'auto' }} /></label></div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Date de naissance</label><input name="birthDate" type="date" defaultValue={isoDate(editing?.birth_date)} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Ville</label><input name="city" defaultValue={editing?.city as string} className="input" /></div>
-              </div>
-              <div><label className="block text-sm font-medium mb-1">Adresse</label><input name="address" defaultValue={editing?.address as string} className="input" /></div>
+        <HrModal icon={UserCog} crumb="Employé" width={720}
+          title={editing ? `${editing.first_name as string} ${editing.last_name as string}` : 'Nouveau'}
+          onClose={() => { setShowForm(false); setEditing(null); }}
+          footer={<>
+            <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" form="employee-form" disabled={saveMutation.isPending} className="odoo-btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}
+              Enregistrer
+            </button>
+          </>}>
+          <form id="employee-form" onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const data: Record<string, any> = Object.fromEntries(fd);
+            if (data.monthlySalary) data.monthlySalary = parseFloat(data.monthlySalary as string);
+            if (data.weeklySalary) data.weeklySalary = parseFloat(data.weeklySalary as string);
+            // Case a cocher : absente du FormData quand decochee.
+            data.isDeclared = fd.has('isDeclared');
+            if (!editing) data.withTrial = fd.has('withTrial');
+            if (data.jobTitle === '') delete data.jobTitle;
+            if (data.nbDependents) data.nbDependents = parseInt(data.nbDependents as string);
+            if (data.cimrRate) data.cimrRate = parseFloat(data.cimrRate as string);
+            if (data.defaultShiftCode === '') data.defaultShiftCode = null;
+            if (data.rib === '') data.rib = null;
+            if (data.bankName === '') data.bankName = null;
+            saveMutation.mutate(data);
+          }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SectionTitle icon={UserRound}>Informations personnelles</SectionTitle>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label style={fieldLabel}>Prénom *</label><input name="firstName" defaultValue={editing?.first_name as string} className={inputCls} required /></div>
+              <div><label style={fieldLabel}>Nom *</label><input name="lastName" defaultValue={editing?.last_name as string} className={inputCls} required /></div>
+              <div><label style={fieldLabel}>CIN</label><input name="cin" defaultValue={editing?.cin as string} className={inputCls} />
+                <label style={{ ...fieldLabel, fontWeight: 400, marginTop: 4, marginBottom: 0 }}>Expire le <input name="cinExpiresOn" type="date" defaultValue={isoDate(editing?.cin_expires_on)} className={inputCls} style={{ display: 'inline-block', width: 'auto' }} /></label></div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label style={fieldLabel}>Téléphone</label><input name="phone" defaultValue={editing?.phone as string} className={inputCls} /></div>
+              <div><label style={fieldLabel}>Date de naissance</label><input name="birthDate" type="date" defaultValue={isoDate(editing?.birth_date)} className={inputCls} /></div>
+              <div><label style={fieldLabel}>Ville</label><input name="city" defaultValue={editing?.city as string} className={inputCls} /></div>
+            </div>
+            <div><label style={fieldLabel}>Adresse</label><input name="address" defaultValue={editing?.address as string} className={inputCls} /></div>
 
-              <p className="text-sm font-medium text-gray-500 border-b pb-1 pt-2">Contrat & Salaire</p>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Rôle *</label>
-                  <select name="role" defaultValue={editing?.role as string || ''} className="input" required>
-                    <option value="" disabled>Choisir un rôle</option>
-                    {roles.map((r) => (
-                      <option key={r.code as string} value={r.code as string}>{r.label as string}</option>
-                    ))}
-                  </select></div>
-                <div><label className="block text-sm font-medium mb-1">Type de contrat</label>
-                  <select name="contractType" defaultValue={editing?.contract_type as string || 'cdi'} className="input">
-                    {contractTypes.map((ct) => (
-                      <option key={ct.code} value={ct.code}>{ct.label}</option>
-                    ))}
-                  </select></div>
-                <div><label className="block text-sm font-medium mb-1">Salaire mensuel (DH)</label>
-                  <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className="input"
-                    onChange={(e) => syncSalaryFields(e.currentTarget.form)} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Fréquence de paie</label>
-                  <select name="payFrequency" defaultValue={(editing?.pay_frequency as string) || 'monthly'} className="input"
-                    onChange={(e) => syncSalaryFields(e.currentTarget.form)}>
-                    <option value="monthly">Mensuelle (fin de mois)</option>
-                    <option value="biweekly">Par quinzaine (1-15 / 16-fin, base mensuel ÷ 26)</option>
-                    <option value="weekly">Hebdomadaire (lundi pour S-1)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Salaire hebdomadaire (DH)</label>
-                  <input name="weeklySalary" type="number" step="0.01" defaultValue={editing?.weekly_salary as string} className="input" placeholder="Requis si fréquence = hebdo" />
-                  <p className="text-xs text-gray-500 mt-1">Auto-calculé si fréquence = hebdo : mensuel × 12 ÷ 52 (modifiable à la main).</p>
-                </div>
+            <SectionTitle icon={Briefcase}>Contrat & Salaire</SectionTitle>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label style={fieldLabel}>Rôle *</label>
+                <select name="role" defaultValue={editing?.role as string || ''} className={inputCls} required>
+                  <option value="" disabled>Choisir un rôle</option>
+                  {roles.map((r) => (
+                    <option key={r.code as string} value={r.code as string}>{r.label as string}</option>
+                  ))}
+                </select></div>
+              <div><label style={fieldLabel}>Type de contrat</label>
+                <select name="contractType" defaultValue={editing?.contract_type as string || 'cdi'} className={inputCls}>
+                  {contractTypes.map((ct) => (
+                    <option key={ct.code} value={ct.code}>{ct.label}</option>
+                  ))}
+                </select></div>
+              <div><label style={fieldLabel}>Salaire mensuel (DH)</label>
+                <input name="monthlySalary" type="number" step="0.01" defaultValue={editing?.monthly_salary as string} className={inputCls}
+                  onChange={(e) => syncSalaryFields(e.currentTarget.form)} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label style={fieldLabel}>Fréquence de paie</label>
+                <select name="payFrequency" defaultValue={(editing?.pay_frequency as string) || 'monthly'} className={inputCls}
+                  onChange={(e) => syncSalaryFields(e.currentTarget.form)}>
+                  <option value="monthly">Mensuelle (fin de mois)</option>
+                  <option value="biweekly">Par quinzaine (1-15 / 16-fin, base mensuel ÷ 26)</option>
+                  <option value="weekly">Hebdomadaire (lundi pour S-1)</option>
+                </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Shift par défaut</label>
-                <select name="defaultShiftCode" defaultValue={(editing?.default_shift_code as string) || ''} className="input">
-                  <option value="">— Aucun (à choisir manuellement dans le planning) —</option>
-                  {(shifts as Record<string, any>[]).map(s => (
-                    <option key={s.code as string} value={s.code as string}>{s.label as string}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">Utilisé par le bouton « Appliquer défaut » dans l'onglet Planning hebdomadaire.</p>
+                <label style={fieldLabel}>Salaire hebdomadaire (DH)</label>
+                <input name="weeklySalary" type="number" step="0.01" defaultValue={editing?.weekly_salary as string} className={inputCls} placeholder="Requis si fréquence = hebdo" />
+                <p style={hintStyle}>Auto-calculé si fréquence = hebdo : mensuel × 12 ÷ 52 (modifiable à la main).</p>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Date d'embauche *</label><input name="hireDate" type="date" defaultValue={isoDate(editing?.hire_date)} className="input" required={!editing} /></div>
-                <div><label className="block text-sm font-medium mb-1">Début contrat</label><input name="contractStart" type="date" defaultValue={isoDate(editing?.contract_start)} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Fin contrat</label><input name="contractEnd" type="date" defaultValue={isoDate(editing?.contract_end)} className="input" /></div>
+            </div>
+            <div>
+              <label style={fieldLabel}>Shift par défaut</label>
+              <select name="defaultShiftCode" defaultValue={(editing?.default_shift_code as string) || ''} className={inputCls}>
+                <option value="">— Aucun (à choisir manuellement dans le planning) —</option>
+                {(shifts as Record<string, any>[]).map(s => (
+                  <option key={s.code as string} value={s.code as string}>{s.label as string}</option>
+                ))}
+              </select>
+              <p style={hintStyle}>Utilisé par le bouton « Appliquer défaut » dans l'onglet Planning hebdomadaire.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label style={fieldLabel}>Date d'embauche *</label><input name="hireDate" type="date" defaultValue={isoDate(editing?.hire_date)} className={inputCls} required={!editing} /></div>
+              <div><label style={fieldLabel}>Début contrat</label><input name="contractStart" type="date" defaultValue={isoDate(editing?.contract_start)} className={inputCls} /></div>
+              <div><label style={fieldLabel}>Fin contrat</label><input name="contractEnd" type="date" defaultValue={isoDate(editing?.contract_end)} className={inputCls} /></div>
+            </div>
+            {editing ? (
+              <p style={hintStyle}>Correction directe du contrat en vigueur. Un changement de conditions (salaire, poste, type) se fait par un avenant depuis la fiche.</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div><label style={fieldLabel}>Catégorie</label>
+                  <select name="category" defaultValue="employe" className={inputCls}>
+                    <option value="cadre">Cadre (essai 3 mois)</option>
+                    <option value="employe">Employé (essai 1,5 mois)</option>
+                    <option value="ouvrier">Ouvrier (essai 15 jours)</option>
+                  </select></div>
+                <div><label style={fieldLabel}>Poste</label><input name="jobTitle" className={inputCls} /></div>
+                <label style={checkStyle}><input name="withTrial" type="checkbox" defaultChecked /> Période d'essai légale</label>
               </div>
-              {editing ? (
-                <p className="text-xs text-gray-500">Correction directe du contrat en vigueur. Un changement de conditions (salaire, poste, type) se fait par un avenant depuis la fiche.</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-4">
-                  <div><label className="block text-sm font-medium mb-1">Catégorie</label>
-                    <select name="category" defaultValue="employe" className="input">
-                      <option value="cadre">Cadre (essai 3 mois)</option>
-                      <option value="employe">Employé (essai 1,5 mois)</option>
-                      <option value="ouvrier">Ouvrier (essai 15 jours)</option>
-                    </select></div>
-                  <div><label className="block text-sm font-medium mb-1">Poste</label><input name="jobTitle" className="input" /></div>
-                  <label className="flex items-center gap-2 text-sm mt-6"><input name="withTrial" type="checkbox" defaultChecked /> Période d'essai légale</label>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">N° CNSS</label><input name="cnssNumber" defaultValue={editing?.cnss_number as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Taux CIMR (%)</label><input name="cimrRate" type="number" min="0" max="10" step="0.5" defaultValue={editing?.cimr_rate as string || '0'} className="input" /></div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={fieldLabel}>N° CNSS</label><input name="cnssNumber" defaultValue={editing?.cnss_number as string} className={inputCls} /></div>
+              <div><label style={fieldLabel}>Taux CIMR (%)</label><input name="cimrRate" type="number" min="0" max="10" step="0.5" defaultValue={editing?.cimr_rate as string || '0'} className={inputCls} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={fieldLabel}>RIB (24 chiffres, virement du salaire)</label>
+                <input name="rib" defaultValue={editing?.rib as string} className={inputCls} inputMode="numeric" pattern="[0-9 ]{24,30}" placeholder="000 000 0000000000000000 00" /></div>
+              <div><label style={fieldLabel}>Banque</label><input name="bankName" defaultValue={editing?.bank_name as string} className={inputCls} maxLength={80} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label style={{ ...checkStyle, fontWeight: 600 }}>
+                  <input name="isDeclared" type="checkbox" defaultChecked={editing ? editing.is_declared !== false : true} />
+                  Salarié déclaré (CNSS, AMO et IR)
+                </label>
+                <p style={hintStyle}>Ancienneté calculée depuis la date d'embauche.</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">RIB (24 chiffres, virement du salaire)</label>
-                  <input name="rib" defaultValue={editing?.rib as string} className="input" inputMode="numeric" pattern="[0-9 ]{24,30}" placeholder="000 000 0000000000000000 00" /></div>
-                <div><label className="block text-sm font-medium mb-1">Banque</label><input name="bankName" defaultValue={editing?.bank_name as string} className="input" maxLength={80} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium mt-6">
-                    <input name="isDeclared" type="checkbox" defaultChecked={editing ? editing.is_declared !== false : true} />
-                    Salarié déclaré (CNSS, AMO et IR)
-                  </label>
-                  <p className="text-xs text-gray-500 mt-1">Ancienneté calculée depuis la date d'embauche.</p>
-                </div>
-                <div><label className="block text-sm font-medium mb-1">Personnes a charge</label><input name="nbDependents" type="number" min="0" max="6" defaultValue={editing?.nb_dependents as string || '0'} className="input" /></div>
-              </div>
+              <div><label style={fieldLabel}>Personnes a charge</label><input name="nbDependents" type="number" min="0" max="6" defaultValue={editing?.nb_dependents as string || '0'} className={inputCls} /></div>
+            </div>
 
-              <p className="text-sm font-medium text-gray-500 border-b pb-1 pt-2">Contact d'urgence</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Nom</label><input name="emergencyContactName" defaultValue={editing?.emergency_contact_name as string} className="input" /></div>
-                <div><label className="block text-sm font-medium mb-1">Téléphone</label><input name="emergencyContactPhone" defaultValue={editing?.emergency_contact_phone as string} className="input" /></div>
-              </div>
+            <SectionTitle icon={Phone}>Contact d'urgence</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={fieldLabel}>Nom</label><input name="emergencyContactName" defaultValue={editing?.emergency_contact_name as string} className={inputCls} /></div>
+              <div><label style={fieldLabel}>Téléphone</label><input name="emergencyContactPhone" defaultValue={editing?.emergency_contact_phone as string} className={inputCls} /></div>
+            </div>
 
-              <div><label className="block text-sm font-medium mb-1">Notes</label><textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="input" /></div>
-
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="btn-secondary">Annuler</button>
-                <button type="submit" disabled={saveMutation.isPending} className="btn-primary">Enregistrer</button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div><label style={fieldLabel}>Notes</label><textarea name="notes" rows={2} defaultValue={editing?.notes as string} className={inputCls} /></div>
+          </form>
+        </HrModal>
       )}
     </>
   );
 }
+
+const hintStyle = { fontSize: '0.6875rem', color: 'var(--theme-text-muted)', margin: '2px 0 0' } as const;
+const checkStyle = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', marginTop: 20 } as const;

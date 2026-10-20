@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { attendanceApi } from '../../../api/employees.api';
 
 /**
@@ -11,16 +13,22 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
     queryKey: ['overtime-summary', year],
     queryFn: () => attendanceApi.overtimeSummary(year),
   });
+  // Ouvert d'office quand un salarie depasse le contingent (comme l'ancien <details open>).
+  const [toggled, setToggled] = useState<boolean | null>(null);
   const rows = (data?.rows ?? []).filter(r => r.hours > 0);
   if (!data || rows.length === 0) return null;
   const over = rows.filter(r => r.overQuota);
+  const open = toggled ?? over.length > 0;
   return (
-    <details className={`odoo-alert ${over.length ? 'warning' : 'info'}`} style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }} open={over.length > 0}>
-      <summary style={{ cursor: 'pointer' }}>
-        {over.length > 0 && <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />}
-        Heures supplémentaires {year} : contingent {data.quotaHours} h par salarié
-        {over.length > 0 ? ` — ${over.length} dépassement(s)` : ''}
-      </summary>
+    <StatusBanner tone={over.length ? 'warning' : 'info'} icon={over.length ? AlertTriangle : Clock}
+      title={`Heures supplémentaires ${year} : contingent ${data.quotaHours} h par salarié${over.length > 0 ? ` — ${over.length} dépassement(s)` : ''}`}
+      actions={
+        <button type="button" className="odoo-btn-secondary" onClick={() => setToggled(!open)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {open ? 'Masquer le détail' : 'Voir le détail'}
+        </button>
+      }>
+      {open && (
       <table className="odoo-table" style={{ marginTop: 8 }}>
         <thead><tr><th>Employé</th><th style={{ textAlign: 'right' }}>Heures sup</th><th style={{ textAlign: 'right' }}>dont nuit</th><th style={{ width: '40%' }}>Contingent</th></tr></thead>
         <tbody>
@@ -41,6 +49,7 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
           ))}
         </tbody>
       </table>
-    </details>
+      )}
+    </StatusBanner>
   );
 }

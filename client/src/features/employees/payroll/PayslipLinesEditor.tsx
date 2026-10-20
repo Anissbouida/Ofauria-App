@@ -4,9 +4,13 @@ import { Plus, Trash2, Save } from 'lucide-react';
 import { payrollApi, payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../shared';
+import { SectionTitle, panel, inputCls } from '../ui';
 
 type Line = { id?: string; rubrique_id: string; label: string; kind: 'gain' | 'retenue'; amount: string; exempt_amount?: string; source: 'fixe' | 'manuel' };
 type Draft = { rubriqueId: string; amount: string };
+
+const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const hint = { fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
 
 /**
  * Rubriques d'un bulletin : les lignes « fixe » viennent des éléments fixes
@@ -54,26 +58,26 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
   const fmt = (v: string | number) => parseFloat(String(v)).toFixed(2);
 
   return (
-    <div className="bg-gray-50 rounded-xl p-3">
-      <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Primes, indemnités et retenues</p>
-      {isLoading ? <p className="text-sm text-gray-400">Chargement...</p> : (
+    <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <SectionTitle>Primes, indemnités et retenues</SectionTitle>
+      {isLoading ? <p style={muted}>Chargement...</p> : (
         <>
           {fixed.map(l => (
-            <div key={l.id} className="flex justify-between text-sm py-1">
-              <span className="text-gray-600">{l.label} <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 4 }}>fixe</span>
-                {parseFloat(l.exempt_amount || '0') > 0 && <span className="text-xs text-gray-400"> · dont {fmt(l.exempt_amount!)} exonérés</span>}
+            <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
+              <span style={{ color: 'var(--odoo-text)' }}>{l.label} <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 4 }}>fixe</span>
+                {parseFloat(l.exempt_amount || '0') > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}> · dont {fmt(l.exempt_amount!)} exonérés</span>}
               </span>
-              <span className={l.kind === 'retenue' ? 'text-red-600' : ''}>{l.kind === 'retenue' ? '−' : '+'} {fmt(l.amount)} DH</span>
+              <span style={l.kind === 'retenue' ? { color: '#dc3545' } : undefined}>{l.kind === 'retenue' ? '−' : '+'} {fmt(l.amount)} DH</span>
             </div>
           ))}
           {drafts.map((d, i) => (
-            <div key={i} className="flex items-center gap-2 py-1">
-              <select value={d.rubriqueId} disabled={locked} className="input" style={{ flex: 1 }}
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <select value={d.rubriqueId} disabled={locked} className={inputCls} style={{ flex: 1 }}
                 onChange={e => { const n = [...drafts]; n[i] = { ...d, rubriqueId: e.target.value }; setDrafts(n); setDirty(true); }}>
                 <option value="">Rubrique...</option>
                 {rubriques.map(r => <option key={r.id} value={r.id}>{r.kind === 'retenue' ? '− ' : '+ '}{r.label}</option>)}
               </select>
-              <input type="number" min="0" step="0.01" value={d.amount} disabled={locked} className="input" style={{ width: 110 }}
+              <input type="number" min="0" step="0.01" value={d.amount} disabled={locked} className={inputCls} style={{ width: 110 }}
                 onChange={e => { const n = [...drafts]; n[i] = { ...d, amount: e.target.value }; setDrafts(n); setDirty(true); }} />
               {!locked && (
                 <button type="button" className="odoo-pager-btn" title="Retirer" style={{ color: '#dc3545' }}
@@ -83,11 +87,11 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
               )}
             </div>
           ))}
-          {fixed.length === 0 && drafts.length === 0 && <p className="text-sm text-gray-400">Aucune rubrique sur ce bulletin.</p>}
+          {fixed.length === 0 && drafts.length === 0 && <p style={muted}>Aucune rubrique sur ce bulletin.</p>}
           {locked ? (
-            lockReason && <p className="text-xs text-gray-400 mt-2">{lockReason}</p>
+            lockReason && <p style={{ ...hint, marginTop: 4 }}>{lockReason}</p>
           ) : (
-            <div className="flex justify-between mt-2">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 onClick={() => { setDrafts([...drafts, { rubriqueId: '', amount: '' }]); setDirty(true); }}>
                 <Plus size={13} /> Ajouter une rubrique
@@ -103,7 +107,7 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
             </div>
           )}
           {drafts.some(d => label(d.rubriqueId)?.plafond_exoneration_mensuel) && (
-            <p className="text-xs text-gray-400 mt-1">Les rubriques à plafond d'exonération ne sont soumises qu'au-delà du plafond.</p>
+            <p style={hint}>Les rubriques à plafond d'exonération ne sont soumises qu'au-delà du plafond.</p>
           )}
         </>
       )}

@@ -5,8 +5,19 @@ import { biweeklyPayrollApi, advancesApi } from '../../../api/employees.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Users, Banknote, Check, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, HandCoins,
+  Users, Banknote, Check, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, HandCoins, Calculator, Clock,
 } from 'lucide-react';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StagePipeline, StageProgress, type StageDef } from '../../../components/purchasing/ProcessBoard';
+import { EmptyState } from '../ui';
+
+type PayStage = 'togenerate' | 'topay' | 'paid';
+const PAY_STAGES: StageDef[] = [
+  { key: 'togenerate', label: 'À générer', hint: 'calcul depuis le pointage', icon: Calculator },
+  { key: 'topay', label: 'À payer', hint: 'paie calculée', icon: Clock },
+  { key: 'paid', label: 'Payés', hint: 'paiement enregistré', icon: Check },
+];
 import { notify } from '../../../components/ui/InlineNotification';
 import { ROLE_LABELS } from '@ofauria/shared';
 
@@ -77,6 +88,8 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
     return { outstandingByEmp: o, suggestedByEmp: s };
   }, [outstandingRows]);
   // Cible du dialogue de paiement (ouvert seulement si l'employe a une avance en cours)
+  const [stageFilter, setStageFilter] = useState<PayStage | null>(null);
+  const confirm = useConfirm();
   const [payTarget, setPayTarget] = useState<{ row: BiweeklyPayrollRow; method: string } | null>(null);
 
   const generateMutation = useMutation({
@@ -145,6 +158,17 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
   const totalDue = generated.filter(r => !r.paid).reduce((s, r) => s + cashOutOf(r), 0);
   const totalPaid = generated.filter(r => r.paid).reduce((s, r) => s + cashOutOf(r), 0);
 
+  // Filtre client issu du pipeline (les totaux restent sur toute la periode).
+  const visibleRows = rows.filter(r =>
+    stageFilter === 'togenerate' ? !r.payroll_id
+      : stageFilter === 'topay' ? !!r.payroll_id && !r.paid
+      : stageFilter === 'paid' ? !!r.paid : true);
+  const stageStats = {
+    togenerate: { count: ungenerated.length, sub: '' },
+    topay: { count: generated.length - paidCount, sub: `${totalDue.toFixed(2)} DH` },
+    paid: { count: paidCount, sub: `${totalPaid.toFixed(2)} DH` },
+  };
+
   const isCurrentPeriod = periodOffset === 0;
 
   return (
@@ -156,15 +180,15 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
             Quinzaine du {format(periodStartDate, 'dd MMM', { locale: fr })} au {format(periodEndDate, 'dd MMM yyyy', { locale: fr })}
           </span>
           <button onClick={() => setPeriodOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Quinzaine suivante"><ChevronRight size={14} /></button>
-          <button onClick={() => setPeriodOffset(-1)} style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', marginLeft: 4 }}>
+          <button onClick={() => setPeriodOffset(-1)} className="odoo-btn-secondary" style={{ padding: '0.2rem 0.55rem', fontSize: '0.75rem', marginLeft: 4 }}>
             Quinzaine précédente
           </button>
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <button onClick={() => {
-            if (confirm(`Generer la paie de la quinzaine du ${periodStartStr} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`)) {
-              generateMutation.mutate();
-            }
+          <button onClick={async () => {
+            if (!(await confirm(`Generer la paie de la quinzaine du ${periodStartStr} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`,
+              { title: 'Générer la paie', confirmLabel: 'Générer' }))) return;
+            generateMutation.mutate();
           }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}
@@ -173,15 +197,17 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
       </div>
 
       {isCurrentPeriod && (
-        <div className="odoo-alert warning" style={{ padding: '0.625rem 0.875rem' }}>
-          <div style={{ fontSize: '0.75rem' }}>
-            <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
-            Vous regardez la quinzaine en cours : le pointage n'est pas encore complet.
-          </div>
-        </div>
+        <StatusBanner tone="warning" icon={AlertTriangle} title="Quinzaine en cours">
+          Vous regardez la quinzaine en cours : le pointage n'est pas encore complet.
+        </StatusBanner>
       )}
 
-      {/* Stat tiles */}
+      {/* Pipeline + montants */}
+      <StagePipeline title="Paies de la quinzaine"
+        summary={stageFilter ? 'Cliquez à nouveau pour tout afficher' : `${paidCount}/${rows.length} payés`}
+        stages={PAY_STAGES} stats={stageStats}
+        isActive={k => stageFilter === k}
+        onPick={k => setStageFilter(f => f === k ? null : k as PayStage)} />
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Employés quinzaine</div>
@@ -189,29 +215,24 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
           <div className="odoo-stat-card-sub">à payer cette quinzaine</div>
         </div>
         <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Payés</div>
-          <div className="odoo-stat-card-value" style={{ color: paidCount > 0 ? '#28a745' : undefined }}>{paidCount}</div>
-          <div className="odoo-stat-card-sub">{totalPaid.toFixed(2)} DH</div>
+          <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Versé</div>
+          <div className="odoo-stat-card-value" style={{ color: totalPaid > 0 ? '#28a745' : undefined }}>{totalPaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Reste dû</div>
           <div className="odoo-stat-card-value" style={{ color: totalDue > 0 ? '#dc3545' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Non générés</div>
-          <div className="odoo-stat-card-value" style={{ color: ungenerated.length > 0 ? '#b08504' : undefined }}>{ungenerated.length}</div>
-          <div className="odoo-stat-card-sub">en attente du calcul</div>
         </div>
       </div>
 
       {isLoading ? (
         <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-          <Banknote size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun employé payé par quinzaine.</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Passez un employé en « Fréquence de paie : Par quinzaine » dans l'onglet Employés pour le voir ici.</p>
-        </div>
+        <EmptyState icon={Banknote}>
+          Aucun employé payé par quinzaine.
+          <div style={{ fontSize: '0.75rem', marginTop: 4 }}>Passez un employé en « Fréquence de paie : Par quinzaine » dans l'onglet Employés pour le voir ici.</div>
+        </EmptyState>
+      ) : visibleRows.length === 0 ? (
+        <EmptyState icon={Banknote}>Aucune paie à cette étape.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -225,12 +246,12 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                 <th style={{ textAlign: 'right' }}>Base</th>
                 <th style={{ textAlign: 'right' }}>H. Sup</th>
                 <th style={{ textAlign: 'right' }} title="Solde d'avances à récupérer, ou retenue faite sur cette paie">Avance</th>
-                <th style={{ textAlign: 'right', background: '#eafaf1', color: '#155724' }}>Net</th>
+                <th style={{ textAlign: 'right' }}>Net</th>
                 <th style={{ textAlign: 'center', width: 110 }}>Paiement</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => {
+              {visibleRows.map(r => {
                 const generated = !!r.payroll_id;
                 const paid = !!r.paid;
                 return (
@@ -272,7 +293,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                             <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
                           )}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724', background: '#eafaf1' }}>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724' }}>
                           {(() => {
                             const net = parseFloat(r.net_amount || '0');
                             const ded = paid
@@ -293,15 +314,16 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                           })()}
                         </td>
                         <td style={{ textAlign: 'center' }}>
+                          <StageProgress count={3} current={paid ? 3 : 1} done={paid} />
                           {paid ? (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span className="odoo-tag odoo-tag-green">
                                 <Check size={10} style={{ marginRight: 3 }} /> Payé
                               </span>
-                              <button onClick={() => {
-                                if (confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`)) {
-                                  unpayMutation.mutate(r.payroll_id as string);
-                                }
+                              <button onClick={async () => {
+                                if (!(await confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
+                                  { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
+                                unpayMutation.mutate(r.payroll_id as string);
                               }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
                                 <RotateCcw size={12} />
                               </button>
@@ -328,6 +350,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                           — Cliquez « Générer depuis pointage » pour calculer —
                         </td>
                         <td style={{ textAlign: 'center' }}>
+                          <StageProgress count={3} current={0} />
                           <span className="odoo-tag odoo-tag-grey">Non généré</span>
                         </td>
                       </>
@@ -352,7 +375,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                       return t > 0 ? `− ${t.toFixed(2)} DH` : '—';
                     })()}
                   </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724', background: '#eafaf1' }}
+                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724' }}
                     title="Total à verser (net moins retenues d'avance)">
                     {generated.reduce((s, r) => s + cashOutOf(r), 0).toFixed(2)} DH
                   </td>

@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Pencil, X } from 'lucide-react';
+import { Plus, Save, Pencil, Info, Building2, Scale, ListChecks, CalendarDays, Clock } from 'lucide-react';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage } from '../shared';
+import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { HrModal, SubmitButton, Field, SectionTitle, inputCls, fieldLabel, panel } from '../ui';
 
 type Bracket = { upTo: number | null; rate: number; deduction: number };
 
@@ -20,6 +23,7 @@ export default function PayrollSettingsView() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const confirm = useConfirm();
   const { data, isLoading } = useQuery<{ settings: Record<string, any>; taxScales: Record<string, any>[] }>({
     queryKey: ['payroll-settings'],
     queryFn: payrollConfigApi.settings,
@@ -128,69 +132,63 @@ export default function PayrollSettingsView() {
 
   if (isLoading || !data) return <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>;
 
+  const suffixed = (input: ReactNode, suffix?: string) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {input}
+      {suffix && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
+    </span>
+  );
   const field = (key: string, label: string, suffix?: string) => (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-      <span style={{ color: 'var(--odoo-text-muted)' }}>{label}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <input className="input" value={form[key] ?? ''} disabled={!isAdmin} style={{ width: 110 }}
-          onChange={e => setForm({ ...form, [key]: e.target.value })} />
-        {suffix && <span style={{ color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
-      </span>
-    </label>
+    <Field label={label}>
+      {suffixed(<input className={inputCls} value={form[key] ?? ''} disabled={!isAdmin} style={{ width: 110 }}
+        onChange={e => setForm({ ...form, [key]: e.target.value })} />, suffix)}
+    </Field>
   );
   const ruleField = (key: string, label: string, suffix?: string) => (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-      <span style={{ color: 'var(--odoo-text-muted)' }}>{label}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <input className="input" value={rules[key] ?? ''} disabled={!isAdmin} style={{ width: 90 }}
-          onChange={e => setRules({ ...rules, [key]: e.target.value })} />
-        {suffix && <span style={{ color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
-      </span>
-    </label>
+    <Field label={label}>
+      {suffixed(<input className={inputCls} value={rules[key] ?? ''} disabled={!isAdmin} style={{ width: 90 }}
+        onChange={e => setRules({ ...rules, [key]: e.target.value })} />, suffix)}
+    </Field>
   );
   const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 } as const;
-  const card = { border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 } as const;
+  const card = { ...panel, display: 'flex', flexDirection: 'column', gap: 12 } as const;
+  const checkLabel = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' } as const;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!isAdmin && (
-        <div className="odoo-alert info" style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
-          Lecture seule : seul un administrateur peut modifier les paramètres de paie.
-        </div>
+        <StatusBanner tone="info" icon={Info} title="Lecture seule">
+          Seul un administrateur peut modifier les paramètres de paie.
+        </StatusBanner>
       )}
 
       <section style={card}>
-        <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Employeur et temps de travail</h3>
+        <SectionTitle icon={Building2}>Employeur et temps de travail</SectionTitle>
         <div style={grid}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>N° d'affiliation CNSS</span>
-            <input className="input" value={cnss} disabled={!isAdmin} onChange={e => setCnss(e.target.value)} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>Base journalière (jours / mois)</span>
-            <input className="input" type="number" min={20} max={31} value={baseDays} disabled={!isAdmin} onChange={e => setBaseDays(e.target.value)} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>RIB de l'entreprise (virement des salaires)</span>
-            <input className="input" value={bank.employerRib} disabled={!isAdmin} placeholder="24 chiffres" onChange={e => setBank({ ...bank, employerRib: e.target.value })} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>Banque (agence)</span>
-            <input className="input" value={bank.employerBankName} disabled={!isAdmin} maxLength={80} onChange={e => setBank({ ...bank, employerBankName: e.target.value })} />
-          </label>
+          <Field label="N° d'affiliation CNSS">
+            <input className={inputCls} value={cnss} disabled={!isAdmin} onChange={e => setCnss(e.target.value)} />
+          </Field>
+          <Field label="Base journalière (jours / mois)">
+            <input className={inputCls} type="number" min={20} max={31} value={baseDays} disabled={!isAdmin} onChange={e => setBaseDays(e.target.value)} />
+          </Field>
+          <Field label="RIB de l'entreprise (virement des salaires)">
+            <input className={inputCls} value={bank.employerRib} disabled={!isAdmin} placeholder="24 chiffres" onChange={e => setBank({ ...bank, employerRib: e.target.value })} />
+          </Field>
+          <Field label="Banque (agence)">
+            <input className={inputCls} value={bank.employerBankName} disabled={!isAdmin} maxLength={80} onChange={e => setBank({ ...bank, employerBankName: e.target.value })} />
+          </Field>
         </div>
-        <h4 style={{ fontWeight: 600, fontSize: '0.8125rem', marginTop: 4 }}>Congés</h4>
+        <SectionTitle icon={CalendarDays}>Congés</SectionTitle>
         <div style={grid}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>Jour de repos hebdomadaire</span>
-            <select className="input" value={rules.leaveRestWeekday ?? '0'} disabled={!isAdmin} onChange={e => setRules({ ...rules, leaveRestWeekday: e.target.value })}>
+          <Field label="Jour de repos hebdomadaire">
+            <select className={inputCls} value={rules.leaveRestWeekday ?? '0'} disabled={!isAdmin} onChange={e => setRules({ ...rules, leaveRestWeekday: e.target.value })}>
               {['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map((d, i) => <option key={d} value={i}>{d}</option>)}
             </select>
-          </label>
+          </Field>
           {ruleField('leaveDaysPerMonth', 'Acquisition par mois', 'j')}
           {ruleField('leaveCarryoverYears', 'Report du reliquat', 'an(s)')}
         </div>
-        <h4 style={{ fontWeight: 600, fontSize: '0.8125rem', marginTop: 4 }}>Heures supplémentaires et jours fériés</h4>
+        <SectionTitle icon={Clock}>Heures supplémentaires et jours fériés</SectionTitle>
         <div style={grid}>
           {ruleField('otRateDay', 'Majoration jour', '%')}
           {ruleField('otRateNight', 'Majoration nuit', '%')}
@@ -204,19 +202,18 @@ export default function PayrollSettingsView() {
           {ruleField('otAnnualQuotaHours', 'Contingent annuel', 'h')}
         </div>
         {isAdmin && (
-          <div><button className="odoo-btn-primary" disabled={saveSettings.isPending} onClick={() => saveSettings.mutate()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer</button></div>
+          <div><SubmitButton pending={saveSettings.isPending} onClick={() => saveSettings.mutate()}><Save size={13} /> Enregistrer</SubmitButton></div>
         )}
       </section>
 
       {scale && (
         <section style={card}>
-          <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+          <SectionTitle icon={Scale}>
             Barème légal — {scale.label}
-            <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', marginLeft: 8, fontSize: '0.75rem' }}>
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8 }}>
               en vigueur depuis le {new Date(scale.effective_from).toLocaleDateString('fr-FR')}
             </span>
-          </h3>
+          </SectionTitle>
           <div style={grid}>
             {field('cnssPlafond', 'Plafond CNSS mensuel', 'DH')}
             {field('cnssRateEmployee', 'CNSS salarié', '%')}
@@ -233,22 +230,22 @@ export default function PayrollSettingsView() {
             {field('maxPersonnesCharge', 'Personnes à charge max')}
           </div>
           <div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginBottom: 4 }}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</p>
+            <span style={fieldLabel}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</span>
             <table className="odoo-table" style={{ maxWidth: 520 }}>
               <thead><tr><th>Jusqu'à (DH/an)</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Somme à déduire</th></tr></thead>
               <tbody>
                 {brackets.map((b, i) => (
                   <tr key={i}>
                     <td>{b.upTo === null ? 'Au-delà' : (
-                      <input className="input" disabled={!isAdmin} value={b.upTo} style={{ width: 110 }}
+                      <input className={inputCls} disabled={!isAdmin} value={b.upTo} style={{ width: 110 }}
                         onChange={e => { const n = [...brackets]; n[i] = { ...b, upTo: parseFloat(e.target.value) || 0 }; setBrackets(n); }} />
                     )}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <input className="input" disabled={!isAdmin} value={pctIn(b.rate)} style={{ width: 70 }}
+                      <input className={inputCls} disabled={!isAdmin} value={pctIn(b.rate)} style={{ width: 70 }}
                         onChange={e => { const n = [...brackets]; n[i] = { ...b, rate: pctOut(e.target.value) || 0 }; setBrackets(n); }} /> %
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <input className="input" disabled={!isAdmin} value={b.deduction} style={{ width: 100 }}
+                      <input className={inputCls} disabled={!isAdmin} value={b.deduction} style={{ width: 100 }}
                         onChange={e => { const n = [...brackets]; n[i] = { ...b, deduction: parseFloat(e.target.value) || 0 }; setBrackets(n); }} />
                     </td>
                   </tr>
@@ -258,21 +255,20 @@ export default function PayrollSettingsView() {
           </div>
           {scale.notes && <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{scale.notes}</p>}
           {isAdmin && (
-            <div><button className="odoo-btn-primary" disabled={saveScale.isPending} onClick={() => {
-              if (confirm('Modifier le barème légal ?\n\nLes bulletins payés gardent leurs montants. Les autres seront recalculés à la prochaine génération.')) saveScale.mutate();
-            }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer le barème</button></div>
+            <div><SubmitButton pending={saveScale.isPending} onClick={async () => {
+              if (!(await confirm('Modifier le barème légal ?\n\nLes bulletins payés gardent leurs montants. Les autres seront recalculés à la prochaine génération.',
+                { title: 'Modifier le barème', confirmLabel: 'Enregistrer' }))) return;
+              saveScale.mutate();
+            }}><Save size={13} /> Enregistrer le barème</SubmitButton></div>
           )}
         </section>
       )}
 
       <section style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>Rubriques de paie</h3>
-          {isAdmin && (
-            <button className="odoo-btn-secondary" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle rubrique</button>
-          )}
-        </div>
+        <SectionTitle icon={ListChecks} actions={isAdmin ? (
+          <button className="odoo-btn-secondary" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle rubrique</button>
+        ) : undefined}>Rubriques de paie</SectionTitle>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -290,7 +286,7 @@ export default function PayrollSettingsView() {
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_cnss ? 'Soumis' : 'Exonéré') : '—'}</td>
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_ir ? 'Soumis' : 'Exonéré') : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.plafond_exoneration_mensuel != null ? `${parseFloat(r.plafond_exoneration_mensuel).toFixed(2)} DH/mois` : '—'}</td>
-                <td>{r.is_active ? 'Active' : 'Inactive'}</td>
+                <td><span className={`odoo-tag ${r.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
                 {isAdmin && <td><button className="odoo-pager-btn" title="Modifier" onClick={() => setEditRub({ ...r })}><Pencil size={13} /></button></td>}
               </tr>
             ))}
@@ -299,47 +295,49 @@ export default function PayrollSettingsView() {
       </section>
 
       {editRub && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditRub(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <h2 className="text-lg font-bold">{editRub.id ? 'Modifier la rubrique' : 'Nouvelle rubrique'}</h2>
-              <button onClick={() => setEditRub(null)} className="odoo-pager-btn"><X size={16} /></button>
+        <HrModal icon={ListChecks} crumb="Rubrique" title={editRub.id ? 'Modifier la rubrique' : 'Nouvelle rubrique'}
+          tag={editRub.id ? <span className="odoo-tag odoo-tag-grey" style={{ fontFamily: 'monospace' }}>{editRub.code}</span> : undefined}
+          width={520} onClose={() => setEditRub(null)}
+          footer={<>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditRub(null)}>Annuler</button>
+            <SubmitButton pending={saveRub.isPending} disabled={!editRub.label || (!editRub.id && !editRub.code)}
+              onClick={() => saveRub.mutate(editRub)}>Enregistrer</SubmitButton>
+          </>}>
+          {!editRub.id && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="Code">
+                <input className={inputCls} value={editRub.code ?? ''} onChange={e => setEditRub({ ...editRub, code: e.target.value.toUpperCase() })} placeholder="PRIME_XXX" />
+              </Field>
+              <Field label="Type">
+                <select className={inputCls} value={editRub.kind} onChange={e => setEditRub({ ...editRub, kind: e.target.value })}>
+                  <option value="gain">Gain (entre dans le brut)</option>
+                  <option value="retenue">Retenue (déduite du net)</option>
+                </select>
+              </Field>
             </div>
-            {!editRub.id && (
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-sm">Code<input className="input" value={editRub.code ?? ''} onChange={e => setEditRub({ ...editRub, code: e.target.value.toUpperCase() })} placeholder="PRIME_XXX" /></label>
-                <label className="text-sm">Type
-                  <select className="input" value={editRub.kind} onChange={e => setEditRub({ ...editRub, kind: e.target.value })}>
-                    <option value="gain">Gain (entre dans le brut)</option>
-                    <option value="retenue">Retenue (déduite du net)</option>
-                  </select>
-                </label>
+          )}
+          <Field label="Libellé">
+            <input className={inputCls} value={editRub.label ?? ''} onChange={e => setEditRub({ ...editRub, label: e.target.value })} />
+          </Field>
+          {editRub.kind === 'gain' && (
+            <>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <label style={checkLabel}><input type="checkbox" checked={!!editRub.soumis_cnss} onChange={e => setEditRub({ ...editRub, soumis_cnss: e.target.checked })} /> Soumis CNSS/AMO</label>
+                <label style={checkLabel}><input type="checkbox" checked={!!editRub.soumis_ir} onChange={e => setEditRub({ ...editRub, soumis_ir: e.target.checked })} /> Soumis IR</label>
               </div>
-            )}
-            <label className="text-sm">Libellé<input className="input" value={editRub.label ?? ''} onChange={e => setEditRub({ ...editRub, label: e.target.value })} /></label>
-            {editRub.kind === 'gain' && (
-              <>
-                <div className="flex gap-4 text-sm">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={!!editRub.soumis_cnss} onChange={e => setEditRub({ ...editRub, soumis_cnss: e.target.checked })} /> Soumis CNSS/AMO</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={!!editRub.soumis_ir} onChange={e => setEditRub({ ...editRub, soumis_ir: e.target.checked })} /> Soumis IR</label>
-                </div>
-                <label className="text-sm">Exonéré jusqu'à (DH/mois, vide = pas de plafond)
-                  <input className="input" type="number" min="0" step="0.01" value={editRub.plafond_exoneration_mensuel ?? ''}
-                    onChange={e => setEditRub({ ...editRub, plafond_exoneration_mensuel: e.target.value })} />
-                </label>
-              </>
-            )}
-            <label className="text-sm">Notes<textarea className="input" rows={2} value={editRub.notes ?? ''} onChange={e => setEditRub({ ...editRub, notes: e.target.value })} /></label>
-            {editRub.id && (
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editRub.is_active !== false} onChange={e => setEditRub({ ...editRub, is_active: e.target.checked })} /> Active</label>
-            )}
-            <div className="flex justify-end gap-2">
-              <button className="odoo-btn-secondary" onClick={() => setEditRub(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={saveRub.isPending || !editRub.label || (!editRub.id && !editRub.code)}
-                onClick={() => saveRub.mutate(editRub)}>Enregistrer</button>
-            </div>
-          </div>
-        </div>
+              <Field label="Exonéré jusqu'à (DH/mois, vide = pas de plafond)">
+                <input className={inputCls} type="number" min="0" step="0.01" value={editRub.plafond_exoneration_mensuel ?? ''}
+                  onChange={e => setEditRub({ ...editRub, plafond_exoneration_mensuel: e.target.value })} />
+              </Field>
+            </>
+          )}
+          <Field label="Notes">
+            <textarea className={inputCls} rows={2} value={editRub.notes ?? ''} onChange={e => setEditRub({ ...editRub, notes: e.target.value })} />
+          </Field>
+          {editRub.id && (
+            <label style={checkLabel}><input type="checkbox" checked={editRub.is_active !== false} onChange={e => setEditRub({ ...editRub, is_active: e.target.checked })} /> Active</label>
+          )}
+        </HrModal>
       )}
     </div>
   );

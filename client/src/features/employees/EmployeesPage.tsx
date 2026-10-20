@@ -5,6 +5,7 @@ import {
   UserCog, Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3, UserCircle,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import type { HrTab } from './shared';
 import EmployeesTab from './tabs/EmployeesTab';
 import AttendanceTab from './tabs/AttendanceTab';
@@ -46,10 +47,12 @@ export default function EmployeesPage() {
   }
   if (!hasModule('employees')) {
     return (
-      <div className="p-8 text-center" style={{ color: 'var(--odoo-text-muted)' }}>
-        <AlertOctagon size={32} style={{ margin: '0 auto 12px', color: '#dc3545' }} />
-        <h2 className="text-lg font-semibold mb-2">Accès non autorisé</h2>
-        <p className="text-sm">Vous n'avez pas le droit « Personnel ». Demandez-le à un administrateur.</p>
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div style={{ padding: '16px 20px' }}>
+          <StatusBanner tone="danger" icon={AlertOctagon} title="Accès non autorisé">
+            Vous n'avez pas le droit « Personnel ». Demandez-le à un administrateur.
+          </StatusBanner>
+        </div>
       </div>
     );
   }
