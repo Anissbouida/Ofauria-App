@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
+import { usePermissions } from '../../context/PermissionsContext';
+import { allowedSettingsSections, type SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { referentielApi } from '../../api/referentiel.api';
@@ -12,22 +13,24 @@ import {
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
+import AuditLogTab from './AuditLogTab';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
   const { settings, updateSettings } = useSettings();
+  const { hasModule, canEdit, getModuleConfig } = usePermissions();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [tabSearch, setTabSearch] = useState('');
 
@@ -40,13 +43,17 @@ export default function SettingsPage() {
     setSubtitle(settings.subtitle);
   }, [settings]);
 
-  if (user?.role !== 'admin') {
+  // Acces par le droit « Parametres » (ecran Utilisateurs), eventuellement
+  // restreint a certaines sections ; meme regle que le serveur.
+  if (!hasModule('settings')) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Acces reserve aux administrateurs.</p>
+        <p className="text-gray-500">Vous n'avez pas accès aux paramètres.</p>
       </div>
     );
   }
+  const allowedSections = allowedSettingsSections(getModuleConfig('settings'));
+  const readOnly = !canEdit('settings');
 
   const handleSave = async () => {
     setSaving(true);
@@ -69,15 +76,19 @@ export default function SettingsPage() {
     companyName !== settings.companyName ||
     subtitle !== settings.subtitle;
 
-  const tabs: { key: SettingsTab; label: string; description: string; icon: React.ReactNode }[] = [
-    { key: 'general', label: 'General', description: 'Nom et identite de l\'entreprise', icon: <Building2 size={18} /> },
-    { key: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
-    { key: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
-    { key: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
-    { key: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
-    { key: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
-    { key: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
+  const allTabs: { key: SettingsTab; section: SettingsSectionKey; label: string; description: string; icon: React.ReactNode }[] = [
+    { key: 'general', section: 'company', label: 'General', description: 'Nom et identite de l\'entreprise', icon: <Building2 size={18} /> },
+    { key: 'appearance', section: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
+    { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
+    { key: 'stores', section: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
+    { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
+    { key: 'production', section: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
+    { key: 'sachets', section: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
+    { key: 'audit', section: 'audit', label: 'Journal', description: 'Modifications du parametrage et connexions', icon: <ShieldCheck size={18} /> },
   ];
+  const tabs = allowedSections ? allTabs.filter((t) => allowedSections.includes(t.section)) : allTabs;
+  // Onglet par defaut non autorise (droit limite a d'autres sections) : premier onglet permis.
+  const currentTab: SettingsTab | undefined = tabs.some((t) => t.key === activeTab) ? activeTab : tabs[0]?.key;
 
   const normalize = (s: string) =>
     s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -86,21 +97,21 @@ export default function SettingsPage() {
     ? tabs.filter((t) => normalize(t.label).includes(search) || normalize(t.description).includes(search))
     : tabs;
 
-  const activeMeta = tabs.find((t) => t.key === activeTab);
+  const activeMeta = tabs.find((t) => t.key === currentTab);
 
   const tabContent = (
     <>
-      {activeTab === 'general' && (
+      {currentTab === 'general' && (
         <GeneralTab
           companyName={companyName} setCompanyName={setCompanyName}
           subtitle={subtitle} setSubtitle={setSubtitle}
         />
       )}
-      {activeTab === 'appearance' && <AppearanceTab />}
-      {activeTab === 'print' && <PrintTab />}
-      {activeTab === 'stores' && <StoresSection />}
-      {activeTab === 'referentiel' && <ReferentielTab />}
-      {activeTab === 'production' && (
+      {currentTab === 'appearance' && <AppearanceTab />}
+      {currentTab === 'print' && <PrintTab />}
+      {currentTab === 'stores' && <StoresSection />}
+      {currentTab === 'referentiel' && <ReferentielTab />}
+      {currentTab === 'production' && (
         <>
           <ProductionChargesTab />
           <PriceRoundingTab />
@@ -108,7 +119,8 @@ export default function SettingsPage() {
           <ProductionMarkupTab />
         </>
       )}
-      {activeTab === 'sachets' && <SachetsTab />}
+      {currentTab === 'sachets' && <SachetsTab />}
+      {currentTab === 'audit' && <AuditLogTab />}
     </>
   );
 
@@ -123,7 +135,7 @@ export default function SettingsPage() {
           <p className="text-xs text-gray-400">{activeMeta.description}</p>
         </div>
       </div>
-      {activeTab === 'general' && (
+      {currentTab === 'general' && (
         <div className="flex gap-2">
           {hasChanges && (
             <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
@@ -160,7 +172,7 @@ export default function SettingsPage() {
           </div>
           <nav className="p-1.5">
             {filteredTabs.map((tab) => {
-              const isActive = activeTab === tab.key;
+              const isActive = currentTab === tab.key;
               return (
                 <button
                   key={tab.key}
@@ -191,6 +203,14 @@ export default function SettingsPage() {
               {sectionHeader}
             </div>
             <div className="p-6">
+              {readOnly && currentTab !== 'audit' && (
+                <div className="mb-4">
+                  <StatusBanner tone="info" icon={Lock} title="Consultation seule">
+                    Votre droit « Paramètres » ne permet pas de modifier : les enregistrements seront refusés.
+                    Un administrateur peut l'étendre depuis Utilisateurs.
+                  </StatusBanner>
+                </div>
+              )}
               {tabContent}
             </div>
           </div>

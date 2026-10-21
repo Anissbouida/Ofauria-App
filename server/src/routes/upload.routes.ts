@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 
@@ -47,7 +47,7 @@ const uploadLossPhoto = multer({ storage: lossPhotoStorage, limits: { fileSize: 
 
 const router = Router();
 
-router.post('/logo', authenticate, authorize('admin'), uploadLogo.single('logo'), (req: AuthRequest, res: Response) => {
+router.post('/logo', authenticate, authorizeSettings('appearance', 'edit'), uploadLogo.single('logo'), (req: AuthRequest, res: Response) => {
   if (!req.file) {
     res.status(400).json({ success: false, error: { message: 'Aucun fichier envoye' } });
     return;

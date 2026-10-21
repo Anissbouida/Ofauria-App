@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { auditedQuery } from '../utils/audit-context.js';
 
 export const settingsRepository = {
   async get() {
@@ -33,7 +34,7 @@ export const settingsRepository = {
     legalName?: string | null; legalAddress?: string | null; legalCity?: string | null;
     legalPhone?: string | null; legalEmail?: string | null; legalRc?: string | null;
     legalIf?: string | null; legalIce?: string | null; legalPatente?: string | null;
-  }) {
+  }, actorId?: string) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
       subtitle: 'subtitle',
@@ -99,7 +100,7 @@ export const settingsRepository = {
 
     if (fields.length === 0) return this.get();
     fields.push('updated_at = NOW()');
-    const result = await db.query(`UPDATE company_settings SET ${fields.join(', ')} WHERE id = 1 RETURNING *`, values);
+    const result = await auditedQuery(actorId, `UPDATE company_settings SET ${fields.join(', ')} WHERE id = 1 RETURNING *`, values);
     return result.rows[0];
   },
 };

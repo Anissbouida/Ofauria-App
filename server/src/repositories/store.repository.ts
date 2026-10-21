@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { auditedQuery } from '../utils/audit-context.js';
 
 export const storeRepository = {
   async findAll() {
@@ -15,8 +16,8 @@ export const storeRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { name: string; city?: string; address?: string; phone?: string }) {
-    const result = await db.query(
+  async create(data: { name: string; city?: string; address?: string; phone?: string }, actorId?: string) {
+    const result = await auditedQuery(actorId,
       `INSERT INTO stores (name, city, address, phone)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [data.name, data.city || null, data.address || null, data.phone || null]
@@ -24,7 +25,7 @@ export const storeRepository = {
     return result.rows[0];
   },
 
-  async update(id: string, data: { name?: string; city?: string; address?: string; phone?: string; isActive?: boolean }) {
+  async update(id: string, data: { name?: string; city?: string; address?: string; phone?: string; isActive?: boolean }, actorId?: string) {
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -39,14 +40,14 @@ export const storeRepository = {
 
     fields.push(`updated_at = NOW()`);
     values.push(id);
-    const result = await db.query(
+    const result = await auditedQuery(actorId,
       `UPDATE stores SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
       values
     );
     return result.rows[0];
   },
 
-  async remove(id: string) {
-    await db.query('DELETE FROM stores WHERE id = $1', [id]);
+  async remove(id: string, actorId?: string) {
+    await auditedQuery(actorId, 'DELETE FROM stores WHERE id = $1', [id]);
   },
 };

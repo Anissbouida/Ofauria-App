@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { salesChannelController } from '../controllers/sales-channel.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLES } from '@ofauria/shared';
+import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 
 const router = Router();
 
@@ -11,8 +10,8 @@ router.get('/', authenticate, salesChannelController.list);
 router.get('/active', authenticate, salesChannelController.listActive);
 
 // Ecriture : admin uniquement
-router.post('/', authenticate, authorize(ROLES.ADMIN), salesChannelController.create);
-router.put('/:id', authenticate, authorize(ROLES.ADMIN), salesChannelController.update);
-router.delete('/:id', authenticate, authorize(ROLES.ADMIN), salesChannelController.deactivate);
+router.post('/', authenticate, authorizeSettings('production', 'create'), salesChannelController.create);
+router.put('/:id', authenticate, authorizeSettings('production', 'edit'), salesChannelController.update);
+router.delete('/:id', authenticate, authorizeSettings('production', 'delete'), salesChannelController.deactivate);
 
 export default router;

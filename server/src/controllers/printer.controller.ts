@@ -21,7 +21,7 @@ export const printerController = {
       res.status(400).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
       return;
     }
-    const created = await printerRepository.create({ ...req.body, storeId: req.user!.storeId });
+    const created = await printerRepository.create({ ...req.body, storeId: req.user!.storeId }, req.user?.userId);
     res.status(201).json({ success: true, data: created });
   },
 
@@ -32,7 +32,7 @@ export const printerController = {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
       return;
     }
-    const updated = await printerRepository.update(req.params.id, req.body);
+    const updated = await printerRepository.update(req.params.id, req.body, req.user?.userId);
     res.json({ success: true, data: updated });
   },
 
@@ -43,7 +43,7 @@ export const printerController = {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
       return;
     }
-    await printerRepository.delete(req.params.id);
+    await printerRepository.delete(req.params.id, req.user?.userId);
     res.json({ success: true, data: null });
   },
 

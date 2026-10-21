@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { printerController } from '../controllers/printer.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
+import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
@@ -10,9 +11,9 @@ const router = Router();
 // pour le selecteur "imprimante du poste" (parametres locaux du terminal).
 // Les mutations restent admin/manager.
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), printerController.list);
-router.post('/', authenticate, authorize(ROLES.ADMIN), printerController.create);
-router.put('/:id', authenticate, authorize(ROLES.ADMIN), printerController.update);
-router.delete('/:id', authenticate, authorize(ROLES.ADMIN), printerController.remove);
+router.post('/', authenticate, authorizeSettings('print', 'create'), printerController.create);
+router.put('/:id', authenticate, authorizeSettings('print', 'edit'), printerController.update);
+router.delete('/:id', authenticate, authorizeSettings('print', 'delete'), printerController.remove);
 
 // Actions
 router.post('/:id/test', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), printerController.test);

@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
 
 export interface SalesChannel {
   id: string;
@@ -33,10 +34,11 @@ export const salesChannelRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { code: string; label: string; color?: string; displayOrder?: number; isDefault?: boolean }): Promise<SalesChannel> {
+  async create(data: { code: string; label: string; color?: string; displayOrder?: number; isDefault?: boolean }, actorId?: string): Promise<SalesChannel> {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await setAuditUser(client, actorId);
       if (data.isDefault) {
         await client.query(`UPDATE sales_channels SET is_default = false WHERE is_default = true`);
       }
@@ -55,10 +57,11 @@ export const salesChannelRepository = {
     }
   },
 
-  async update(id: string, data: { label?: string; color?: string; displayOrder?: number; isDefault?: boolean; isActive?: boolean }): Promise<SalesChannel | null> {
+  async update(id: string, data: { label?: string; color?: string; displayOrder?: number; isDefault?: boolean; isActive?: boolean }, actorId?: string): Promise<SalesChannel | null> {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await setAuditUser(client, actorId);
       if (data.isDefault) {
         // Un seul defaut a la fois
         await client.query(`UPDATE sales_channels SET is_default = false WHERE is_default = true AND id != $1`, [id]);
@@ -96,12 +99,12 @@ export const salesChannelRepository = {
     }
   },
 
-  async deactivate(id: string): Promise<void> {
+  async deactivate(id: string, actorId?: string): Promise<void> {
     // Garde-fou : refuser la desactivation du canal par defaut.
     const channel = await this.findById(id);
     if (channel?.is_default) {
       throw new Error("Impossible de desactiver le canal par defaut. Promouvez d'abord un autre canal.");
     }
-    await db.query(`UPDATE sales_channels SET is_active = false, updated_at = NOW() WHERE id = $1`, [id]);
+    await auditedQuery(actorId, `UPDATE sales_channels SET is_active = false, updated_at = NOW() WHERE id = $1`, [id]);
   },
 };

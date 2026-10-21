@@ -20,7 +20,7 @@ export const salesChannelController = {
       return;
     }
     try {
-      const channel = await salesChannelRepository.create({ code, label, color, displayOrder, isDefault });
+      const channel = await salesChannelRepository.create({ code, label, color, displayOrder, isDefault }, req.user?.userId);
       res.status(201).json({ success: true, data: channel });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || 'Erreur';
@@ -35,7 +35,7 @@ export const salesChannelController = {
 
   async update(req: AuthRequest, res: Response) {
     const { label, color, displayOrder, isDefault, isActive } = req.body || {};
-    const channel = await salesChannelRepository.update(req.params.id, { label, color, displayOrder, isDefault, isActive });
+    const channel = await salesChannelRepository.update(req.params.id, { label, color, displayOrder, isDefault, isActive }, req.user?.userId);
     if (!channel) {
       res.status(404).json({ success: false, error: { message: 'Canal non trouve' } });
       return;
@@ -45,7 +45,7 @@ export const salesChannelController = {
 
   async deactivate(req: AuthRequest, res: Response) {
     try {
-      await salesChannelRepository.deactivate(req.params.id);
+      await salesChannelRepository.deactivate(req.params.id, req.user?.userId);
       res.json({ success: true, data: null });
     } catch (err: unknown) {
       const msg = (err as Error)?.message || 'Erreur';

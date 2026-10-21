@@ -157,7 +157,7 @@ export const authController = {
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role });
+    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role }, req.user?.userId);
 
     res.status(201).json({
       success: true,

@@ -17,19 +17,19 @@ export const storeController = {
   async create(req: AuthRequest, res: Response) {
     const { name, city, address, phone } = req.body;
     if (!name) { res.status(400).json({ success: false, error: { message: 'Nom requis' } }); return; }
-    const store = await storeRepository.create({ name, city, address, phone });
+    const store = await storeRepository.create({ name, city, address, phone }, req.user?.userId);
     res.status(201).json({ success: true, data: store });
   },
 
   async update(req: AuthRequest, res: Response) {
     const { name, city, address, phone, isActive } = req.body;
-    const store = await storeRepository.update(req.params.id, { name, city, address, phone, isActive });
+    const store = await storeRepository.update(req.params.id, { name, city, address, phone, isActive }, req.user?.userId);
     if (!store) { res.status(404).json({ success: false, error: { message: 'Point de vente non trouve' } }); return; }
     res.json({ success: true, data: store });
   },
 
   async remove(req: AuthRequest, res: Response) {
-    await storeRepository.remove(req.params.id);
+    await storeRepository.remove(req.params.id, req.user?.userId);
     res.json({ success: true, data: null });
   },
 };

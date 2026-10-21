@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { auditedQuery } from '../utils/audit-context.js';
 import { computeLeaveBalance, countLeaveDays, leaveDates, type LeaveBalance } from '../services/leave-engine.js';
 
 /**
@@ -166,8 +167,8 @@ export const holidayRepository = {
     );
     return r.rows;
   },
-  async upsert(date: string, label: string, isConfirmed: boolean) {
-    const r = await db.query(
+  async upsert(date: string, label: string, isConfirmed: boolean, actorId?: string) {
+    const r = await auditedQuery(actorId,
       `INSERT INTO public_holidays (holiday_date, label, is_confirmed) VALUES ($1, $2, $3)
        ON CONFLICT (holiday_date) DO UPDATE SET label = EXCLUDED.label, is_confirmed = EXCLUDED.is_confirmed
        RETURNING *`,
@@ -175,8 +176,8 @@ export const holidayRepository = {
     );
     return r.rows[0];
   },
-  async remove(date: string) {
-    await db.query('DELETE FROM public_holidays WHERE holiday_date = $1', [date]);
+  async remove(date: string, actorId?: string) {
+    await auditedQuery(actorId, 'DELETE FROM public_holidays WHERE holiday_date = $1', [date]);
   },
 };
 

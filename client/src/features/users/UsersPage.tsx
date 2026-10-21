@@ -5,8 +5,8 @@ import { storesApi } from '../../api/stores.api';
 import { Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, X, Check, MapPin } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES } from '@ofauria/shared';
-import type { AppModule, UserPermission } from '@ofauria/shared';
+import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, LEGACY_MODULE_KEYS, MODULE_ALIASES, SETTINGS_SECTION_LABELS } from '@ofauria/shared';
+import type { AppModule, UserPermission, SettingsSection } from '@ofauria/shared';
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
@@ -235,10 +235,15 @@ interface PermState {
   config: Record<string, any>;
 }
 
-const ALL_MODULES = Object.values(APP_MODULES) as AppModule[];
+// Les alias historiques (economat, inventory, pesage, warehouse) ne sont pas proposes :
+// un seul droit « Stock » les remplace, les anciens droits restent lus par hasModule.
+const ALL_MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY_MODULE_KEYS.has(m));
 
 // Modules that support category_slugs config (for partial access)
 const CATEGORY_MODULES: AppModule[] = ['production'];
+
+// Sections du module Parametres (config.sections) : vide = toutes les sections.
+const SETTINGS_SECTION_KEYS = Object.keys(SETTINGS_SECTION_LABELS) as SettingsSection[];
 
 function PermissionsModal({ userId, userName, userRole, onClose }: {
   userId: string;
@@ -282,7 +287,10 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
     const state: Record<string, PermState> = {};
 
     for (const mod of ALL_MODULES) {
-      const existing = existingList.find(p => p.module === mod);
+      // Un droit enregistre sous une ancienne cle (economat, pesage...) vaut pour le
+      // module canonique ; a la sauvegarde il sera reecrit sous la nouvelle cle.
+      const keys = [mod, ...(MODULE_ALIASES[mod] ?? [])];
+      const existing = existingList.find(p => keys.includes(p.module));
       if (existing) {
         state[mod] = {
           canView: existing.canView,
@@ -368,6 +376,13 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
     setPerms(next);
   };
 
+  const toggleSettingsSection = (section: SettingsSection) => {
+    if (!perms) return;
+    const current = (perms.settings.config.sections as SettingsSection[]) || [];
+    const sections = current.includes(section) ? current.filter(s => s !== section) : [...current, section];
+    setPerms({ ...perms, settings: { ...perms.settings, config: { ...perms.settings.config, sections } } });
+  };
+
   const selectAllCategories = (mod: AppModule) => {
     if (!perms) return;
     const next = { ...perms };
@@ -425,7 +440,8 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
                 <span className="text-center">Supprimer</span>
               </div>
 
-              {ALL_MODULES.filter(m => m !== 'settings' && m !== 'users').map(mod => {
+              {/* « Utilisateurs » reste reserve a l'administrateur (routes /users en dur). */}
+              {ALL_MODULES.filter(m => m !== 'users').map(mod => {
                 const p = perms[mod];
                 const hasCategoryConfig = CATEGORY_MODULES.includes(mod);
                 const activeSlugs = (p.config.category_slugs as string[]) || [];
@@ -444,6 +460,32 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
                         </label>
                       ))}
                     </div>
+
+                    {/* Sections autorisees du module Parametres */}
+                    {mod === 'settings' && p.canView && (
+                      <div className="ml-6 mt-1 mb-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="text-xs font-semibold text-slate-700">Sections autorisées :</span>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {SETTINGS_SECTION_KEYS.map(sec => {
+                            const selected = ((p.config.sections as string[]) || []).includes(sec);
+                            return (
+                              <button key={sec} type="button" onClick={() => toggleSettingsSection(sec)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                  selected
+                                    ? 'bg-slate-700 text-white shadow-sm'
+                                    : 'bg-white text-gray-600 border border-gray-200 hover:border-slate-400'
+                                }`}>
+                                {selected && <Check size={12} className="inline mr-1 -mt-0.5" />}
+                                {SETTINGS_SECTION_LABELS[sec]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {!((p.config.sections as string[]) || []).length && (
+                          <p className="text-xs text-slate-500 mt-2 italic">Toutes les sections (aucune restriction)</p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Category config for production */}
                     {hasCategoryConfig && p.canView && (

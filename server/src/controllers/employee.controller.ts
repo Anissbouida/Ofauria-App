@@ -601,10 +601,10 @@ export const leaveController = {
   },
   async upsertHoliday(req: AuthRequest, res: Response) {
     const { date, label, isConfirmed } = req.body as { date: string; label: string; isConfirmed?: boolean };
-    res.json({ success: true, data: await holidayRepository.upsert(date, label, isConfirmed ?? true) });
+    res.json({ success: true, data: await holidayRepository.upsert(date, label, isConfirmed ?? true, req.user?.userId) });
   },
   async removeHoliday(req: AuthRequest, res: Response) {
-    await holidayRepository.remove(req.params.date);
+    await holidayRepository.remove(req.params.date, req.user?.userId);
     res.json({ success: true, data: null });
   },
 

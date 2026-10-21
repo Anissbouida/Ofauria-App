@@ -31,10 +31,10 @@ export const userController = {
       }
     }
     const passwordHash = await hashPassword(password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role });
+    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role }, req.user?.userId);
     if (pinCode) {
       const pinHash = await hashPin(pinCode);
-      await userRepository.update(user.id, { pinCode: pinHash });
+      await userRepository.update(user.id, { pinCode: pinHash }, req.user?.userId);
     }
     const updated = pinCode ? await userRepository.findById(user.id) : user;
 
@@ -95,7 +95,7 @@ export const userController = {
     const oldUser = await userRepository.findById(req.params.id);
     const oldRole = (oldUser as any)?.role as string | undefined;
 
-    const user = await userRepository.update(req.params.id, updateData as Parameters<typeof userRepository.update>[1]);
+    const user = await userRepository.update(req.params.id, updateData as Parameters<typeof userRepository.update>[1], req.user?.userId);
     if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
 
     // Si le role a change, purger les permissions custom pour que le fallback
@@ -103,7 +103,7 @@ export const userController = {
     // configurees sous l'ancien role masquent les modules du nouveau role).
     if (role !== undefined && oldRole && role !== oldRole) {
       try {
-        await permissionRepository.clearByUserId(user.id);
+        await permissionRepository.clearByUserId(user.id, req.user?.userId);
       } catch (err) {
         console.error('[user.update] clearPermissions echec (non-bloquant):', err);
       }
@@ -140,7 +140,7 @@ export const userController = {
   async remove(req: AuthRequest, res: Response) {
     // A07-5 : bump avant desactivation pour invalider les sessions actives.
     await userRepository.bumpTokenVersion(req.params.id);
-    await userRepository.delete(req.params.id);
+    await userRepository.delete(req.params.id, req.user?.userId);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'user_updated',
       userId: req.user?.userId,
@@ -166,7 +166,7 @@ export const userController = {
 
   async setPermissions(req: AuthRequest, res: Response) {
     const { permissions } = req.body;
-    await permissionRepository.setPermissions(req.params.id, permissions);
+    await permissionRepository.setPermissions(req.params.id, permissions, req.user?.userId);
     // OWASP A07-5 : un changement de permissions invalide les tokens actifs.
     await userRepository.bumpTokenVersion(req.params.id);
     const perms = await permissionRepository.findByUserId(req.params.id);

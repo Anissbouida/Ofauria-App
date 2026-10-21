@@ -6,6 +6,7 @@ export * from './constants/production-status.js';
 export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 export * from './constants/shifts.js';
+export * from './constants/settings-sections.js';
 
 // Types
 export * from './types/common.types.js';

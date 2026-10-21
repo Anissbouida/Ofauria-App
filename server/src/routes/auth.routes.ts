@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { authController } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
+import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate } from '../middleware/validate.middleware.js';
 import { loginSchema, registerSchema, pinLoginSchema } from '../validators/auth.validator.js';
 
@@ -37,7 +38,11 @@ const router = Router();
 
 router.post('/login', loginLimiter, validate(loginSchema), authController.login);
 router.post('/pin-login', pinLimiter, validate(pinLoginSchema), authController.pinLogin);
-router.get('/users-list', authController.activeUsers);
+// Ancien selecteur d'utilisateur de l'ecran PIN : la connexion se fait desormais
+// par PIN seul et aucun ecran n'appelle plus cette route. Elle exposait sans
+// authentification les nom, prenom et role de tous les comptes actifs (audit
+// Parametres, lot 1) : reservee aux administrateurs et gerants connectes.
+router.get('/users-list', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), authController.activeUsers);
 router.post('/register', authenticate, authorize('admin'), validate(registerSchema), authController.register);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.me);

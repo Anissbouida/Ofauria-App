@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import express from 'express';
 import { settingsController } from '../controllers/settings.controller.js';
+import { auditLogController } from '../controllers/audit-log.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
@@ -11,7 +13,14 @@ const router = Router();
 // Ces routes sont exclues du parser global dans app.ts.
 const jsonParser = express.json({ limit: '3mb' });
 
+// Journal des modifications (mig 328) et des connexions : section « audit ».
+router.get('/audit-log', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.list));
+router.get('/audit-log/tables', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.tables));
+router.get('/auth-events', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.authEvents));
+
+// Lecture ouverte a tout utilisateur connecte (theme, ticket, identite sur les PDF).
 router.get('/', authenticate, jsonParser, settingsController.get);
-router.put('/', authenticate, authorize('admin'), jsonParser, settingsController.update);
+// Droit « Parametres » (modifier) ; chaque champ envoye doit relever d'une section autorisee.
+router.put('/', authenticate, jsonParser, authorizeSettingsUpdate, settingsController.update);
 
 export default router;

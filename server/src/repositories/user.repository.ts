@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { comparePin } from '../utils/hash.js';
+import { auditedQuery } from '../utils/audit-context.js';
 
 export interface UserRow {
   id: string;
@@ -33,8 +34,8 @@ export const userRepository = {
     firstName: string;
     lastName: string;
     role: string;
-  }): Promise<UserRow> {
-    const result = await db.query(
+  }, actorId?: string): Promise<UserRow> {
+    const result = await auditedQuery(actorId,
       `INSERT INTO users (email, password_hash, first_name, last_name, role)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
@@ -70,7 +71,7 @@ export const userRepository = {
   async update(id: string, data: {
     email?: string; firstName?: string; lastName?: string;
     role?: string; isActive?: boolean; passwordHash?: string; pinCode?: string | null; storeId?: string | null;
-  }): Promise<UserRow> {
+  }, actorId?: string): Promise<UserRow> {
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -84,14 +85,14 @@ export const userRepository = {
     if (data.storeId !== undefined) { fields.push(`store_id = $${i++}`); values.push(data.storeId); }
     fields.push('updated_at = NOW()');
     values.push(id);
-    const result = await db.query(
+    const result = await auditedQuery(actorId,
       `UPDATE users SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values
     );
     return result.rows[0];
   },
 
-  async delete(id: string): Promise<void> {
-    await db.query('UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
+  async delete(id: string, actorId?: string): Promise<void> {
+    await auditedQuery(actorId, 'UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1', [id]);
   },
 
   // ─── Account lockout (OWASP A04-2) ────────────────────────

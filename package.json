@@ -18,7 +18,8 @@
     "db:migrate": "npm run migrate --workspace=server",
     "db:seed": "npm run seed --workspace=server",
     "db:seed-test-accounts": "npm run seed:test-accounts --workspace=server",
-    "test:e2e-paie": "npm run e2e:paie --workspace=server --"
+    "test:e2e-paie": "npm run e2e:paie --workspace=server --",
+    "test:e2e-audit-parametres": "npm run e2e:audit-parametres --workspace=server --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

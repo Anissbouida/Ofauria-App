@@ -126,7 +126,7 @@ export const settingsController = {
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
       prixArrondiStrategie, prixArrondiSens,
       ...legal,
-    });
+    }, req.user?.userId);
     res.json({ success: true, data: toApi(settings) });
   },
 };
