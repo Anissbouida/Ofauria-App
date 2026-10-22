@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi } from '../../api/users.api';
+import { categoriesApi } from '../../api/categories.api';
 import RolesPanel from './RolesPanel';
 import GovernancePanel from './GovernancePanel';
 import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
@@ -424,18 +425,14 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
     queryFn: () => usersApi.getPermissions(userId),
   });
 
+  // Puces de categories du module Production : table dediee /categories (legere),
+  // au lieu de charger 500 produits entiers a chaque ouverture de la modale.
   const { data: categories = [] } = useQuery({
-    queryKey: ['all-categories'],
-    queryFn: async () => {
-      const { default: api } = await import('../../api/client');
-      const prodsRes = await api.get('/products', { params: { limit: '500' } });
-      const prods = prodsRes.data.data || [];
-      const catMap = new Map<string, string>();
-      prods.forEach((p: Record<string, any>) => {
-        if (p.category_slug && p.category_name) catMap.set(p.category_slug as string, p.category_name as string);
-      });
-      return Array.from(catMap.entries()).map(([slug, name]) => ({ slug, name }));
-    },
+    queryKey: ['categories-list'],
+    queryFn: () => categoriesApi.list(),
+    staleTime: 5 * 60_000,
+    select: (rows: Record<string, any>[]) =>
+      rows.map(c => ({ slug: c.slug as string, name: c.name as string })).filter(c => c.slug && c.name),
   });
 
   const [perms, setPerms] = useState<Record<AppModule, PermState> | null>(null);
