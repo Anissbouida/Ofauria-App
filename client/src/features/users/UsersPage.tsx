@@ -5,7 +5,7 @@ import { storesApi } from '../../api/stores.api';
 import { Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, X, Check, MapPin } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, LEGACY_MODULE_KEYS, MODULE_ALIASES, SETTINGS_SECTION_LABELS } from '@ofauria/shared';
+import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, SETTINGS_SECTION_LABELS } from '@ofauria/shared';
 import type { AppModule, UserPermission, SettingsSection } from '@ofauria/shared';
 
 export default function UsersPage() {
@@ -235,9 +235,7 @@ interface PermState {
   config: Record<string, any>;
 }
 
-// Les alias historiques (economat, inventory, pesage, warehouse) ne sont pas proposes :
-// un seul droit « Stock » les remplace, les anciens droits restent lus par hasModule.
-const ALL_MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY_MODULE_KEYS.has(m));
+const ALL_MODULES = Object.values(APP_MODULES) as AppModule[];
 
 // Modules that support category_slugs config (for partial access)
 const CATEGORY_MODULES: AppModule[] = ['production'];
@@ -287,10 +285,7 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
     const state: Record<string, PermState> = {};
 
     for (const mod of ALL_MODULES) {
-      // Un droit enregistre sous une ancienne cle (economat, pesage...) vaut pour le
-      // module canonique ; a la sauvegarde il sera reecrit sous la nouvelle cle.
-      const keys = [mod, ...(MODULE_ALIASES[mod] ?? [])];
-      const existing = existingList.find(p => keys.includes(p.module));
+      const existing = existingList.find(p => p.module === mod);
       if (existing) {
         state[mod] = {
           canView: existing.canView,
