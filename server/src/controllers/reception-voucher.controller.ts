@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
@@ -33,6 +34,10 @@ export const receptionVoucherController = {
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
     if (!['envoye', 'livre_partiel', 'en_attente'].includes(po.status)) {
       res.status(409).json({ success: false, error: { message: 'Le bon de commande n\'est pas en attente de livraison' } });
+      return;
+    }
+    if (po.status === 'en_attente' && await approvalService.hasPending('purchase_order', purchaseOrderId)) {
+      res.status(409).json({ success: false, error: { message: 'Ce bon attend une approbation : il ne peut pas être réceptionné' } });
       return;
     }
 

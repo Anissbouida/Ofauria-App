@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import {
   openingInventoryCheckRepository,
@@ -62,7 +63,24 @@ export const openingInventoryCheckController = {
       notes,
     });
 
-    res.status(201).json({ success: true, data: check });
+    // Circuit d'approbation (lot 8) : au-dessus du seuil d'écart paramétré, la
+    // validation passe par les approbateurs désignés (gérant puis admin).
+    let approval = null;
+    if (check.status === 'awaiting_validation') {
+      const expected = items.reduce((s, it) => s + it.expectedQty, 0);
+      const gapQty = Math.abs(Number(check.total_discrepancy ?? 0));
+      const gapPct = expected > 0 ? Math.round((gapQty / expected) * 10000) / 100 : (gapQty > 0 ? 100 : 0);
+      const lines = items.filter((it) => it.foundQty !== it.expectedQty).length;
+      const r = await approvalService.submit({
+        docType: 'inventory_count', docId: check.id,
+        docLabel: `Contrôle d'ouverture du ${new Date(check.created_at ?? Date.now()).toLocaleDateString('fr-FR')}`,
+        amount: null, values: { gap_pct: gapPct, gap_qty: gapQty, lines },
+        storeId, requestedBy: req.user!.userId,
+      });
+      if (r.outcome !== 'not_required') approval = r.request;
+    }
+
+    res.status(201).json({ success: true, data: check, approval });
   },
 
   /**
@@ -90,6 +108,17 @@ export const openingInventoryCheckController = {
         success: false,
         error: { message: 'rejectionReason requis pour un rejet' },
       });
+      return;
+    }
+
+    // Contrôle sous circuit d'approbation (lot 8) : la décision est celle de
+    // l'étape en cours ; la validation du contrôle est faite par le moteur à
+    // la dernière étape.
+    const pending = await approvalService.forDocument('inventory_count', id);
+    if (pending && pending.status === 'pending') {
+      const request = await approvalService.decide(pending.id, { userId: req.user!.userId, role: req.user!.role, storeId: req.user!.storeId ?? null }, action, rejectionReason);
+      const check = await openingInventoryCheckRepository.findById(id);
+      res.json({ success: true, data: check, approval: request });
       return;
     }
 

@@ -8,7 +8,7 @@ import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.ap
 import {
   Save, Building2, RotateCcw, Store, Printer, Upload, Image, Eye, Database, Check, Search,
   BarChart3, Paintbrush, ShoppingBag, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent,
-  FileText, Bell, HardDrive,
+  FileText, Bell, HardDrive, ClipboardCheck,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import PrinterSettingsCard from './PrinterSettingsCard';
@@ -22,6 +22,7 @@ import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
+import ApprovalsTab from './ApprovalsTab';
 import DataTab from './DataTab';
 import ReferentielTab from './ReferentielTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -29,7 +30,7 @@ import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications' | 'data';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications' | 'approvals' | 'data';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -87,6 +88,7 @@ export default function SettingsPage() {
     { key: 'tax', section: 'tax', label: 'TVA', description: 'Taux de TVA dates', icon: <Percent size={18} /> },
     { key: 'documents', section: 'documents', label: 'Documents', description: 'Mentions des factures et bons de commande', icon: <FileText size={18} /> },
     { key: 'notifications', section: 'notifications', label: 'Notifications', description: 'Qui est prevenu, et de quoi', icon: <Bell size={18} /> },
+    { key: 'approvals', section: 'approvals', label: 'Approbations', description: 'Qui approuve quoi, a partir de quel seuil', icon: <ClipboardCheck size={18} /> },
     { key: 'parameters', section: 'business', label: 'Parametres metier', description: 'Regles de gestion par domaine, en un seul endroit', icon: <SlidersHorizontal size={18} /> },
     { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
@@ -122,6 +124,7 @@ export default function SettingsPage() {
       {currentTab === 'tax' && <TaxCodesTab />}
       {currentTab === 'documents' && <DocumentsTab />}
       {currentTab === 'notifications' && <NotificationsTab />}
+      {currentTab === 'approvals' && <ApprovalsTab />}
       {currentTab === 'data' && <DataTab />}
       {currentTab === 'referentiel' && <ReferentielTab />}
       {currentTab === 'production' && (

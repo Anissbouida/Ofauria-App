@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
 import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
@@ -70,6 +71,21 @@ export const purchaseOrderController = {
       res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
       return;
     }
+    // Circuit d'approbation (lot 8) : au-dessus du seuil paramétré, le bon
+    // attend l'accord d'un approbateur ; l'envoi est alors fait par le moteur.
+    const amount = Number((await purchaseOrderRepository.totalAmount(req.params.id)) ?? 0);
+    const approval = await approvalService.submit({
+      docType: 'purchase_order', docId: req.params.id, docLabel: `BC ${po.order_number} · ${po.supplier_name ?? ''}`.trim(),
+      amount, values: { amount }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+    });
+    if (approval.outcome === 'already_pending') {
+      res.status(409).json({ success: false, error: { message: 'Ce bon attend déjà une approbation' }, approval: approval.request });
+      return;
+    }
+    if (approval.outcome === 'submitted') {
+      res.status(202).json({ success: true, data: po, approval: approval.request });
+      return;
+    }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'envoye');
     res.json({ success: true, data: updated });
   },
@@ -117,6 +133,7 @@ export const purchaseOrderController = {
       return;
     }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'annule');
+    await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Bon de commande annulé');
     res.json({ success: true, data: updated });
   },
 
@@ -147,6 +164,7 @@ export const purchaseOrderController = {
       return;
     }
     try {
+      await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Bon de commande supprimé');
       await purchaseOrderRepository.delete(req.params.id);
       res.json({ success: true, data: null });
     } catch (err) {
@@ -230,6 +248,11 @@ export const purchaseOrderController = {
         ? null
         : num(raw.unitPrice),
     }));
+    // Lignes modifiées sur un bon en attente d'approbation : la demande est
+    // retirée, le montant approuvé ne serait plus celui du bon.
+    if (po.status === 'en_attente') {
+      await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Lignes du bon modifiées : à soumettre de nouveau');
+    }
     if (items.some(it => !(it.ingredientId || it.packagingId) || it.quantityOrdered <= 0)) {
       res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article et une quantite > 0' } });
       return;

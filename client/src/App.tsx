@@ -36,6 +36,7 @@ import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
 import InventoryCheckValidationPage from './features/inventory-check/InventoryCheckValidationPage';
 import WarehousePage from './features/warehouse/WarehousePage';
+import ApprovalsPage from './features/approvals/ApprovalsPage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,7 @@ export default function App() {
               <Route path="/purchasing" element={<PurchasingPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/approvals" element={<ApprovalsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

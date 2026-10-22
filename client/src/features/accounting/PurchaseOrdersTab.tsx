@@ -130,7 +130,19 @@ export default function PurchaseOrdersTab() {
 
   const sendMutation = useMutation({
     mutationFn: purchaseOrdersApi.send,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC envoyé au fournisseur'); },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      if (res.approval) {
+        const who = res.approval.steps?.[0]?.approver_name ?? 'un approbateur';
+        notify.warning(`BC soumis à approbation (${res.approval.rule_label}) : en attente de ${who}.`);
+      } else {
+        notify.success('BC envoyé au fournisseur');
+      }
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      notify.error(e?.response?.data?.error?.message ?? 'Envoi refusé');
+    },
   });
   const cancelMutation = useMutation({
     mutationFn: purchaseOrdersApi.cancel,
@@ -460,7 +472,10 @@ export default function PurchaseOrdersTab() {
                           {po.supplier_name as string}
                         </span>
                       </td>
-                      <td><span className={`odoo-tag ${statusTag}`}>{STATUS_LABELS[status]}</span></td>
+                      <td>
+                        <span className={`odoo-tag ${statusTag}`}>{STATUS_LABELS[status]}</span>
+                        {po.approval_pending === true && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }} title="En attente d'approbation">À approuver</span>}
+                      </td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>
                         {format(new Date(po.order_date as string), 'dd MMM yyyy', { locale: fr })}
                       </td>
@@ -484,7 +499,7 @@ export default function PurchaseOrdersTab() {
                       </td>
                       <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: 2 }}>
-                          {status === 'en_attente' && (
+                          {status === 'en_attente' && po.approval_pending !== true && (
                             <button onClick={() => sendMutation.mutate(po.id as string)} title="Envoyer" className="odoo-pager-btn">
                               <Send size={13} />
                             </button>

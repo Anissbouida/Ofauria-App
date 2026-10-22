@@ -46,6 +46,9 @@ import { ledgerRouter } from './ledger.routes.js';
 import fixedAssetRoutes from './fixed-asset.routes.js';
 import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 import withholdingRoutes from './withholding.routes.js';
+import approvalRoutes from './approval.routes.js';
+// Effets des approbations par type de pièce (lot 8) : enregistrés au chargement.
+import '../services/approval-handlers.js';
 
 const router = Router();
 
@@ -112,5 +115,6 @@ router.use('/ledger', ledgerRouter);
 router.use('/fixed-assets', fixedAssetRoutes);
 router.use('/bank-reconciliation', bankReconciliationRoutes);
 router.use('/withholding', withholdingRoutes);
+router.use('/approvals', approvalRoutes);
 
 export default router;

@@ -4,6 +4,7 @@ import { Shield, CheckCircle2, XCircle, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { openingInventoryCheckApi } from '../../api/opening-inventory-check.api';
+import { ROLE_LABELS } from '@ofauria/shared';
 
 const REASON_LABELS: Record<string, string> = {
   theft: 'Vol',
@@ -39,17 +40,23 @@ export default function InventoryCheckValidationPage() {
         action: data.action,
         rejectionReason: data.rejectionReason,
       }),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['opening-checks-awaiting'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
       setSelectedId(null);
       setRejectionReason('');
+      const approval = data?.approval as { status?: string; steps?: { status: string; approver_role?: string | null }[] } | undefined;
+      const next = approval?.status === 'pending' ? approval.steps?.find((s) => s.status === 'pending') : undefined;
       setActionMsg({
         type: 'success',
-        text: variables.action === 'approve' ? 'Contrôle validé.' : 'Contrôle rejeté.',
+        text: next
+          ? `Étape approuvée. Le contrôle attend maintenant : ${ROLE_LABELS[next.approver_role as keyof typeof ROLE_LABELS] ?? next.approver_role}.`
+          : variables.action === 'approve' ? 'Contrôle validé.' : 'Contrôle rejeté.',
       });
     },
     onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Erreur';
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      const message = e?.response?.data?.error?.message ?? (err instanceof Error ? err.message : 'Erreur');
       setActionMsg({ type: 'error', text: message });
     },
   });
@@ -124,6 +131,11 @@ export default function InventoryCheckValidationPage() {
                       {c.total_discrepancy}
                     </span>
                   </div>
+                  {c.approval && (
+                    <div className="text-xs mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">
+                      Circuit d'approbation · étape {c.approval.step_order}/{c.approval.total_steps} : {ROLE_LABELS[c.approval.approver_role as keyof typeof ROLE_LABELS] ?? c.approval.approver_role}
+                    </div>
+                  )}
                 </div>
                 <ChevronRight className="text-gray-400" size={20} />
               </button>
