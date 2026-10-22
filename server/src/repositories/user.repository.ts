@@ -34,12 +34,13 @@ export const userRepository = {
     firstName: string;
     lastName: string;
     role: string;
+    storeId?: string | null;
   }, actorId?: string): Promise<UserRow> {
     const result = await auditedQuery(actorId,
-      `INSERT INTO users (email, password_hash, first_name, last_name, role)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, store_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [data.email, data.passwordHash, data.firstName, data.lastName, data.role]
+      [data.email, data.passwordHash, data.firstName, data.lastName, data.role, data.storeId || null]
     );
     return result.rows[0];
   },

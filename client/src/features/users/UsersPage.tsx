@@ -259,7 +259,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid;
 
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       const data: Record<string, unknown> = {
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(),
         role: form.role, storeId: form.storeId || null,
@@ -268,11 +268,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
       // PIN vide : inchangé en modification (l'ancien formulaire l'effaçait), absent à la création.
       if (form.pinCode) data.pinCode = form.pinCode;
       else if (removePin) data.pinCode = null;
-      if (user) return usersApi.update(user.id as string, data);
-      // La création côté serveur ignore l'établissement : il est posé juste après.
-      const created = await usersApi.create(data);
-      if (form.storeId && created?.id) await usersApi.update(created.id as string, { storeId: form.storeId });
-      return created;
+      return user ? usersApi.update(user.id as string, data) : usersApi.create(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
