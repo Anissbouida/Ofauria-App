@@ -80,6 +80,22 @@ export interface AuthEventEntry {
 
 export interface Paged<T> { rows: T[]; total: number }
 
+/** Serie de numeros des pieces (document_sequences, mig 329). */
+export interface DocumentSequence {
+  doc_type: string;
+  label: string;
+  module: string;
+  pattern: string;
+  padding: number;
+  reset_period: 'never' | 'year' | 'month' | 'day';
+  gapless: boolean;
+  next_number: string;
+  updated_at: string;
+  updated_by_name: string | null;
+  last_used_at: string | null;
+}
+export type DocumentSequenceInput = { pattern: string; padding: number; resetPeriod: DocumentSequence['reset_period'] };
+
 export const settingsApi = {
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
   update: (data: Partial<CompanySettings>) => api.put('/settings', data).then(r => r.data.data) as Promise<CompanySettings>,
@@ -88,6 +104,11 @@ export const settingsApi = {
   auditTables: () => api.get('/settings/audit-log/tables').then(r => r.data.data) as Promise<string[]>,
   authEvents: (params: { eventType?: string; userId?: string; success?: boolean; from?: string; to?: string; limit?: number; offset?: number }) =>
     api.get('/settings/auth-events', { params }).then(r => r.data.data) as Promise<Paged<AuthEventEntry>>,
+  documentSequences: () => api.get('/settings/document-sequences').then(r => r.data.data) as Promise<DocumentSequence[]>,
+  previewDocumentSequence: (data: DocumentSequenceInput) =>
+    api.post('/settings/document-sequences/preview', data).then(r => r.data.data) as Promise<{ valid: boolean; sample?: string; error?: string }>,
+  updateDocumentSequence: (docType: string, data: DocumentSequenceInput) =>
+    api.put(`/settings/document-sequences/${docType}`, data).then(r => r.data.data) as Promise<{ doc_type: string; next_number: string }>,
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

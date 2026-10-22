@@ -1,7 +1,8 @@
 import { db } from '../config/database.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
-import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, persistEntry, reverseEntriesForSource, regenerateSaleEntry } from '../services/journal-generator.service.js';
 
@@ -865,19 +866,6 @@ export const saleRepository = {
 };
 
 export async function generateSaleNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
-  // Advisory lock prevents concurrent transactions from reading the same max sequence
-  await client.query(`SELECT pg_advisory_xact_lock(hashtext('sale_number'))`);
-  const today = getLocalDateString();
-  const prefix = `VNT-${today}-`;
-  const result = await client.query(
-    `SELECT sale_number FROM sales WHERE sale_number LIKE $1 ORDER BY sale_number DESC LIMIT 1`,
-    [prefix + '%']
-  );
-  let seq = 1;
-  if (result.rows.length > 0) {
-    const lastNum = result.rows[0].sale_number;
-    const lastSeq = parseInt(lastNum.split('-').pop() || '0', 10);
-    seq = lastSeq + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  // Serie « sale » (Parametres > Numerotation, mig 329).
+  return nextDocumentNumber(client, 'sale');
 }

@@ -1,6 +1,6 @@
 import { db } from '../config/database.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustVitrineStock } from './product-stock.helper.js';
-import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
 import { generateSaleNumber } from './sale.repository.js';
 
 export const returnRepository = {
@@ -254,14 +254,8 @@ export const returnRepository = {
   },
 };
 
-async function generateReturnNumber(client: { query: (text: string) => Promise<{ rows: { count: string }[] }> }) {
-  // Advisory lock prevents concurrent returns from generating the same number
-  await client.query(`SELECT pg_advisory_xact_lock(hashtext('return_number'))`);
-  const tz = getUserTimezone();
-  const today = getLocalDateString();
-  const result = await client.query(
-    `SELECT COUNT(*) FROM sale_returns WHERE (created_at AT TIME ZONE '${tz}')::date = (NOW() AT TIME ZONE '${tz}')::date`
-  );
-  const seq = parseInt(result.rows[0].count, 10) + 1;
-  return `RET-${today}-${String(seq).padStart(4, '0')}`;
+async function generateReturnNumber(client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }) {
+  // Serie « sale_return » (Parametres > Numerotation, mig 329) : l'ancien COUNT(*)+1
+  // du jour reattribuait un numero apres suppression d'un retour.
+  return nextDocumentNumber(client, 'sale_return');
 }

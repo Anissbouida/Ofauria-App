@@ -13,7 +13,7 @@ import {
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -21,12 +21,13 @@ import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
+import NumberingTab from './NumberingTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -81,6 +82,7 @@ export default function SettingsPage() {
     { key: 'appearance', section: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
     { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
     { key: 'stores', section: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
+    { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
     { key: 'production', section: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
     { key: 'sachets', section: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
@@ -121,6 +123,7 @@ export default function SettingsPage() {
       )}
       {currentTab === 'sachets' && <SachetsTab />}
       {currentTab === 'audit' && <AuditLogTab />}
+      {currentTab === 'numbering' && <NumberingTab />}
     </>
   );
 

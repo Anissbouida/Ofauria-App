@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
-import { getLocalYear } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 
@@ -145,7 +145,7 @@ export async function createInvoiceFromPo(
   const lookedUpNumber = (supplierInvoiceLookup.rows[0]?.number as string | null) || null;
   const lookedUpDate = (supplierInvoiceLookup.rows[0]?.date as string | null) || null;
 
-  const invoiceNumber = lookedUpNumber || await invoiceRepository.generateInvoiceNumber('received');
+  const invoiceNumber = lookedUpNumber || await invoiceRepository.generateInvoiceNumber('received', client);
   const notesLabel = lookedUpNumber
     ? `Facture fournisseur ${lookedUpNumber} — reception depuis ${po.order_number}`
     : `Facture auto-generee depuis ${po.order_number}`;
@@ -264,20 +264,8 @@ export const receptionVoucherRepository = {
   },
 
   async generateVoucherNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
-    const runner = client ?? db;
-    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('voucher_number'))`);
-    const year = getLocalYear();
-    // Basé sur le MAX du suffixe numerique existant (pas COUNT(*)) : robuste aux
-    // suppressions de bons (ex: annulation de reception), sinon COUNT+1 retombe
-    // sur un numero deja attribue -> duplicate key sur voucher_number.
-    const result = await runner.query(
-      `SELECT COALESCE(MAX(substring(voucher_number from '([0-9]+)$')::int), 0) AS maxseq
-       FROM reception_vouchers
-       WHERE voucher_number LIKE $1`,
-      [`BR-${year}-%`]
-    );
-    const seq = parseInt(result.rows[0].maxseq) + 1;
-    return `BR-${year}-${String(seq).padStart(4, '0')}`;
+    // Serie « reception_voucher » (Parametres > Numerotation, mig 329).
+    return nextDocumentNumber(client ?? db, 'reception_voucher');
   },
 
   async create(data: {

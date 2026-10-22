@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
 
 export const bonSortieRepository = {
 
@@ -40,20 +41,10 @@ export const bonSortieRepository = {
         throw new Error('Aucun besoin en ingredients pour ce plan');
       }
 
-      // 2. Generate BSI number: BSI-YYMMDD-NNN
-      const now = new Date();
-      const yy = String(now.getFullYear()).slice(2);
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const dateStr = `${yy}${mm}${dd}`;
-
-      const countResult = await client.query(
-        `SELECT COUNT(*) FROM production_bons_sortie
-         WHERE numero LIKE $1`,
-        [`BSI-${dateStr}-%`]
-      );
-      const seq = (parseInt(countResult.rows[0].count) + 1).toString().padStart(3, '0');
-      const numero = `BSI-${dateStr}-${seq}`;
+      // 2. Numero du BSI : serie « bon_sortie » (Parametres > Numerotation, mig 329),
+      // allouee dans la transaction (ROLLBACK = numero rendu, pas de doublon apres
+      // suppression d'un BSI du jour).
+      const numero = await nextDocumentNumber(client, 'bon_sortie');
 
       // 3. Create the bon de sortie
       const bonResult = await client.query(

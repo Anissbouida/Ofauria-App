@@ -1,32 +1,18 @@
 import { db } from '../config/database.js';
-import { getUserTimezone, getLocalDateString } from '../utils/timezone.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
+import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromClosureDiff, persistEntry } from '../services/journal-generator.service.js';
 
 /**
  * Z-report — numerotation sequentielle inviolable (section 4.3).
- * Pattern : Z-YYYYMMDD-nnnn (nnnn zero-padded, sequence par jour local).
- * Advisory lock pour eviter les collisions sous concurrence, meme approche
- * que generateSaleNumber (sale.repository.ts).
+ * Serie « cash_closure » (Parametres > Numerotation, mig 329), par defaut
+ * Z-YYYYMMDD-nnnn, sequence par jour local, allouee dans la transaction.
  */
 async function generateClosureNumber(
-  client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }
+  client: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }
 ) {
-  await client.query(`SELECT pg_advisory_xact_lock(hashtext('closure_number'))`);
-  const today = getLocalDateString();
-  const prefix = `Z-${today.replace(/-/g, '')}-`;
-  const result = await client.query(
-    `SELECT closure_number FROM cash_register_sessions
-      WHERE closure_number LIKE $1
-      ORDER BY closure_number DESC LIMIT 1`,
-    [prefix + '%']
-  );
-  let seq = 1;
-  if (result.rows.length > 0) {
-    const lastSeq = parseInt(result.rows[0].closure_number.split('-').pop() || '0', 10);
-    seq = lastSeq + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  return nextDocumentNumber(client, 'cash_closure');
 }
 
 export const cashRegisterRepository = {

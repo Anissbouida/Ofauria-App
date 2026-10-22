@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { getLocalDateString } from '../utils/timezone.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 
 export const orderRepository = {
@@ -212,21 +212,8 @@ export const orderRepository = {
   },
 
   async generateOrderNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
-    const runner = client ?? db;
-    // Advisory lock prevents concurrent orders from generating the same number
-    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('order_number'))`);
-    const today = getLocalDateString();
-    // La sequence derive du plus grand numero deja emis pour le prefixe du jour,
-    // pas d'un COUNT sur created_at : une commande saisie retroactivement porte
-    // un created_at passe et sortirait du comptage, ce qui regenererait le meme
-    // numero (violation de orders_order_number_key).
-    const result = await runner.query(
-      `SELECT COALESCE(MAX(SUBSTRING(order_number FROM '[0-9]+$')::int), 0) + 1 AS seq
-       FROM orders WHERE order_number LIKE $1`,
-      [`CMD-${today}-%`]
-    );
-    const seq = parseInt((result.rows[0] as Record<string, string>).seq, 10);
-    return `CMD-${today}-${String(seq).padStart(4, '0')}`;
+    // Serie « customer_order » (Parametres > Numerotation, mig 329).
+    return nextDocumentNumber(client ?? db, 'customer_order');
   },
 
   async delete(id: string): Promise<{ deleted: boolean; reason?: 'not_found' | 'not_cancelled' }> {

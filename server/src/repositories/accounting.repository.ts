@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
-import { getUserTimezone, getLocalYear } from '../utils/timezone.js';
+import { nextDocumentNumber } from '../utils/document-number.js';
+import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
@@ -574,18 +575,12 @@ export const invoiceRepository = {
     return { ...result.rows[0], items: itemsResult.rows, payments: paymentsResult.rows };
   },
 
-  async generateInvoiceNumber(type: 'received' | 'emitted', client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }): Promise<string> {
-    const runner = client ?? db;
-    // Advisory lock prevents concurrent invoices from generating the same number
-    await runner.query(`SELECT pg_advisory_xact_lock(hashtext('invoice_number_' || $1))`, [type]);
-    const prefix = type === 'received' ? 'FR' : 'FE';
-    const year = getLocalYear();
-    const result = await runner.query(
-      `SELECT COUNT(*) FROM invoices WHERE invoice_type = $1 AND EXTRACT(YEAR FROM invoice_date) = $2`,
-      [type, year]
-    );
-    const seq = parseInt((result.rows[0] as Record<string, string>).count) + 1;
-    return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+  async generateInvoiceNumber(type: 'received' | 'emitted', client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }): Promise<string> {
+    // Series « invoice_received » / « invoice_emitted » (mig 329). L'ancien
+    // COUNT(*)+1 reattribuait un numero existant apres une suppression et comptait
+    // les numeros fournisseurs saisis. Le client transactionnel est requis pour
+    // une numerotation continue des factures emises (ROLLBACK = numero rendu).
+    return nextDocumentNumber(client ?? db, type === 'received' ? 'invoice_received' : 'invoice_emitted');
   },
 
   async create(data: {
@@ -603,7 +598,7 @@ export const invoiceRepository = {
       await client.query('BEGIN');
 
       const invoiceType = data.invoiceType || 'received';
-      const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted');
+      const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
 
       // Si des lignes portent un taux de TVA explicite, elles font foi :
       // HT/TVA/TTC d'en-tete sont derives de la somme des lignes (sinon on
@@ -695,7 +690,7 @@ export const invoiceRepository = {
          JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1`, [orderId]
       );
 
-      const invoiceNumber = await this.generateInvoiceNumber('emitted');
+      const invoiceNumber = await this.generateInvoiceNumber('emitted', client);
 
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, customer_id, order_id,
