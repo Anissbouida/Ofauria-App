@@ -1,7 +1,8 @@
 import type { Response, NextFunction } from 'express';
 import type { AuthRequest } from './auth.middleware.js';
 import type { AppModule } from '@ofauria/shared';
-import { effectiveRights, hasRight } from '../services/access-rights.js';
+import { effectiveRights } from '../services/access-rights.js';
+import { hasRight } from '../services/access-rules.js';
 
 export type ModuleAction = 'view' | 'create' | 'edit' | 'delete';
 

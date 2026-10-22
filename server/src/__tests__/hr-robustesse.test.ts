@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Droits effectifs (mig 330) : exceptions de l'utilisateur, sinon droits du role.
-// Seule la lecture en base est simulee ; hasRight (regle de decision) reste reel.
-vi.mock('../services/access-rights.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../services/access-rights.js')>();
-  return { ...real, effectiveRights: vi.fn() };
-});
+// Seule la lecture en base est simulee (sans charger la base ni l'env) ; la regle
+// de decision hasRight (access-rules.ts) reste reelle.
+vi.mock('../services/access-rights.js', () => ({ effectiveRights: vi.fn() }));
 
 import { biweeklyBounds } from '../utils/payroll-periods.js';
 import { markPaidSchema, createAdvanceSchema, createEmployeeSchema } from '../validators/employees.validator.js';
