@@ -56,7 +56,7 @@ export default function NumberingTab() {
             </thead>
             <tbody>
               {rows.map(s => (
-                <tr key={s.doc_type}>
+                <tr key={s.doc_type} id={`seq-row-${s.doc_type}`}>
                   <td>
                     {s.label}
                     {s.gapless && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Continue</span>}

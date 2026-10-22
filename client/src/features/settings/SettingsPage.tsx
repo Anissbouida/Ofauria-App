@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { usePermissions } from '../../context/PermissionsContext';
-import { allowedSettingsSections, type SettingsSection as SettingsSectionKey } from '@ofauria/shared';
+import { allowedSettingsSections } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
-import {
-  Save, Building2, RotateCcw, Store, Printer, Upload, Image, Eye, Database, Check, Search,
-  BarChart3, Paintbrush, ShoppingBag, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent,
-  FileText, Bell, HardDrive,
-} from 'lucide-react';
+import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
@@ -24,28 +22,16 @@ import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
 import ReferentielTab from './ReferentielTab';
+import SettingsSearch from './SettingsSearch';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
+import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
+import { SETTINGS_GROUPS, SETTINGS_PAGES, type SearchEntry, type SettingsPageKey } from './settingsPages';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications' | 'data';
-
 export default function SettingsPage() {
-  const { settings, updateSettings } = useSettings();
-  const { hasModule, canEdit, getModuleConfig } = usePermissions();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-  const [tabSearch, setTabSearch] = useState('');
-
-  const [companyName, setCompanyName] = useState(settings.companyName);
-  const [subtitle, setSubtitle] = useState(settings.subtitle);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setCompanyName(settings.companyName);
-    setSubtitle(settings.subtitle);
-  }, [settings]);
-
+  const { hasModule } = usePermissions();
   // Acces par le droit « Parametres » (ecran Utilisateurs), eventuellement
   // restreint a certaines sections ; meme regle que le serveur.
   if (!hasModule('settings')) {
@@ -55,215 +41,223 @@ export default function SettingsPage() {
       </div>
     );
   }
+  return (
+    <DirtyFormsProvider>
+      <SettingsShell />
+    </DirtyFormsProvider>
+  );
+}
+
+/* ============ COQUILLE : navigation groupee, fil d'Ariane, ⌘K ============ */
+
+function SettingsShell() {
+  const { hasModule, canEdit, getModuleConfig } = usePermissions();
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
+  const dirtyForms = useDirtyForms();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+
   const allowedSections = allowedSettingsSections(getModuleConfig('settings'));
   const readOnly = !canEdit('settings');
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateSettings({ companyName, subtitle });
-      notify.success('Parametres enregistres');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = () => {
-    setCompanyName(settings.companyName);
-    setSubtitle(settings.subtitle);
-  };
-
-  const hasChanges =
-    companyName !== settings.companyName ||
-    subtitle !== settings.subtitle;
-
-  const allTabs: { key: SettingsTab; section: SettingsSectionKey; label: string; description: string; icon: React.ReactNode }[] = [
-    { key: 'general', section: 'company', label: 'Societe', description: 'Identite legale, comptes bancaires', icon: <Building2 size={18} /> },
-    { key: 'appearance', section: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
-    { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
-    { key: 'stores', section: 'stores', label: 'Etablissements', description: 'Boutiques, laboratoire, entrepot, siege', icon: <Store size={18} /> },
-    { key: 'tax', section: 'tax', label: 'TVA', description: 'Taux de TVA dates', icon: <Percent size={18} /> },
-    { key: 'documents', section: 'documents', label: 'Documents', description: 'Mentions des factures et bons de commande', icon: <FileText size={18} /> },
-    { key: 'notifications', section: 'notifications', label: 'Notifications', description: 'Qui est prevenu, et de quoi', icon: <Bell size={18} /> },
-    { key: 'parameters', section: 'business', label: 'Parametres metier', description: 'Regles de gestion par domaine, en un seul endroit', icon: <SlidersHorizontal size={18} /> },
-    { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
-    { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
-    { key: 'production', section: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
-    { key: 'sachets', section: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
-    { key: 'data', section: 'data', label: 'Donnees', description: 'Import, export et etat de la base', icon: <HardDrive size={18} /> },
-    { key: 'audit', section: 'audit', label: 'Journal', description: 'Modifications du parametrage et connexions', icon: <ShieldCheck size={18} /> },
-  ];
-  const tabs = allowedSections ? allTabs.filter((t) => allowedSections.includes(t.section)) : allTabs;
-  // Onglet par defaut non autorise (droit limite a d'autres sections) : premier onglet permis.
-  const currentTab: SettingsTab | undefined = tabs.some((t) => t.key === activeTab) ? activeTab : tabs[0]?.key;
-
-  const normalize = (s: string) =>
-    s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  const search = normalize(tabSearch.trim());
-  const filteredTabs = search
-    ? tabs.filter((t) => normalize(t.label).includes(search) || normalize(t.description).includes(search))
-    : tabs;
-
-  const activeMeta = tabs.find((t) => t.key === currentTab);
-
-  const tabContent = (
-    <>
-      {currentTab === 'general' && (
-        <GeneralTab
-          companyName={companyName} setCompanyName={setCompanyName}
-          subtitle={subtitle} setSubtitle={setSubtitle}
-        />
-      )}
-      {currentTab === 'appearance' && <AppearanceTab />}
-      {currentTab === 'print' && <PrintTab />}
-      {currentTab === 'stores' && <StoresPanel />}
-      {currentTab === 'tax' && <TaxCodesTab />}
-      {currentTab === 'documents' && <DocumentsTab />}
-      {currentTab === 'notifications' && <NotificationsTab />}
-      {currentTab === 'data' && <DataTab />}
-      {currentTab === 'referentiel' && <ReferentielTab />}
-      {currentTab === 'production' && (
-        <>
-          <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} />
-          <SalesChannelsTab />
-          <ProductionMarkupTab />
-        </>
-      )}
-      {currentTab === 'sachets' && <SachetsTab />}
-      {currentTab === 'audit' && <AuditLogTab />}
-      {currentTab === 'numbering' && <NumberingTab />}
-      {currentTab === 'parameters' && (
-        <div className="space-y-6">
-          <ParametersPanel />
-          <OtherSettingsLinks onOpen={(t) => setActiveTab(t)} />
-        </div>
-      )}
-    </>
+  const pages = useMemo(
+    () => (allowedSections ? SETTINGS_PAGES.filter(p => allowedSections.includes(p.section)) : SETTINGS_PAGES),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(allowedSections)],
   );
+  const requested = params.get('page') as SettingsPageKey | null;
+  // Page absente, inconnue ou non permise : premiere page autorisee.
+  const current = pages.find(p => p.key === requested) ?? pages[0];
 
-  const sectionHeader = activeMeta && (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <span className="w-9 h-9 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0">
-          {activeMeta.icon}
-        </span>
-        <div>
-          <h2 className="text-base font-bold text-gray-800 leading-tight">{activeMeta.label}</h2>
-          <p className="text-xs text-gray-400">{activeMeta.description}</p>
-        </div>
-      </div>
-      {currentTab === 'general' && (
-        <div className="flex gap-2">
-          {hasChanges && (
-            <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
-              <RotateCcw size={16} /> Annuler
-            </button>
-          )}
-          <button onClick={handleSave} disabled={saving || !hasChanges}
-            className="btn-primary flex items-center gap-2">
-            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  /** Quitte les brouillons en cours apres confirmation ; true si on peut continuer. */
+  const confirmLeave = useCallback(async () => {
+    if (!dirtyForms?.hasChanges()) return true;
+    const ok = await confirm('Les modifications non enregistrées de cette page seront perdues.', {
+      title: 'Quitter sans enregistrer ?', confirmLabel: 'Quitter sans enregistrer', cancelLabel: 'Rester', danger: true,
+    });
+    if (ok) dirtyForms.resetAll();
+    return ok;
+  }, [dirtyForms, confirm]);
+
+  const goTo = useCallback(async (page: SettingsPageKey, opts: { anchor?: string; extra?: Record<string, string> } = {}) => {
+    if (page !== current?.key && !(await confirmLeave())) return;
+    const next = new URLSearchParams({ page, ...(opts.extra ?? {}) });
+    if (next.toString() !== params.toString()) setParams(next);
+    if (opts.anchor) setPendingAnchor(opts.anchor);
+  }, [current?.key, confirmLeave, params, setParams]);
+
+  const leaveTo = async (href: string) => { if (await confirmLeave()) navigate(href); };
+
+  // ⌘K / Ctrl+K : recherche dans les reglages.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Apres une recherche : attend que le reglage soit affiche (donnees chargees), le fait
+  // defiler a l'ecran et le surligne brievement.
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      const el = document.getElementById(pendingAnchor);
+      if (el || ++tries > 40) {
+        window.clearInterval(timer);
+        setPendingAnchor(null);
+        if (!el) return;
+        const target = (el.closest('tr') as HTMLElement | null) ?? el;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.remove('odoo-setting-flash');
+        void target.offsetWidth;
+        target.classList.add('odoo-setting-flash');
+        window.setTimeout(() => target.classList.remove('odoo-setting-flash'), 2000);
+        target.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+      }
+    }, 75);
+    return () => window.clearInterval(timer);
+  }, [pendingAnchor, current?.key]);
+
+  const onSearchSelect = (e: SearchEntry) => { void goTo(e.page, { anchor: e.anchor, extra: e.extra }); };
+
+  if (!current) {
+    return <div className="odoo-scope"><p className="odoo-settings-subtitle">Aucune section des paramètres ne vous est ouverte.</p></div>;
+  }
+
+  const pageContent: Record<SettingsPageKey, React.ReactNode> = {
+    company: <CompanyPage />,
+    stores: <StoresPanel />,
+    appearance: <AppearanceTab />,
+    print: <PrintTab />,
+    channels: <SalesChannelsTab />,
+    sachets: <SachetsTab />,
+    production: (
+      <>
+        <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} />
+        <ProductionMarkupTab />
+      </>
+    ),
+    purchasing: <ParametersPanel domains={['purchasing']} />,
+    tax: <TaxCodesTab />,
+    numbering: <NumberingTab />,
+    documents: <DocumentsTab />,
+    ledger: <ParametersPanel keys={['ledger.posting_mode']} />,
+    referentiel: <ReferentielTab />,
+    data: <DataTab />,
+    notifications: <NotificationsTab />,
+    audit: <AuditLogTab />,
+  };
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-800 mb-4">Paramètres</h1>
+    <div className="odoo-scope max-w-7xl mx-auto" style={{ minHeight: 0, background: 'transparent' }}>
+      <h1 className="odoo-settings-title" style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Paramètres</h1>
 
-      <div className="flex gap-5 items-start">
-        {/* Navigation laterale plate */}
-        <aside className="w-60 shrink-0 sticky top-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="p-2.5 border-b border-gray-100">
-            <div className="relative">
-              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={tabSearch}
-                onChange={(e) => setTabSearch(e.target.value)}
-                placeholder="Rechercher..."
-                className="w-full pl-8 pr-2 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-300 focus:bg-white"
-              />
-            </div>
-          </div>
-          <nav className="p-1.5">
-            {filteredTabs.map((tab) => {
-              const isActive = currentTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`w-full flex items-center gap-2.5 pl-2.5 pr-2 py-2 rounded-md text-sm text-left transition-colors border-l-2 ${
-                    isActive
-                      ? 'bg-primary-50 text-primary-700 font-semibold border-primary-600'
-                      : 'text-gray-600 hover:bg-gray-100 border-transparent'
-                  }`}
-                >
-                  <span className={isActive ? 'text-primary-600' : 'text-gray-400'}>
-                    {tab.icon}
-                  </span>
-                  {tab.label}
-                </button>
-              );
-            })}
-            {filteredTabs.length === 0 && (
-              <p className="px-3 py-4 text-xs text-gray-400 text-center">Aucun reglage trouve.</p>
-            )}
-          </nav>
+      <div className="odoo-settings">
+        <aside className="odoo-settings-nav" aria-label="Pages des paramètres">
+          <button type="button" className="odoo-settings-nav-search" onClick={() => setSearchOpen(true)}>
+            <Search size={14} /> Rechercher…
+            <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+          </button>
+          {SETTINGS_GROUPS.map(group => {
+            const items = pages.filter(p => p.group === group);
+            const usersLink = group === 'Sécurité et contrôle' && hasModule('users');
+            if (!items.length && !usersLink) return null;
+            return (
+              <nav key={group} className="odoo-settings-nav-group" aria-label={group}>
+                <div className="odoo-settings-nav-group-title">{group}</div>
+                {items.map(p => {
+                  const Icon = p.icon;
+                  const active = p.key === current.key;
+                  return (
+                    <button key={p.key} type="button" className={`odoo-settings-nav-item${active ? ' active' : ''}`}
+                      aria-current={active ? 'page' : undefined} onClick={() => void goTo(p.key)}>
+                      <Icon size={15} /> {p.label}
+                      {active && dirtyForms?.hasChanges() && <span className="odoo-settings-nav-dot" title="Modifications non enregistrées" />}
+                    </button>
+                  );
+                })}
+                {usersLink && (
+                  <button type="button" className="odoo-settings-nav-item" onClick={() => void leaveTo('/users')}>
+                    <Users size={15} /> Utilisateurs et droits <ExternalLink size={12} style={{ marginLeft: 'auto' }} />
+                  </button>
+                )}
+              </nav>
+            );
+          })}
         </aside>
 
-        {/* Contenu */}
-        <div className="flex-1 min-w-0">
-          <div className="bg-white border border-gray-200 rounded-xl">
-            <div className="px-6 py-4 border-b border-gray-100">
-              {sectionHeader}
+        <div className="odoo-settings-main">
+          <div className="odoo-settings-head">
+            <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
+              <button type="button" onClick={() => void goTo(pages[0].key)}>Paramètres</button>
+              <span className="odoo-breadcrumb-separator">›</span>
+              <span>{current.group}</span>
+              <span className="odoo-breadcrumb-separator">›</span>
+              <span className="odoo-breadcrumb-current">{current.label}</span>
             </div>
-            <div className="p-6">
-              {readOnly && currentTab !== 'audit' && (
-                <div className="mb-4">
-                  <StatusBanner tone="info" icon={Lock} title="Consultation seule">
-                    Votre droit « Paramètres » ne permet pas de modifier : les enregistrements seront refusés.
-                    Un administrateur peut l'étendre depuis Utilisateurs.
-                  </StatusBanner>
-                </div>
-              )}
-              {tabContent}
+            <h2 className="odoo-settings-title">{current.label}</h2>
+            <p className="odoo-settings-subtitle">{current.description}</p>
+          </div>
+          <div className="odoo-settings-body">
+            {readOnly && current.key !== 'audit' && (
+              <StatusBanner tone="info" icon={Lock} title="Consultation seule">
+                Votre droit « Paramètres » ne permet pas de modifier : les enregistrements seront refusés.
+                Un administrateur peut l'étendre depuis Utilisateurs.
+              </StatusBanner>
+            )}
+            <div key={current.key} style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
+              {pageContent[current.key]}
             </div>
           </div>
+          <SaveBar readOnly={readOnly} />
         </div>
       </div>
+
+      {/* Monte a l'ouverture seulement : chaque recherche repart d'une saisie vide. */}
+      {searchOpen && <SettingsSearch open onClose={() => setSearchOpen(false)} pages={pages} onSelect={onSearchSelect} />}
     </div>
   );
 }
 
-/* ============ GENERAL TAB ============ */
+/* ============ SOCIETE ============ */
 
-function GeneralTab({
-  companyName, setCompanyName, subtitle, setSubtitle,
-}: {
-  companyName: string; setCompanyName: (v: string) => void;
-  subtitle: string; setSubtitle: (v: string) => void;
-}) {
+function CompanyPage() {
   return (
     <>
-      <SettingsSection title="Informations de l'entreprise">
-        <SettingItem title="Nom de l'entreprise" description="Affiche dans l'application et sur les tickets">
-          <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
-            className="input w-full" placeholder="Nom de votre entreprise" />
-        </SettingItem>
-        <SettingItem title="Sous-titre" description="Texte affiche sous le logo">
-          <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
-            className="input w-full" placeholder="Boulangerie & Patisserie" />
-        </SettingItem>
-      </SettingsSection>
-
+      <CompanyInfoSection />
       <LegalIdentitySection />
       <CompanyBankAccounts />
-      <ParametersPanel keys={['sales.staff_discount']} />
+      <ParametersPanel keys={['sales.staff_discount', 'company.country_code']} />
     </>
+  );
+}
+
+function CompanyInfoSection() {
+  const { settings, updateSettings } = useSettings();
+  const { draft, set, changes, reset, adopt } = useDraft({ companyName: settings.companyName, subtitle: settings.subtitle });
+  useDirtyForm('company-info', {
+    dirty: changes > 0, changes, reset,
+    save: async () => { await updateSettings(draft); adopt(); },
+  });
+
+  return (
+    <SettingsSection title="Informations de l'entreprise">
+      <SettingItem title="Nom de l'entreprise" description="Affiché dans l'application et sur les tickets">
+        <input id="company-name" type="text" value={draft.companyName} onChange={(e) => set('companyName', e.target.value)}
+          className="odoo-input" placeholder="Nom de votre entreprise" />
+      </SettingItem>
+      <SettingItem title="Sous-titre" description="Texte affiché sous le logo">
+        <input id="company-subtitle" type="text" value={draft.subtitle} onChange={(e) => set('subtitle', e.target.value)}
+          className="odoo-input" placeholder="Boulangerie & Pâtisserie" />
+      </SettingItem>
+    </SettingsSection>
   );
 }
 
@@ -285,74 +279,53 @@ const LEGAL_FORMS: [string, string][] = [
   ['', '—'], ['SARL', 'SARL'], ['SARL AU', 'SARL à associé unique'], ['SA', 'SA'], ['SAS', 'SAS'], ['SNC', 'SNC'],
   ['SCS', 'SCS'], ['EI', 'Entreprise individuelle'], ['AUTO_ENTREPRENEUR', 'Auto-entrepreneur'], ['COOPERATIVE', 'Coopérative'], ['AUTRE', 'Autre'],
 ];
-const EXTRA_LEGAL_KEYS = ['legalForm', 'legalCapital', 'legalWebsite'] as const;
 
 function LegalIdentitySection() {
   const { settings, updateSettings } = useSettings();
-  const initial = () => ({
+  const { draft: form, set, changes, reset, adopt } = useDraft<Record<string, string>>({
     ...Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])),
     legalForm: settings.legalForm ?? '',
     legalCapital: settings.legalCapital === null || settings.legalCapital === undefined ? '' : String(settings.legalCapital),
     legalWebsite: settings.legalWebsite ?? '',
-  }) as Record<string, string>;
-  const [form, setForm] = useState<Record<string, string>>(initial);
-  const [saving, setSaving] = useState(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setForm(initial()); }, [settings]);
-
-  const saved = initial();
-  const hasChanges = [...LEGAL_FIELDS.map(f => f.key), ...EXTRA_LEGAL_KEYS].some(k => (form[k] ?? '') !== (saved[k] ?? ''));
+  });
   const capitalInvalid = form.legalCapital !== '' && !(Number(form.legalCapital) >= 0);
   const iceInvalid = !!form.legalIce && !/^\d{15}$/.test(form.legalIce.replace(/\s/g, ''));
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
+  useDirtyForm('company-legal', {
+    dirty: changes > 0, changes, reset,
+    invalid: iceInvalid ? 'L\'ICE doit compter 15 chiffres.' : capitalInvalid ? 'Le capital social doit être un montant positif.' : null,
+    save: async () => {
       await updateSettings({ ...form, legalCapital: form.legalCapital === '' ? null : Number(form.legalCapital) } as Partial<typeof settings>);
-      notify.success('Identité légale enregistrée');
-    } catch (err) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
-      notify.error(msg || 'Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
+      adopt();
+    },
+  });
 
   return (
     <SettingsSection title="Identité légale">
       <SettingItem title="Forme juridique" description="Mentionnée sur les factures avec le capital">
-        <select id="legal-form" value={form.legalForm ?? ''} onChange={(e) => setForm({ ...form, legalForm: e.target.value })} className="input w-full">
+        <select id="legal-form" value={form.legalForm ?? ''} onChange={(e) => set('legalForm', e.target.value)} className="odoo-input">
           {LEGAL_FORMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </SettingItem>
       <SettingItem title="Capital social" description="En dirhams">
         <input id="legal-capital" type="number" min="0" step="1000" value={form.legalCapital ?? ''}
-          onChange={(e) => setForm({ ...form, legalCapital: e.target.value })}
-          className={`input w-full${capitalInvalid ? ' border-red-400' : ''}`} />
+          onChange={(e) => set('legalCapital', e.target.value)}
+          className={`odoo-input${capitalInvalid ? ' invalid' : ''}`} />
       </SettingItem>
       {LEGAL_FIELDS.map(f => (
         <SettingItem key={f.key} title={f.title} description={f.description}>
-          <input type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
-            onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-            className={`input w-full${f.key === 'legalIce' && iceInvalid ? ' border-red-400' : ''}`} />
+          <input id={`legal-${f.key}`} type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
+            onChange={(e) => set(f.key, e.target.value)}
+            className={`odoo-input${f.key === 'legalIce' && iceInvalid ? ' invalid' : ''}`} />
         </SettingItem>
       ))}
       <SettingItem title="Site web" description="Pied de page des documents">
         <input id="legal-website" type="text" value={form.legalWebsite ?? ''} placeholder="www.exemple.ma"
-          onChange={(e) => setForm({ ...form, legalWebsite: e.target.value })} className="input w-full" />
+          onChange={(e) => set('legalWebsite', e.target.value)} className="odoo-input" />
       </SettingItem>
       <SettingItem title="N° d'affiliation CNSS" description="Tenu dans Personnel › Paie › Paramètres de paie (déclarations sociales)">
-        <span className="text-sm text-gray-700">{settings.employerCnssNumber || <span className="text-gray-400">Non renseigné</span>}</span>
+        <span style={{ fontSize: '0.875rem' }}>{settings.employerCnssNumber || <span style={{ color: 'var(--odoo-text-muted)' }}>Non renseigné</span>}</span>
       </SettingItem>
-      {hasChanges && (
-        <div className="flex justify-end">
-          <button onClick={handleSave} disabled={saving || iceInvalid || capitalInvalid}
-            className="btn-primary px-4 py-2 flex items-center gap-2 text-sm">
-            {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
-            Enregistrer l'identité légale
-          </button>
-        </div>
-      )}
     </SettingsSection>
   );
 }
@@ -412,110 +385,40 @@ const THEME_FIELDS: { key: ThemeKey; label: string; group: string }[] = [
   { key: 'themeBgPage', label: 'Fond de page', group: 'Surfaces' },
   { key: 'themeBgCard', label: 'Cartes / Panneaux', group: 'Surfaces' },
   { key: 'themeBgSecondary', label: 'Zones secondaires', group: 'Surfaces' },
-  { key: 'themeBgSeparator', label: 'Bordures / Separateurs', group: 'Surfaces' },
+  { key: 'themeBgSeparator', label: 'Bordures / Séparateurs', group: 'Surfaces' },
   { key: 'themeTextStrong', label: 'Titres', group: 'Texte' },
   { key: 'themeTextBody', label: 'Corps de texte', group: 'Texte' },
   { key: 'themeTextMuted', label: 'Texte secondaire', group: 'Texte' },
   { key: 'themeAccent', label: 'Accent principal', group: 'Accents' },
   { key: 'themeAccentHover', label: 'Accent survol', group: 'Accents' },
-  { key: 'themeAccentLight', label: 'Accent leger (fond)', group: 'Accents' },
+  { key: 'themeAccentLight', label: 'Accent léger (fond)', group: 'Accents' },
   { key: 'themeCtaColor', label: 'Bouton action (CTA)', group: 'Bouton principal' },
   { key: 'themeCtaText', label: 'Texte du bouton', group: 'Bouton principal' },
 ];
 
 function AppearanceTab() {
   const { settings, updateSettings } = useSettings();
-  const [theme, setTheme] = useState<Record<ThemeKey, string>>(() => ({
-    themeBgPage: settings.themeBgPage,
-    themeBgCard: settings.themeBgCard,
-    themeBgSecondary: settings.themeBgSecondary,
-    themeBgSeparator: settings.themeBgSeparator,
-    themeTextStrong: settings.themeTextStrong,
-    themeTextBody: settings.themeTextBody,
-    themeTextMuted: settings.themeTextMuted,
-    themeAccent: settings.themeAccent,
-    themeAccentHover: settings.themeAccentHover,
-    themeAccentLight: settings.themeAccentLight,
-    themeCtaColor: settings.themeCtaColor,
-    themeCtaText: settings.themeCtaText,
-  }));
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setTheme({
-      themeBgPage: settings.themeBgPage,
-      themeBgCard: settings.themeBgCard,
-      themeBgSecondary: settings.themeBgSecondary,
-      themeBgSeparator: settings.themeBgSeparator,
-      themeTextStrong: settings.themeTextStrong,
-      themeTextBody: settings.themeTextBody,
-      themeTextMuted: settings.themeTextMuted,
-      themeAccent: settings.themeAccent,
-      themeAccentHover: settings.themeAccentHover,
-      themeAccentLight: settings.themeAccentLight,
-      themeCtaColor: settings.themeCtaColor,
-      themeCtaText: settings.themeCtaText,
-    });
-  }, [settings]);
-
-  const hasChanges = THEME_FIELDS.some(f => theme[f.key] !== (settings as unknown as Record<string, string>)[f.key]);
+  const { draft: theme, setDraft: setTheme, set: setColor, changes, reset, adopt } = useDraft<Record<ThemeKey, string>>(
+    Object.fromEntries(THEME_FIELDS.map(f => [f.key, (settings as unknown as Record<string, string>)[f.key]])) as Record<ThemeKey, string>,
+  );
+  const invalidColor = THEME_FIELDS.find(f => !/^#[0-9a-fA-F]{6}$/.test(theme[f.key] ?? ''));
+  useDirtyForm('appearance', {
+    dirty: changes > 0, changes, reset,
+    invalid: invalidColor ? `Couleur « ${invalidColor.label} » incomplète (format #RRGGBB).` : null,
+    save: async () => { await updateSettings(theme); adopt(); },
+  });
 
   const applyPreset = (preset: typeof THEME_PRESETS[0]) => {
     setTheme(preset.values);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateSettings(theme);
-      notify.success('Apparence enregistree');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = () => {
-    setTheme({
-      themeBgPage: settings.themeBgPage,
-      themeBgCard: settings.themeBgCard,
-      themeBgSecondary: settings.themeBgSecondary,
-      themeBgSeparator: settings.themeBgSeparator,
-      themeTextStrong: settings.themeTextStrong,
-      themeTextBody: settings.themeTextBody,
-      themeTextMuted: settings.themeTextMuted,
-      themeAccent: settings.themeAccent,
-      themeAccentHover: settings.themeAccentHover,
-      themeAccentLight: settings.themeAccentLight,
-      themeCtaColor: settings.themeCtaColor,
-      themeCtaText: settings.themeCtaText,
-    });
-  };
-
-  const setColor = (key: ThemeKey, value: string) => {
-    setTheme(prev => ({ ...prev, [key]: value }));
   };
 
   const groups = [...new Set(THEME_FIELDS.map(f => f.group))];
 
   return (
     <>
-      <div className="flex justify-end gap-2 mb-5">
-        {hasChanges && (
-          <button onClick={handleReset} className="btn-secondary flex items-center gap-2">
-            <RotateCcw size={16} /> Annuler
-          </button>
-        )}
-        <button onClick={handleSave} disabled={saving || !hasChanges}
-          className="btn-primary flex items-center gap-2 disabled:opacity-60">
-          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-        </button>
-      </div>
-
       <SettingsSection
-        title="Themes predefinis"
-        description="Selectionnez un theme de base puis personnalisez les couleurs"
+        title="Thèmes prédéfinis"
+        description="Sélectionnez un thème de base puis personnalisez les couleurs"
         columns={1}
       >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
@@ -560,19 +463,19 @@ function AppearanceTab() {
           {THEME_FIELDS.filter(f => f.group === group).map(field => (
             <SettingItem key={field.key} title={field.label}>
               <div className="flex gap-2">
-                <input type="color" value={theme[field.key]}
-                  onChange={e => setColor(field.key, e.target.value)}
-                  className="w-12 h-10 rounded cursor-pointer border border-gray-200 p-0.5" />
-                <input type="text" value={theme[field.key]}
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme[field.key]) ? theme[field.key] : '#000000'}
+                  onChange={e => setColor(field.key, e.target.value)} aria-label={`${field.label} : couleur`}
+                  className="odoo-input" style={{ width: 48, height: 34, padding: 2, cursor: 'pointer' }} />
+                <input id={`theme-${field.key}`} type="text" value={theme[field.key]}
                   onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value) || e.target.value === '') setColor(field.key, e.target.value); }}
-                  className="input flex-1 font-mono text-sm" placeholder="#000000" maxLength={7} />
+                  className={`odoo-input${/^#[0-9a-fA-F]{6}$/.test(theme[field.key]) ? '' : ' invalid'}`} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="#000000" maxLength={7} />
               </div>
             </SettingItem>
           ))}
         </SettingsSection>
       ))}
 
-      <SettingsSection title="Apercu en direct" columns={1}>
+      <SettingsSection title="Aperçu en direct" columns={1}>
         <div className="rounded-xl overflow-hidden border border-gray-200">
           {/* Header preview */}
           <div className="h-14 flex items-center px-5" style={{ background: theme.themeAccent }}>
@@ -651,59 +554,59 @@ function AppearanceTab() {
 
 /* ============ PRINT TAB ============ */
 
+const PRINT_KEYS = [
+  'logoUrl', 'receiptShowLogo', 'receiptLogoSize', 'receiptHeader', 'receiptFooter', 'receiptFontSize', 'receiptPaperWidth',
+  'receiptShowCashier', 'receiptShowDate', 'receiptShowPaymentDetail', 'receiptExtraLines', 'receiptAutoPrint',
+  'receiptOpenDrawer', 'receiptNumCopies',
+] as const;
+type PrintDraft = Pick<ReturnType<typeof useSettings>['settings'], typeof PRINT_KEYS[number]>;
+
 function PrintTab() {
   const { settings, updateSettings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Local state for print settings
-  const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
-  const [receiptShowLogo, setReceiptShowLogo] = useState(settings.receiptShowLogo);
-  const [receiptLogoSize, setReceiptLogoSize] = useState(settings.receiptLogoSize);
-  const [receiptHeader, setReceiptHeader] = useState(settings.receiptHeader);
-  const [receiptFooter, setReceiptFooter] = useState(settings.receiptFooter);
-  const [receiptFontSize, setReceiptFontSize] = useState(settings.receiptFontSize);
-  const [receiptPaperWidth, setReceiptPaperWidth] = useState(settings.receiptPaperWidth);
-  const [receiptShowCashier, setReceiptShowCashier] = useState(settings.receiptShowCashier);
-  const [receiptShowDate, setReceiptShowDate] = useState(settings.receiptShowDate);
-  const [receiptShowPaymentDetail, setReceiptShowPaymentDetail] = useState(settings.receiptShowPaymentDetail);
-  const [receiptExtraLines, setReceiptExtraLines] = useState(settings.receiptExtraLines);
-  const [receiptAutoPrint, setReceiptAutoPrint] = useState(settings.receiptAutoPrint);
-  const [receiptOpenDrawer, setReceiptOpenDrawer] = useState(settings.receiptOpenDrawer);
-  const [receiptNumCopies, setReceiptNumCopies] = useState(settings.receiptNumCopies);
-
-  useEffect(() => {
-    setLogoUrl(settings.logoUrl);
-    setReceiptShowLogo(settings.receiptShowLogo);
-    setReceiptLogoSize(settings.receiptLogoSize);
-    setReceiptHeader(settings.receiptHeader);
-    setReceiptFooter(settings.receiptFooter);
-    setReceiptFontSize(settings.receiptFontSize);
-    setReceiptPaperWidth(settings.receiptPaperWidth);
-    setReceiptShowCashier(settings.receiptShowCashier);
-    setReceiptShowDate(settings.receiptShowDate);
-    setReceiptShowPaymentDetail(settings.receiptShowPaymentDetail);
-    setReceiptExtraLines(settings.receiptExtraLines);
-    setReceiptAutoPrint(settings.receiptAutoPrint);
-    setReceiptOpenDrawer(settings.receiptOpenDrawer);
-    setReceiptNumCopies(settings.receiptNumCopies);
-  }, [settings]);
+  const { draft, set, changes, reset, adopt } = useDraft<PrintDraft>(
+    Object.fromEntries(PRINT_KEYS.map(k => [k, settings[k]])) as PrintDraft,
+  );
+  useDirtyForm('print', {
+    dirty: changes > 0, changes, reset,
+    save: async () => { await updateSettings(draft); adopt(); },
+  });
+  const {
+    logoUrl, receiptShowLogo, receiptLogoSize, receiptHeader, receiptFooter, receiptFontSize, receiptPaperWidth,
+    receiptShowCashier, receiptShowDate, receiptShowPaymentDetail, receiptExtraLines, receiptAutoPrint, receiptOpenDrawer, receiptNumCopies,
+  } = draft;
+  const setter = <K extends keyof PrintDraft>(k: K) => (v: PrintDraft[K]) => set(k, v);
+  const setLogoUrl = setter('logoUrl');
+  const setReceiptShowLogo = setter('receiptShowLogo');
+  const setReceiptLogoSize = setter('receiptLogoSize');
+  const setReceiptHeader = setter('receiptHeader');
+  const setReceiptFooter = setter('receiptFooter');
+  const setReceiptFontSize = setter('receiptFontSize');
+  const setReceiptPaperWidth = setter('receiptPaperWidth');
+  const setReceiptShowCashier = setter('receiptShowCashier');
+  const setReceiptShowDate = setter('receiptShowDate');
+  const setReceiptShowPaymentDetail = setter('receiptShowPaymentDetail');
+  const setReceiptExtraLines = setter('receiptExtraLines');
+  const setReceiptAutoPrint = setter('receiptAutoPrint');
+  const setReceiptOpenDrawer = setter('receiptOpenDrawer');
+  const setReceiptNumCopies = setter('receiptNumCopies');
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      notify.error('Le fichier ne doit pas depasser 10 Mo');
+      notify.error('Le fichier ne doit pas dépasser 10 Mo');
       return;
     }
     setUploading(true);
     try {
       const result = await settingsApi.uploadLogo(file);
       setLogoUrl(result.url);
-      notify.success('Logo telecharge');
+      notify.success('Logo téléchargé');
     } catch {
-      notify.error('Erreur lors du telechargement');
+      notify.error('Erreur lors du téléchargement');
     } finally {
       setUploading(false);
     }
@@ -713,121 +616,72 @@ function PrintTab() {
     setLogoUrl(null);
   };
 
-  const handleSavePrint = async () => {
-    setSaving(true);
-    try {
-      await updateSettings({
-        logoUrl, receiptShowLogo, receiptLogoSize,
-        receiptHeader, receiptFooter, receiptFontSize, receiptPaperWidth,
-        receiptShowCashier, receiptShowDate, receiptShowPaymentDetail, receiptExtraLines,
-        receiptAutoPrint, receiptOpenDrawer, receiptNumCopies,
-      });
-      notify.success('Parametres d\'impression enregistres');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const hasChanges =
-    logoUrl !== settings.logoUrl ||
-    receiptShowLogo !== settings.receiptShowLogo ||
-    receiptLogoSize !== settings.receiptLogoSize ||
-    receiptHeader !== settings.receiptHeader ||
-    receiptFooter !== settings.receiptFooter ||
-    receiptFontSize !== settings.receiptFontSize ||
-    receiptPaperWidth !== settings.receiptPaperWidth ||
-    receiptShowCashier !== settings.receiptShowCashier ||
-    receiptShowDate !== settings.receiptShowDate ||
-    receiptShowPaymentDetail !== settings.receiptShowPaymentDetail ||
-    receiptExtraLines !== settings.receiptExtraLines ||
-    receiptAutoPrint !== settings.receiptAutoPrint ||
-    receiptOpenDrawer !== settings.receiptOpenDrawer ||
-    receiptNumCopies !== settings.receiptNumCopies;
-
   // Resolve logo source — /uploads paths are proxied to the API server
   const logoSrc = logoUrl || '/images/logo-horizontal.png';
 
   const nowStr = format(new Date(), "dd MMMM yyyy 'a' HH:mm", { locale: fr });
 
   return (
-    <div className="grid lg:grid-cols-[1fr_300px] gap-8 items-start">
-      {/* Settings panel */}
-      <div>
-        <div className="flex justify-end mb-5">
-          <button onClick={handleSavePrint} disabled={saving || !hasChanges}
-            className="btn-primary flex items-center gap-2 disabled:opacity-60">
-            <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
-        </div>
-
-        <div className="mb-8">
-          <PrinterSettingsCard />
-        </div>
+    <div className="odoo-settings-with-preview">
+      {/* Reglages */}
+      <div style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
+        <PrinterSettingsCard />
 
         <SettingsSection title="Logo" columns={1}>
-          <div className="flex items-start gap-6 py-2">
-            <div className="flex-shrink-0 w-32 h-20 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 overflow-hidden">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
+            <div style={{ flexShrink: 0, width: 128, height: 80, borderRadius: 6, border: '2px dashed var(--odoo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--odoo-bg-alt)', overflow: 'hidden' }}>
               {logoUrl ? (
-                <img src={logoSrc} alt="Logo" className="max-w-full max-h-full object-contain" />
+                <img src={logoSrc} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
               ) : (
-                <div className="text-center">
-                  <Image size={24} className="text-gray-300 mx-auto mb-1" />
-                  <span className="text-[10px] text-gray-400">Logo par defaut</span>
+                <div style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+                  <Image size={24} style={{ margin: '0 auto 4px' }} />
+                  <span style={{ fontSize: 10 }}>Logo par défaut</span>
                 </div>
               )}
             </div>
-            <div className="flex-1">
+            <div style={{ flex: 1, display: 'grid', gap: 8 }}>
               <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                onChange={handleLogoUpload} className="hidden" />
-              <p className="text-sm text-gray-500 mb-2">Logo affiche sur les recus et tickets (PNG, JPG, SVG - max 10 Mo)</p>
-              <div className="flex gap-2">
-                <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                  className="btn-secondary flex items-center gap-2 text-sm">
-                  <Upload size={14} />
-                  {uploading ? 'Telechargement...' : 'Telecharger un logo'}
+                onChange={handleLogoUpload} style={{ display: 'none' }} />
+              <p className="odoo-setting-help">Logo affiché sur les reçus et tickets (PNG, JPG, SVG — 10 Mo maximum)</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="odoo-btn-secondary">
+                  <Upload size={13} />
+                  {uploading ? 'Téléchargement…' : 'Télécharger un logo'}
                 </button>
                 {logoUrl && (
-                  <button onClick={handleRemoveLogo}
-                    className="btn-secondary text-sm text-red-500 hover:text-red-700">
-                    Supprimer
-                  </button>
+                  <button type="button" onClick={handleRemoveLogo} className="odoo-btn-danger">Supprimer</button>
                 )}
               </div>
             </div>
           </div>
           <SettingItem
-            title="Afficher le logo sur le recu"
-            description="Le logo apparait en haut du ticket imprime"
+            title="Afficher le logo sur le reçu"
+            description="Le logo apparaît en haut du ticket imprimé"
             toggle={{ checked: receiptShowLogo, onChange: setReceiptShowLogo }}
           >
             {receiptShowLogo && (
-              <div className="max-w-xs">
-                <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Taille du logo (px) : {receiptLogoSize}
-                </label>
+              <label style={{ display: 'grid', gap: 4, maxWidth: 320, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                Taille du logo (px) : {receiptLogoSize}
                 <input type="range" min="20" max="80" value={receiptLogoSize}
-                  onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))}
-                  className="w-full accent-primary-600" />
-              </div>
+                  onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))} style={{ accentColor: 'var(--odoo-purple)' }} />
+              </label>
             )}
           </SettingItem>
         </SettingsSection>
 
-        <SettingsSection title="Contenu du recu" columns={1}>
-          <SettingItem title="En-tete supplementaire" description="Affiche sous le sous-titre (adresse, tel, ICE...)">
-            <input type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
-              className="input w-full max-w-md" placeholder="Ex: Adresse, telephone, ICE..." />
+        <SettingsSection title="Contenu du reçu" columns={1}>
+          <SettingItem title="En-tête supplémentaire" description="Affiché sous le sous-titre (adresse, téléphone, ICE…)">
+            <input id="receipt-header" type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
+              className="odoo-input" style={{ maxWidth: 448 }} placeholder="Ex. : adresse, téléphone, ICE…" />
           </SettingItem>
           <SettingItem title="Message de pied de page" description="Texte de remerciement en bas du ticket">
-            <input type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
-              className="input w-full max-w-md" placeholder="Merci pour votre visite !" />
+            <input id="receipt-footer" type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
+              className="odoo-input" style={{ maxWidth: 448 }} placeholder="Merci pour votre visite !" />
           </SettingItem>
-          <SettingItem title="Lignes supplementaires" description="Chaque ligne sera affichee en bas du recu">
-            <textarea value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
-              className="input w-full max-w-md" rows={3}
-              placeholder="Ex: Horaires d'ouverture, conditions de retour..." />
+          <SettingItem title="Lignes supplémentaires" description="Chaque ligne sera affichée en bas du reçu">
+            <textarea id="receipt-extra" value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
+              className="odoo-input" style={{ maxWidth: 448 }} rows={3}
+              placeholder="Ex. : horaires d'ouverture, conditions de retour…" />
           </SettingItem>
         </SettingsSection>
 
@@ -836,50 +690,46 @@ function PrintTab() {
             toggle={{ checked: receiptShowCashier, onChange: setReceiptShowCashier }} />
           <SettingItem title="Date et heure" description="Affiche la date de la vente"
             toggle={{ checked: receiptShowDate, onChange: setReceiptShowDate }} />
-          <SettingItem title="Detail du paiement" description="Especes recues et monnaie rendue"
+          <SettingItem title="Détail du paiement" description="Espèces reçues et monnaie rendue"
             toggle={{ checked: receiptShowPaymentDetail, onChange: setReceiptShowPaymentDetail }} />
         </SettingsSection>
 
-        <SettingsSection title="Imprimante thermique" columns={1}>
+        <SettingsSection title="Imprimante thermique">
           <SettingItem
             title="Impression automatique"
-            description="Le recu s'imprime apres chaque encaissement sans cliquer sur Imprimer"
+            description="Le reçu s'imprime après chaque encaissement sans cliquer sur Imprimer"
             toggle={{ checked: receiptAutoPrint, onChange: setReceiptAutoPrint }}
           />
           <SettingItem
             title="Ouvrir le tiroir-caisse"
-            description="Le tiroir s'ouvre a chaque impression (necessite un tiroir connecte a l'imprimante)"
+            description="Le tiroir s'ouvre à chaque impression (tiroir connecté à l'imprimante)"
             toggle={{ checked: receiptOpenDrawer, onChange: setReceiptOpenDrawer }}
           />
-          <SettingItem title="Nombre de copies" description="Nombre de recus imprimes a chaque vente">
-            <select value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
-              className="input w-40">
+          <SettingItem title="Nombre de copies" description="Nombre de reçus imprimés à chaque vente">
+            <select id="receipt-copies" value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
+              className="odoo-input" style={{ width: 160 }}>
               <option value={1}>1 copie</option>
               <option value={2}>2 copies</option>
               <option value={3}>3 copies</option>
             </select>
           </SettingItem>
-          <div className="mt-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
-            <h4 className="text-sm font-semibold text-blue-800 mb-2">Configuration de l'imprimante</h4>
-            <ul className="text-xs text-blue-700 space-y-1.5">
-              <li>1. Connectez votre imprimante thermique (USB ou reseau)</li>
-              <li>2. Installez le pilote de l'imprimante sur votre ordinateur</li>
-              <li>3. Dans les parametres d'impression du navigateur, selectionnez votre imprimante thermique comme imprimante par defaut</li>
-              <li>4. Desactivez les en-tetes et pieds de page du navigateur dans les parametres d'impression</li>
-              <li>5. Le tiroir-caisse doit etre connecte au port RJ11/DK de l'imprimante</li>
-            </ul>
+          <div>
+            <StatusBanner tone="neutral" icon={Printer} title="Configuration de l'imprimante">
+              Connectez l'imprimante thermique (USB ou réseau) et installez son pilote ; choisissez-la comme imprimante
+              par défaut du navigateur et désactivez ses en-têtes et pieds de page. Le tiroir-caisse se branche sur le port RJ11/DK de l'imprimante.
+            </StatusBanner>
           </div>
         </SettingsSection>
 
         <SettingsSection title="Format d'impression">
-          <SettingItem title="Taille de police" description={`Texte du ticket : ${receiptFontSize}px`}>
-            <input type="range" min="9" max="16" value={receiptFontSize}
+          <SettingItem title="Taille de police" description={`Texte du ticket : ${receiptFontSize} px`}>
+            <input id="receipt-font" type="range" min="9" max="16" value={receiptFontSize}
               onChange={(e) => setReceiptFontSize(parseInt(e.target.value))}
-              className="w-full max-w-xs accent-primary-600" />
+              style={{ width: '100%', maxWidth: 320, accentColor: 'var(--odoo-purple)' }} />
           </SettingItem>
           <SettingItem title="Largeur du papier" description="Format du rouleau thermique">
-            <select value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
-              className="input w-44">
+            <select id="receipt-width" value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
+              className="odoo-input" style={{ width: 176 }}>
               <option value={58}>58 mm (petit)</option>
               <option value={80}>80 mm (standard)</option>
             </select>
@@ -888,13 +738,13 @@ function PrintTab() {
       </div>
 
         {/* Live receipt preview */}
-        <div className="lg:sticky lg:top-4 h-fit">
-          <div className="border border-gray-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Eye size={16} className="text-gray-500" />
-              <h3 className="text-sm font-semibold text-gray-700">Apercu du recu</h3>
+        <div className="odoo-settings-preview">
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Eye size={15} style={{ color: 'var(--odoo-text-muted)' }} />
+              <h3 className="odoo-setting-label" style={{ margin: 0 }}>Aperçu du reçu</h3>
             </div>
-            <div className="bg-white border border-gray-200 shadow-sm rounded-lg p-3 overflow-hidden" style={{ maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, overflow: 'hidden', maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>
               <div style={{ fontFamily: "'Courier New', monospace", fontSize: `${Math.max(receiptFontSize - 2, 8)}px`, color: '#000', lineHeight: 1.4 }}>
                 {/* Logo */}
                 {receiptShowLogo && (
@@ -1044,41 +894,39 @@ function SalesChannelsTab() {
   return (
     <SettingsSection
       title="Canaux de vente"
-      description="Boutique, commande, événement, gros, livraison... Chaque vente est rattachée à un canal. Les prix peuvent être différents par canal (voir fiche produit)."
+      description="Boutique, commande, événement, gros, livraison… Chaque vente est rattachée à un canal. Les prix peuvent être différents par canal (voir fiche produit)."
+      columns={1}
     >
       {isLoading ? (
-        <div className="text-sm text-gray-500">Chargement...</div>
+        <div className="odoo-setting-help">Chargement…</div>
       ) : (
-        <div className="sm:col-span-2 space-y-2">
+        <div style={{ display: 'grid', gap: 8 }}>
           {channels.map(c => (
-            <div key={c.id} className={`flex items-center justify-between p-3 rounded-lg border ${c.is_active ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full" style={{ backgroundColor: c.color }} />
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.625rem 0.75rem', borderRadius: 4, border: '1px solid var(--odoo-border)', background: c.is_active ? 'var(--odoo-bg)' : 'var(--odoo-bg-alt)', opacity: c.is_active ? 1 : 0.6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: c.color }} />
                 <div>
-                  <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <div className="odoo-setting-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {c.label}
-                    {c.is_default && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-semibold">Par défaut</span>}
-                    {!c.is_active && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Inactif</span>}
+                    {c.is_default && <span className="odoo-tag odoo-tag-green">Par défaut</span>}
+                    {!c.is_active && <span className="odoo-tag odoo-tag-grey">Inactif</span>}
                   </div>
-                  <div className="text-xs text-gray-400 font-mono">{c.code}</div>
+                  <div className="odoo-setting-help" style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {!c.is_default && c.is_active && (
-                  <button onClick={() => handleSetDefault(c)}
-                    className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded font-medium">
+                  <button type="button" onClick={() => handleSetDefault(c)} className="odoo-btn-secondary">
                     Définir par défaut
                   </button>
                 )}
                 {!c.is_default && c.is_active && (
-                  <button onClick={() => deactivateMutation.mutate(c.id)}
-                    className="text-xs px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded font-medium">
+                  <button type="button" onClick={() => deactivateMutation.mutate(c.id)} className="odoo-btn-danger">
                     Désactiver
                   </button>
                 )}
                 {!c.is_active && (
-                  <button onClick={() => updateMutation.mutate({ id: c.id, data: { isActive: true } })}
-                    className="text-xs px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded font-medium">
+                  <button type="button" onClick={() => updateMutation.mutate({ id: c.id, data: { isActive: true } })} className="odoo-btn-secondary">
                     Réactiver
                   </button>
                 )}
@@ -1087,56 +935,36 @@ function SalesChannelsTab() {
           ))}
 
           {showAddForm ? (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-              <div className="grid grid-cols-3 gap-2">
-                <input type="text" placeholder="code (ex: pro_b2b)"
+            <div style={{ padding: '0.75rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg-alt)', display: 'grid', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 64px', gap: 8 }}>
+                <input id="channel-code" type="text" placeholder="code (ex. pro_b2b)" aria-label="Code du canal"
                   value={newCode} onChange={e => setNewCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                  className="input text-sm" />
-                <input type="text" placeholder="Libellé"
+                  className="odoo-input" />
+                <input id="channel-label" type="text" placeholder="Libellé" aria-label="Libellé du canal"
                   value={newLabel} onChange={e => setNewLabel(e.target.value)}
-                  className="input text-sm" />
-                <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)}
-                  className="w-full h-10 rounded border border-gray-200" />
+                  className="odoo-input" />
+                <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} aria-label="Couleur du canal"
+                  className="odoo-input" style={{ height: 34, padding: 2 }} />
               </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setShowAddForm(false)} className="text-xs px-3 py-1.5 bg-white border border-gray-200 rounded">Annuler</button>
-                <button
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => setShowAddForm(false)} className="odoo-btn-secondary">Annuler</button>
+                <button type="button"
                   onClick={() => createMutation.mutate({ code: newCode, label: newLabel, color: newColor })}
                   disabled={!newCode || !newLabel || createMutation.isPending}
-                  className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-semibold disabled:opacity-50">
+                  className="odoo-btn-primary">
                   Créer
                 </button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setShowAddForm(true)}
-              className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg text-sm font-medium border border-dashed border-gray-300">
-              + Ajouter un canal
-            </button>
+            <div>
+              <button type="button" onClick={() => setShowAddForm(true)} className="odoo-btn-secondary">
+                + Ajouter un canal
+              </button>
+            </div>
           )}
         </div>
       )}
-    </SettingsSection>
-  );
-}
-
-/* ============ AUTRES REGLAGES (liens) ============ */
-
-/** Réglages gérés dans leur propre écran, regroupés ici pour être trouvés (lot 4). */
-function OtherSettingsLinks({ onOpen }: { onOpen: (tab: SettingsTab) => void }) {
-  const links: { label: string; help: string; action: () => void; cta: string }[] = [
-    { label: 'Numérotation des pièces', help: 'Modèles et compteurs des BC, factures, tickets, bons de sortie.', action: () => onOpen('numbering'), cta: 'Ouvrir' },
-    { label: 'Journal des modifications', help: 'Qui a changé quoi, quand, avec l\'ancienne valeur.', action: () => onOpen('audit'), cta: 'Ouvrir' },
-    { label: 'Rôles et contrôle des droits', help: 'Droits par rôle, mode observation ou blocage.', action: () => { window.location.href = '/users'; }, cta: 'Utilisateurs' },
-    { label: 'Paramètres de paie', help: 'CNSS employeur, base de jours, heures supplémentaires, congés : Personnel › Paie › Paramètres de paie.', action: () => { window.location.href = '/employees'; }, cta: 'Personnel' },
-  ];
-  return (
-    <SettingsSection title="Autres réglages" description="Gérés dans leur écran dédié.">
-      {links.map(l => (
-        <SettingItem key={l.label} title={l.label} description={l.help}>
-          <button type="button" onClick={l.action} className="btn-secondary">{l.cta}</button>
-        </SettingItem>
-      ))}
     </SettingsSection>
   );
 }
