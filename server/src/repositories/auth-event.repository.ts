@@ -16,6 +16,7 @@ import { logger } from '../utils/logger.js';
  *   user_updated             -- modification compte (role/store/active)
  *   permission_changed       -- modification des permissions fines
  *   token_revoked            -- token revoque par admin (futur)
+ *   access_denied            -- appel hors droits par module (journalise ou refuse, mig 330)
  */
 export type AuthEventType =
   | 'login_success'
@@ -27,7 +28,9 @@ export type AuthEventType =
   | 'user_created'
   | 'user_updated'
   | 'permission_changed'
-  | 'token_revoked';
+  | 'token_revoked'
+  // Appel API hors des droits par module (garde des modules, mig 330).
+  | 'access_denied';
 
 export interface AuthEventInput {
   eventType: AuthEventType;

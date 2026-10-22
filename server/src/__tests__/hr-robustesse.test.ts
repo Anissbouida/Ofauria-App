@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../repositories/permission.repository.js', () => ({
-  permissionRepository: { findByUserId: vi.fn() },
-}));
+// Droits effectifs (mig 330) : exceptions de l'utilisateur, sinon droits du role.
+// Seule la lecture en base est simulee ; hasRight (regle de decision) reste reel.
+vi.mock('../services/access-rights.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../services/access-rights.js')>();
+  return { ...real, effectiveRights: vi.fn() };
+});
 
 import { biweeklyBounds } from '../utils/payroll-periods.js';
 import { markPaidSchema, createAdvanceSchema, createEmployeeSchema } from '../validators/employees.validator.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
-import { permissionRepository } from '../repositories/permission.repository.js';
+import { effectiveRights } from '../services/access-rights.js';
 
 describe('biweeklyBounds', () => {
   it('1re quinzaine : 1 -> 15', () => {
@@ -55,29 +58,32 @@ describe('authorizeModule', () => {
     await authorizeModule('employees', action)(req, res as never, next);
     return { next, res };
   };
-  const findByUserId = permissionRepository.findByUserId as unknown as ReturnType<typeof vi.fn>;
-  beforeEach(() => findByUserId.mockReset());
+  const rights = effectiveRights as unknown as ReturnType<typeof vi.fn>;
+  const asRole = (rows: Record<string, unknown>[], source: 'role' | 'user' = 'role') =>
+    rights.mockResolvedValue({ roleCode: 'x', baseRole: 'x', isAdmin: false, source, rows: rows.map(r => ({ config: {}, ...r })) });
+  beforeEach(() => rights.mockReset());
 
   it('admin : toujours autorise, sans lecture des droits', async () => {
     const { next } = await run('admin', 'delete');
     expect(next).toHaveBeenCalled();
-    expect(findByUserId).not.toHaveBeenCalled();
+    expect(rights).not.toHaveBeenCalled();
   });
-  it('gerant sans droits personnalises : defauts du role (lecture/edition, pas suppression)', async () => {
-    findByUserId.mockResolvedValue([]);
+  it('gerant sans droits personnalises : droits du role (lecture/edition, pas suppression)', async () => {
+    // Reprise mig 330 : Personnel du gerant sans Supprimer.
+    asRole([{ module: 'employees', can_view: true, can_create: true, can_edit: true, can_delete: false }]);
     expect((await run('manager', 'edit')).next).toHaveBeenCalled();
     const del = await run('manager', 'delete');
     expect(del.next).not.toHaveBeenCalled();
     expect(del.res.status).toHaveBeenCalledWith(403);
   });
   it('autre role avec le droit « Personnel » accorde : autorise', async () => {
-    findByUserId.mockResolvedValue([{ module: 'employees', can_view: true, can_create: false, can_edit: true, can_delete: false }]);
+    asRole([{ module: 'employees', can_view: true, can_create: false, can_edit: true, can_delete: false }], 'user');
     expect((await run('cashier', 'view')).next).toHaveBeenCalled();
     expect((await run('cashier', 'edit')).next).toHaveBeenCalled();
     expect((await run('cashier', 'create')).next).not.toHaveBeenCalled();
   });
   it('role sans le module : refuse', async () => {
-    findByUserId.mockResolvedValue([{ module: 'pos', can_view: true, can_create: true, can_edit: true, can_delete: true }]);
+    asRole([{ module: 'pos', can_view: true, can_create: true, can_edit: true, can_delete: true }]);
     expect((await run('cashier', 'view')).res.status).toHaveBeenCalledWith(403);
   });
 });

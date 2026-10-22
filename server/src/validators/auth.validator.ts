@@ -22,9 +22,9 @@ export const registerSchema = z.object({
   password: strongPassword,
   firstName: z.string().min(1, 'Prenom requis').max(100),
   lastName: z.string().min(1, 'Nom requis').max(100),
-  // Roles : liste complete (shared/constants/roles.ts). Le middleware authorize
-  // fera les verifications supplementaires.
-  role: z.enum(['admin', 'manager', 'cashier', 'saleswoman', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale']),
+  // Roles editables (table roles, mig 330) : format du code ici, existence
+  // verifiee par la cle etrangere users.role -> roles.code.
+  role: z.string().regex(/^[a-z][a-z0-9_]{1,29}$/, 'Role invalide'),
 });
 
 // OWASP A07-1 : PIN numerique de 4 a 10 chiffres.

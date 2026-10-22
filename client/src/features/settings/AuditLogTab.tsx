@@ -25,6 +25,9 @@ const TABLE_LABELS: Record<string, string> = {
   payroll_settings: 'Paramètres de paie',
   payroll_tax_scales: 'Barèmes de paie',
   public_holidays: 'Jours fériés',
+  roles: 'Rôles',
+  role_permissions: 'Droits des rôles',
+  document_sequences: 'Séries de numéros',
   module_parameters: 'Paramètres métier',
   tax_codes: 'Codes TVA',
 };
@@ -56,6 +59,7 @@ const EVENT_LABELS: Record<string, string> = {
   pin_login_success: 'Connexion PIN', pin_login_failed: 'Échec PIN',
   logout: 'Déconnexion', account_locked: 'Compte verrouillé',
   user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Droits modifiés',
+  access_denied: 'Accès hors droits',
 };
 
 function fmtValue(v: unknown): string {
@@ -85,6 +89,10 @@ function rowTitle(e: AuditLogEntry): string {
   if (e.table_name === 'user_permissions') {
     const mod = e.record_id ?? '';
     return `${e.subject_name || 'Utilisateur'} · ${MODULE_LABELS[mod as AppModule] ?? mod}`;
+  }
+  if (e.table_name === 'role_permissions') {
+    const mod = e.record_id ?? '';
+    return `Rôle ${e.subject_id ?? ''} · ${MODULE_LABELS[mod as AppModule] ?? mod}`;
   }
   return e.record_label || e.record_id || '—';
 }

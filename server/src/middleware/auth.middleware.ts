@@ -31,20 +31,20 @@ function extractToken(req: AuthRequest): string | null {
   return null;
 }
 
-export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+/**
+ * Utilisateur porte par le jeton de la requete, ou null si absent, invalide,
+ * revoque ou obsolete. Partage par authenticate et la garde des modules
+ * (module-guard.middleware.ts), qui s'execute avant l'authentification des routes.
+ */
+export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonNullable<AuthRequest['user']> } | { error: string }> {
   const token = extractToken(req);
-  if (!token) {
-    res.status(401).json({ success: false, error: { message: 'Token manquant' } });
-    return;
-  }
-
+  if (!token) return { error: 'Token manquant' };
   try {
     const payload = verifyToken(token);
 
     // OWASP A07-2 : refuse les tokens revoques (blacklist).
     if (payload.jti && await revokedTokenRepository.isRevoked(payload.jti)) {
-      res.status(401).json({ success: false, error: { message: 'Token revoque' } });
-      return;
+      return { error: 'Token revoque' };
     }
 
     // OWASP A07-5 : refuse les tokens dont la version est obsolete
@@ -53,26 +53,33 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     // jusqu'a leur expiration naturelle (transition douce).
     if (typeof payload.tokenVersion === 'number') {
       const currentVersion = await userRepository.getTokenVersion(payload.userId);
-      if (currentVersion === null) {
-        res.status(401).json({ success: false, error: { message: 'Utilisateur introuvable' } });
-        return;
-      }
-      if (payload.tokenVersion !== currentVersion) {
-        res.status(401).json({ success: false, error: { message: 'Token obsolete (privileges modifies)' } });
-        return;
-      }
+      if (currentVersion === null) return { error: 'Utilisateur introuvable' };
+      if (payload.tokenVersion !== currentVersion) return { error: 'Token obsolete (privileges modifies)' };
     }
 
-    req.user = {
-      userId: payload.userId,
-      role: payload.role,
-      storeId: payload.storeId,
-      jti: payload.jti,
-      exp: payload.exp,
-      tokenVersion: payload.tokenVersion,
+    return {
+      user: {
+        userId: payload.userId,
+        role: payload.role,
+        storeId: payload.storeId,
+        jti: payload.jti,
+        exp: payload.exp,
+        tokenVersion: payload.tokenVersion,
+      },
     };
-    next();
   } catch {
-    res.status(401).json({ success: false, error: { message: 'Token invalide ou expire' } });
+    return { error: 'Token invalide ou expire' };
   }
+}
+
+export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  // Deja authentifie par la garde des modules en amont : pas de second controle.
+  if (req.user) { next(); return; }
+  const r = await resolveRequestUser(req);
+  if ('error' in r) {
+    res.status(401).json({ success: false, error: { message: r.error } });
+    return;
+  }
+  req.user = r.user;
+  next();
 }

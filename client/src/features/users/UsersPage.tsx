@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usersApi } from '../../api/users.api';
+import { usersApi, rolesApi } from '../../api/users.api';
+import RolesPanel from './RolesPanel';
 import { storesApi } from '../../api/stores.api';
 import { Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, X, Check, MapPin } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
@@ -13,8 +14,13 @@ export default function UsersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Record<string, any> | null>(null);
   const [permUserId, setPermUserId] = useState<string | null>(null);
+  const [tab, setTab] = useState<'users' | 'roles'>('users');
 
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  // Roles editables (mig 330) ; repli sur les libelles fixes si la liste n'est pas disponible.
+  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false });
+  const roleLabel = (code: string) =>
+    roles.find(r => r.code === code)?.label ?? ROLE_LABELS[code as keyof typeof ROLE_LABELS] ?? code;
   const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
 
   const saveMutation = useMutation({
@@ -42,13 +48,25 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-bakery-chocolate">Utilisateurs</h1>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
-          <Plus size={18} /> Nouvel utilisateur
-        </button>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-bakery-chocolate">Utilisateurs</h1>
+          <div className="odoo-scope">
+            <div className="odoo-view-switcher">
+              <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Comptes</button>
+              <button className={tab === 'roles' ? 'active' : ''} onClick={() => setTab('roles')}>Rôles et contrôle</button>
+            </div>
+          </div>
+        </div>
+        {tab === 'users' && (
+          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+            <Plus size={18} /> Nouvel utilisateur
+          </button>
+        )}
       </div>
 
-      {isLoading ? <p className="text-gray-500">Chargement...</p> : (
+      {tab === 'roles' && <RolesPanel />}
+
+      {tab === 'users' && (isLoading ? <p className="text-gray-500">Chargement...</p> : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -78,7 +96,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                      {ROLE_LABELS[u.role as keyof typeof ROLE_LABELS] || u.role as string}
+                      {roleLabel(u.role as string)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -120,7 +138,7 @@ export default function UsersPage() {
           </table>
           {users.length === 0 && <p className="text-center py-8 text-gray-400">Aucun utilisateur</p>}
         </div>
-      )}
+      ))}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -173,15 +191,11 @@ export default function UsersPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Role</label>
                   <select name="role" defaultValue={editing?.role as string || 'cashier'} className="input">
-                    <option value="admin">Administrateur</option>
-                    <option value="manager">Gerant</option>
-                    <option value="baker">Boulanger</option>
-                    <option value="pastry_chef">Patissier</option>
-                    <option value="viennoiserie">Viennoiserie</option>
-                    <option value="beldi_sale">Beldi & Sale</option>
-                    <option value="saleswoman">Vendeuse</option>
-                    <option value="cashier">Caissier</option>
-                    <option value="magasinier">Magasinier</option>
+                    {roles.length > 0
+                      ? roles.filter(r => r.is_active || r.code === editing?.role).map(r => (
+                          <option key={r.code} value={r.code}>{r.label}</option>
+                        ))
+                      : Object.entries(ROLE_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -276,9 +290,15 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
 
   const [perms, setPerms] = useState<Record<AppModule, PermState> | null>(null);
   const [initialized, setInitialized] = useState(false);
+  // Droits du role (mig 330) : point de depart quand l'utilisateur n'a pas de droits propres.
+  const { data: rolePerms, isFetched: rolePermsFetched } = useQuery({
+    queryKey: ['role-permissions', userRole],
+    queryFn: () => rolesApi.permissions(userRole),
+    retry: false,
+  });
 
   // Initialize from existing or defaults
-  if (!initialized && existingPerms !== undefined && !isLoading) {
+  if (!initialized && existingPerms !== undefined && !isLoading && rolePermsFetched) {
     const defaultModules = DEFAULT_ROLE_MODULES[userRole] || [];
     const existingList = existingPerms as UserPermission[];
     const hasCustomPerms = existingList.length > 0;
@@ -304,14 +324,15 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
           config: {},
         };
       } else {
-        // No custom permissions at all → fall back to role defaults
-        const hasAccess = defaultModules.includes(mod);
+        // No custom permissions at all → fall back to the role's rights
+        const fromRole = rolePerms?.find(p => p.module === mod);
+        const hasAccess = rolePerms ? !!fromRole?.canView : defaultModules.includes(mod);
         state[mod] = {
           canView: hasAccess,
-          canCreate: hasAccess,
-          canEdit: hasAccess,
-          canDelete: false,
-          config: {},
+          canCreate: rolePerms ? !!fromRole?.canCreate : hasAccess,
+          canEdit: rolePerms ? !!fromRole?.canEdit : hasAccess,
+          canDelete: rolePerms ? !!fromRole?.canDelete : false,
+          config: (fromRole?.config as Record<string, any>) || {},
         };
       }
     }
@@ -414,6 +435,7 @@ function PermissionsModal({ userId, userName, userRole, onClose }: {
             <h2 className="text-xl font-bold">Permissions — {userName}</h2>
             <p className="text-sm text-gray-500 mt-1">
               Role: <span className="font-medium">{ROLE_LABELS[userRole as keyof typeof ROLE_LABELS] || userRole}</span>
+              {' '}· sans droits propres, l'utilisateur suit les droits de son rôle (onglet Rôles et contrôle)
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">

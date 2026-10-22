@@ -30,6 +30,9 @@ const UNIFIED = `
            WHEN 'payroll_tax_scales' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
            WHEN 'tax_codes'          THEN concat_ws(' · ', COALESCE(cal.new_row, cal.old_row) ->> 'code', COALESCE(cal.new_row, cal.old_row) ->> 'label')
            WHEN 'module_parameters'  THEN cal.record_id
+           WHEN 'roles'              THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
+           WHEN 'role_permissions'   THEN cal.record_id
+           WHEN 'document_sequences' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
            ELSE NULL
          END AS record_label
     FROM config_audit_log cal

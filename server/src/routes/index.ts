@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { moduleGuard } from '../middleware/module-guard.middleware.js';
 import authRoutes from './auth.routes.js';
 import categoriesRoutes from './categories.routes.js';
 import productsRoutes from './products.routes.js';
@@ -47,6 +48,9 @@ import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 import withholdingRoutes from './withholding.routes.js';
 
 const router = Router();
+
+// Droits par module sur toutes les routes metier (mig 330, voir module-guard.middleware.ts).
+router.use(moduleGuard);
 
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);

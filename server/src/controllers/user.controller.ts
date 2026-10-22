@@ -4,6 +4,8 @@ import { userRepository } from '../repositories/user.repository.js';
 import { permissionRepository } from '../repositories/permission.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
+import { roleRepository } from '../repositories/role.repository.js';
+import { effectiveRights } from '../services/access-rights.js';
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
@@ -17,6 +19,10 @@ export const userController = {
 
   async create(req: AuthRequest, res: Response) {
     const { email, password, firstName, lastName, role, pinCode } = req.body;
+    if (!(await roleRepository.isAssignable(role))) {
+      res.status(400).json({ success: false, error: { message: 'Rôle inconnu ou désactivé' } });
+      return;
+    }
     const existing = await userRepository.findByEmail(email);
     if (existing) {
       res.status(409).json({ success: false, error: { message: 'Cet email est déjà utilisé' } });
@@ -74,7 +80,13 @@ export const userController = {
     if (email !== undefined) updateData.email = email;
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
-    if (role !== undefined) updateData.role = role;
+    if (role !== undefined) {
+      if (!(await roleRepository.isAssignable(role))) {
+        res.status(400).json({ success: false, error: { message: 'Rôle inconnu ou désactivé' } });
+        return;
+      }
+      updateData.role = role;
+    }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (storeId !== undefined) updateData.storeId = storeId;
     if (password) updateData.passwordHash = await hashPassword(password);
@@ -191,7 +203,14 @@ export const userController = {
 
   /** Return permissions for the currently authenticated user */
   async myPermissions(req: AuthRequest, res: Response) {
-    const perms = await permissionRepository.findByUserId(req.user!.userId);
+    // Droits effectifs (mig 330) : exceptions de l'utilisateur, sinon droits du role.
+    // Liste vide pour l'administrateur (tous les droits).
+    const rights = await effectiveRights(req.user!.userId);
+    // Role sans aucun module : une ligne neutre evite que le client retombe sur les
+    // modules par defaut de son role de base (il ne les lit qu'en l'absence de droits).
+    const perms = !rights.isAdmin && rights.rows.length === 0
+      ? [{ module: 'none', can_view: false, can_create: false, can_edit: false, can_delete: false, config: {} }]
+      : rights.rows;
     const data = perms.map(p => ({
       module: p.module,
       canView: p.can_view,

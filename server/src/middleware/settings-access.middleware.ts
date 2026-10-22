@@ -1,15 +1,16 @@
 import type { Response, NextFunction } from 'express';
 import type { AuthRequest } from './auth.middleware.js';
 import {
-  DEFAULT_ROLE_MODULES, allowedSettingsSections, settingsSectionOfField,
+  allowedSettingsSections, settingsSectionOfField,
   SETTINGS_SECTION_LABELS, type SettingsSection,
 } from '@ofauria/shared';
-import { permissionRepository } from '../repositories/permission.repository.js';
 import type { ModuleAction } from './module.middleware.js';
+import { effectiveRights, rightRow } from '../services/access-rights.js';
 
 /**
  * Droits effectifs d'un utilisateur sur le module Paramètres (même règle que
- * authorizeModule) et sections autorisées (null = toutes).
+ * authorizeModule : exceptions de l'utilisateur, sinon droits du rôle) et
+ * sections autorisées (null = toutes).
  */
 async function settingsRights(user: NonNullable<AuthRequest['user']>): Promise<{
   can: Record<ModuleAction, boolean>; sections: SettingsSection[] | null;
@@ -17,17 +18,12 @@ async function settingsRights(user: NonNullable<AuthRequest['user']>): Promise<{
   if (user.role === 'admin') {
     return { can: { view: true, create: true, edit: true, delete: true }, sections: null };
   }
-  const perms = await permissionRepository.findByUserId(user.userId);
-  if (perms.length > 0) {
-    const p = perms.find(x => x.module === 'settings');
-    if (!p) return { can: { view: false, create: false, edit: false, delete: false }, sections: null };
-    return {
-      can: { view: p.can_view, create: p.can_create, edit: p.can_edit, delete: p.can_delete },
-      sections: allowedSettingsSections(p.config),
-    };
-  }
-  const has = ((DEFAULT_ROLE_MODULES[user.role] || []) as string[]).includes('settings');
-  return { can: { view: has, create: has, edit: has, delete: false }, sections: null };
+  const p = rightRow(await effectiveRights(user.userId), 'settings');
+  if (!p) return { can: { view: false, create: false, edit: false, delete: false }, sections: null };
+  return {
+    can: { view: p.can_view, create: p.can_create, edit: p.can_edit, delete: p.can_delete },
+    sections: allowedSettingsSections(p.config),
+  };
 }
 
 function deny(res: Response, message = 'Accès interdit') {
