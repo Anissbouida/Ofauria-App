@@ -33,6 +33,9 @@ const UNIFIED = `
            WHEN 'roles'              THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
            WHEN 'role_permissions'   THEN cal.record_id
            WHEN 'document_sequences' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
+           WHEN 'company_bank_accounts' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
+           WHEN 'document_templates' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
+           WHEN 'notification_rules' THEN COALESCE(cal.new_row, cal.old_row) ->> 'label'
            ELSE NULL
          END AS record_label
     FROM config_audit_log cal

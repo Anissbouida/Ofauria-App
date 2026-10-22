@@ -17,6 +17,7 @@
     "audit:droits-routes": "tsx scripts/audit-droits-routes.ts",
     "e2e:parametres-metier": "tsx scripts/e2e-parametres-metier.ts",
     "e2e:societe": "tsx scripts/e2e-societe.ts",
+    "e2e:documents": "tsx scripts/e2e-documents.ts",
     "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
   },
   "dependencies": {

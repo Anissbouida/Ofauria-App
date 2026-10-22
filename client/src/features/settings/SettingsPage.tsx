@@ -12,7 +12,7 @@ import {
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent, FileText, Bell,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -25,12 +25,14 @@ import ParametersPanel from './ParametersPanel';
 import CompanyBankAccounts from './CompanyBankAccounts';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
+import DocumentsTab from './DocumentsTab';
+import NotificationsTab from './NotificationsTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -86,6 +88,8 @@ export default function SettingsPage() {
     { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
     { key: 'stores', section: 'stores', label: 'Etablissements', description: 'Boutiques, laboratoire, entrepot, siege', icon: <Store size={18} /> },
     { key: 'tax', section: 'tax', label: 'TVA', description: 'Taux de TVA dates', icon: <Percent size={18} /> },
+    { key: 'documents', section: 'documents', label: 'Documents', description: 'Mentions des factures et bons de commande', icon: <FileText size={18} /> },
+    { key: 'notifications', section: 'notifications', label: 'Notifications', description: 'Qui est prevenu, et de quoi', icon: <Bell size={18} /> },
     { key: 'parameters', section: 'business', label: 'Parametres metier', description: 'Regles de gestion par domaine, en un seul endroit', icon: <SlidersHorizontal size={18} /> },
     { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
@@ -118,6 +122,8 @@ export default function SettingsPage() {
       {currentTab === 'print' && <PrintTab />}
       {currentTab === 'stores' && <StoresPanel />}
       {currentTab === 'tax' && <TaxCodesTab />}
+      {currentTab === 'documents' && <DocumentsTab />}
+      {currentTab === 'notifications' && <NotificationsTab />}
       {currentTab === 'referentiel' && <ReferentielTab />}
       {currentTab === 'production' && (
         <>

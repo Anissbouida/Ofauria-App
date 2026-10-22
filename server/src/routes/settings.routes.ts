@@ -5,6 +5,7 @@ import { auditLogController } from '../controllers/audit-log.controller.js';
 import { documentSequenceController } from '../controllers/document-sequence.controller.js';
 import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
+import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -39,6 +40,13 @@ router.put('/bank-accounts/:id', authenticate, jsonParser, authorizeSettings('co
 router.get('/tax-codes', authenticate, authorizeSettings('tax'), asyncHandler(companyController.taxCodes));
 router.post('/tax-codes', authenticate, jsonParser, authorizeSettings('tax', 'create'), asyncHandler(companyController.addTaxRate));
 router.put('/tax-codes/:id', authenticate, jsonParser, authorizeSettings('tax', 'edit'), asyncHandler(companyController.updateTaxCode));
+
+// Modeles de documents et regles de notification (lot 6, mig 332).
+router.get('/documents', authenticate, authorizeSettings('documents'), asyncHandler(docs.documents));
+router.get('/documents/:docType/preview', authenticate, authorizeSettings('documents'), asyncHandler(docs.preview));
+router.put('/documents/:docType', authenticate, jsonParser, authorizeSettings('documents', 'edit'), asyncHandler(docs.updateDocument));
+router.get('/notification-rules', authenticate, authorizeSettings('notifications'), asyncHandler(docs.notificationRules));
+router.put('/notification-rules/:type', authenticate, jsonParser, authorizeSettings('notifications', 'edit'), asyncHandler(docs.updateNotificationRule));
 
 // Lecture ouverte a tout utilisateur connecte (theme, ticket, identite sur les PDF).
 router.get('/', authenticate, jsonParser, settingsController.get);

@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { existsSync, readFileSync } from 'fs';
 import { resolve, join } from 'path';
+import { loadDocumentTemplate, legalFooterLines, formatRib } from '../utils/document-template.js';
 
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
@@ -158,6 +159,13 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 }
 
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
+  // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
+  const tpl = await loadDocumentTemplate('invoice');
+  if (!tpl.showBank) {
+    data = { ...data, companyBankName: undefined, companyBankAccount: undefined };
+  } else if (!data.companyBankAccount && tpl.bank) {
+    data = { ...data, companyBankName: tpl.bank.bankName, companyBankAccount: formatRib(tpl.bank.rib) };
+  }
   const M = 40; // margin
   const PW = 595.28; // A4 width
   const PH = 841.89; // A4 height
@@ -426,10 +434,21 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   y = Math.max(y + notesContentH + 18, ty + 8);
 
+  // ── Conditions de paiement et penalites de retard (loi 69-21) ──
+  const terms = [tpl.paymentTerms && `Conditions de paiement : ${tpl.paymentTerms}`, tpl.latePenalty].filter((x): x is string => !!x);
+  if (terms.length) {
+    doc.font('Helvetica').fontSize(6.5).fillColor(TEXT_MUTED);
+    for (const t of terms) {
+      txt(doc, t, M, y, { width: CW * 0.62 });
+      y += doc.heightOfString(t, { width: CW * 0.62 }) + 3;
+    }
+    y += 4;
+  }
+
   // ════════════════════════════════════════════════════════════
   // SIGNATURE
   // ════════════════════════════════════════════════════════════
-  const footerStart = PH - 52;
+  const footerStart = PH - (tpl.footerNote ? 62 : 52);
   if (y + 26 < footerStart) {
     doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
     txt(doc, '_________________________', M, y, { align: 'right', width: CW });
@@ -458,9 +477,11 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   let fy = footerY + 5;
   doc.font('Helvetica').fontSize(6).fillColor(TEXT_MUTED);
-  if (fl1.length) { txt(doc, fl1.join(' | '), M, fy, { width: CW, align: 'center' }); fy += 9; }
-  if (fl2.length) { txt(doc, fl2.join(' | '), M, fy, { width: CW, align: 'center' }); fy += 9; }
-  if (fl3.length) { txt(doc, fl3.join(' \u2013 '), M, fy, { width: CW, align: 'center' }); }
+  if (tpl.footerNote) { txt(doc, tpl.footerNote, M, fy, { width: CW, align: 'center' }); fy += 9; }
+  // Pied de page legal commun (fiche societe) ; a defaut, les champs fournis par l'appelant.
+  const common = legalFooterLines(tpl);
+  const lines = common.length ? common : [fl1.join(' | '), fl2.join(' | '), fl3.join(' \u2013 ')].filter(Boolean);
+  for (const line of lines) { txt(doc, line, M, fy, { width: CW, align: 'center' }); fy += 9; }
 
   // ════════════════════════════════════════════════════════════
   // FINALIZE

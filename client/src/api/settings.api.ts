@@ -122,6 +122,17 @@ export interface BusinessParameter {
   history: { changed_at: string; by_name: string | null; diff: Record<string, { old: unknown; new: unknown }> | null }[];
 }
 
+/** Modèle d'une pièce envoyée aux tiers (mig 332). */
+export interface DocumentTemplate {
+  doc_type: 'invoice' | 'purchase_order'; label: string; payment_terms: string | null; late_penalty: string | null;
+  footer_note: string | null; show_bank: boolean; show_legal_form: boolean; updated_at: string; updated_by_name: string | null;
+}
+/** Règle de notification par type d'événement (mig 332). */
+export interface NotificationRule {
+  type: string; label: string; domain: string; enabled: boolean; extra_roles: string[];
+  sent_30d: number; recipients_30d: string[] | null; updated_at: string; updated_by_name: string | null;
+}
+
 export const settingsApi = {
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
   update: (data: Partial<CompanySettings>) => api.put('/settings', data).then(r => r.data.data) as Promise<CompanySettings>,
@@ -144,6 +155,15 @@ export const settingsApi = {
   taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
   addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
   updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,
+  documentTemplates: () => api.get('/settings/documents').then(r => r.data.data) as Promise<DocumentTemplate[]>,
+  updateDocumentTemplate: (docType: string, data: Record<string, unknown>) =>
+    api.put(`/settings/documents/${docType}`, data).then(r => r.data.data) as Promise<DocumentTemplate>,
+  /** Aperçu PDF (blob) avec des données d'exemple. */
+  documentPreview: (docType: string) =>
+    api.get(`/settings/documents/${docType}/preview`, { responseType: 'blob' }).then(r => r.data as Blob),
+  notificationRules: () => api.get('/settings/notification-rules').then(r => r.data.data) as Promise<NotificationRule[]>,
+  updateNotificationRule: (type: string, data: { enabled?: boolean; extraRoles?: string[] }) =>
+    api.put(`/settings/notification-rules/${type}`, data).then(r => r.data.data) as Promise<NotificationRule>,
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

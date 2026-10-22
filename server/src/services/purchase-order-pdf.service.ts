@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
 
 // Resolve logo
 function findDefaultLogo(): string {
@@ -99,6 +100,8 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 }
 
 export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
+  // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
+  const tpl = await loadDocumentTemplate('purchase_order');
   const M = 40;
   const PW = 595.28;
   const PH = 841.89;
@@ -279,10 +282,18 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
 
   y += notesContentH + 12;
 
+  // ── Conditions (Parametres > Documents) ──
+  if (tpl.paymentTerms) {
+    const t = `Conditions : ${tpl.paymentTerms}`;
+    doc.font('Helvetica').fontSize(6.5).fillColor(TEXT_MUTED);
+    txt(doc, t, M, y, { width: CW * 0.62 });
+    y += doc.heightOfString(t, { width: CW * 0.62 }) + 7;
+  }
+
   // ════════════════════════════════════════════════════════════
   // SIGNATURE
   // ════════════════════════════════════════════════════════════
-  const footerStart = PH - 52;
+  const footerStart = PH - (tpl.footerNote ? 62 : 52);
   if (y + 26 < footerStart) {
     doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
     txt(doc, '_________________________', M, y, { align: 'right', width: CW });
@@ -311,9 +322,11 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
 
   let fy = footerY + 5;
   doc.font('Helvetica').fontSize(6).fillColor(TEXT_MUTED);
-  if (fl1.length) { txt(doc, fl1.join(' | '), M, fy, { width: CW, align: 'center' }); fy += 9; }
-  if (fl2.length) { txt(doc, fl2.join(' | '), M, fy, { width: CW, align: 'center' }); fy += 9; }
-  if (fl3.length) { txt(doc, fl3.join(' \u2013 '), M, fy, { width: CW, align: 'center' }); }
+  if (tpl.footerNote) { txt(doc, tpl.footerNote, M, fy, { width: CW, align: 'center' }); fy += 9; }
+  // Pied de page legal commun (fiche societe) ; a defaut, les champs fournis par l'appelant.
+  const common = legalFooterLines(tpl);
+  const lines = common.length ? common : [fl1.join(' | '), fl2.join(' | '), fl3.join(' \u2013 ')].filter(Boolean);
+  for (const line of lines) { txt(doc, line, M, fy, { width: CW, align: 'center' }); fy += 9; }
 
   // ════════════════════════════════════════════════════════════
   // FINALIZE

@@ -28,6 +28,9 @@ const TABLE_LABELS: Record<string, string> = {
   roles: 'Rôles',
   role_permissions: 'Droits des rôles',
   document_sequences: 'Séries de numéros',
+  company_bank_accounts: 'Comptes bancaires',
+  document_templates: 'Modèles de documents',
+  notification_rules: 'Notifications',
   module_parameters: 'Paramètres métier',
   tax_codes: 'Codes TVA',
 };
