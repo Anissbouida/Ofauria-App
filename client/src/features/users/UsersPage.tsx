@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
+import GovernancePanel from './GovernancePanel';
 import { storesApi } from '../../api/stores.api';
 import {
   Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, Check, MapPin, Lock, Search, Users, UserCheck, UserX,
-  ShieldCheck, Loader2, RotateCcw,
+  ShieldCheck, Loader2, RotateCcw, Scale,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -27,7 +28,7 @@ import '../settings/settings.css';
  */
 
 type UserRow = Record<string, any>;
-type UsersTab = 'users' | 'roles';
+type UsersTab = 'users' | 'roles' | 'governance';
 
 function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
@@ -39,13 +40,15 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLo
 
 export default function UsersPage() {
   const [params, setParams] = useSearchParams();
-  const tab: UsersTab = params.get('tab') === 'roles' ? 'roles' : 'users';
+  const tabParam = params.get('tab');
+  const tab: UsersTab = tabParam === 'roles' ? 'roles' : tabParam === 'governance' ? 'governance' : 'users';
   const setTab = (t: UsersTab) => setParams(t === 'users' ? {} : { tab: t });
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
 
   const tabs: { key: UsersTab; label: string; icon: typeof Users }[] = [
     { key: 'users', label: 'Comptes', icon: Users },
     { key: 'roles', label: 'Rôles et contrôle', icon: ShieldCheck },
+    { key: 'governance', label: 'Gouvernance', icon: Scale },
   ];
   const current = tabs.find(t => t.key === tab)!;
 
@@ -80,6 +83,7 @@ export default function UsersPage() {
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {tab === 'users' && <AccountsTab onEdit={setEditing} />}
         {tab === 'roles' && <RolesPanel />}
+        {tab === 'governance' && <GovernancePanel />}
       </div>
 
       {editing && <UserFormModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}

@@ -9,6 +9,7 @@ import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { checkApprovalLimit } from '../services/governance.js';
 
 // Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
 function effectiveStoreFilter(req: AuthRequest): string | undefined {
@@ -68,6 +69,17 @@ export const purchaseOrderController = {
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
     if (po.status !== 'en_attente') {
       res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
+      return;
+    }
+    // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
+    // defini ; l'administrateur approuve sans limite.
+    const amount = Number(po.total_amount ?? 0);
+    const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', amount);
+    if (!allowed) {
+      res.status(403).json({
+        success: false,
+        error: { message: `Montant ${amount.toFixed(2)} au-dessus de votre plafond d'approbation (${limit.toFixed(2)}) pour un bon de commande` },
+      });
       return;
     }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'envoye');

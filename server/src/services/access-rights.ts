@@ -13,27 +13,31 @@ import { unionRights } from './access-rules.js';
  * sur DEFAULT_ROLE_MODULES : voir / créer / modifier, jamais supprimer.
  */
 
-export { hasRight, hasVerb, effectiveScope, moduleKeys, rightRow, unionRights } from './access-rules.js';
-export type { RightAction, RightRow, EffectiveRights, DataScope } from './access-rules.js';
+export { hasRight, hasVerb, effectiveScope, hasCapability, evaluateSod, moduleKeys, rightRow, unionRights } from './access-rules.js';
+export type { RightAction, RightRow, EffectiveRights, DataScope, SodRule, SodViolation } from './access-rules.js';
 import type { RightRow, EffectiveRights } from './access-rules.js';
 
 // ─── Rôles (cache court : un rôle modifié s'applique en moins de 30 s) ─────
 type RoleInfo = { code: string; label: string; baseRole: string; isSystem: boolean };
-let rolesCache: { at: number; byCode: Map<string, RoleInfo>; tablesExist: boolean; userRolesExist: boolean } | null = null;
+let rolesCache: { at: number; byCode: Map<string, RoleInfo>; tablesExist: boolean; userRolesExist: boolean; delegationsExist: boolean } | null = null;
 const TTL_MS = 30_000;
 
 async function loadRoles() {
   if (rolesCache && Date.now() - rolesCache.at < TTL_MS) return rolesCache;
   const reg = (await db.query(
     `SELECT to_regclass('public.roles') IS NOT NULL AS roles_ok,
-            to_regclass('public.user_roles') IS NOT NULL AS user_roles_ok`)).rows[0];
+            to_regclass('public.user_roles') IS NOT NULL AS user_roles_ok,
+            to_regclass('public.role_delegations') IS NOT NULL AS delegations_ok`)).rows[0];
   const exists = reg.roles_ok as boolean;
   const byCode = new Map<string, RoleInfo>();
   if (exists) {
     const r = await db.query(`SELECT code, label, base_role, is_system FROM roles`);
     for (const x of r.rows) byCode.set(x.code, { code: x.code, label: x.label, baseRole: x.base_role, isSystem: x.is_system });
   }
-  rolesCache = { at: Date.now(), byCode, tablesExist: exists, userRolesExist: reg.user_roles_ok as boolean };
+  rolesCache = {
+    at: Date.now(), byCode, tablesExist: exists,
+    userRolesExist: reg.user_roles_ok as boolean, delegationsExist: reg.delegations_ok as boolean,
+  };
   return rolesCache;
 }
 
@@ -47,19 +51,36 @@ export async function resolveRole(code: string): Promise<RoleInfo> {
   return byCode.get(code) ?? { code, label: labels[code] ?? code, baseRole: code, isSystem: true };
 }
 
-/** Rôles d'un utilisateur et rôle principal (mig 335). Repli sur users.role. */
-async function userRoleContext(userId: string): Promise<{ roleCodes: string[]; primary: string }> {
-  const { userRolesExist } = await loadRoles();
+/**
+ * Rôles d'un utilisateur et rôle principal (mig 335), augmentés des rôles
+ * délégués actifs (mig 336). Le rôle principal reste celui de l'utilisateur ;
+ * les rôles délégués s'ajoutent à l'union le temps de la fenêtre. Repli sur
+ * users.role si la table user_roles n'existe pas encore.
+ */
+async function userRoleContext(userId: string): Promise<{ roleCodes: string[]; primary: string; delegated: string[] }> {
+  const { userRolesExist, delegationsExist } = await loadRoles();
+  let own: string[] = [];
+  let primary = '';
   if (userRolesExist) {
     const r = await db.query(`SELECT role_code, is_primary FROM user_roles WHERE user_id = $1 ORDER BY is_primary DESC, role_code`, [userId]);
     if (r.rows.length > 0) {
-      const primary = (r.rows.find((x: { is_primary: boolean }) => x.is_primary)?.role_code as string) ?? r.rows[0].role_code;
-      return { roleCodes: r.rows.map((x: { role_code: string }) => x.role_code), primary };
+      primary = (r.rows.find((x: { is_primary: boolean }) => x.is_primary)?.role_code as string) ?? r.rows[0].role_code;
+      own = r.rows.map((x: { role_code: string }) => x.role_code);
     }
   }
-  const u = (await db.query(`SELECT role FROM users WHERE id = $1`, [userId])).rows[0];
-  const role = (u?.role as string) ?? '';
-  return { roleCodes: role ? [role] : [], primary: role };
+  if (own.length === 0) {
+    const u = (await db.query(`SELECT role FROM users WHERE id = $1`, [userId])).rows[0];
+    const role = (u?.role as string) ?? '';
+    own = role ? [role] : [];
+    primary = role;
+  }
+  let delegated: string[] = [];
+  if (delegationsExist) {
+    const d = await db.query(
+      `SELECT DISTINCT role_code FROM role_delegations WHERE to_user_id = $1 AND now() BETWEEN starts_at AND ends_at`, [userId]);
+    delegated = d.rows.map((x: { role_code: string }) => x.role_code).filter((c: string) => !own.includes(c));
+  }
+  return { roleCodes: [...own, ...delegated], primary, delegated };
 }
 
 /** Rôles de base distincts d'un ensemble de codes de rôle. */

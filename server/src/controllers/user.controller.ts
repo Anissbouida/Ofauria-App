@@ -7,6 +7,7 @@ import { hashPassword, hashPin } from '../utils/hash.js';
 import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
+import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
@@ -42,6 +43,13 @@ export const userController = {
         return;
       }
     }
+    // Séparation des tâches (mig 336) : contrôle du cumul de rôles.
+    const sodMode = await sodEnforcementMode();
+    const sodViolations = sodMode === 'off' ? [] : await evaluateRoleCodesSod(roleCodes);
+    if (sodMode === 'enforce' && sodViolations.length > 0) {
+      res.status(400).json({ success: false, error: { message: `Cumul de rôles interdit (séparation des tâches) : ${sodViolations.map(v => v.label).join(' ; ')}` } });
+      return;
+    }
     const existing = await userRepository.findByEmail(email);
     if (existing) {
       res.status(409).json({ success: false, error: { message: 'Cet email est déjà utilisé' } });
@@ -71,7 +79,7 @@ export const userController = {
       targetUserId: updated!.id,
       email: updated!.email,
       success: true,
-      details: { role: updated!.role, hasPin: !!updated!.pin_code },
+      details: { role: updated!.role, roles: roleCodes, hasPin: !!updated!.pin_code, ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}) },
     });
 
     res.status(201).json({
@@ -144,6 +152,17 @@ export const userController = {
       }
     }
 
+    // Séparation des tâches (mig 336) : contrôle du cumul lors d'un changement de rôles.
+    let sodViolations: { code: string; label: string }[] = [];
+    if (rolesInput !== undefined) {
+      const sodMode = await sodEnforcementMode();
+      sodViolations = sodMode === 'off' ? [] : await evaluateRoleCodesSod(rolesInput);
+      if (sodMode === 'enforce' && sodViolations.length > 0) {
+        res.status(400).json({ success: false, error: { message: `Cumul de rôles interdit (séparation des tâches) : ${sodViolations.map(v => v.label).join(' ; ')}` } });
+        return;
+      }
+    }
+
     // Snapshot de l'ancien role pour detecter un changement de role
     const oldUser = await userRepository.findById(req.params.id);
     const oldRole = (oldUser as { role?: string } | null)?.role;
@@ -184,6 +203,7 @@ export const userController = {
       details: {
         changed: [...Object.keys(updateData), ...(rolesInput !== undefined ? ['roles'] : [])],
         privilegeChange,
+        ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}),
       },
     });
 

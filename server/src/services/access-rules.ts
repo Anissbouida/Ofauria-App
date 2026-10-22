@@ -127,6 +127,53 @@ function mergeConfig(a: Record<string, unknown>, b: Record<string, unknown>): Re
   return out;
 }
 
+// ─── Gouvernance : capacités et séparation des tâches (Phase 2) ──────────
+
+const CRUD: readonly string[] = ['view', 'create', 'edit', 'delete'];
+
+/** Une capacité = une action CRUD ou un verbe métier. */
+export function hasCapability(rights: EffectiveRights, modules: string[], capability: string): boolean {
+  return CRUD.includes(capability)
+    ? hasRight(rights, modules, capability as RightAction)
+    : hasVerb(rights, modules, capability);
+}
+
+export interface SodRule {
+  code: string;
+  label: string;
+  severity: string;
+  a_module: string;
+  a_right: string;
+  b_module: string;
+  b_right: string;
+}
+export interface SodViolation {
+  code: string;
+  label: string;
+  severity: string;
+  a: { module: string; right: string };
+  b: { module: string; right: string };
+}
+
+/**
+ * Évalue la séparation des tâches pour des droits effectifs donnés : une règle
+ * est violée si l'utilisateur détient à la fois la capacité A et la capacité B.
+ * L'administrateur (tous droits) est exempté.
+ */
+export function evaluateSod(rights: EffectiveRights, rules: SodRule[]): SodViolation[] {
+  if (rights.isAdmin) return [];
+  const out: SodViolation[] = [];
+  for (const r of rules) {
+    if (hasCapability(rights, [r.a_module], r.a_right) && hasCapability(rights, [r.b_module], r.b_right)) {
+      out.push({
+        code: r.code, label: r.label, severity: r.severity,
+        a: { module: r.a_module, right: r.a_right }, b: { module: r.b_module, right: r.b_right },
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Union de droits de plusieurs rôles (mig 335) : regroupés par module, le plus
  * permissif gagne par action, verbes et portée fusionnés. L'ordre de sortie

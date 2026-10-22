@@ -151,3 +151,30 @@ export function isBusinessVerb(v: unknown): v is BusinessVerb {
 export function isDataScope(v: unknown): v is DataScope {
   return typeof v === 'string' && (DATA_SCOPES as string[]).includes(v);
 }
+
+// ─── Gouvernance (Phase 2) ──────────────────────────────────────────────
+// Une « capacité » est l'unité manipulée par la séparation des tâches (SoD) :
+// une action CRUD ou un verbe métier, sur un module donné.
+export type Capability = 'view' | 'create' | 'edit' | 'delete' | BusinessVerb;
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  view: 'Voir', create: 'Créer', edit: 'Modifier', delete: 'Supprimer',
+  approve: 'Approuver', validate: 'Valider', post: 'Comptabiliser',
+  export: 'Exporter', print: 'Imprimer', close: 'Clôturer',
+};
+export const CAPABILITIES: Capability[] = Object.keys(CAPABILITY_LABELS) as Capability[];
+export function isCapability(v: unknown): v is Capability {
+  return typeof v === 'string' && (CAPABILITIES as string[]).includes(v);
+}
+
+/** Types de document soumis à un plafond d'approbation par rôle. */
+export type ApprovalDocumentType = 'purchase_order' | 'expense' | 'invoice' | 'payment';
+export const APPROVAL_DOCUMENT_TYPES: ApprovalDocumentType[] = ['purchase_order', 'expense', 'invoice', 'payment'];
+export const APPROVAL_DOCUMENT_LABELS: Record<ApprovalDocumentType, string> = {
+  purchase_order: 'Bon de commande',
+  expense: 'Dépense',
+  invoice: 'Facture',
+  payment: 'Paiement',
+};
+export function isApprovalDocumentType(v: unknown): v is ApprovalDocumentType {
+  return typeof v === 'string' && (APPROVAL_DOCUMENT_TYPES as string[]).includes(v);
+}

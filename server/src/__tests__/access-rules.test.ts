@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hasRight, hasVerb, effectiveScope, unionRights, moduleKeys } from '../services/access-rules.js';
-import type { EffectiveRights, RightRow } from '../services/access-rules.js';
+import { hasRight, hasVerb, effectiveScope, unionRights, moduleKeys, hasCapability, evaluateSod } from '../services/access-rules.js';
+import type { EffectiveRights, RightRow, SodRule } from '../services/access-rules.js';
 
 const row = (module: string, p: Partial<RightRow> = {}): RightRow => ({
   module, can_view: true, can_create: false, can_edit: false, can_delete: false, config: {}, ...p,
@@ -78,5 +78,29 @@ describe('unionRights (rôles multiples)', () => {
       row('production', { config: { category_slugs: ['macaron'] } }),
     ]);
     expect((u[0].config.category_slugs as string[]).sort()).toEqual(['macaron', 'viennoiseries']);
+  });
+});
+
+describe('hasCapability (gouvernance)', () => {
+  it('résout une action CRUD ou un verbe métier', () => {
+    const r = rights([row('purchasing', { can_create: true, config: { verbs: ['approve'] } })]);
+    expect(hasCapability(r, ['purchasing'], 'create')).toBe(true);
+    expect(hasCapability(r, ['purchasing'], 'approve')).toBe(true);
+    expect(hasCapability(r, ['purchasing'], 'delete')).toBe(false);
+    expect(hasCapability(r, ['purchasing'], 'post')).toBe(false);
+  });
+});
+
+describe('evaluateSod (séparation des tâches)', () => {
+  const rule: SodRule = { code: 'achat_cr_appr', label: 'Créer et approuver', severity: 'critical', a_module: 'purchasing', a_right: 'create', b_module: 'purchasing', b_right: 'approve' };
+  it('conflit si les deux capacités sont détenues', () => {
+    const r = rights([row('purchasing', { can_create: true, config: { verbs: ['approve'] } })]);
+    expect(evaluateSod(r, [rule]).map(v => v.code)).toEqual(['achat_cr_appr']);
+  });
+  it('pas de conflit avec une seule capacité', () => {
+    expect(evaluateSod(rights([row('purchasing', { can_create: true })]), [rule])).toEqual([]);
+  });
+  it('administrateur exempté', () => {
+    expect(evaluateSod(rights([], { isAdmin: true }), [rule])).toEqual([]);
   });
 });
