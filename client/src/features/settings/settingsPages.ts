@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -13,6 +13,7 @@ import { settingAnchor } from './SettingsPrimitives';
  */
 
 export type SettingsPageKey =
+  | 'home'
   | 'company' | 'stores' | 'appearance'
   | 'print' | 'channels' | 'sachets'
   | 'production' | 'purchasing'
@@ -41,6 +42,12 @@ const LEGAL = [
   'Identité légale', 'Forme juridique', 'Capital social', 'Raison sociale', 'Siège social', 'Ville', 'Téléphone', 'Email',
   'Registre de commerce (RC)', 'Identifiant fiscal (IF)', 'ICE', 'Patente / Taxe professionnelle', 'Site web', "N° d'affiliation CNSS",
 ];
+
+/** Accueil (lot B) : hors des groupes, visible de tout utilisateur ayant le droit « Paramètres ». */
+export const HOME_PAGE: SettingsPageDef = {
+  key: 'home', group: '', section: 'company', label: "Vue d'ensemble", icon: LayoutDashboard,
+  description: 'Avancement du paramétrage, points à compléter et dernières modifications',
+};
 
 export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'company', group: 'Entreprise', section: 'company', label: 'Société', icon: Building2,

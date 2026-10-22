@@ -34,7 +34,7 @@ const TABLE_LABELS: Record<string, string> = {
   module_parameters: 'Paramètres métier',
   tax_codes: 'Codes TVA',
 };
-const tableLabel = (t: string) =>
+export const tableLabel = (t: string) =>
   t.startsWith('ref:') ? 'Référentiel' : (TABLE_LABELS[t] ?? t);
 
 // Libellés des colonnes les plus courantes ; les autres s'affichent telles quelles.

@@ -23,10 +23,11 @@ import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
+import SetupHome from './SetupHome';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
-import { SETTINGS_GROUPS, SETTINGS_PAGES, type SearchEntry, type SettingsPageKey } from './settingsPages';
+import { HOME_PAGE, SETTINGS_GROUPS, SETTINGS_PAGES, type SearchEntry, type SettingsPageKey } from './settingsPages';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -67,8 +68,9 @@ function SettingsShell() {
     [JSON.stringify(allowedSections)],
   );
   const requested = params.get('page') as SettingsPageKey | null;
-  // Page absente, inconnue ou non permise : premiere page autorisee.
-  const current = pages.find(p => p.key === requested) ?? pages[0];
+  // Page absente, inconnue ou non permise : accueil de la configuration (lot B).
+  const current = pages.find(p => p.key === requested) ?? HOME_PAGE;
+  const isHome = current.key === 'home';
 
   /** Quitte les brouillons en cours apres confirmation ; true si on peut continuer. */
   const confirmLeave = useCallback(async () => {
@@ -126,11 +128,12 @@ function SettingsShell() {
 
   const onSearchSelect = (e: SearchEntry) => { void goTo(e.page, { anchor: e.anchor, extra: e.extra }); };
 
-  if (!current) {
+  if (!pages.length) {
     return <div className="odoo-scope"><p className="odoo-settings-subtitle">Aucune section des paramètres ne vous est ouverte.</p></div>;
   }
 
   const pageContent: Record<SettingsPageKey, React.ReactNode> = {
+    home: <SetupHome onOpen={(page, anchor) => void goTo(page, { anchor })} onOpenUsers={() => void leaveTo('/users')} />,
     company: <CompanyPage />,
     stores: <StoresPanel />,
     appearance: <AppearanceTab />,
@@ -165,6 +168,12 @@ function SettingsShell() {
             <Search size={14} /> Rechercher…
             <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
           </button>
+          <div className="odoo-settings-nav-group" style={{ borderTop: 'none', paddingTop: 0 }}>
+            <button type="button" className={`odoo-settings-nav-item${isHome ? ' active' : ''}`}
+              aria-current={isHome ? 'page' : undefined} onClick={() => void goTo('home')}>
+              <HOME_PAGE.icon size={15} /> {HOME_PAGE.label}
+            </button>
+          </div>
           {SETTINGS_GROUPS.map(group => {
             const items = pages.filter(p => p.group === group);
             const usersLink = group === 'Sécurité et contrôle' && hasModule('users');
@@ -196,17 +205,16 @@ function SettingsShell() {
         <div className="odoo-settings-main">
           <div className="odoo-settings-head">
             <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
-              <button type="button" onClick={() => void goTo(pages[0].key)}>Paramètres</button>
+              <button type="button" onClick={() => void goTo('home')}>Paramètres</button>
               <span className="odoo-breadcrumb-separator">›</span>
-              <span>{current.group}</span>
-              <span className="odoo-breadcrumb-separator">›</span>
+              {!isHome && <><span>{current.group}</span><span className="odoo-breadcrumb-separator">›</span></>}
               <span className="odoo-breadcrumb-current">{current.label}</span>
             </div>
             <h2 className="odoo-settings-title">{current.label}</h2>
             <p className="odoo-settings-subtitle">{current.description}</p>
           </div>
           <div className="odoo-settings-body">
-            {readOnly && current.key !== 'audit' && (
+            {readOnly && !isHome && current.key !== 'audit' && (
               <StatusBanner tone="info" icon={Lock} title="Consultation seule">
                 Votre droit « Paramètres » ne permet pas de modifier : les enregistrements seront refusés.
                 Un administrateur peut l'étendre depuis Utilisateurs.
