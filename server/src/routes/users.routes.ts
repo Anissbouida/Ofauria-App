@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { roleController } from '../controllers/role.controller.js';
 import { governanceController } from '../controllers/governance.controller.js';
+import { accessReviewController } from '../controllers/access-review.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -45,5 +46,10 @@ router.delete('/:id', authenticate, authorize('admin'), userController.remove);
 router.get('/me/permissions', authenticate, userController.myPermissions);
 router.get('/:id/permissions', authenticate, authorize('admin'), userController.getPermissions);
 router.put('/:id/permissions', authenticate, authorize('admin'), userController.setPermissions);
+
+// Revue des acces (Phase 3, outils admin, lecture seule).
+router.get('/access-overview', authenticate, authorize('admin'), asyncHandler(accessReviewController.overview));
+router.get('/:id/access-review', authenticate, authorize('admin'), asyncHandler(accessReviewController.review));
+router.get('/:id/access-history', authenticate, authorize('admin'), asyncHandler(accessReviewController.history));
 
 export default router;

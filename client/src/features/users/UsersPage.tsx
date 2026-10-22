@@ -4,10 +4,11 @@ import { useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
 import GovernancePanel from './GovernancePanel';
+import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
 import { storesApi } from '../../api/stores.api';
 import {
   Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, Check, MapPin, Lock, Search, Users, UserCheck, UserX,
-  ShieldCheck, Loader2, RotateCcw, Scale,
+  ShieldCheck, Loader2, RotateCcw, Scale, ScanSearch,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -28,7 +29,7 @@ import '../settings/settings.css';
  */
 
 type UserRow = Record<string, any>;
-type UsersTab = 'users' | 'roles' | 'governance';
+type UsersTab = 'users' | 'roles' | 'governance' | 'review';
 
 function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
@@ -41,7 +42,7 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLo
 export default function UsersPage() {
   const [params, setParams] = useSearchParams();
   const tabParam = params.get('tab');
-  const tab: UsersTab = tabParam === 'roles' ? 'roles' : tabParam === 'governance' ? 'governance' : 'users';
+  const tab: UsersTab = tabParam === 'roles' ? 'roles' : tabParam === 'governance' ? 'governance' : tabParam === 'review' ? 'review' : 'users';
   const setTab = (t: UsersTab) => setParams(t === 'users' ? {} : { tab: t });
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
 
@@ -49,6 +50,7 @@ export default function UsersPage() {
     { key: 'users', label: 'Comptes', icon: Users },
     { key: 'roles', label: 'Rôles et contrôle', icon: ShieldCheck },
     { key: 'governance', label: 'Gouvernance', icon: Scale },
+    { key: 'review', label: 'Revue des accès', icon: ScanSearch },
   ];
   const current = tabs.find(t => t.key === tab)!;
 
@@ -84,6 +86,7 @@ export default function UsersPage() {
         {tab === 'users' && <AccountsTab onEdit={setEditing} />}
         {tab === 'roles' && <RolesPanel />}
         {tab === 'governance' && <GovernancePanel />}
+        {tab === 'review' && <AccessReviewTab />}
       </div>
 
       {editing && <UserFormModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
@@ -107,6 +110,7 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
   const [roleFilter, setRoleFilter] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
   const [permUser, setPermUser] = useState<UserRow | null>(null);
+  const [reviewUser, setReviewUser] = useState<UserRow | null>(null);
 
   const { data: users = [], isLoading } = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
@@ -222,6 +226,10 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                     <td><span className={`odoo-tag ${u.isActive ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{u.isActive ? 'Actif' : 'Désactivé'}</span></td>
                     <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
+                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setReviewUser(u)}
+                          title="Analyser les accès" aria-label={`Analyser les accès de ${u.firstName} ${u.lastName}`}>
+                          <ScanSearch size={13} />
+                        </button>
                         <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setPermUser(u)}
                           title="Droits d'accès" aria-label={`Droits de ${u.firstName} ${u.lastName}`}>
                           <Settings2 size={13} /> Droits
@@ -252,6 +260,7 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
       )}
 
       {permUser && <PermissionsModal user={permUser} roleLabel={roleLabel(permUser.role)} onClose={() => setPermUser(null)} />}
+      {reviewUser && <AccessReviewModal userId={reviewUser.id as string} name={`${reviewUser.firstName} ${reviewUser.lastName}`} onClose={() => setReviewUser(null)} />}
     </>
   );
 }

@@ -73,6 +73,32 @@ export const governanceApi = {
   delegationsRemove: (id: number) => api.delete(`/users/delegations/${id}`),
 };
 
+// ─── Revue des accès (Phase 3, outils admin) ────────────────────────────
+export interface AccessReviewModuleRow {
+  module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  verbs: string[]; scope: string; grantedBy: string[];
+}
+export interface AccessReviewData {
+  user: { id: string; name: string; email: string; storeId: string | null; isActive: boolean };
+  isAdmin: boolean;
+  source: 'admin' | 'user' | 'role';
+  roles: { code: string; label: string; baseRole: string; delegated: boolean }[];
+  baseRoles: string[];
+  modules: AccessReviewModuleRow[];
+  sodViolations: { code: string; label: string; severity: string; a: { module: string; right: string }; b: { module: string; right: string } }[];
+  approvalLimits: { documentType: string; configured: boolean; limit: number | null }[];
+}
+export interface AccessHistoryEntry { at: string; actor: string | null; kind: string; detail: Record<string, unknown>; }
+export interface AccessOverviewRow {
+  userId: string; name: string; email: string; roles: string[]; hasCustomPerms: boolean; conflictCount: number; isActive: boolean;
+}
+
+export const accessReviewApi = {
+  review: (id: string) => api.get(`/users/${id}/access-review`).then(r => r.data.data) as Promise<AccessReviewData>,
+  history: (id: string) => api.get(`/users/${id}/access-history`).then(r => r.data.data) as Promise<AccessHistoryEntry[]>,
+  overview: () => api.get('/users/access-overview').then(r => r.data.data) as Promise<AccessOverviewRow[]>,
+};
+
 export const rolesApi = {
   list: () => api.get('/users/roles').then(r => r.data.data) as Promise<RoleRow[]>,
   create: (data: { label: string; baseRole: string; copyFrom?: string; description?: string }) =>
