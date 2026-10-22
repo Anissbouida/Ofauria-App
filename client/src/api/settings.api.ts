@@ -133,6 +133,19 @@ export interface NotificationRule {
   sent_30d: number; recipients_30d: string[] | null; updated_at: string; updated_by_name: string | null;
 }
 
+/** Écran Données (lot 7). */
+export interface DataStatus {
+  counts: Record<string, number | null>; size: string;
+  lastMigration: { name: string; executed_at: string } | null;
+  exports: { event_type: 'config_export' | 'data_export' | 'data_import'; created_at: string; details: Record<string, unknown> | null; by_name: string | null }[];
+  entities: { key: string; label: string }[];
+}
+export interface ImportPreview {
+  columns: string[]; unknownHeaders: string[];
+  summary: { create: number; update: number; error: number; skip: number };
+  rows: { line: number; action: 'create' | 'update' | 'error' | 'skip'; values: Record<string, unknown>; errors: { column: string; message: string }[] }[];
+}
+
 export const settingsApi = {
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
   update: (data: Partial<CompanySettings>) => api.put('/settings', data).then(r => r.data.data) as Promise<CompanySettings>,
@@ -164,6 +177,20 @@ export const settingsApi = {
   notificationRules: () => api.get('/settings/notification-rules').then(r => r.data.data) as Promise<NotificationRule[]>,
   updateNotificationRule: (type: string, data: { enabled?: boolean; extraRoles?: string[] }) =>
     api.put(`/settings/notification-rules/${type}`, data).then(r => r.data.data) as Promise<NotificationRule>,
+  dataStatus: () => api.get('/settings/data/status').then(r => r.data.data) as Promise<DataStatus>,
+  /** Téléchargement (modèle, exports) : renvoie le fichier et son nom. */
+  download: (path: string) => api.get(`/settings/data/${path}`, { responseType: 'blob' }).then(r => {
+    const cd = String(r.headers['content-disposition'] ?? '');
+    return { blob: r.data as Blob, filename: /filename="([^"]+)"/.exec(cd)?.[1] ?? 'export' };
+  }),
+  importPreview: (entity: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post(`/settings/data/import/${entity}/preview`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data) as Promise<ImportPreview>;
+  },
+  importCommit: (entity: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post(`/settings/data/import/${entity}/commit`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data) as Promise<{ created: number; updated: number }>;
+  },
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

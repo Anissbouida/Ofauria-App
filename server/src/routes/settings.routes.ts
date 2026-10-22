@@ -6,6 +6,8 @@ import { documentSequenceController } from '../controllers/document-sequence.con
 import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
 import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
+import { dataController } from '../controllers/data.controller.js';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -16,6 +18,8 @@ const router = Router();
 // (company_settings.logo_url), au-dela de la limite globale de 10 Ko.
 // Ces routes sont exclues du parser global dans app.ts.
 const jsonParser = express.json({ limit: '3mb' });
+// Import guide (lot 7) : fichier Excel ou CSV en memoire, 5 Mo maximum.
+const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Journal des modifications (mig 328) et des connexions : section « audit ».
 router.get('/audit-log', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.list));
@@ -47,6 +51,14 @@ router.get('/documents/:docType/preview', authenticate, authorizeSettings('docum
 router.put('/documents/:docType', authenticate, jsonParser, authorizeSettings('documents', 'edit'), asyncHandler(docs.updateDocument));
 router.get('/notification-rules', authenticate, authorizeSettings('notifications'), asyncHandler(docs.notificationRules));
 router.put('/notification-rules/:type', authenticate, jsonParser, authorizeSettings('notifications', 'edit'), asyncHandler(docs.updateNotificationRule));
+
+// Donnees (lot 7) : import guide, exports de la configuration et des donnees de base.
+router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler(dataController.status));
+router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));
+router.post('/data/import/:entity/preview', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.preview));
+router.post('/data/import/:entity/commit', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.commit));
+router.get('/data/export/configuration', authenticate, authorizeSettings('data'), asyncHandler(dataController.exportConfiguration));
+router.get('/data/export/base', authenticate, authorizeSettings('data'), asyncHandler(dataController.exportData));
 
 // Lecture ouverte a tout utilisateur connecte (theme, ticket, identite sur les PDF).
 router.get('/', authenticate, jsonParser, settingsController.get);

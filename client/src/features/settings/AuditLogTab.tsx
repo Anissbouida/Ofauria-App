@@ -63,6 +63,7 @@ const EVENT_LABELS: Record<string, string> = {
   logout: 'Déconnexion', account_locked: 'Compte verrouillé',
   user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Droits modifiés',
   access_denied: 'Accès hors droits',
+  config_export: 'Export de la configuration', data_export: 'Export des données', data_import: 'Import de données',
 };
 
 function fmtValue(v: unknown): string {

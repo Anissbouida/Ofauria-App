@@ -30,7 +30,11 @@ export type AuthEventType =
   | 'permission_changed'
   | 'token_revoked'
   // Appel API hors des droits par module (garde des modules, mig 330).
-  | 'access_denied';
+  | 'access_denied'
+  // Exports et imports de l'ecran Parametres > Donnees (lot 7).
+  | 'config_export'
+  | 'data_export'
+  | 'data_import';
 
 export interface AuthEventInput {
   eventType: AuthEventType;

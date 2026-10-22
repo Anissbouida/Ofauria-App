@@ -12,7 +12,7 @@ import {
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent, FileText, Bell,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent, FileText, Bell, HardDrive,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -27,12 +27,13 @@ import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
+import DataTab from './DataTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax' | 'documents' | 'notifications' | 'data';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -95,6 +96,7 @@ export default function SettingsPage() {
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
     { key: 'production', section: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
     { key: 'sachets', section: 'sachets', label: 'Sachets', description: 'Controle des sachets de caisse', icon: <ShoppingBag size={18} /> },
+    { key: 'data', section: 'data', label: 'Donnees', description: 'Import, export et etat de la base', icon: <HardDrive size={18} /> },
     { key: 'audit', section: 'audit', label: 'Journal', description: 'Modifications du parametrage et connexions', icon: <ShieldCheck size={18} /> },
   ];
   const tabs = allowedSections ? allTabs.filter((t) => allowedSections.includes(t.section)) : allTabs;
@@ -124,6 +126,7 @@ export default function SettingsPage() {
       {currentTab === 'tax' && <TaxCodesTab />}
       {currentTab === 'documents' && <DocumentsTab />}
       {currentTab === 'notifications' && <NotificationsTab />}
+      {currentTab === 'data' && <DataTab />}
       {currentTab === 'referentiel' && <ReferentielTab />}
       {currentTab === 'production' && (
         <>

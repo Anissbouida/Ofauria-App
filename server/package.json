@@ -18,6 +18,7 @@
     "e2e:parametres-metier": "tsx scripts/e2e-parametres-metier.ts",
     "e2e:societe": "tsx scripts/e2e-societe.ts",
     "e2e:documents": "tsx scripts/e2e-documents.ts",
+    "e2e:donnees": "tsx scripts/e2e-donnees.ts",
     "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
   },
   "dependencies": {

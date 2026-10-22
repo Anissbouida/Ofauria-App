@@ -25,7 +25,8 @@
     "audit:droits-routes": "npm run audit:droits-routes --workspace=server --",
     "test:e2e-parametres-metier": "npm run e2e:parametres-metier --workspace=server --",
     "test:e2e-societe": "npm run e2e:societe --workspace=server --",
-    "test:e2e-documents": "npm run e2e:documents --workspace=server --"
+    "test:e2e-documents": "npm run e2e:documents --workspace=server --",
+    "test:e2e-donnees": "npm run e2e:donnees --workspace=server --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
