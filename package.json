@@ -23,7 +23,8 @@
     "test:e2e-numerotation": "npm run e2e:numerotation --workspace=server --",
     "test:e2e-roles-droits": "npm run e2e:roles-droits --workspace=server --",
     "audit:droits-routes": "npm run audit:droits-routes --workspace=server --",
-    "test:e2e-parametres-metier": "npm run e2e:parametres-metier --workspace=server --"
+    "test:e2e-parametres-metier": "npm run e2e:parametres-metier --workspace=server --",
+    "test:e2e-societe": "npm run e2e:societe --workspace=server --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

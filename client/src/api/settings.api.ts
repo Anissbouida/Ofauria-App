@@ -44,6 +44,20 @@ export interface CompanySettings {
   legalName?: string; legalAddress?: string; legalCity?: string;
   legalPhone?: string; legalEmail?: string; legalRc?: string;
   legalIf?: string; legalIce?: string; legalPatente?: string;
+  // Fiche societe (mig 331) ; CNSS employeur lu dans les parametres de paie (lecture seule ici).
+  legalForm?: string; legalCapital?: number | null; legalWebsite?: string;
+  employerCnssNumber?: string | null;
+}
+
+/** Compte bancaire de la société (mig 331). */
+export interface CompanyBankAccount {
+  id: string; label: string; bank_name: string; rib: string; swift: string | null; ledger_account: string | null;
+  store_id: string | null; store_name: string | null; is_default: boolean; show_on_invoices: boolean; is_active: boolean;
+}
+/** Taux de TVA daté (tax_codes, mig 309/331). */
+export interface TaxCode {
+  id: string; code: string; label: string; rate: string; kind: string; recoverable: boolean;
+  valid_from: string; valid_to: string | null; legal_ref: string | null; status: 'current' | 'past' | 'future';
 }
 
 /** Ligne du journal des modifications (config_audit_log mig 328 + ref_audit_log). */
@@ -124,6 +138,12 @@ export const settingsApi = {
   parameters: () => api.get('/settings/parameters').then(r => r.data.data) as Promise<BusinessParameter[]>,
   updateParameter: (key: string, value: Record<string, unknown>) =>
     api.put(`/settings/parameters/${key}`, { value }).then(r => r.data.data),
+  bankAccounts: () => api.get('/settings/bank-accounts').then(r => r.data.data) as Promise<CompanyBankAccount[]>,
+  saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
+    (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,
+  taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
+  addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
+  updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

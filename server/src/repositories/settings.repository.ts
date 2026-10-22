@@ -7,6 +7,14 @@ export const settingsRepository = {
     return result.rows[0];
   },
 
+  /** N° d'affiliation CNSS employeur : tenu dans les paramètres de paie (mig 318), affiché sur la fiche société. */
+  async employerCnss(): Promise<string | null> {
+    const exists = (await db.query(`SELECT to_regclass('public.payroll_settings') IS NOT NULL AS ok`)).rows[0].ok;
+    if (!exists) return null;
+    const r = await db.query(`SELECT employer_cnss_number FROM payroll_settings WHERE id = 1`);
+    return (r.rows[0]?.employer_cnss_number as string | null) ?? null;
+  },
+
   async update(data: {
     companyName?: string; subtitle?: string;
     primaryColor?: string; secondaryColor?: string; logoUrl?: string | null;
@@ -34,6 +42,8 @@ export const settingsRepository = {
     legalName?: string | null; legalAddress?: string | null; legalCity?: string | null;
     legalPhone?: string | null; legalEmail?: string | null; legalRc?: string | null;
     legalIf?: string | null; legalIce?: string | null; legalPatente?: string | null;
+    // Fiche societe (mig 331)
+    legalForm?: string | null; legalCapital?: number | null; legalWebsite?: string | null;
   }, actorId?: string) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -85,6 +95,8 @@ export const settingsRepository = {
       legalName: 'legal_name', legalAddress: 'legal_address', legalCity: 'legal_city',
       legalPhone: 'legal_phone', legalEmail: 'legal_email', legalRc: 'legal_rc',
       legalIf: 'legal_if', legalIce: 'legal_ice', legalPatente: 'legal_patente',
+      // Fiche societe (mig 331)
+      legalForm: 'legal_form', legalCapital: 'legal_capital', legalWebsite: 'legal_website',
     };
 
     const fields: string[] = [];

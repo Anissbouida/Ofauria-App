@@ -45,13 +45,16 @@ function toApi(row: Record<string, unknown>) {
     legalName: row.legal_name ?? '', legalAddress: row.legal_address ?? '', legalCity: row.legal_city ?? '',
     legalPhone: row.legal_phone ?? '', legalEmail: row.legal_email ?? '', legalRc: row.legal_rc ?? '',
     legalIf: row.legal_if ?? '', legalIce: row.legal_ice ?? '', legalPatente: row.legal_patente ?? '',
+    // Fiche societe (mig 331)
+    legalForm: row.legal_form ?? '', legalCapital: row.legal_capital === null || row.legal_capital === undefined ? null : Number(row.legal_capital),
+    legalWebsite: row.legal_website ?? '',
   };
 }
 
 export const settingsController = {
   async get(_req: AuthRequest, res: Response) {
-    const settings = await settingsRepository.get();
-    res.json({ success: true, data: toApi(settings) });
+    const [settings, employerCnss] = await Promise.all([settingsRepository.get(), settingsRepository.employerCnss()]);
+    res.json({ success: true, data: { ...toApi(settings), employerCnssNumber: employerCnss } });
   },
 
   async update(req: AuthRequest, res: Response) {
@@ -73,7 +76,7 @@ export const settingsController = {
     // Identite legale (mig 326) : texte libre borne, '' -> null ; ICE = 15 chiffres.
     const LEGAL_MAX: Record<string, number> = {
       legalName: 120, legalAddress: 300, legalCity: 80, legalPhone: 40, legalEmail: 120,
-      legalRc: 30, legalIf: 30, legalIce: 15, legalPatente: 30,
+      legalRc: 30, legalIf: 30, legalIce: 15, legalPatente: 30, legalForm: 30, legalWebsite: 120,
     };
     const legal: Record<string, string | null> = {};
     for (const [key, max] of Object.entries(LEGAL_MAX)) {
@@ -87,6 +90,33 @@ export const settingsController = {
     if (legal.legalIce && !/^\d{15}$/.test(legal.legalIce)) {
       res.status(400).json({ success: false, error: { message: 'ICE invalide : 15 chiffres attendus' } });
       return;
+    }
+    // Identifiants marocains : chiffres seulement (IF, patente) ; forme juridique de la liste.
+    if (legal.legalIf && !/^\d{1,15}$/.test(legal.legalIf)) {
+      res.status(400).json({ success: false, error: { message: 'Identifiant fiscal (IF) : chiffres uniquement' } });
+      return;
+    }
+    if (legal.legalPatente && !/^\d{1,15}$/.test(legal.legalPatente)) {
+      res.status(400).json({ success: false, error: { message: 'Patente : chiffres uniquement' } });
+      return;
+    }
+    const LEGAL_FORMS = ['SARL', 'SARL AU', 'SA', 'SAS', 'SNC', 'SCS', 'EI', 'AUTO_ENTREPRENEUR', 'COOPERATIVE', 'AUTRE'];
+    if (legal.legalForm && !LEGAL_FORMS.includes(legal.legalForm)) {
+      res.status(400).json({ success: false, error: { message: 'Forme juridique inconnue' } });
+      return;
+    }
+    if (legal.legalWebsite && !/^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(legal.legalWebsite)) {
+      res.status(400).json({ success: false, error: { message: 'Site web invalide' } });
+      return;
+    }
+    let legalCapital: number | null | undefined;
+    if (req.body.legalCapital !== undefined) {
+      const c = req.body.legalCapital;
+      legalCapital = c === null || c === '' ? null : Number(c);
+      if (legalCapital !== null && (!Number.isFinite(legalCapital) || legalCapital < 0 || legalCapital > 1e12)) {
+        res.status(400).json({ success: false, error: { message: 'Capital social invalide' } });
+        return;
+      }
     }
     if (legal.legalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legal.legalEmail)) {
       res.status(400).json({ success: false, error: { message: 'Email de l\'entreprise invalide' } });
@@ -126,6 +156,7 @@ export const settingsController = {
       productionChargeLoyer, productionChargeEnergie, productionChargeAutres,
       prixArrondiStrategie, prixArrondiSens,
       ...legal,
+      ...(legalCapital !== undefined ? { legalCapital } : {}),
     }, req.user?.userId);
     res.json({ success: true, data: toApi(settings) });
   },

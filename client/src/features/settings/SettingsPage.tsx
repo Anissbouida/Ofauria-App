@@ -4,16 +4,15 @@ import { useSettings } from '../../context/SettingsContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections, type SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
-import { storesApi } from '../../api/stores.api';
 import { referentielApi } from '../../api/referentiel.api';
 import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
 import {
-  Save, Building2, RotateCcw, MapPin, Plus, Pencil, Trash2, Store,
+  Save, Building2, RotateCcw, Plus, Pencil, Trash2, Store,
   Printer, Upload, Image, Eye, Type,
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal, Percent,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -23,12 +22,15 @@ import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
 import ParametersPanel from './ParametersPanel';
+import CompanyBankAccounts from './CompanyBankAccounts';
+import StoresPanel from './StoresPanel';
+import TaxCodesTab from './TaxCodesTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters' | 'tax';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -79,10 +81,11 @@ export default function SettingsPage() {
     subtitle !== settings.subtitle;
 
   const allTabs: { key: SettingsTab; section: SettingsSectionKey; label: string; description: string; icon: React.ReactNode }[] = [
-    { key: 'general', section: 'company', label: 'General', description: 'Nom et identite de l\'entreprise', icon: <Building2 size={18} /> },
+    { key: 'general', section: 'company', label: 'Societe', description: 'Identite legale, comptes bancaires', icon: <Building2 size={18} /> },
     { key: 'appearance', section: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
     { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
-    { key: 'stores', section: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
+    { key: 'stores', section: 'stores', label: 'Etablissements', description: 'Boutiques, laboratoire, entrepot, siege', icon: <Store size={18} /> },
+    { key: 'tax', section: 'tax', label: 'TVA', description: 'Taux de TVA dates', icon: <Percent size={18} /> },
     { key: 'parameters', section: 'business', label: 'Parametres metier', description: 'Regles de gestion par domaine, en un seul endroit', icon: <SlidersHorizontal size={18} /> },
     { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
@@ -113,7 +116,8 @@ export default function SettingsPage() {
       )}
       {currentTab === 'appearance' && <AppearanceTab />}
       {currentTab === 'print' && <PrintTab />}
-      {currentTab === 'stores' && <StoresSection />}
+      {currentTab === 'stores' && <StoresPanel />}
+      {currentTab === 'tax' && <TaxCodesTab />}
       {currentTab === 'referentiel' && <ReferentielTab />}
       {currentTab === 'production' && (
         <>
@@ -252,6 +256,7 @@ function GeneralTab({
       </SettingsSection>
 
       <LegalIdentitySection />
+      <CompanyBankAccounts />
       <ParametersPanel keys={['sales.staff_discount']} />
     </>
   );
@@ -267,24 +272,38 @@ const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'l
   { key: 'legalRc', title: 'Registre de commerce (RC)', description: 'Numéro RC' },
   { key: 'legalIf', title: 'Identifiant fiscal (IF)', description: 'Numéro IF' },
   { key: 'legalIce', title: 'ICE', description: 'Identifiant commun de l\'entreprise : 15 chiffres', placeholder: '000000000000000' },
-  { key: 'legalPatente', title: 'Patente / Taxe professionnelle', description: 'Numéro de patente' },
+  { key: 'legalPatente', title: 'Patente / Taxe professionnelle', description: 'Numéro de patente du siège (chaque établissement peut avoir la sienne)' },
 ];
+
+// Fiche societe (mig 331) : saisis avec l'identite legale, types propres.
+const LEGAL_FORMS: [string, string][] = [
+  ['', '—'], ['SARL', 'SARL'], ['SARL AU', 'SARL à associé unique'], ['SA', 'SA'], ['SAS', 'SAS'], ['SNC', 'SNC'],
+  ['SCS', 'SCS'], ['EI', 'Entreprise individuelle'], ['AUTO_ENTREPRENEUR', 'Auto-entrepreneur'], ['COOPERATIVE', 'Coopérative'], ['AUTRE', 'Autre'],
+];
+const EXTRA_LEGAL_KEYS = ['legalForm', 'legalCapital', 'legalWebsite'] as const;
 
 function LegalIdentitySection() {
   const { settings, updateSettings } = useSettings();
-  const initial = () => Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])) as Record<string, string>;
+  const initial = () => ({
+    ...Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])),
+    legalForm: settings.legalForm ?? '',
+    legalCapital: settings.legalCapital === null || settings.legalCapital === undefined ? '' : String(settings.legalCapital),
+    legalWebsite: settings.legalWebsite ?? '',
+  }) as Record<string, string>;
   const [form, setForm] = useState<Record<string, string>>(initial);
   const [saving, setSaving] = useState(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setForm(initial()); }, [settings]);
 
-  const hasChanges = LEGAL_FIELDS.some(f => (form[f.key] ?? '') !== (settings[f.key] ?? ''));
+  const saved = initial();
+  const hasChanges = [...LEGAL_FIELDS.map(f => f.key), ...EXTRA_LEGAL_KEYS].some(k => (form[k] ?? '') !== (saved[k] ?? ''));
+  const capitalInvalid = form.legalCapital !== '' && !(Number(form.legalCapital) >= 0);
   const iceInvalid = !!form.legalIce && !/^\d{15}$/.test(form.legalIce.replace(/\s/g, ''));
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings(form);
+      await updateSettings({ ...form, legalCapital: form.legalCapital === '' ? null : Number(form.legalCapital) } as Partial<typeof settings>);
       notify.success('Identité légale enregistrée');
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
@@ -296,6 +315,16 @@ function LegalIdentitySection() {
 
   return (
     <SettingsSection title="Identité légale">
+      <SettingItem title="Forme juridique" description="Mentionnée sur les factures avec le capital">
+        <select id="legal-form" value={form.legalForm ?? ''} onChange={(e) => setForm({ ...form, legalForm: e.target.value })} className="input w-full">
+          {LEGAL_FORMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </SettingItem>
+      <SettingItem title="Capital social" description="En dirhams">
+        <input id="legal-capital" type="number" min="0" step="1000" value={form.legalCapital ?? ''}
+          onChange={(e) => setForm({ ...form, legalCapital: e.target.value })}
+          className={`input w-full${capitalInvalid ? ' border-red-400' : ''}`} />
+      </SettingItem>
       {LEGAL_FIELDS.map(f => (
         <SettingItem key={f.key} title={f.title} description={f.description}>
           <input type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
@@ -303,9 +332,16 @@ function LegalIdentitySection() {
             className={`input w-full${f.key === 'legalIce' && iceInvalid ? ' border-red-400' : ''}`} />
         </SettingItem>
       ))}
+      <SettingItem title="Site web" description="Pied de page des documents">
+        <input id="legal-website" type="text" value={form.legalWebsite ?? ''} placeholder="www.exemple.ma"
+          onChange={(e) => setForm({ ...form, legalWebsite: e.target.value })} className="input w-full" />
+      </SettingItem>
+      <SettingItem title="N° d'affiliation CNSS" description="Tenu dans Personnel › Paie › Paramètres de paie (déclarations sociales)">
+        <span className="text-sm text-gray-700">{settings.employerCnssNumber || <span className="text-gray-400">Non renseigné</span>}</span>
+      </SettingItem>
       {hasChanges && (
         <div className="flex justify-end">
-          <button onClick={handleSave} disabled={saving || iceInvalid}
+          <button onClick={handleSave} disabled={saving || iceInvalid || capitalInvalid}
             className="btn-primary px-4 py-2 flex items-center gap-2 text-sm">
             {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
             Enregistrer l'identité légale
@@ -968,163 +1004,6 @@ function ToggleSwitch({ label, checked, onChange }: {
         }`} />
       </button>
     </label>
-  );
-}
-
-/* ============ STORES SECTION ============ */
-
-function StoresSection() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [editStore, setEditStore] = useState<Record<string, any> | null>(null);
-  const [name, setName] = useState('');
-  const [city, setCity] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const { data: stores = [] } = useQuery({
-    queryKey: ['stores'],
-    queryFn: storesApi.list,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, any>) => storesApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
-      resetForm();
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) => storesApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
-      resetForm();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: storesApi.remove,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stores'] }),
-  });
-
-  const resetForm = () => {
-    setShowForm(false);
-    setEditStore(null);
-    setName('');
-    setCity('');
-    setAddress('');
-    setPhone('');
-  };
-
-  const openEdit = (store: Record<string, any>) => {
-    setEditStore(store);
-    setName(store.name as string);
-    setCity((store.city as string) || '');
-    setAddress((store.address as string) || '');
-    setPhone((store.phone as string) || '');
-    setShowForm(true);
-  };
-
-  const handleSubmit = () => {
-    if (!name.trim()) return;
-    const data = { name: name.trim(), city: city.trim() || undefined, address: address.trim() || undefined, phone: phone.trim() || undefined };
-    if (editStore) {
-      updateMutation.mutate({ id: editStore.id as string, data });
-    } else {
-      createMutation.mutate(data);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500">
-          {stores.length} point{stores.length > 1 ? 's' : ''} de vente configure{stores.length > 1 ? 's' : ''}
-        </p>
-        <button onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-primary flex items-center gap-2 text-sm">
-          <Plus size={16} /> Ajouter
-        </button>
-      </div>
-
-      {/* Store list */}
-      <div className="divide-y divide-gray-100">
-        {stores.map((store: Record<string, any>) => (
-          <div key={store.id as string}
-            className="flex items-center justify-between py-3 hover:bg-gray-50 transition-colors -mx-2 px-2 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
-                <MapPin size={18} className="text-primary-600" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800">{store.name as string}</p>
-                <p className="text-sm text-gray-500">
-                  {[store.city, store.address].filter(Boolean).join(' — ') || 'Aucune adresse'}
-                  {store.phone as unknown as boolean && <span className="ml-2">| {String(store.phone)}</span>}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 mr-2">
-                {store.user_count as number} utilisateur{(store.user_count as number) > 1 ? 's' : ''}
-              </span>
-              <button onClick={() => openEdit(store)}
-                className="p-2 hover:bg-gray-100 rounded-lg">
-                <Pencil size={16} className="text-gray-500" />
-              </button>
-              {(store.user_count as number) === 0 && (
-                <button onClick={() => { if (confirm('Supprimer ce point de vente ?')) deleteMutation.mutate(store.id as string); }}
-                  className="p-2 hover:bg-red-50 rounded-lg">
-                  <Trash2 size={16} className="text-red-500" />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        {stores.length === 0 && (
-          <p className="text-center py-6 text-gray-400">Aucun point de vente configure</p>
-        )}
-      </div>
-
-      {/* Add/Edit form */}
-      {showForm && (
-        <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <h3 className="font-semibold text-gray-700 mb-3">
-            {editStore ? 'Modifier le point de vente' : 'Nouveau point de vente'}
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-3 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Nom *</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-                className="input" placeholder="Ex: Boutique Casablanca" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Ville</label>
-              <input type="text" value={city} onChange={(e) => setCity(e.target.value)}
-                className="input" placeholder="Ex: Casablanca" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Adresse</label>
-              <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
-                className="input" placeholder="Ex: 123 Bd Mohammed V" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Telephone</label>
-              <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-                className="input" placeholder="Ex: 0522-123456" />
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={resetForm} className="btn-secondary text-sm">Annuler</button>
-            <button onClick={handleSubmit} disabled={!name.trim() || createMutation.isPending || updateMutation.isPending}
-              className="btn-primary text-sm">
-              {editStore ? 'Enregistrer' : 'Ajouter'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
