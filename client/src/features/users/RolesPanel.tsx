@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Loader2 } from 'lucide-react';
+import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Loader2, Check } from 'lucide-react';
 import * as shared from '@ofauria/shared';
-import { APP_MODULES, MODULE_LABELS, type AppModule } from '@ofauria/shared';
+import {
+  APP_MODULES, MODULE_LABELS, MODULE_VERBS, BUSINESS_VERB_LABELS, DATA_SCOPES, DATA_SCOPE_LABELS,
+  type AppModule, type DataScope, type BusinessVerb,
+} from '@ofauria/shared';
 import { rolesApi, type RoleRow, type RolePermission } from '../../api/users.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -190,7 +193,12 @@ function RoleEditor({ role, onDeleted }: { role: RoleRow; onDeleted: () => void 
     const m: Record<string, RolePermission> = {};
     for (const mod of MODULES) {
       const s = saved.find(p => p.module === mod || ((shared as unknown as { MODULE_ALIASES?: Record<string, string[]> }).MODULE_ALIASES?.[mod] ?? []).includes(p.module));
-      m[mod] = s ? { ...s, module: mod } : { module: mod, canView: false, canCreate: false, canEdit: false, canDelete: false, config: {} };
+      m[mod] = {
+        module: mod,
+        canView: !!s?.canView, canCreate: !!s?.canCreate, canEdit: !!s?.canEdit, canDelete: !!s?.canDelete,
+        verbs: s?.verbs ?? [], scope: (s?.scope as DataScope) ?? 'store',
+        config: s?.config ?? {},
+      };
     }
     setPerms(m);
   }, [saved]);
@@ -217,14 +225,29 @@ function RoleEditor({ role, onDeleted }: { role: RoleRow; onDeleted: () => void 
 
   const toggle = (mod: string, f: Flag) => {
     const p = { ...perms[mod], [f]: !perms[mod][f] };
-    if (f === 'canView' && !p.canView) { p.canCreate = false; p.canEdit = false; p.canDelete = false; }
+    if (f === 'canView' && !p.canView) { p.canCreate = false; p.canEdit = false; p.canDelete = false; p.verbs = []; }
     if (f !== 'canView' && p[f]) p.canView = true;
     setPerms({ ...perms, [mod]: p });
   };
+  const setScope = (mod: string, scope: DataScope) => setPerms({ ...perms, [mod]: { ...perms[mod], scope } });
+  const toggleVerb = (mod: string, verb: BusinessVerb) => {
+    const cur = perms[mod].verbs ?? [];
+    const verbs = cur.includes(verb) ? cur.filter(v => v !== verb) : [...cur, verb];
+    setPerms({ ...perms, [mod]: { ...perms[mod], verbs } });
+  };
+  const verbsFor = (mod: string) => (MODULE_VERBS[mod as AppModule] ?? []) as BusinessVerb[];
+  const sameSet = (a: string[] = [], b: string[] = []) => [...a].sort().join(',') === [...b].sort().join(',');
   const dirty = !!saved && MODULES.some(mod => {
     const s = saved.find(p => p.module === mod);
     const c = perms[mod];
-    return c && ACTIONS.some(([f]) => (s?.[f] ?? false) !== c[f]);
+    if (!c) return false;
+    if (ACTIONS.some(([f]) => (s?.[f] ?? false) !== c[f])) return true;
+    if (((c.scope as string) ?? 'store') !== ((s?.scope as string) ?? 'store')) return true;
+    return !sameSet(c.verbs, s?.verbs);
+  });
+  const chip = (on: boolean): React.CSSProperties => ({
+    background: on ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: on ? '#fff' : 'var(--odoo-text)',
+    borderColor: on ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.2rem 0.55rem', fontSize: '0.7rem',
   });
 
   if (role.code === 'admin') {
@@ -255,17 +278,50 @@ function RoleEditor({ role, onDeleted }: { role: RoleRow; onDeleted: () => void 
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 90 }}>{l}</th>)}</tr></thead>
             <tbody>
-              {MODULES.map(mod => (
-                <tr key={mod} style={{ opacity: perms[mod]?.canView ? 1 : 0.65 }}>
-                  <td>{MODULE_LABELS[mod] ?? mod}</td>
-                  {ACTIONS.map(([f, l]) => (
-                    <td key={f} style={{ textAlign: 'center' }}>
-                      <input type="checkbox" id={`rp-${role.code}-${mod}-${f}`} aria-label={`${l} ${MODULE_LABELS[mod] ?? mod}`}
-                        checked={!!perms[mod]?.[f]} onChange={() => toggle(mod, f)} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {MODULES.map(mod => {
+                const p = perms[mod];
+                const verbs = verbsFor(mod);
+                return [
+                  <tr key={mod} style={{ opacity: p?.canView ? 1 : 0.65 }}>
+                    <td>{MODULE_LABELS[mod] ?? mod}</td>
+                    {ACTIONS.map(([f, l]) => (
+                      <td key={f} style={{ textAlign: 'center' }}>
+                        <input type="checkbox" id={`rp-${role.code}-${mod}-${f}`} aria-label={`${l} ${MODULE_LABELS[mod] ?? mod}`}
+                          checked={!!p?.[f]} onChange={() => toggle(mod, f)} />
+                      </td>
+                    ))}
+                  </tr>,
+                  p?.canView && (
+                    <tr key={`${mod}-scope`}>
+                      <td colSpan={1 + ACTIONS.length} style={{ background: 'var(--odoo-bg-alt)' }}>
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 16 }}>
+                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem' }}>
+                            <span style={{ fontWeight: 600 }}>Portée des données</span>
+                            <select className="odoo-input" style={{ width: 'auto', padding: '2px 6px' }}
+                              value={(p.scope as DataScope) ?? 'store'} onChange={e => setScope(mod, e.target.value as DataScope)}>
+                              {DATA_SCOPES.map(s => <option key={s} value={s}>{DATA_SCOPE_LABELS[s]}</option>)}
+                            </select>
+                          </label>
+                          {verbs.length > 0 && (
+                            <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Actions métier</span>
+                              {verbs.map(v => {
+                                const on = (p.verbs ?? []).includes(v);
+                                return (
+                                  <button key={v} type="button" className="odoo-filter-chip" style={chip(on)}
+                                    aria-pressed={on} onClick={() => toggleVerb(mod, v)}>
+                                    {on && <Check size={11} />} {BUSINESS_VERB_LABELS[v]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ),
+                ];
+              })}
             </tbody>
           </table>
         </div>

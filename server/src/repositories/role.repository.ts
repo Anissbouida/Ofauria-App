@@ -12,10 +12,22 @@ export interface RolePermissionInput {
 
 /** Rôles éditables et leurs droits par module (mig 330). */
 export const roleRepository = {
+  /** La table de liaison rôles multiples existe-t-elle (mig 335 appliquée) ? */
+  async userRolesExists(): Promise<boolean> {
+    const r = await db.query(`SELECT to_regclass('public.user_roles') IS NOT NULL AS ok`);
+    return !!r.rows[0]?.ok;
+  },
+
   async list() {
+    // Nombre de titulaires : via user_roles (rôles multiples, mig 335) si la
+    // table existe, sinon via users.role (compatibilité avant migration).
+    const userCount = (await this.userRolesExists())
+      ? `(SELECT count(DISTINCT ur.user_id)::int FROM user_roles ur JOIN users u ON u.id = ur.user_id
+            WHERE ur.role_code = r.code AND u.is_active)`
+      : `(SELECT count(*)::int FROM users u WHERE u.role = r.code AND u.is_active)`;
     const r = await db.query(
       `SELECT r.code, r.label, r.description, r.base_role, r.is_system, r.is_active, r.updated_at,
-              (SELECT count(*)::int FROM users u WHERE u.role = r.code AND u.is_active) AS user_count,
+              ${userCount} AS user_count,
               (SELECT count(*)::int FROM role_permissions p WHERE p.role_code = r.code AND p.can_view) AS module_count
          FROM roles r
         ORDER BY r.is_system DESC, r.label`,
@@ -86,7 +98,14 @@ export const roleRepository = {
 
   /** Invalide les jetons des utilisateurs du rôle (changement de rôle de base). */
   async revokeSessions(code: string) {
-    await db.query(`UPDATE users SET token_version = token_version + 1 WHERE role = $1`, [code]);
+    // Titulaires via user_roles (rôles multiples, mig 335) et via users.role.
+    if (await this.userRolesExists()) {
+      await db.query(
+        `UPDATE users SET token_version = token_version + 1
+          WHERE role = $1 OR id IN (SELECT user_id FROM user_roles WHERE role_code = $1)`, [code]);
+    } else {
+      await db.query(`UPDATE users SET token_version = token_version + 1 WHERE role = $1`, [code]);
+    }
   },
 
   async remove(code: string, actorId?: string) {

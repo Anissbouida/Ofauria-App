@@ -90,3 +90,64 @@ export interface UserPermission {
   canDelete: boolean;
   config: Record<string, unknown>;
 }
+
+// ─── Alignement ERP (Phase 1) ───────────────────────────────────────────
+// Deux dimensions que les grands ERP ajoutent au CRUD par module :
+//  1. des VERBES MÉTIER (approuver, valider, comptabiliser…) au-delà de
+//     créer/modifier/supprimer ;
+//  2. une PORTÉE DES DONNÉES déclarative (ses enregistrements / son
+//     établissement / tous), équivalent des « record rules » Odoo.
+// Les deux sont stockés dans le JSONB `config` d'un droit (role_permissions
+// ou user_permissions) : config.verbs (string[]) et config.scope. Aucune
+// colonne dédiée — voir migration 335 et services/access-rules.ts.
+
+/** Portée des données d'un droit (du plus restreint au plus large). */
+export type DataScope = 'own' | 'store' | 'all';
+export const DATA_SCOPES: DataScope[] = ['own', 'store', 'all'];
+/** Rang de permissivité : « all » > « store » > « own ». */
+export const DATA_SCOPE_RANK: Record<DataScope, number> = { own: 0, store: 1, all: 2 };
+export const DATA_SCOPE_LABELS: Record<DataScope, string> = {
+  own: 'Ses enregistrements',
+  store: 'Son établissement',
+  all: 'Tous les établissements',
+};
+/** Portée par défaut d'un droit non précisé : l'établissement de l'utilisateur. */
+export const DEFAULT_DATA_SCOPE: DataScope = 'store';
+
+/** Actions métier au-delà du CRUD (verbes ERP). */
+export type BusinessVerb = 'approve' | 'validate' | 'post' | 'export' | 'print' | 'close';
+export const BUSINESS_VERBS: BusinessVerb[] = ['approve', 'validate', 'post', 'export', 'print', 'close'];
+export const BUSINESS_VERB_LABELS: Record<BusinessVerb, string> = {
+  approve: 'Approuver',
+  validate: 'Valider',
+  post: 'Comptabiliser',
+  export: 'Exporter',
+  print: 'Imprimer',
+  close: 'Clôturer',
+};
+
+/**
+ * Verbes métier proposés par module (un module absent n'expose aucun verbe
+ * spécifique). Sert à l'écran des droits : seules ces cases apparaissent.
+ * L'application effective des verbes (ex. bloquer l'approbation d'un BC) se
+ * branche sur les flux métier (Phase 2, avec les limites d'approbation).
+ */
+export const MODULE_VERBS: Partial<Record<AppModule, BusinessVerb[]>> = {
+  purchasing: ['approve', 'validate', 'post', 'export', 'print'],
+  accounting: ['validate', 'post', 'export', 'print', 'close'],
+  production: ['validate', 'close', 'print'],
+  replenishment: ['approve', 'validate'],
+  employees: ['validate', 'export', 'print'],
+  recipes: ['validate', 'export', 'print'],
+  reports: ['export', 'print'],
+  sales: ['export', 'print'],
+  pos: ['print'],
+  reconciliation: ['validate', 'close'],
+};
+
+export function isBusinessVerb(v: unknown): v is BusinessVerb {
+  return typeof v === 'string' && (BUSINESS_VERBS as string[]).includes(v);
+}
+export function isDataScope(v: unknown): v is DataScope {
+  return typeof v === 'string' && (DATA_SCOPES as string[]).includes(v);
+}

@@ -6,22 +6,41 @@ import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
 import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
+import { normalizePermissions, permissionView } from '../services/permission-input.js';
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const users = await userRepository.findAll();
+    const [users, allRoles] = await Promise.all([userRepository.findAll(), userRepository.allUserRoles()]);
+    const rolesByUser = new Map<string, string[]>();
+    for (const r of allRoles) {
+      const arr = rolesByUser.get(r.user_id) ?? [];
+      arr.push(r.role_code);
+      rolesByUser.set(r.user_id, arr);
+    }
     const safe = users.map(u => ({
       id: u.id, email: u.email, firstName: u.first_name, lastName: u.last_name,
-      role: u.role, isActive: u.is_active, hasPin: !!u.pin_code, storeId: u.store_id, createdAt: u.created_at,
+      role: u.role, roles: rolesByUser.get(u.id) ?? (u.role ? [u.role] : []),
+      isActive: u.is_active, hasPin: !!u.pin_code, storeId: u.store_id, createdAt: u.created_at,
     }));
     res.json({ success: true, data: safe });
   },
 
   async create(req: AuthRequest, res: Response) {
     const { email, password, firstName, lastName, role, pinCode, storeId } = req.body;
-    if (!(await roleRepository.isAssignable(role))) {
-      res.status(400).json({ success: false, error: { message: 'Rôle inconnu ou désactivé' } });
+    // Rôles multiples (mig 335) : `roles` prime, sinon le champ `role` historique.
+    const roleCodes: string[] = Array.isArray(req.body.roles) && req.body.roles.length
+      ? req.body.roles.map((r: unknown) => String(r))
+      : (role ? [String(role)] : []);
+    if (roleCodes.length === 0) {
+      res.status(400).json({ success: false, error: { message: 'Au moins un rôle est requis' } });
       return;
+    }
+    const primaryRole = roleCodes.includes(String(req.body.primaryRole)) ? String(req.body.primaryRole) : roleCodes[0];
+    for (const c of roleCodes) {
+      if (!(await roleRepository.isAssignable(c))) {
+        res.status(400).json({ success: false, error: { message: `Rôle inconnu ou désactivé : ${c}` } });
+        return;
+      }
     }
     const existing = await userRepository.findByEmail(email);
     if (existing) {
@@ -37,12 +56,13 @@ export const userController = {
       }
     }
     const passwordHash = await hashPassword(password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role, storeId }, req.user?.userId);
+    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId }, req.user?.userId);
     if (pinCode) {
       const pinHash = await hashPin(pinCode);
       await userRepository.update(user.id, { pinCode: pinHash }, req.user?.userId);
     }
-    const updated = pinCode ? await userRepository.findById(user.id) : user;
+    await userRepository.setRoleCodes(user.id, roleCodes, primaryRole, req.user?.userId);
+    const updated = await userRepository.findById(user.id);
 
     // OWASP A09-2 : audit trail creation compte.
     await authEventRepository.recordFromRequest(req, {
@@ -57,7 +77,7 @@ export const userController = {
     res.status(201).json({
       success: true, data: {
         id: updated!.id, email: updated!.email, firstName: updated!.first_name, lastName: updated!.last_name,
-        role: updated!.role, isActive: updated!.is_active, hasPin: !!updated!.pin_code, storeId: updated!.store_id,
+        role: updated!.role, roles: roleCodes, isActive: updated!.is_active, hasPin: !!updated!.pin_code, storeId: updated!.store_id,
       },
     });
   },
@@ -66,10 +86,15 @@ export const userController = {
     const { email, password, firstName, lastName, role, isActive, pinCode, storeId } = req.body;
     const updateData: Record<string, unknown> = {};
 
-    // Defense en profondeur : seul un admin peut modifier role/storeId.
+    // Rôles multiples (mig 335) : `roles` (tableau) prime sur `role`.
+    const rolesInput: string[] | undefined = Array.isArray(req.body.roles)
+      ? req.body.roles.map((r: unknown) => String(r))
+      : undefined;
+
+    // Defense en profondeur : seul un admin peut modifier role(s)/storeId.
     // La route doit egalement etre protegee par authorize('admin'),
     // mais on re-verifie ici contre le token pour eviter toute escalade.
-    if (req.user?.role !== 'admin' && (role !== undefined || storeId !== undefined)) {
+    if (req.user?.role !== 'admin' && (role !== undefined || rolesInput !== undefined || storeId !== undefined)) {
       res.status(403).json({
         success: false,
         error: { message: 'Modification de role ou magasin reservee aux administrateurs' },
@@ -80,12 +105,28 @@ export const userController = {
     if (email !== undefined) updateData.email = email;
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
-    if (role !== undefined) {
+    // Rôle principal effectif après mise à jour (sert à détecter un changement).
+    let newPrimaryRole: string | undefined;
+    if (rolesInput !== undefined) {
+      if (rolesInput.length === 0) {
+        res.status(400).json({ success: false, error: { message: 'Au moins un rôle est requis' } });
+        return;
+      }
+      for (const c of rolesInput) {
+        if (!(await roleRepository.isAssignable(c))) {
+          res.status(400).json({ success: false, error: { message: `Rôle inconnu ou désactivé : ${c}` } });
+          return;
+        }
+      }
+      newPrimaryRole = rolesInput.includes(String(req.body.primaryRole)) ? String(req.body.primaryRole) : rolesInput[0];
+      // users.role est mis à jour par setRoleCodes (pas via updateData).
+    } else if (role !== undefined) {
       if (!(await roleRepository.isAssignable(role))) {
         res.status(400).json({ success: false, error: { message: 'Rôle inconnu ou désactivé' } });
         return;
       }
       updateData.role = role;
+      newPrimaryRole = String(role);
     }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (storeId !== undefined) updateData.storeId = storeId;
@@ -105,15 +146,20 @@ export const userController = {
 
     // Snapshot de l'ancien role pour detecter un changement de role
     const oldUser = await userRepository.findById(req.params.id);
-    const oldRole = (oldUser as any)?.role as string | undefined;
+    const oldRole = (oldUser as { role?: string } | null)?.role;
 
     const user = await userRepository.update(req.params.id, updateData as Parameters<typeof userRepository.update>[1], req.user?.userId);
     if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
 
-    // Si le role a change, purger les permissions custom pour que le fallback
-    // DEFAULT_ROLE_MODULES du nouveau role s'applique (sinon les permissions
-    // configurees sous l'ancien role masquent les modules du nouveau role).
-    if (role !== undefined && oldRole && role !== oldRole) {
+    // Rôles multiples : synchronise user_roles et users.role (= principal).
+    if (rolesInput !== undefined && newPrimaryRole) {
+      await userRepository.setRoleCodes(user.id, rolesInput, newPrimaryRole, req.user?.userId);
+    }
+
+    // Si le rôle principal a change, purger les permissions custom pour que les
+    // droits des nouveaux roles s'appliquent (sinon les permissions configurees
+    // sous l'ancien role masquent les modules des nouveaux roles).
+    if (newPrimaryRole !== undefined && oldRole && newPrimaryRole !== oldRole) {
       try {
         await permissionRepository.clearByUserId(user.id, req.user?.userId);
       } catch (err) {
@@ -123,7 +169,7 @@ export const userController = {
 
     // OWASP A07-5 : si les privileges ont change, invalider les tokens
     // existants de l'utilisateur cible en bumpant sa token_version.
-    const privilegeChange = role !== undefined || storeId !== undefined || isActive === false || !!password;
+    const privilegeChange = role !== undefined || rolesInput !== undefined || storeId !== undefined || isActive === false || !!password;
     if (privilegeChange) {
       await userRepository.bumpTokenVersion(user.id);
     }
@@ -136,15 +182,16 @@ export const userController = {
       email: user.email,
       success: true,
       details: {
-        changed: Object.keys(updateData),
+        changed: [...Object.keys(updateData), ...(rolesInput !== undefined ? ['roles'] : [])],
         privilegeChange,
       },
     });
 
+    const roles = await userRepository.getRoleCodes(user.id);
     res.json({
       success: true, data: {
         id: user.id, email: user.email, firstName: user.first_name, lastName: user.last_name,
-        role: user.role, isActive: user.is_active, hasPin: !!user.pin_code, storeId: user.store_id,
+        role: newPrimaryRole ?? user.role, roles, isActive: user.is_active, hasPin: !!user.pin_code, storeId: user.store_id,
       },
     });
   },
@@ -165,31 +212,21 @@ export const userController = {
 
   async getPermissions(req: AuthRequest, res: Response) {
     const perms = await permissionRepository.findByUserId(req.params.id);
-    const data = perms.map(p => ({
-      module: p.module,
-      canView: p.can_view,
-      canCreate: p.can_create,
-      canEdit: p.can_edit,
-      canDelete: p.can_delete,
-      config: p.config,
-    }));
+    const data = perms.map(p => permissionView(p));
     res.json({ success: true, data });
   },
 
   async setPermissions(req: AuthRequest, res: Response) {
-    const { permissions } = req.body;
-    await permissionRepository.setPermissions(req.params.id, permissions, req.user?.userId);
+    const perms = normalizePermissions(req.body?.permissions);
+    if (typeof perms === 'string') {
+      res.status(400).json({ success: false, error: { message: perms } });
+      return;
+    }
+    await permissionRepository.setPermissions(req.params.id, perms, req.user?.userId);
     // OWASP A07-5 : un changement de permissions invalide les tokens actifs.
     await userRepository.bumpTokenVersion(req.params.id);
-    const perms = await permissionRepository.findByUserId(req.params.id);
-    const data = perms.map(p => ({
-      module: p.module,
-      canView: p.can_view,
-      canCreate: p.can_create,
-      canEdit: p.can_edit,
-      canDelete: p.can_delete,
-      config: p.config,
-    }));
+    const saved = await permissionRepository.findByUserId(req.params.id);
+    const data = saved.map(p => permissionView(p));
     // OWASP A09-2 : audit trail modif permissions.
     await authEventRepository.recordFromRequest(req, {
       eventType: 'permission_changed',
@@ -211,14 +248,7 @@ export const userController = {
     const perms = !rights.isAdmin && rights.rows.length === 0
       ? [{ module: 'none', can_view: false, can_create: false, can_edit: false, can_delete: false, config: {} }]
       : rights.rows;
-    const data = perms.map(p => ({
-      module: p.module,
-      canView: p.can_view,
-      canCreate: p.can_create,
-      canEdit: p.can_edit,
-      canDelete: p.can_delete,
-      config: p.config,
-    }));
+    const data = perms.map(p => permissionView(p));
     res.json({ success: true, data });
   },
 };

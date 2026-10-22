@@ -1,11 +1,10 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
-import { APP_MODULES } from '@ofauria/shared';
-import { roleRepository, type RolePermissionInput } from '../repositories/role.repository.js';
+import { roleRepository } from '../repositories/role.repository.js';
 import { invalidateEnforcementMode, invalidateRolesCache } from '../services/access-rights.js';
+import { normalizePermissions, permissionView } from '../services/permission-input.js';
 
 const BASE_ROLES = ['manager', 'cashier', 'saleswoman', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale', 'magasinier'];
-const MODULES = new Set<string>(Object.values(APP_MODULES));
 
 const bad = (res: Response, message: string, status = 400) =>
   res.status(status).json({ success: false, error: { message } });
@@ -14,23 +13,6 @@ const bad = (res: Response, message: string, status = 400) =>
 function slug(label: string) {
   return label.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
-}
-
-function readPermissions(raw: unknown): RolePermissionInput[] | string {
-  if (!Array.isArray(raw)) return 'Liste de droits attendue';
-  const out: RolePermissionInput[] = [];
-  for (const p of raw as Record<string, unknown>[]) {
-    if (typeof p?.module !== 'string' || !MODULES.has(p.module)) return `Module inconnu : ${String(p?.module)}`;
-    const v = !!p.canView;
-    out.push({
-      module: p.module,
-      // Créer / modifier / supprimer impliquent voir.
-      canView: v || !!p.canCreate || !!p.canEdit || !!p.canDelete,
-      canCreate: !!p.canCreate, canEdit: !!p.canEdit, canDelete: !!p.canDelete,
-      config: (p.config && typeof p.config === 'object') ? p.config as Record<string, unknown> : {},
-    });
-  }
-  return out.filter(p => p.canView);
 }
 
 /** Rôles et droits par rôle (Utilisateurs › Rôles, mig 330). Réservé à l'administrateur. */
@@ -44,9 +26,7 @@ export const roleController = {
     const rows = await roleRepository.permissions(req.params.code);
     res.json({
       success: true,
-      data: rows.map((p: Record<string, unknown>) => ({
-        module: p.module, canView: p.can_view, canCreate: p.can_create, canEdit: p.can_edit, canDelete: p.can_delete, config: p.config,
-      })),
+      data: rows.map((p) => permissionView(p as Parameters<typeof permissionView>[0])),
     });
   },
 
@@ -107,10 +87,11 @@ export const roleController = {
     const role = await roleRepository.find(req.params.code);
     if (!role) { bad(res, 'Rôle inconnu', 404); return; }
     if (role.code === 'admin') { bad(res, 'L\'administrateur a tous les droits'); return; }
-    const perms = readPermissions(req.body?.permissions);
+    const perms = normalizePermissions(req.body?.permissions);
     if (typeof perms === 'string') { bad(res, perms); return; }
     await roleRepository.setPermissions(role.code, perms, req.user?.userId);
-    res.json({ success: true, data: await roleRepository.permissions(role.code) });
+    const rows = await roleRepository.permissions(role.code);
+    res.json({ success: true, data: rows.map((p) => permissionView(p as Parameters<typeof permissionView>[0])) });
   },
 
   async security(_req: AuthRequest, res: Response) {

@@ -23,7 +23,12 @@ export interface RoleRow {
   module_count: number;
 }
 export interface RolePermission {
-  module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; config?: Record<string, unknown>;
+  module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean;
+  /** Verbes métier accordés (mig 335) : approuver, valider, comptabiliser… */
+  verbs?: string[];
+  /** Portée des données (mig 335) : 'own' | 'store' | 'all'. */
+  scope?: string;
+  config?: Record<string, unknown>;
 }
 export interface AccessDenial {
   route: string; role_code: string; hits: number; users: number; user_names: string; last_at: string; modules: string[] | null;

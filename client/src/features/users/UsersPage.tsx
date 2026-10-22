@@ -13,8 +13,11 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { HrModal, Field, SubmitButton, EmptyState } from '../employees/ui';
 import * as shared from '@ofauria/shared';
-import { ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, SETTINGS_SECTION_LABELS } from '@ofauria/shared';
-import type { AppModule, UserPermission, SettingsSection } from '@ofauria/shared';
+import {
+  ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, SETTINGS_SECTION_LABELS,
+  MODULE_VERBS, BUSINESS_VERB_LABELS, DATA_SCOPES, DATA_SCOPE_LABELS,
+} from '@ofauria/shared';
+import type { AppModule, UserPermission, SettingsSection, DataScope, BusinessVerb } from '@ofauria/shared';
 import '../settings/settings.css';
 
 /**
@@ -105,6 +108,8 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
   const { roles, label: roleLabel } = useRoleLabel();
   const storeName = (id: unknown) => stores.find(s => s.id === id)?.name as string | undefined;
+  // Rôles multiples (mig 335) : repli sur le rôle principal si la liste est absente.
+  const rolesOf = (u: UserRow): string[] => (Array.isArray(u.roles) && u.roles.length ? u.roles : (u.role ? [u.role] : []));
 
   const toggleActive = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => usersApi.update(id, { isActive }),
@@ -133,12 +138,12 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
     const n = normalize(q.trim());
     return users.filter(u =>
       (status === 'all' || (status === 'active') === !!u.isActive)
-      && (!roleFilter || u.role === roleFilter)
-      && (!n || normalize(`${u.firstName} ${u.lastName} ${u.email} ${roleLabel(u.role)} ${storeName(u.storeId) ?? ''}`).includes(n)));
+      && (!roleFilter || rolesOf(u).includes(roleFilter))
+      && (!n || normalize(`${u.firstName} ${u.lastName} ${u.email} ${rolesOf(u).map(roleLabel).join(' ')} ${storeName(u.storeId) ?? ''}`).includes(n)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [users, q, roleFilter, status, roles, stores]);
 
-  const roleOptions = [...new Set(users.map(u => u.role as string))].sort((a, b) => roleLabel(a).localeCompare(roleLabel(b)));
+  const roleOptions = [...new Set(users.flatMap(rolesOf))].sort((a, b) => roleLabel(a).localeCompare(roleLabel(b)));
 
   return (
     <>
@@ -197,7 +202,13 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                   <tr key={u.id} id={`user-row-${u.id}`} onClick={() => onEdit(u)} style={{ cursor: 'pointer', opacity: u.isActive ? 1 : 0.6 }}>
                     <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
                     <td style={{ color: 'var(--odoo-text-muted)' }}>{u.email}</td>
-                    <td><span className="odoo-tag odoo-tag-purple">{roleLabel(u.role)}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {rolesOf(u).map(rc => (
+                          <span key={rc} className={`odoo-tag ${rc === u.role ? 'odoo-tag-purple' : 'odoo-tag-grey'}`}>{roleLabel(rc)}</span>
+                        ))}
+                      </div>
+                    </td>
                     <td>
                       {store
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={12} /> {store}</span>
@@ -247,22 +258,26 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   const queryClient = useQueryClient();
   const { roles } = useRoleLabel();
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
+  const initialRoles = (Array.isArray(user?.roles) && (user!.roles as string[]).length
+    ? (user!.roles as string[]) : (user?.role ? [user.role as string] : ['cashier']));
   const [form, setForm] = useState({
     firstName: (user?.firstName as string) ?? '', lastName: (user?.lastName as string) ?? '', email: (user?.email as string) ?? '',
-    password: '', pinCode: '', role: (user?.role as string) || 'cashier', storeId: (user?.storeId as string) ?? '',
+    password: '', pinCode: '', storeId: (user?.storeId as string) ?? '',
   });
+  const [roleCodes, setRoleCodes] = useState<string[]>(initialRoles);
+  const [primaryRole, setPrimaryRole] = useState<string>((user?.role as string) || initialRoles[0]);
   const [removePin, setRemovePin] = useState(false);
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const pinInvalid = !!form.pinCode && !/^\d{4,6}$/.test(form.pinCode);
   const passwordInvalid = !user && form.password.length < 4;
-  const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid;
+  const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid || roleCodes.length === 0;
 
   const save = useMutation({
     mutationFn: () => {
       const data: Record<string, unknown> = {
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(),
-        role: form.role, storeId: form.storeId || null,
+        roles: roleCodes, primaryRole, storeId: form.storeId || null,
       };
       if (form.password) data.password = form.password;
       // PIN vide : inchangé en modification (l'ancien formulaire l'effaçait), absent à la création.
@@ -279,8 +294,13 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   });
 
   const roleChoices = roles.length
-    ? roles.filter(r => r.is_active || r.code === user?.role).map(r => [r.code, r.label] as const)
+    ? roles.filter(r => r.is_active || roleCodes.includes(r.code)).map(r => [r.code, r.label] as const)
     : Object.entries(ROLE_LABELS);
+  const toggleRole = (code: string) => {
+    const next = roleCodes.includes(code) ? roleCodes.filter(c => c !== code) : [...roleCodes, code];
+    setRoleCodes(next);
+    if (!next.includes(primaryRole)) setPrimaryRole(next[0] ?? '');
+  };
 
   return (
     <HrModal icon={Lock} crumb="Utilisateurs" title={user ? `${user.firstName} ${user.lastName}` : 'Nouvel utilisateur'}
@@ -318,10 +338,26 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
           </div>
         </Field>
       </div>
+      <Field label="Rôles" hint="Plusieurs rôles cumulent leurs droits (le plus permissif gagne). Droits par défaut : onglet Rôles et contrôle.">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {roleChoices.map(([code, label]) => {
+            const on = roleCodes.includes(code);
+            return (
+              <button key={code} type="button" className="odoo-filter-chip" aria-pressed={on} onClick={() => toggleRole(code)}
+                style={{ background: on ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: on ? '#fff' : 'var(--odoo-text)', borderColor: on ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}>
+                {on && <Check size={11} />} {label}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="Rôle" hint="Droits par défaut : onglet Rôles et contrôle">
-          <select id="user-role" className="odoo-input" value={form.role} onChange={e => set('role', e.target.value)}>
-            {roleChoices.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+        <Field label="Rôle principal" hint="Fixe le périmètre technique (écrans, filtres) du compte">
+          <select id="user-primary-role" className="odoo-input" value={primaryRole} onChange={e => setPrimaryRole(e.target.value)} disabled={roleCodes.length <= 1}>
+            {roleCodes.map(code => {
+              const label = roleChoices.find(([c]) => c === code)?.[1] ?? ROLE_LABELS[code as keyof typeof ROLE_LABELS] ?? code;
+              return <option key={code} value={code}>{label}</option>;
+            })}
           </select>
         </Field>
         <Field label="Établissement" hint="Boutique ou site de rattachement">
@@ -342,6 +378,10 @@ interface PermState {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** Verbes métier accordés (mig 335). */
+  verbs: string[];
+  /** Portée des données (mig 335). */
+  scope: string;
   config: Record<string, any>;
 }
 
@@ -407,26 +447,32 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
       const keys: string[] = [mod, ...(ALIASES[mod] ?? [])];
       const existing = existingList.find(p => keys.includes(p.module));
       if (existing) {
+        const cfg = (existing.config || {}) as Record<string, any>;
         state[mod] = {
           canView: existing.canView,
           canCreate: existing.canCreate,
           canEdit: existing.canEdit,
           canDelete: existing.canDelete,
-          config: existing.config || {},
+          verbs: (cfg.verbs as string[]) ?? [],
+          scope: (cfg.scope as string) ?? 'store',
+          config: cfg,
         };
       } else if (hasCustomPerms) {
         // Custom permissions exist but this module is not in the list → no access
-        state[mod] = { canView: false, canCreate: false, canEdit: false, canDelete: false, config: {} };
+        state[mod] = { canView: false, canCreate: false, canEdit: false, canDelete: false, verbs: [], scope: 'store', config: {} };
       } else {
         // No custom permissions at all → fall back to the role's rights
         const fromRole = rolePerms?.find(p => p.module === mod);
+        const roleCfg = (fromRole?.config as Record<string, any>) || {};
         const hasAccess = rolePerms ? !!fromRole?.canView : defaultModules.includes(mod);
         state[mod] = {
           canView: hasAccess,
           canCreate: rolePerms ? !!fromRole?.canCreate : hasAccess,
           canEdit: rolePerms ? !!fromRole?.canEdit : hasAccess,
           canDelete: rolePerms ? !!fromRole?.canDelete : false,
-          config: (fromRole?.config as Record<string, any>) || {},
+          verbs: (fromRole?.verbs as string[]) ?? (roleCfg.verbs as string[]) ?? [],
+          scope: (fromRole?.scope as string) ?? (roleCfg.scope as string) ?? 'store',
+          config: roleCfg,
         };
       }
     }
@@ -470,6 +516,7 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
       next[mod].canCreate = false;
       next[mod].canEdit = false;
       next[mod].canDelete = false;
+      next[mod].verbs = [];
     }
     // If checking create/edit/delete, ensure canView is on
     if (field !== 'canView' && next[mod][field]) next[mod].canView = true;
@@ -480,6 +527,17 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
     if (!perms) return;
     setPerms({ ...perms, [mod]: { ...perms[mod], config: { ...perms[mod].config, ...config } } });
   };
+  const setScope = (mod: AppModule, scope: string) => {
+    if (!perms) return;
+    setPerms({ ...perms, [mod]: { ...perms[mod], scope } });
+  };
+  const toggleVerb = (mod: AppModule, verb: BusinessVerb) => {
+    if (!perms) return;
+    const cur = perms[mod].verbs ?? [];
+    const verbs = cur.includes(verb) ? cur.filter(v => v !== verb) : [...cur, verb];
+    setPerms({ ...perms, [mod]: { ...perms[mod], verbs } });
+  };
+  const verbsFor = (mod: AppModule) => (MODULE_VERBS[mod] ?? []) as BusinessVerb[];
   const toggleCategorySlug = (mod: AppModule, slug: string) => {
     const current = (perms?.[mod].config.category_slugs as string[]) || [];
     setConfig(mod, { category_slugs: current.includes(slug) ? current.filter(s => s !== slug) : [...current, slug] });
@@ -542,6 +600,35 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                       </td>
                     ))}
                   </tr>,
+                  p.canView && (
+                    <tr key={`${mod}-scope`}>
+                      <td colSpan={5} style={{ background: 'var(--odoo-bg-alt)' }}>
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 16 }}>
+                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem' }}>
+                            <span style={{ fontWeight: 600 }}>Portée des données</span>
+                            <select className="odoo-input" style={{ width: 'auto', padding: '2px 6px' }}
+                              value={p.scope || 'store'} onChange={e => setScope(mod, e.target.value)}>
+                              {DATA_SCOPES.map(s => <option key={s} value={s}>{DATA_SCOPE_LABELS[s]}</option>)}
+                            </select>
+                          </label>
+                          {verbsFor(mod).length > 0 && (
+                            <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Actions métier</span>
+                              {verbsFor(mod).map(v => {
+                                const on = (p.verbs || []).includes(v);
+                                return (
+                                  <button key={v} type="button" className="odoo-filter-chip" style={chip(on)}
+                                    aria-pressed={on} onClick={() => toggleVerb(mod, v)}>
+                                    {on && <Check size={11} />} {BUSINESS_VERB_LABELS[v]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ),
                   mod === 'settings' && p.canView && (
                     <tr key={`${mod}-sections`}>
                       <td colSpan={5} style={{ background: 'var(--odoo-bg-alt)' }}>
