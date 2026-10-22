@@ -28,6 +28,11 @@ export const APP_MODULES = {
   packaging: 'packaging',
   /** Rapprochement journalier (ISOLE, TEMPORAIRE) : appro - vendu - invendu. */
   reconciliation: 'reconciliation',
+  /** Stock unifie (fusion Economat + Pesage) : cle CANONIQUE. Alias legacy :
+   *  economat / inventory / pesage / warehouse (cf. MODULE_ALIASES). */
+  stock: 'stock',
+  /** Controle & Qualite (pertes, HACCP, tracabilite, controle des ventes). */
+  controle: 'controle',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -66,21 +71,44 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   warehouse: 'Pesage',  // alias retrocompat
   packaging: 'Emballages',
   reconciliation: 'Contrôle des ventes',
+  stock: 'Stock',
+  controle: 'Contrôle & Qualité',
 };
 
-/** Default permissions per role (used when no custom permissions are set) */
+/** Default permissions per role (used when no custom permissions are set).
+ *  Cles CANONIQUES (stock = economat+pesage unifies, cf. MODULE_ALIASES). */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging', 'reconciliation'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
-  baker: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  pastry_chef: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  viennoiserie: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  beldi_sale: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  /** Magasinier : pesage (BSI + sacs ouverts) + economat (stock scelle) + approv + emballages. */
-  magasinier: ['pesage', 'economat', 'replenishment', 'packaging'],
+  baker: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  pastry_chef: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  viennoiserie: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  beldi_sale: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  /** Magasinier : stock (economat + pesage unifies) + approv + emballages. */
+  magasinier: ['stock', 'replenishment', 'packaging'],
 };
+
+/**
+ * Fusion Stock : 'stock' est la cle canonique ; les cles historiques
+ * economat/inventory/pesage/warehouse designent le meme module (droit unique).
+ * MODULE_ALIASES mappe canonique -> cles legacy ; LEGACY_MODULE_KEYS liste les
+ * cles a MASQUER dans l'ecran des droits (remplacees par 'stock').
+ */
+export const MODULE_ALIASES: Partial<Record<string, string[]>> = {
+  stock: ['economat', 'inventory', 'pesage', 'warehouse'],
+};
+export const LEGACY_MODULE_KEYS: ReadonlySet<string> = new Set(['economat', 'inventory', 'pesage', 'warehouse']);
+
+/** Un module et ses cles equivalentes (canonique <-> legacy), dans les deux sens. */
+export function resolveModuleKeys(module: string): string[] {
+  const keys = new Set<string>([module, ...(MODULE_ALIASES[module] ?? [])]);
+  for (const [canon, aliases] of Object.entries(MODULE_ALIASES)) {
+    if (aliases?.includes(module)) { keys.add(canon); aliases.forEach(a => keys.add(a)); }
+  }
+  return [...keys];
+}
 
 export interface UserPermission {
   module: AppModule;
