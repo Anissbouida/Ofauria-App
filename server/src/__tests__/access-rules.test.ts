@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasRight, hasVerb, effectiveScope, unionRights, moduleKeys, hasCapability, evaluateSod } from '../services/access-rules.js';
+import { hasRight, hasVerb, effectiveScope, scopeStoreFilter, unionRights, moduleKeys, hasCapability, evaluateSod } from '../services/access-rules.js';
 import type { EffectiveRights, RightRow, SodRule } from '../services/access-rules.js';
 
 const row = (module: string, p: Partial<RightRow> = {}): RightRow => ({
@@ -79,6 +79,12 @@ describe('unionRights (rôles multiples)', () => {
     ]);
     expect((u[0].config.category_slugs as string[]).sort()).toEqual(['macaron', 'viennoiseries']);
   });
+});
+
+describe('scopeStoreFilter (portée → filtre de requête)', () => {
+  it('all : aucun filtre', () => expect(scopeStoreFilter('all', 's1', 'u1')).toEqual({}));
+  it('store : établissement de l\'utilisateur', () => expect(scopeStoreFilter('store', 's1', 'u1')).toEqual({ storeId: 's1' }));
+  it('own : enregistrements créés par l\'utilisateur', () => expect(scopeStoreFilter('own', 's1', 'u1')).toEqual({ createdBy: 'u1' }));
 });
 
 describe('hasCapability (gouvernance)', () => {

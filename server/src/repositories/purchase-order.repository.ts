@@ -5,12 +5,14 @@ import { packagingItemRepository } from './packaging-item.repository.js';
 import type { PoolClient } from 'pg';
 
 export const purchaseOrderRepository = {
-  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
+  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; createdBy?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     if (params.storeId) { conditions.push(`po.store_id = $${i++}`); values.push(params.storeId); }
+    // Portée « own » (mig 335/336) : limiter aux bons créés par l'utilisateur.
+    if (params.createdBy) { conditions.push(`po.created_by = $${i++}`); values.push(params.createdBy); }
     if (params.supplierId) { conditions.push(`po.supplier_id = $${i++}`); values.push(params.supplierId); }
     if (params.status) { conditions.push(`po.status = $${i++}`); values.push(params.status); }
     if (params.dateFrom) { conditions.push(`po.order_date >= $${i++}`); values.push(params.dateFrom); }

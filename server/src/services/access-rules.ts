@@ -90,6 +90,19 @@ export function hasVerb(rights: EffectiveRights, modules: string[], verb: string
 }
 
 /**
+ * Traduit une portée en filtre pour une requête de liste :
+ *   - 'all'   : aucun filtre ;
+ *   - 'store' : limité à l'établissement de l'utilisateur ;
+ *   - 'own'   : limité aux enregistrements créés par l'utilisateur.
+ * Pur et testable ; les contrôleurs appliquent storeId / createdBy à leurs requêtes.
+ */
+export function scopeStoreFilter(scope: DataScope, userStoreId?: string, userId?: string): { storeId?: string; createdBy?: string } {
+  if (scope === 'all') return {};
+  if (scope === 'own') return { createdBy: userId };
+  return { storeId: userStoreId };
+}
+
+/**
  * Portée effective des données pour un module : la plus permissive parmi les
  * droits qui le couvrent (all > store > own). Administrateur : 'all'. Un droit
  * sans portée vaut 'store' (comportement actuel d'isolation par établissement).

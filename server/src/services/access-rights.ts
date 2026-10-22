@@ -13,9 +13,10 @@ import { unionRights } from './access-rules.js';
  * sur DEFAULT_ROLE_MODULES : voir / créer / modifier, jamais supprimer.
  */
 
-export { hasRight, hasVerb, effectiveScope, hasCapability, evaluateSod, moduleKeys, rightRow, unionRights } from './access-rules.js';
+export { hasRight, hasVerb, effectiveScope, scopeStoreFilter, hasCapability, evaluateSod, moduleKeys, rightRow, unionRights } from './access-rules.js';
 export type { RightAction, RightRow, EffectiveRights, DataScope, SodRule, SodViolation } from './access-rules.js';
-import type { RightRow, EffectiveRights } from './access-rules.js';
+import type { RightRow, EffectiveRights, DataScope } from './access-rules.js';
+import { effectiveScope } from './access-rules.js';
 
 // ─── Rôles (cache court : un rôle modifié s'applique en moins de 30 s) ─────
 type RoleInfo = { code: string; label: string; baseRole: string; isSystem: boolean };
@@ -155,4 +156,10 @@ export async function effectiveRights(userId: string): Promise<EffectiveRights> 
     roleCode, baseRole, roles: roleCodes, baseRoles, isAdmin: false, source: 'role',
     rows: [...defaults].map(module => ({ module, can_view: true, can_create: true, can_edit: true, can_delete: false, config: {} })),
   };
+}
+
+/** Portée effective des données d'un utilisateur pour un module (admin : 'all'). */
+export async function effectiveScopeFor(userId: string, module: string): Promise<DataScope> {
+  const rights = await effectiveRights(userId);
+  return effectiveScope(rights, module);
 }
