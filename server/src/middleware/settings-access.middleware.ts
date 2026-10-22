@@ -26,6 +26,18 @@ async function settingsRights(user: NonNullable<AuthRequest['user']>): Promise<{
   };
 }
 
+/**
+ * Sections que l'utilisateur peut voir et modifier (null = toutes), pour les
+ * écrans qui couvrent plusieurs sections (Paramètres métier).
+ */
+export async function settingsAccess(user: NonNullable<AuthRequest['user']>): Promise<{
+  canView: (s: SettingsSection) => boolean; canEdit: (s: SettingsSection) => boolean;
+}> {
+  const { can, sections } = await settingsRights(user);
+  const inScope = (s: SettingsSection) => !sections || sections.includes(s);
+  return { canView: s => can.view && inScope(s), canEdit: s => can.edit && inScope(s) };
+}
+
 function deny(res: Response, message = 'Accès interdit') {
   res.status(403).json({ success: false, error: { message } });
 }

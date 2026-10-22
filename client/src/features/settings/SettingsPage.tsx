@@ -13,7 +13,7 @@ import {
   Database, Check, X, Search, Download,
   ChevronLeft, RotateCw, History, BarChart3, EyeOff, Users,
   Paintbrush, ChevronDown, ChevronUp, ShoppingBag,
-  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash,
+  Wallet, Factory, Package, ChevronRight, ShieldCheck, Lock, Hash, SlidersHorizontal,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -22,12 +22,13 @@ import SachetsTab from './SachetsTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
+import ParametersPanel from './ParametersPanel';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering';
+type SettingsTab = 'general' | 'appearance' | 'print' | 'stores' | 'referentiel' | 'production' | 'sachets' | 'audit' | 'numbering' | 'parameters';
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -82,6 +83,7 @@ export default function SettingsPage() {
     { key: 'appearance', section: 'appearance', label: 'Apparence', description: 'Theme, couleurs et affichage', icon: <Paintbrush size={18} /> },
     { key: 'print', section: 'print', label: 'Impression', description: 'Tickets de caisse et imprimantes', icon: <Printer size={18} /> },
     { key: 'stores', section: 'stores', label: 'Points de vente', description: 'Magasins et boutiques', icon: <Store size={18} /> },
+    { key: 'parameters', section: 'business', label: 'Parametres metier', description: 'Regles de gestion par domaine, en un seul endroit', icon: <SlidersHorizontal size={18} /> },
     { key: 'numbering', section: 'numbering', label: 'Numerotation', description: 'Series de numeros des pieces', icon: <Hash size={18} /> },
     { key: 'referentiel', section: 'referentiel', label: 'Referentiel', description: 'Tables de parametrage', icon: <Database size={18} /> },
     { key: 'production', section: 'production', label: 'Production', description: 'Charges fixes et couts', icon: <BarChart3 size={18} /> },
@@ -115,8 +117,7 @@ export default function SettingsPage() {
       {currentTab === 'referentiel' && <ReferentielTab />}
       {currentTab === 'production' && (
         <>
-          <ProductionChargesTab />
-          <PriceRoundingTab />
+          <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} />
           <SalesChannelsTab />
           <ProductionMarkupTab />
         </>
@@ -124,6 +125,12 @@ export default function SettingsPage() {
       {currentTab === 'sachets' && <SachetsTab />}
       {currentTab === 'audit' && <AuditLogTab />}
       {currentTab === 'numbering' && <NumberingTab />}
+      {currentTab === 'parameters' && (
+        <div className="space-y-6">
+          <ParametersPanel />
+          <OtherSettingsLinks onOpen={(t) => setActiveTab(t)} />
+        </div>
+      )}
     </>
   );
 
@@ -245,7 +252,7 @@ function GeneralTab({
       </SettingsSection>
 
       <LegalIdentitySection />
-      <StaffDiscountSection />
+      <ParametersPanel keys={['sales.staff_discount']} />
     </>
   );
 }
@@ -598,56 +605,6 @@ function AppearanceTab() {
         </div>
       </SettingsSection>
     </>
-  );
-}
-
-/* ─── Staff Discount Section ─── */
-function StaffDiscountSection() {
-  const { settings, updateSettings } = useSettings();
-  const [discount, setDiscount] = useState(settings.staffDiscountPercent ?? 10);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setDiscount(settings.staffDiscountPercent ?? 10);
-  }, [settings.staffDiscountPercent]);
-
-  const hasChanges = discount !== (settings.staffDiscountPercent ?? 10);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateSettings({ staffDiscountPercent: discount });
-      notify.success('Remise personnel enregistree');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <SettingsSection title="Commandes personnel">
-      <SettingItem
-        title="Remise personnel"
-        description="Remise appliquee automatiquement aux commandes du personnel (ex: 10 = -10%)"
-      >
-        <div className="flex items-center gap-3">
-          <div className="relative w-32">
-            <input type="number" min={0} max={100} step={1} value={discount}
-              onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-              className="input w-full font-bold pr-8" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">%</span>
-          </div>
-          {hasChanges && (
-            <button onClick={handleSave} disabled={saving}
-              className="btn-primary px-4 py-2 flex items-center gap-2 text-sm">
-              {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={16} />}
-              Enregistrer
-            </button>
-          )}
-        </div>
-      </SettingItem>
-    </SettingsSection>
   );
 }
 
@@ -1952,81 +1909,6 @@ function EntryRow({
   );
 }
 
-/* ============ PRODUCTION CHARGES TAB ============ */
-
-function PriceRoundingTab() {
-  const { settings, updateSettings } = useSettings();
-  const [strategie, setStrategie] = useState<'aucun' | 'au_dh' | 'au_demi_dh' | 'au_5dh'>(settings.prixArrondiStrategie || 'aucun');
-  const [sens, setSens] = useState<'inferieur' | 'superieur' | 'naturel'>(settings.prixArrondiSens || 'superieur');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setStrategie(settings.prixArrondiStrategie || 'aucun');
-    setSens(settings.prixArrondiSens || 'superieur');
-  }, [settings.prixArrondiStrategie, settings.prixArrondiSens]);
-
-  const hasChanges = strategie !== (settings.prixArrondiStrategie || 'aucun')
-    || sens !== (settings.prixArrondiSens || 'superieur');
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateSettings({ prixArrondiStrategie: strategie, prixArrondiSens: sens });
-      notify.success('Strategie d\'arrondi enregistree');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Aperçu sur un prix de réf : 47.32 DH
-  const previewBrut = 47.32;
-  const applyRounding = (p: number) => {
-    if (strategie === 'aucun') return p;
-    const pas = strategie === 'au_dh' ? 1 : strategie === 'au_demi_dh' ? 0.5 : 5;
-    if (sens === 'inferieur') return Math.floor(p / pas) * pas;
-    if (sens === 'superieur') return Math.ceil(p / pas) * pas;
-    return Math.round(p / pas) * pas;
-  };
-  const previewArrondi = applyRounding(previewBrut);
-
-  return (
-    <SettingsSection
-      title="Arrondi des prix de vente"
-      description="Strategie appliquee au prix calcule (cout × marge) pour les recettes et formats. Le POS continue d'afficher avec 2 decimales."
-    >
-      <SettingItem title="Strategie" description="Pas de l'arrondi">
-        <select value={strategie} onChange={e => setStrategie(e.target.value as typeof strategie)} className="input w-56">
-          <option value="aucun">Aucun (decimales brutes)</option>
-          <option value="au_demi_dh">Au 0.5 DH</option>
-          <option value="au_dh">Au DH (entier)</option>
-          <option value="au_5dh">Au 5 DH</option>
-        </select>
-      </SettingItem>
-      <SettingItem title="Sens" description="Comment arrondir">
-        <select value={sens} onChange={e => setSens(e.target.value as typeof sens)} className="input w-56" disabled={strategie === 'aucun'}>
-          <option value="superieur">Vers le haut (protege la marge)</option>
-          <option value="inferieur">Vers le bas</option>
-          <option value="naturel">Naturel (0.5 -&gt; haut)</option>
-        </select>
-      </SettingItem>
-      <SettingItem title="Aperçu" description={`Prix brut : ${previewBrut.toFixed(2)} DH`}>
-        <div className="text-sm">
-          <span className="text-gray-500">Apres arrondi : </span>
-          <strong className="text-amber-700 text-base">{previewArrondi.toFixed(2)} DH</strong>
-        </div>
-      </SettingItem>
-      <div className="sm:col-span-2 pt-4">
-        <button onClick={handleSave} disabled={saving || !hasChanges}
-          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60">
-          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer l\'arrondi'}
-        </button>
-      </div>
-    </SettingsSection>
-  );
-}
-
 // ─── Canaux de vente (mig 172) ───
 function SalesChannelsTab() {
   const queryClient = useQueryClient();
@@ -2156,62 +2038,23 @@ function SalesChannelsTab() {
   );
 }
 
-function ProductionChargesTab() {
-  const { settings, updateSettings } = useSettings();
-  const [loyer, setLoyer] = useState(String(settings.productionChargeLoyer || 0));
-  const [energie, setEnergie] = useState(String(settings.productionChargeEnergie || 0));
-  const [autres, setAutres] = useState(String(settings.productionChargeAutres || 0));
-  const [saving, setSaving] = useState(false);
+/* ============ AUTRES REGLAGES (liens) ============ */
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateSettings({
-        productionChargeLoyer: parseFloat(loyer) || 0,
-        productionChargeEnergie: parseFloat(energie) || 0,
-        productionChargeAutres: parseFloat(autres) || 0,
-      });
-      notify.success('Charges fixes enregistrees');
-    } catch {
-      notify.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const hasChanges =
-    parseFloat(loyer || '0') !== (settings.productionChargeLoyer || 0) ||
-    parseFloat(energie || '0') !== (settings.productionChargeEnergie || 0) ||
-    parseFloat(autres || '0') !== (settings.productionChargeAutres || 0);
-
-  const moneyInput = (value: string, onChange: (v: string) => void) => (
-    <div className="relative w-44">
-      <input type="number" value={value} onChange={e => onChange(e.target.value)}
-        className="input w-full pr-10" min="0" step="0.01" />
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">DH</span>
-    </div>
-  );
-
+/** Réglages gérés dans leur propre écran, regroupés ici pour être trouvés (lot 4). */
+function OtherSettingsLinks({ onOpen }: { onOpen: (tab: SettingsTab) => void }) {
+  const links: { label: string; help: string; action: () => void; cta: string }[] = [
+    { label: 'Numérotation des pièces', help: 'Modèles et compteurs des BC, factures, tickets, bons de sortie.', action: () => onOpen('numbering'), cta: 'Ouvrir' },
+    { label: 'Journal des modifications', help: 'Qui a changé quoi, quand, avec l\'ancienne valeur.', action: () => onOpen('audit'), cta: 'Ouvrir' },
+    { label: 'Rôles et contrôle des droits', help: 'Droits par rôle, mode observation ou blocage.', action: () => { window.location.href = '/users'; }, cta: 'Utilisateurs' },
+    { label: 'Paramètres de paie', help: 'CNSS employeur, base de jours, heures supplémentaires, congés : Personnel › Paie › Paramètres de paie.', action: () => { window.location.href = '/employees'; }, cta: 'Personnel' },
+  ];
   return (
-    <SettingsSection
-      title="Charges fixes mensuelles"
-      description="Reparties proportionnellement sur chaque plan de production du mois pour calculer le cout de revient."
-    >
-      <SettingItem title="Loyer mensuel" description="Montant du loyer de l'atelier de production">
-        {moneyInput(loyer, setLoyer)}
-      </SettingItem>
-      <SettingItem title="Energie mensuelle" description="Electricite, gaz, eau">
-        {moneyInput(energie, setEnergie)}
-      </SettingItem>
-      <SettingItem title="Autres charges" description="Assurances, maintenance, divers">
-        {moneyInput(autres, setAutres)}
-      </SettingItem>
-      <div className="sm:col-span-2 pt-4">
-        <button onClick={handleSave} disabled={saving || !hasChanges}
-          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60">
-          <Save size={16} /> {saving ? 'Enregistrement...' : 'Enregistrer les charges'}
-        </button>
-      </div>
+    <SettingsSection title="Autres réglages" description="Gérés dans leur écran dédié.">
+      {links.map(l => (
+        <SettingItem key={l.label} title={l.label} description={l.help}>
+          <button type="button" onClick={l.action} className="btn-secondary">{l.cta}</button>
+        </SettingItem>
+      ))}
     </SettingsSection>
   );
 }

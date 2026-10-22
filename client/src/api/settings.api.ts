@@ -96,6 +96,18 @@ export interface DocumentSequence {
 }
 export type DocumentSequenceInput = { pattern: string; padding: number; resetPeriod: DocumentSequence['reset_period'] };
 
+/** Paramètre métier du catalogue (Paramètres › Paramètres métier, lot 4). */
+export interface ParamField {
+  name: string; label: string; type: 'boolean' | 'number' | 'integer' | 'percent' | 'enum';
+  unit?: string; min?: number; max?: number; options?: { value: string; label: string }[];
+}
+export interface BusinessParameter {
+  key: string; domain: string; domainLabel: string; label: string; help: string;
+  fields: ParamField[]; defaults: Record<string, unknown>;
+  value: Record<string, unknown> | null; available: boolean; editable: boolean;
+  history: { changed_at: string; by_name: string | null; diff: Record<string, { old: unknown; new: unknown }> | null }[];
+}
+
 export const settingsApi = {
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
   update: (data: Partial<CompanySettings>) => api.put('/settings', data).then(r => r.data.data) as Promise<CompanySettings>,
@@ -109,6 +121,9 @@ export const settingsApi = {
     api.post('/settings/document-sequences/preview', data).then(r => r.data.data) as Promise<{ valid: boolean; sample?: string; error?: string }>,
   updateDocumentSequence: (docType: string, data: DocumentSequenceInput) =>
     api.put(`/settings/document-sequences/${docType}`, data).then(r => r.data.data) as Promise<{ doc_type: string; next_number: string }>,
+  parameters: () => api.get('/settings/parameters').then(r => r.data.data) as Promise<BusinessParameter[]>,
+  updateParameter: (key: string, value: Record<string, unknown>) =>
+    api.put(`/settings/parameters/${key}`, { value }).then(r => r.data.data),
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

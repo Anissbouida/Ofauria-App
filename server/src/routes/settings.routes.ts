@@ -3,6 +3,7 @@ import express from 'express';
 import { settingsController } from '../controllers/settings.controller.js';
 import { auditLogController } from '../controllers/audit-log.controller.js';
 import { documentSequenceController } from '../controllers/document-sequence.controller.js';
+import { parametersController } from '../controllers/parameters.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -24,6 +25,11 @@ router.get('/auth-events', authenticate, authorizeSettings('audit'), asyncHandle
 router.get('/document-sequences', authenticate, authorizeSettings('numbering'), asyncHandler(documentSequenceController.list));
 router.post('/document-sequences/preview', authenticate, jsonParser, authorizeSettings('numbering'), asyncHandler(documentSequenceController.preview));
 router.put('/document-sequences/:docType', authenticate, jsonParser, authorizeSettings('numbering', 'edit'), asyncHandler(documentSequenceController.update));
+
+// Parametres metier (lot 4) : le droit est controle parametre par parametre
+// (section de chacun) ; la liste ne contient que ceux que l'utilisateur peut voir.
+router.get('/parameters', authenticate, asyncHandler(parametersController.list));
+router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parametersController.update));
 
 // Lecture ouverte a tout utilisateur connecte (theme, ticket, identite sur les PDF).
 router.get('/', authenticate, jsonParser, settingsController.get);
