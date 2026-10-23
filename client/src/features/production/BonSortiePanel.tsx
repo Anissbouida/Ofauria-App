@@ -126,9 +126,19 @@ export function BonSortiePanel({
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
+  // Regeneration, avec ou sans derogation DLC (mig 339). Le motif est obligatoire
+  // cote serveur : il est trace sur l'en-tete du bon (qui, quand, pourquoi).
+  const [derogMotif, setDerogMotif] = useState('');
+  const [showDerog, setShowDerog] = useState(false);
   const regenerateMutation = useMutation({
-    mutationFn: () => bonSortieApi.regenerate(planId),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] }); notify.success('Bon regenere'); },
+    mutationFn: (derogationMotif?: string) =>
+      bonSortieApi.regenerate(planId, undefined, derogationMotif ? { motif: derogationMotif } : undefined),
+    onSuccess: (_data, derogationMotif) => {
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+      notify.success(derogationMotif ? 'Bon regenere avec derogation DLC (tracee)' : 'Bon regenere');
+      setShowDerog(false);
+      setDerogMotif('');
+    },
     onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
   });
 
@@ -994,12 +1004,48 @@ export function BonSortiePanel({
             {bon.prelevement_at && <p>Prelevement le {format(new Date(bon.prelevement_at as string), 'dd/MM/yyyy a HH:mm')}{bon.prelevement_by_name ? ` par ${bon.prelevement_by_name as string}` : ''}</p>}
             {bon.verified_at && <p>Verifie le {format(new Date(bon.verified_at as string), 'dd/MM/yyyy a HH:mm')}{bon.verified_by_name ? ` par ${bon.verified_by_name as string}` : ''}</p>}
             {bon.closed_at && <p>Cloture le {format(new Date(bon.closed_at as string), 'dd/MM/yyyy a HH:mm')}{bon.closed_by_name ? ` par ${bon.closed_by_name as string}` : ''}</p>}
+            {bon.derogation_dlc_motif && (
+              <p className="text-amber-700 font-medium">
+                ⚠ Derogation DLC{bon.derogation_dlc_at ? ` le ${format(new Date(bon.derogation_dlc_at as string), 'dd/MM/yyyy a HH:mm')}` : ''} : {bon.derogation_dlc_motif as string}
+              </p>
+            )}
           </div>
           {['genere', 'prelevement'].includes(bon.status as string) && isChef && (
-            <button onClick={() => regenerateMutation.mutate()} disabled={regenerateMutation.isPending}
-              className="px-4 py-2 bg-white border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition flex items-center gap-1.5">
-              <RefreshCw size={13} /> Regenerer le bon
-            </button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => regenerateMutation.mutate(undefined)} disabled={regenerateMutation.isPending}
+                  className="px-4 py-2 bg-white border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition flex items-center gap-1.5">
+                  <RefreshCw size={13} /> Regenerer le bon
+                </button>
+                {!showDerog && (
+                  <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending}
+                    className="px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-50 transition flex items-center gap-1.5">
+                    ⚠ Regenerer avec derogation DLC
+                  </button>
+                )}
+              </div>
+              {showDerog && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                  <p className="text-xs text-amber-800">
+                    Les lots a DLC depassee seront alloues. Cette decision est tracee (auteur, date, motif) sur le bon.
+                  </p>
+                  <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
+                    placeholder="Motif de la derogation (obligatoire, 5 caracteres min.) — ex. : controle organoleptique OK, DLC a J+1, utilisation en cuisson"
+                    className="w-full text-xs border border-amber-200 rounded-lg px-2 py-1.5 bg-white" />
+                  <div className="flex gap-2">
+                    <button onClick={() => regenerateMutation.mutate(derogMotif.trim())}
+                      disabled={regenerateMutation.isPending || derogMotif.trim().length < 5}
+                      className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition">
+                      Confirmer la derogation
+                    </button>
+                    <button onClick={() => { setShowDerog(false); setDerogMotif(''); }}
+                      className="px-3 py-1.5 bg-white border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50 transition">
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { notificationRepository } from '../repositories/notification.repository.js';
-import { generateBonSchema, updateLigneSchema, handleEcartSchema } from '../validators/bon-sortie.validator.js';
+import { generateBonSchema, regenerateBonSchema, updateLigneSchema, handleEcartSchema } from '../validators/bon-sortie.validator.js';
 
 /**
  * Emet une notification de maniere non-bloquante : si la creation echoue (ex. table
@@ -38,7 +38,7 @@ export const bonSortieController = {
       const parsed = generateBonSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
       const userId = (req as any).user?.userId;
-      const data = await bonSortieRepository.generate(parsed.data.planId, parsed.data.storeId, userId);
+      const data = await bonSortieRepository.generate(parsed.data.planId, parsed.data.storeId, userId, { derogationDlc: parsed.data.derogationDlc });
       // Notifier les magasiniers du store qu'un nouveau BSI est a preparer.
       if (data?.id) {
         await notifySafe({
@@ -392,10 +392,12 @@ export const bonSortieController = {
   async regenerate(req: Request, res: Response) {
     try {
       const planId = req.params.planId as string;
-      const storeId = req.body.storeId || (req as any).user?.storeId;
+      const parsed = regenerateBonSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
+      const storeId = parsed.data.storeId || (req as any).user?.storeId;
       if (!storeId) return res.status(400).json({ error: 'storeId requis' });
       const userId = (req as any).user?.userId;
-      const data = await bonSortieRepository.regenerate(planId, storeId, userId);
+      const data = await bonSortieRepository.regenerate(planId, storeId, userId, { derogationDlc: parsed.data.derogationDlc });
       res.status(201).json({ data });
     } catch (err: any) {
       const msg = safeErrorMessage(err, 'Erreur lors de la regeneration du bon');

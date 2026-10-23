@@ -4,7 +4,19 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 export const bonSortieRepository = {
 
   // ─── Generate a bon de sortie from plan ingredient needs + FEFO preview ───
-  async generate(planId: string, storeId: string, userId: string) {
+  // opts.derogationDlc : autorise, sur motif trace (mig 339), l'allocation de lots
+  // a DLC depassee. Sans derogation, ces lots sont EXCLUS de l'allocation et
+  // remontes dans `expired_lots_skipped` pour que le chef decide en connaissance.
+  async generate(planId: string, storeId: string, userId: string, opts: { derogationDlc?: { motif: string } } = {}) {
+    const derogation = opts.derogationDlc ?? null;
+    // Lot utilisable = actif ET dans sa DLC (un lot 'active' peut avoir depasse sa
+    // date si le job d'expiration n'est pas encore passe : on filtre aussi la date).
+    const dlcFilter = derogation
+      ? `AND status IN ('active', 'expired')`
+      : `AND status = 'active' AND (expiration_date IS NULL OR expiration_date >= CURRENT_DATE)`;
+    const economatDlcFilter = derogation ? '' : `AND (expiration_date IS NULL OR expiration_date >= CURRENT_DATE)`;
+    const expiredLotsSkipped: { ingredient_id: string; ingredient_name: string; lot_number: string; expiration_date: string | null; quantity: number }[] = [];
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -55,6 +67,18 @@ export const bonSortieRepository = {
       );
       const bon = bonResult.rows[0];
 
+      // 3b. Derogation DLC : tracee sur l'en-tete (qui, quand, pourquoi).
+      if (derogation) {
+        await client.query(
+          `UPDATE production_bons_sortie
+           SET derogation_dlc_motif = $2, derogation_dlc_by = $3, derogation_dlc_at = NOW()
+           WHERE id = $1`,
+          [bon.id, derogation.motif, userId]
+        );
+        bon.derogation_dlc_motif = derogation.motif;
+        bon.derogation_dlc_by = userId;
+      }
+
       // 4. For each ingredient need, allocate via STRICT Pesage workflow (Option B) :
       //    - Étape 1 : Pesage (lots déjà ouverts) → ligne PESAGE, alloue directement
       //    - Étape 2 : Pesage insuffisant → ligne ECONOMAT_REQUIRES_TRANSFER avec lot
@@ -66,23 +90,43 @@ export const bonSortieRepository = {
         const neededQty = parseFloat(need.needed_quantity);
         let remaining = neededQty;
 
-        // Étape 1 : consommation depuis Pesage (FEFO sur DLC)
+        // Étape 1 : consommation depuis Pesage (FEFO sur DLC), lots hors DLC exclus
+        // sauf derogation (cf. dlcFilter).
         const pesageLotsResult = await client.query(
           `SELECT id, lot_number, supplier_lot_number, pesage_quantity, expiration_date,
                   received_at, status, first_opened_at
            FROM ingredient_lots
            WHERE ingredient_id = $1 AND store_id = $2
-             AND status IN ('active', 'expired') AND pesage_quantity > 0
+             ${dlcFilter} AND pesage_quantity > 0
            ORDER BY expiration_date ASC NULLS LAST,
                     first_opened_at ASC NULLS FIRST, received_at ASC`,
           [need.ingredient_id, storeId]
         );
 
+        // Sans derogation : on liste ce qu'on a ecarte, pour que le chef voie qu'un
+        // stock existe mais est hors DLC (et puisse deroger explicitement).
+        if (!derogation) {
+          const skippedResult = await client.query(
+            `SELECT lot_number, expiration_date, pesage_quantity
+             FROM ingredient_lots
+             WHERE ingredient_id = $1 AND store_id = $2 AND pesage_quantity > 0
+               AND (status = 'expired' OR expiration_date < CURRENT_DATE)`,
+            [need.ingredient_id, storeId]
+          );
+          for (const s of skippedResult.rows) {
+            expiredLotsSkipped.push({
+              ingredient_id: need.ingredient_id, ingredient_name: need.ingredient_name,
+              lot_number: s.lot_number, expiration_date: s.expiration_date,
+              quantity: parseFloat(s.pesage_quantity),
+            });
+          }
+        }
+
         for (const lot of pesageLotsResult.rows) {
           if (remaining <= 0) break;
           const available = parseFloat(lot.pesage_quantity);
           const take = Math.min(available, remaining);
-          const isExpired = lot.expiration_date && new Date(lot.expiration_date) < new Date();
+          const isExpired = lot.status === 'expired' || (lot.expiration_date && new Date(lot.expiration_date) < new Date());
 
           // needed_quantity = portion couverte par cette ligne (= take), pas le besoin total :
           // sinon une ligne PESAGE partielle ferait apparaitre "manque" alors que la portion
@@ -90,11 +134,12 @@ export const bonSortieRepository = {
           const lineResult = await client.query(
             `INSERT INTO production_bons_sortie_lignes
                (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
-                unit, status, source_location, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', 'PESAGE', $7)
+                unit, status, source_location, notes, derogation_dlc)
+             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', 'PESAGE', $7, $8)
              RETURNING *`,
             [bon.id, need.ingredient_id, lot.id, take, take, need.ingredient_unit || 'kg',
-             `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee' : ''}`]
+             `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee (derogation)' : ''}`,
+             !!isExpired]
           );
 
           lines.push({
@@ -121,19 +166,19 @@ export const bonSortieRepository = {
                     received_at, status
              FROM ingredient_lots
              WHERE ingredient_id = $1 AND store_id = $2
-               AND status = 'active' AND economat_quantity > 0
+               AND status = 'active' AND economat_quantity > 0 ${economatDlcFilter}
              ORDER BY expiration_date ASC NULLS LAST, received_at ASC
              LIMIT 1`,
             [need.ingredient_id, storeId]
           );
 
-          // Total Economat dispo (tous lots actifs confondus) : sert a savoir si le besoin
-          // est couvrable par transfert ou s'il y a une rupture residuelle.
+          // Total Economat dispo (tous lots actifs dans leur DLC) : sert a savoir si le
+          // besoin est couvrable par transfert ou s'il y a une rupture residuelle.
           const totalEconomatResult = await client.query(
             `SELECT COALESCE(SUM(economat_quantity), 0)::numeric AS total
              FROM ingredient_lots
              WHERE ingredient_id = $1 AND store_id = $2
-               AND status = 'active' AND economat_quantity > 0`,
+               AND status = 'active' AND economat_quantity > 0 ${economatDlcFilter}`,
             [need.ingredient_id, storeId]
           );
           const totalEconomat = parseFloat(totalEconomatResult.rows[0]?.total || '0');
@@ -299,7 +344,7 @@ export const bonSortieRepository = {
       }
 
       await client.query('COMMIT');
-      return { ...bon, lines };
+      return { ...bon, lines, expired_lots_skipped: expiredLotsSkipped };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -1624,7 +1669,7 @@ export const bonSortieRepository = {
   },
 
   // ─── Regenerate: cancel existing bon(s) and create a new one ───
-  async regenerate(planId: string, storeId: string, userId: string) {
+  async regenerate(planId: string, storeId: string, userId: string, opts: { derogationDlc?: { motif: string } } = {}) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -1652,6 +1697,6 @@ export const bonSortieRepository = {
     }
 
     // Now generate a fresh bon (this handles its own transaction)
-    return this.generate(planId, storeId, userId);
+    return this.generate(planId, storeId, userId, opts);
   },
 };

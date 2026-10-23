@@ -4,8 +4,9 @@ export const bonSortieApi = {
   // Generate a bon de sortie for a plan.
   // Le backend peut renvoyer 200 avec data: null + reason (plan sans ingredients par ex.) :
   // on retourne l'enveloppe complete { data, reason } pour que l'UI puisse distinguer.
-  generate: (planId: string, storeId: string) =>
-    api.post('/bons-sortie/generate', { planId, storeId })
+  // derogationDlc : autorise les lots hors DLC sur motif trace (mig 339)
+  generate: (planId: string, storeId: string, derogationDlc?: { motif: string }) =>
+    api.post('/bons-sortie/generate', { planId, storeId, derogationDlc })
        .then(r => ({ data: r.data.data, reason: r.data.reason as string | undefined })),
 
   // Get bon(s) for a plan
@@ -69,8 +70,8 @@ export const bonSortieApi = {
     api.put(`/bons-sortie/${bonId}/ecart/${ligneId}`, data).then(r => r.data.data),
 
   // Regenerate bon for a plan
-  regenerate: (planId: string, storeId?: string) =>
-    api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId }).then(r => r.data.data),
+  regenerate: (planId: string, storeId?: string, derogationDlc?: { motif: string }) =>
+    api.post(`/bons-sortie/plan/${planId}/regenerate`, { storeId, derogationDlc }).then(r => r.data.data),
 
   // Delta v1 point 4 : liste FEFO des lots Economat disponibles pour une ligne BSI.
   // Le magasinier l'utilise pour confirmer le lot suggere ou en choisir un autre.
