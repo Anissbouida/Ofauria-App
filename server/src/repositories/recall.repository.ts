@@ -117,6 +117,15 @@ export interface RecallResult {
 
 const num = (v: unknown): number => (v == null ? 0 : parseFloat(String(v)));
 
+// node-postgres renvoie les colonnes date/timestamptz comme objets Date : leur
+// String() donne « ... GMT-0400 ... » que Postgres refuse en ::timestamptz, et
+// le client attend de l'ISO. On normalise toute valeur de date en ISO.
+const iso = (v: unknown): string | null => {
+  if (v == null) return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+};
+
 export const recallRepository = {
   async recallFromIngredientLot(lotId: string): Promise<RecallResult | null> {
     const rootRow = await fetchIngredientLot(lotId);
@@ -160,8 +169,8 @@ async function buildNode(
       supplierLotNumber: (lotRow.supplier_lot_number as string) ?? null,
       ingredientName: (lotRow.ingredient_name as string) ?? null,
       supplierName: (lotRow.supplier_name as string) ?? null,
-      expirationDate: lotRow.expiration_date ? String(lotRow.expiration_date) : null,
-      receivedAt: lotRow.received_at ? String(lotRow.received_at) : null,
+      expirationDate: iso(lotRow.expiration_date),
+      receivedAt: iso(lotRow.received_at),
       status: String(lotRow.status),
       quantityReceived: num(lotRow.quantity_received),
     },
@@ -190,7 +199,7 @@ async function buildNode(
     const batches = await buildBatches(String(pr.production_plan_id), visited, depth);
     node.plans.push({
       productionPlanId: String(pr.production_plan_id),
-      planDate: pr.plan_date ? String(pr.plan_date) : null,
+      planDate: iso(pr.plan_date),
       planStatus: (pr.plan_status as string) ?? null,
       planType: (pr.plan_type as string) ?? null,
       ingredientName: (pr.ingredient_name as string) ?? '',
@@ -228,8 +237,8 @@ async function buildBatches(
     const approximateSales = await fetchApproximateSales(
       String(b.product_id),
       b.store_id ? String(b.store_id) : null,
-      b.produced_at ? String(b.produced_at) : null,
-      b.expires_at ? String(b.expires_at) : null
+      iso(b.produced_at),
+      iso(b.expires_at)
     );
 
     // Suivi des liens de recyclage : lots matière nés de cette fournée.
@@ -253,9 +262,9 @@ async function buildBatches(
       productId: String(b.product_id),
       productName: (b.product_name as string) ?? '',
       lotNumber: String(b.lot_number),
-      producedAt: b.produced_at ? String(b.produced_at) : '',
-      expiresAt: b.expires_at ? String(b.expires_at) : null,
-      displayExpiresAt: b.display_expires_at ? String(b.display_expires_at) : null,
+      producedAt: iso(b.produced_at) ?? '',
+      expiresAt: iso(b.expires_at),
+      displayExpiresAt: iso(b.display_expires_at),
       status: String(b.status),
       quantityTotal: num(b.quantity_total),
       states: {
@@ -345,7 +354,7 @@ function mapSaleRow(approximate: boolean) {
       saleItemId: String(r.sale_item_id),
       saleId: String(r.sale_id),
       saleNumber: (r.sale_number as string) ?? null,
-      createdAt: r.created_at ? String(r.created_at) : '',
+      createdAt: iso(r.created_at) ?? '',
       quantity: num(r.quantity),
       customerId: r.customer_id ? String(r.customer_id) : null,
       customerName,
