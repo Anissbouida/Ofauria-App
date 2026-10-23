@@ -47,6 +47,9 @@ router.get('/me/permissions', authenticate, userController.myPermissions);
 router.get('/:id/permissions', authenticate, authorize('admin'), userController.getPermissions);
 router.put('/:id/permissions', authenticate, authorize('admin'), userController.setPermissions);
 
+// Lien espace employe : fiches salariees disponibles pour le selecteur.
+router.get('/employees-link', authenticate, authorize('admin'), asyncHandler(userController.employeesForLink));
+
 // Revue des acces (Phase 3, outils admin, lecture seule).
 router.get('/access-overview', authenticate, authorize('admin'), asyncHandler(accessReviewController.overview));
 router.get('/:id/access-review', authenticate, authorize('admin'), asyncHandler(accessReviewController.review));

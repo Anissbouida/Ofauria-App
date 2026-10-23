@@ -149,6 +149,38 @@ export const userRepository = {
     return result.rows[0]?.token_version ?? null;
   },
 
+  // ─── Lien compte ↔ fiche salarié (espace employé, employees.user_id) ──
+  /** Fiches salariés actives, avec le compte éventuellement lié (pour le sélecteur). */
+  async employeesForLink(): Promise<{ id: string; name: string; user_id: string | null }[]> {
+    const r = await db.query(
+      `SELECT id, concat_ws(' ', first_name, last_name) AS name, user_id
+         FROM employees WHERE is_active IS DISTINCT FROM false ORDER BY first_name, last_name`);
+    return r.rows;
+  },
+
+  /**
+   * Relie (ou délie si employeeId = null) une fiche salarié à un compte. Un
+   * compte = une fiche : on détache d'abord l'ancienne fiche de ce compte, puis
+   * on rattache la nouvelle (en la détachant au besoin d'un autre compte).
+   */
+  async setLinkedEmployee(userId: string, employeeId: string | null, actorId?: string): Promise<void> {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await setAuditUser(client, actorId);
+      await client.query('UPDATE employees SET user_id = NULL WHERE user_id = $1', [userId]);
+      if (employeeId) {
+        await client.query('UPDATE employees SET user_id = $1 WHERE id = $2', [userId, employeeId]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   // ─── Rôles multiples (mig 335) ────────────────────────────
   async userRolesTableExists(): Promise<boolean> {
     const r = await db.query(`SELECT to_regclass('public.user_roles') IS NOT NULL AS ok`);

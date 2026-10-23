@@ -70,6 +70,10 @@ export const userController = {
       await userRepository.update(user.id, { pinCode: pinHash }, req.user?.userId);
     }
     await userRepository.setRoleCodes(user.id, roleCodes, primaryRole, req.user?.userId);
+    // Lien espace employé (employees.user_id) si une fiche est choisie.
+    if (req.body.employeeId !== undefined) {
+      await userRepository.setLinkedEmployee(user.id, req.body.employeeId ? String(req.body.employeeId) : null, req.user?.userId);
+    }
     const updated = await userRepository.findById(user.id);
 
     // OWASP A09-2 : audit trail creation compte.
@@ -174,6 +178,10 @@ export const userController = {
     if (rolesInput !== undefined && newPrimaryRole) {
       await userRepository.setRoleCodes(user.id, rolesInput, newPrimaryRole, req.user?.userId);
     }
+    // Lien espace employé (employees.user_id) — réservé à l'administrateur (route admin).
+    if (req.body.employeeId !== undefined) {
+      await userRepository.setLinkedEmployee(user.id, req.body.employeeId ? String(req.body.employeeId) : null, req.user?.userId);
+    }
 
     // Si le rôle principal a change, purger les permissions custom pour que les
     // droits des nouveaux roles s'appliquent (sinon les permissions configurees
@@ -256,6 +264,11 @@ export const userController = {
       details: { modules: data.map(d => d.module) },
     });
     res.json({ success: true, data });
+  },
+
+  /** Fiches salariés actives (sélecteur de lien espace employé). Admin. */
+  async employeesForLink(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await userRepository.employeesForLink() });
   },
 
   /** Return permissions for the currently authenticated user */

@@ -9,6 +9,8 @@ export const usersApi = {
   setPermissions: (id: string, permissions: Record<string, any>[]) =>
     api.put(`/users/${id}/permissions`, { permissions }).then(r => r.data.data),
   myPermissions: () => api.get('/users/me/permissions').then(r => r.data.data),
+  // Fiches salariees pour le lien espace employe (employees.user_id).
+  employeesForLink: () => api.get('/users/employees-link').then(r => r.data.data) as Promise<{ id: string; name: string; user_id: string | null }[]>,
 };
 
 /** Rôle (table roles, mig 330) : 9 rôles système + rôles créés. */

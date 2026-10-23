@@ -272,6 +272,15 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   const queryClient = useQueryClient();
   const { roles } = useRoleLabel();
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
+  // Lien espace employé : fiches salariées disponibles. currentLink = celle déjà
+  // reliée à ce compte ; effEmployeeId reflète le lien actuel tant que l'admin
+  // n'a pas touché au champ (évite d'écraser le lien avant chargement de la liste).
+  const { data: employees = [], isFetched: empFetched } = useQuery<Array<{ id: string; name: string; user_id: string | null }>>({
+    queryKey: ['employees-link'], queryFn: usersApi.employeesForLink,
+  });
+  const currentLink = employees.find(e => e.user_id === (user?.id as string))?.id ?? '';
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const effEmployeeId = employeeId === null ? currentLink : employeeId;
   const initialRoles = (Array.isArray(user?.roles) && (user!.roles as string[]).length
     ? (user!.roles as string[]) : (user?.role ? [user.role as string] : ['cashier']));
   const [form, setForm] = useState({
@@ -293,6 +302,8 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
         firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(),
         roles: roleCodes, primaryRole, storeId: form.storeId || null,
       };
+      // N'envoyer le lien fiche que si la liste est chargée (sinon on risquerait de le vider).
+      if (empFetched) data.employeeId = effEmployeeId || null;
       if (form.password) data.password = form.password;
       // PIN vide : inchangé en modification (l'ancien formulaire l'effaçait), absent à la création.
       if (form.pinCode) data.pinCode = form.pinCode;
@@ -381,6 +392,15 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
           </select>
         </Field>
       </div>
+      <Field label="Fiche salarié" hint="Relie ce compte à sa fiche pour l'espace employé (heures, bulletins, congés). Aucune = pas d'espace employé.">
+        <select id="user-employee" className="odoo-input" value={effEmployeeId} onChange={e => setEmployeeId(e.target.value)}>
+          <option value="">Aucune</option>
+          {employees.map(e => {
+            const linkedElsewhere = !!e.user_id && e.user_id !== (user?.id as string);
+            return <option key={e.id} value={e.id} disabled={linkedElsewhere}>{e.name}{linkedElsewhere ? ' (déjà lié à un compte)' : ''}</option>;
+          })}
+        </select>
+      </Field>
     </HrModal>
   );
 }
