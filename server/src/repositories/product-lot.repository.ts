@@ -28,6 +28,14 @@ const DEFAULT_SHELF_LIFE_DAYS = 1;
  * FEFO :
  *   - Backroom : ORDER BY expires_at (DLC plus proche en premier)
  *   - Vitrine : ORDER BY expires_at, display_expires_at (DLV cumulee)
+ *
+ * CONVENTION D'EXPIRATION (une seule, partout) :
+ *   un lot est expire des que expires_at <= CURRENT_DATE (ou display_expires_at <= NOW()).
+ *   C'est la convention de la vente (checkSaleability, FEFO), des invendus et du
+ *   catalogue ; les requetes d'expiration (markExpiredLots, autoExpireDueLots,
+ *   findExpiredActiveLots) la suivent aussi, sinon un lot etait invendable un jour
+ *   avant d'etre passe en pertes. shelf_life_days = 1 <=> vendable le jour de
+ *   production seulement (mig 061).
  */
 
 export interface ProductLot {
@@ -339,8 +347,8 @@ export const productLotRepository = {
       `pl.status = 'active'`,
       `(pl.vitrine_qty + pl.backroom_qty) > 0`,
       `(
-        (pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE)
-        OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW())
+        (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+        OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
       )`,
     ];
     const values: unknown[] = [];
@@ -356,8 +364,8 @@ export const productLotRepository = {
               p.image_url as product_image,
               c.name as category_name,
               CASE
-                WHEN pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW() THEN 'dlv_expired'
-                WHEN pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE THEN 'dlc_expired'
+                WHEN pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW() THEN 'dlv_expired'
+                WHEN pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE THEN 'dlc_expired'
                 ELSE 'other'
               END as expiry_reason,
               GREATEST(
@@ -652,8 +660,8 @@ export const productLotRepository = {
        SET status = 'expired', updated_at = NOW()
        WHERE status = 'active'
          AND (
-           (expires_at IS NOT NULL AND expires_at < CURRENT_DATE)
-           OR (display_expires_at IS NOT NULL AND display_expires_at < NOW())
+           (expires_at IS NOT NULL AND expires_at <= CURRENT_DATE)
+           OR (display_expires_at IS NOT NULL AND display_expires_at <= NOW())
          )
          AND (backroom_qty + vitrine_qty) > 0
        RETURNING id`
@@ -687,8 +695,8 @@ export const productLotRepository = {
          JOIN products p ON p.id = pl.product_id
          WHERE pl.status = 'active'
            AND (
-             (pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE)
-             OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW())
+             (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+             OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
            )
            AND (pl.backroom_qty + pl.vitrine_qty) > 0
          FOR UPDATE`
