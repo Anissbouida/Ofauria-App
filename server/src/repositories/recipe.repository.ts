@@ -3,6 +3,7 @@ import {
   yieldInSellingUnit,
   requiresPieceWeight,
   YieldConversionError,
+  convertQuantity,
   type SellingUnit,
 } from '../utils/units.js';
 
@@ -19,14 +20,18 @@ const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
 /**
  * Convert quantity from one unit to another.
  * Returns the conversion factor: qty_in_fromUnit * factor = qty_in_toUnit
- * Returns 1 if units are incompatible (no conversion possible).
+ * Meme famille (g/kg, ml/l) : facteur direct. Poids <-> volume : via la densite
+ * de l'ingredient (utils/units.convertQuantity, mig 227/340). Sans densite sur un
+ * croisement poids<->volume, le repli est 1 — le meme que la vue SQL, dont
+ * conversion_ok signale le cas (la valeur stockee ici n'est pas la reference :
+ * recipes.total_cost est toujours relu depuis la vue).
  */
-function unitConversionFactor(fromUnit: string, toUnit: string): number {
+function unitConversionFactor(fromUnit: string, toUnit: string, densiteKgL?: number | null): number {
   if (fromUnit === toUnit) return 1;
   const from = UNIT_TO_BASE[fromUnit];
   const to = UNIT_TO_BASE[toUnit];
-  if (!from || !to || from.base !== to.base) return 1; // incompatible units
-  return from.factor / to.factor;
+  if (from && to && from.base === to.base) return from.factor / to.factor;
+  return convertQuantity(1, fromUnit, toUnit, densiteKgL).value;
 }
 
 export const recipeRepository = {
@@ -325,11 +330,12 @@ export const recipeRepository = {
       // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
       let totalCost = 0;
       for (const ing of (data.ingredients ?? [])) {
-        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit, densite_kg_l FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
           const recipeUnit = ing.unit || ingBaseUnit;
-          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          const densite = ingResult.rows[0].densite_kg_l != null ? parseFloat(ingResult.rows[0].densite_kg_l) : null;
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit, densite);
           totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
@@ -615,11 +621,12 @@ export const recipeRepository = {
 
       let totalCost = 0;
       for (const ing of (data.ingredients ?? [])) {
-        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit, densite_kg_l FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
           const recipeUnit = ing.unit || ingBaseUnit;
-          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          const densite = ingResult.rows[0].densite_kg_l != null ? parseFloat(ingResult.rows[0].densite_kg_l) : null;
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit, densite);
           totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
