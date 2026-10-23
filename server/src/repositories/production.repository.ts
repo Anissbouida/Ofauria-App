@@ -836,15 +836,17 @@ export const productionRepository = {
            `Production: ${item.product_name} x${item.actual_quantity}`, planId, userId, storeId || null]
         );
 
-        // Create product_display_tracking for lifecycle management
+        // Cycle de vie : lot produit fini pour TOUTE fournee (ci-dessous) et, pour
+        // les produits a DLV parametree, product_display_tracking (suivi legacy).
         if (storeId) {
           const productLifecycle = await client.query(
             `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
             [item.product_id]
           );
-          if (productLifecycle.rows[0]?.shelf_life_days) {
-            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
-            const shelfDays = parseInt(shelf_life_days);
+          const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
+          const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
+          if (shelfDays) {
+            const { display_life_hours } = productLifecycle.rows[0];
             const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
             await client.query(
               `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
@@ -852,17 +854,19 @@ export const productionRepository = {
               displayHours !== null ? [item.product_id, storeId, shelfDays, displayHours] : [item.product_id, storeId, shelfDays]
             );
 
-            // Phase 1 — Cree le product_lot pour la fournee (tracabilite + FEFO).
-            // Reste invisible pour les flux qui n'ont pas encore migre — strictement additif.
-            await productLotRepository.createFromProduction(client, {
-              productId: item.product_id,
-              storeId,
-              productionPlanId: planId,
-              quantityProduced: parseFloat(item.actual_quantity),
-              shelfLifeDays: shelfDays,
-              notes: `Production plan ${planId}`,
-            });
           }
+
+          // Lot produit fini SYSTEMATIQUE (audit cycle de vie P2.7) : tracabilite
+          // descendante et FEFO pour 100 % du catalogue. Sans shelf_life_days,
+          // DLC = jour meme (repli dans createFromProduction).
+          await productLotRepository.createFromProduction(client, {
+            productId: item.product_id,
+            storeId,
+            productionPlanId: planId,
+            quantityProduced: parseFloat(item.actual_quantity),
+            shelfLifeDays: shelfDays,
+            notes: `Production plan ${planId}`,
+          });
         }
       }
 
@@ -1206,15 +1210,17 @@ export const productionRepository = {
           );
         }
 
-        // Calculate and store expiration date based on shelf_life_days
+        // Cycle de vie : lot produit fini pour TOUTE fournee (ci-dessous) et, pour
+        // les produits a DLV parametree, product_display_tracking (suivi legacy).
         if (storeId && item.product_id) {
           const productLifecycle = await client.query(
             `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
             [item.product_id]
           );
-          if (productLifecycle.rows[0]?.shelf_life_days) {
-            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
-            const shelfDays = parseInt(shelf_life_days);
+          const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
+          const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
+          if (shelfDays) {
+            const { display_life_hours } = productLifecycle.rows[0];
             const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
             const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';
             const params: unknown[] = [item.product_id, storeId];
@@ -1234,17 +1240,20 @@ export const productionRepository = {
               params
             );
 
-            // Phase 1 — product_lot pour la fournee (additif, n'impacte pas les flux legacy)
-            await productLotRepository.createFromProduction(client, {
-              productId: item.product_id,
-              storeId,
-              productionPlanId: planId,
-              quantityProduced: parseFloat(item.actual_quantity),
-              shelfLifeDays: shelfDays,
-              producedAt: producedAt ? new Date(producedAt) : undefined,
-              notes: `Production partielle plan ${planId}`,
-            });
           }
+
+          // Lot produit fini SYSTEMATIQUE (audit cycle de vie P2.7) : tracabilite
+          // descendante et FEFO pour 100 % du catalogue. Sans shelf_life_days,
+          // DLC = jour meme (repli dans createFromProduction).
+          await productLotRepository.createFromProduction(client, {
+            productId: item.product_id,
+            storeId,
+            productionPlanId: planId,
+            quantityProduced: parseFloat(item.actual_quantity),
+            shelfLifeDays: shelfDays,
+            producedAt: producedAt ? new Date(producedAt) : undefined,
+            notes: `Production partielle plan ${planId}`,
+          });
         }
       }
 
