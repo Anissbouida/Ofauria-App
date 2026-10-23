@@ -1,5 +1,11 @@
 import { Router } from 'express';
 import { moduleGuard } from '../middleware/module-guard.middleware.js';
+import { purchasingReportsRouter } from './purchasing-reports.routes.js';
+import { controleRouter } from './controle.routes.js';
+import { forecastRouter } from './forecast.routes.js';
+import { haccpRouter } from './haccp.routes.js';
+import { traceabilityRouter } from './traceability.routes.js';
+import { managementRouter } from './management.routes.js';
 import authRoutes from './auth.routes.js';
 import categoriesRoutes from './categories.routes.js';
 import productsRoutes from './products.routes.js';
@@ -27,6 +33,7 @@ import ingredientLotRoutes from './ingredient-lot.routes.js';
 import purchaseRequestRoutes from './purchase-request.routes.js';
 import reconciliationRoutes from './reconciliation.routes.js';
 import referentielRoutes from './referentiel.routes.js';
+import purchasingSettingsRoutes from './purchasing-settings.routes.js';
 import productPipelineRoutes from './product-pipeline.routes.js';
 import unsoldDecisionRoutes from './unsold-decision.routes.js';
 import productionContenantRoutes from './production-contenant.routes.js';
@@ -46,6 +53,7 @@ import { ledgerRouter } from './ledger.routes.js';
 import fixedAssetRoutes from './fixed-asset.routes.js';
 import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 import withholdingRoutes from './withholding.routes.js';
+import { paymentSchedulesRouter, debtsRouter, recurringChargesRouter } from './payment-schedule.routes.js';
 
 const router = Router();
 
@@ -93,6 +101,18 @@ router.use('/ingredient-lots', ingredientLotRoutes);
 router.use('/purchase-requests', purchaseRequestRoutes);
 router.use('/reconciliation', reconciliationRoutes);
 router.use('/params', referentielRoutes);
+router.use('/purchasing-settings', purchasingSettingsRoutes);
+// Mig 312 (D9) : pilotage des achats, registre des entrées, journal des achats.
+router.use('/purchasing/reports', purchasingReportsRouter);
+router.use('/controle', controleRouter);
+// Mig 314 : prévision de la demande.
+router.use('/forecast', forecastRouter);
+// Mig 315 : plan de maîtrise sanitaire (HACCP).
+router.use('/haccp', haccpRouter);
+// Mig 316 : traçabilité aval et rappel produit.
+router.use('/traceability', traceabilityRouter);
+// Mig 317 : budget et contrôle de gestion.
+router.use('/gestion', managementRouter);
 router.use('/packaging-items', packagingRoutes);
 router.use('/product-lots', productLotRoutes);
 router.use('/product-pipeline', productPipelineRoutes);
@@ -112,5 +132,8 @@ router.use('/ledger', ledgerRouter);
 router.use('/fixed-assets', fixedAssetRoutes);
 router.use('/bank-reconciliation', bankReconciliationRoutes);
 router.use('/withholding', withholdingRoutes);
+router.use('/payment-schedules', paymentSchedulesRouter);
+router.use('/debts', debtsRouter);
+router.use('/recurring-charges', recurringChargesRouter);
 
 export default router;

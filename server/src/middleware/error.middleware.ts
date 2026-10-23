@@ -7,7 +7,21 @@ type AppError = Error & { statusCode?: number; status?: number; code?: string };
 const IS_PROD = (process.env.NODE_ENV || 'development') === 'production';
 
 export function errorHandler(err: AppError, req: Request, res: Response, _next: NextFunction) {
-  const status = err.statusCode ?? err.status ?? 500;
+  // Règles métier levées par la base (RAISE ... USING ERRCODE = 'OF409', mig 305) :
+  // conflit d'état, message destiné à l'utilisateur.
+  // Contraintes d'unicité métier connues : message clair plutôt qu'une erreur de base (mig 309).
+  const constraint = (err as { constraint?: string }).constraint;
+  const UNIQUE_MESSAGES: Record<string, string> = {
+    uq_invoices_supplier_number: 'Ce numéro de facture est déjà enregistré pour ce fournisseur.',
+    uq_invoices_one_active_per_po: 'Ce bon de commande a déjà une facture active.',
+    uq_payments_instrument_per_invoice: 'Ce chèque ou cet effet règle déjà cette facture.',
+    uq_payments_voids_once: 'Ce paiement est déjà annulé.',
+  };
+  if (err.code === '23505' && constraint && UNIQUE_MESSAGES[constraint]) {
+    err.message = UNIQUE_MESSAGES[constraint];
+    err.statusCode = 409;
+  }
+  const status = err.statusCode ?? err.status ?? (err.code === 'OF409' ? 409 : 500);
   const isClientError = status >= 400 && status < 500;
 
   // OWASP A09 : log structure avec redaction automatique (voir logger.ts).

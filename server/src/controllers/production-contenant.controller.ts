@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionContenantRepository } from '../repositories/production-contenant.repository.js';
-import { createContenantSchema, updateContenantSchema, upsertProfileSchema } from '../validators/production-contenant.validator.js';
+import { bulkIdsSchema, createContenantSchema, updateContenantSchema, upsertProfileSchema } from '../validators/production-contenant.validator.js';
 
 export const productionContenantController = {
   // ───────── CONTENANTS ─────────
@@ -54,6 +54,69 @@ export const productionContenantController = {
     } catch (err) {
       res.status(409).json({ success: false, error: { message: (err as Error).message } });
     }
+  },
+
+  // ───────── Actions en masse ─────────
+  // Meme contrat que products.bulkDelete : chaque format est traite
+  // individuellement pour qu'un format utilise n'empeche pas les autres
+  // d'aboutir. On renvoie le detail des echecs avec leur raison.
+
+  async bulkDeactivate(req: AuthRequest, res: Response) {
+    const parsed = bulkIdsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      return;
+    }
+    let done = 0;
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of parsed.data.ids) {
+      try {
+        await productionContenantRepository.deactivateContenant(id);
+        done++;
+      } catch (err) {
+        failed.push({ id, reason: (err as Error).message || 'Erreur lors de la desactivation' });
+      }
+    }
+    res.json({ success: true, data: { done, failed } });
+  },
+
+  /**
+   * Supprime ce qui peut l'etre, DESACTIVE automatiquement le reste.
+   *
+   * Un format encore reference (recette, format de recette, profil produit,
+   * plan, stock semi-fini) ne peut pas etre supprime : les FK sont en RESTRICT.
+   * Plutot que de renvoyer un echec sur lequel l'utilisateur ne peut rien faire
+   * dans l'immediat, on bascule sur la desactivation — l'intention « je ne veux
+   * plus voir ce format » est satisfaite, et l'historique reste intact.
+   *
+   * Seul un format que la desactivation elle-meme refuse (profil produit
+   * rattache) finit dans `failed`.
+   */
+  async bulkDelete(req: AuthRequest, res: Response) {
+    const parsed = bulkIdsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      return;
+    }
+    let done = 0;
+    let deactivated = 0;
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of parsed.data.ids) {
+      try {
+        const blockers = await productionContenantRepository.findContenantBlockers(id);
+        if (blockers.length === 0) {
+          await productionContenantRepository.deleteContenant(id);
+          done++;
+        } else {
+          // Repli : on desactive au lieu d'echouer.
+          await productionContenantRepository.deactivateContenant(id);
+          deactivated++;
+        }
+      } catch (err) {
+        failed.push({ id, reason: (err as Error).message || 'Erreur lors de la suppression' });
+      }
+    }
+    res.json({ success: true, data: { done, deactivated, failed } });
   },
 
   // ───────── PROFILS PRODUIT ─────────

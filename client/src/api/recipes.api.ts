@@ -178,7 +178,10 @@ export interface RecipeChild {
 }
 
 export const recipesApi = {
-  list: () => api.get('/recipes').then(r => r.data.data),
+  /** archived=true (strict) → uniquement les fiches archivées. Le test === true
+      protège les `queryFn: recipesApi.list` : react-query passe un objet contexte
+      en premier argument, qui ne doit pas activer le filtre. */
+  list: (archived?: unknown) => api.get('/recipes', { params: archived === true ? { archived: 1 } : {} }).then(r => r.data.data),
   listBase: () => api.get('/recipes/base').then(r => r.data.data),
   listCategories: () => api.get('/recipes/categories').then(r => r.data.data as RecipeCategory[]),
   getById: (id: string) => api.get(`/recipes/${id}`).then(r => r.data.data),
@@ -186,7 +189,27 @@ export const recipesApi = {
   create: (data: Record<string, any>) => api.post('/recipes', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/recipes/${id}`),
+  /** Suppression en masse. Renvoie { deletedCount, blocked: [{id, name}] } —
+      les fiches référencées ailleurs (FK RESTRICT) sont conservées. */
+  bulkRemove: (ids: string[]) =>
+    api.post('/recipes/bulk-delete', { ids })
+      .then(r => r.data.data as { deletedCount: number; blocked: { id: string; name: string }[] }),
+  /** Archive : retire des listes et sélecteurs sans supprimer (restaurable). */
+  bulkArchive: (ids: string[]) =>
+    api.post('/recipes/bulk-archive', { ids }).then(r => r.data.data as { archivedCount: number }),
+  bulkRestore: (ids: string[]) =>
+    api.post('/recipes/bulk-restore', { ids }).then(r => r.data.data as { restoredCount: number }),
   versions: (id: string) => api.get(`/recipes/${id}/versions`).then(r => r.data.data),
+  /**
+   * Fiche technique imprimable (PDF A4). Réponse binaire : blob, pas JSON.
+   * `formatId` restreint la fiche au cadre sélectionné ; sans lui, tous les
+   * formats actifs sont imprimés.
+   */
+  fichePdf: (id: string, formatId?: string | null) =>
+    api.get(`/recipes/${id}/fiche-technique`, {
+      responseType: 'blob',
+      params: formatId ? { format: formatId } : undefined,
+    }).then(r => r),
 
   // --- Nomenclature par format (composition d'un produit composé) ---
   componentRoles: () => api.get('/recipes/component-roles').then(r => r.data.data as ComponentRole[]),
@@ -199,6 +222,10 @@ export const recipesApi = {
   // Leviers financiers (frais indirects + multiplicateur) au niveau recette.
   saveFinance: (recipeId: string, payload: Record<string, any>) =>
     api.patch(`/recipes/${recipeId}/finance`, payload).then(r => r.data.data as CompositionData),
+  updateIdentity: (recipeId: string, payload: { name: string; categoryId: string | null }) =>
+    api.patch(`/recipes/${recipeId}/identity`, payload).then(r => r.data.data),
+  saveEtapes: (recipeId: string, etapes: Record<string, any>[]) =>
+    api.put(`/recipes/${recipeId}/etapes`, { etapes }).then(r => r.data.data),
   recipeChildren: (recipeId: string) =>
     api.get(`/recipes/${recipeId}/children`).then(r => r.data.data as RecipeChild[]),
 

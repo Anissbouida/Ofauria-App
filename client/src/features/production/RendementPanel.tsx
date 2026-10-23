@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -72,7 +73,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
       setRecordingItem(null);
       notify.success('Rendement enregistre');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
+    onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
 
   // Only show for in_progress or completed plans with produced items

@@ -12,7 +12,7 @@ import {
   DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock,
   Plus, Zap,
 } from 'lucide-react';
-import type { AppModule } from '@ofauria/shared';
+import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { navLabel, visibleNavGroups } from '../../config/navigation';
 
 export default function HomePage() {
@@ -40,14 +40,14 @@ export default function HomePage() {
   const { data: stockAlerts } = useQuery({
     queryKey: ['inventory-alerts'],
     queryFn: inventoryApi.alerts,
-    enabled: hasModule('inventory'),
+    enabled: hasModule('stock'),
   });
 
   // Echeances fournisseurs <= 7j affichees aux admins/gerants ayant acces au
   // module purchasing ou accounting.
   const canSeePaymentAlerts = hasModule('purchasing') || hasModule('accounting');
 
-  const userGroups = visibleNavGroups(hasModule);
+  const userGroups = visibleNavGroups(hasModule, user?.role);
 
   // Production stats
   const plans = (productionPlans?.data || []) as { status: string; items?: { status: string }[] }[];
@@ -66,7 +66,7 @@ export default function HomePage() {
   const quickActions = [
     { label: 'Nouvelle vente', icon: ShoppingCart, href: '/pos', color: 'bg-green-500 hover:bg-green-600', module: 'pos' as AppModule },
     { label: 'Production', icon: Factory, href: '/production', color: 'bg-indigo-500 hover:bg-indigo-600', module: 'production' as AppModule },
-    { label: 'Économat', icon: Warehouse, href: '/inventory', color: 'bg-amber-500 hover:bg-amber-600', module: 'inventory' as AppModule },
+    { label: MODULE_LABELS.stock, icon: Warehouse, href: '/stock', color: 'bg-amber-500 hover:bg-amber-600', module: 'stock' as AppModule },
   ].filter(a => hasModule(a.module));
 
   return (
@@ -126,8 +126,8 @@ export default function HomePage() {
             )}
 
             {/* Alertes stock */}
-            {hasModule('inventory') && (
-              <div onClick={() => navigate('/inventory')}
+            {hasModule('stock') && (
+              <div onClick={() => navigate('/stock')}
                 className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform ${

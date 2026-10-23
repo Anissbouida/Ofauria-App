@@ -7,12 +7,13 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Printer, Archive, ArchiveRestore } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import RecipeCreateDialog, { type RecipeIdentity } from './RecipeCreateDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
@@ -79,6 +80,9 @@ interface RecipeEtape {
   est_repetable: boolean;
   nb_repetitions: number;
   responsable_role: string | null;
+  /** Lignes d'ingrédients pesées à cette étape : "<ingredient_id>" ou
+      "<ingredient_id>#n" (n-ième occurrence). Absent = étape non affectée. */
+  ingredient_refs?: string[];
 }
 
 interface RecipeDetail {
@@ -96,6 +100,8 @@ interface RecipeDetail {
   total_weight_kg: string | null;
   is_base: boolean;
   mode_cout?: string;
+  /** Perte de transformation (cuisson, réduction) — pilote le rendement net. */
+  perte_standard_pct?: string | number | null;
   contenant_id: string | null;
   contenant_nom: string | null;
   contenant_type: number | null;
@@ -191,7 +197,15 @@ export default function RecipesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { data: recipes = [], isLoading } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
+  // Vue « Archivées » : fiches retirées des listes (retenues par l'historique de
+  // production, ou mises de côté) — consultables et restaurables, jamais mélangées
+  // aux actives. La clé de query préfixée 'recipes' reste invalidée par les
+  // invalidateQueries(['recipes']) existants.
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: recipes = [], isLoading } = useQuery({
+    queryKey: ['recipes', { archived: showArchived }],
+    queryFn: () => recipesApi.list(showArchived),
+  });
   const { data: recipeCategories = [] } = useQuery<RecipeCategory[]>({
     queryKey: ['recipe-categories'],
     queryFn: recipesApi.listCategories,
@@ -202,6 +216,8 @@ export default function RecipesPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>(''); // '' = toutes
   const [showForm, setShowForm] = useState(false);
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
+  /** Fiche dont on modifie l'identité (nom, catégorie) depuis la liste. */
+  const [identityEdit, setIdentityEdit] = useState<RecipeIdentity | null>(null);
   // Point d'entrée du module : les recettes produits finis. L'onglet « Formats de
   // production » est un référentiel de contenants (pas de recherche, pas de compteur) :
   // y atterrir par défaut donnait l'impression d'être ailleurs que dans les fiches.
@@ -238,10 +254,56 @@ export default function RecipesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Recette supprimee'); },
   });
 
+  // Sélection multiple (vue liste, admin) : suppression en masse par onglet.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const bulkDeleteMutation = useMutation({
+    mutationFn: recipesApi.bulkRemove,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      setSelectedIds(new Set());
+      if (result.blocked.length > 0) {
+        // Les fiches retenues par l'historique de production ne seront JAMAIS
+        // supprimables : proposer tout de suite l'alternative qui marche,
+        // sinon l'utilisateur reclique « Supprimer » en boucle sans issue.
+        const names = result.blocked.map(b => b.name).join(', ');
+        if (confirm(
+          `${result.deletedCount} supprimée(s).\n\n${result.blocked.length} fiche(s) ne peuvent pas être supprimées car l'historique de production les référence :\n${names}\n\nLes archiver à la place ? (Elles disparaissent des listes mais restent restaurables via « Archivées ».)`
+        )) {
+          bulkArchiveMutation.mutate(result.blocked.map(b => b.id));
+        } else {
+          notify.error(`${result.deletedCount} supprimée(s) — ${result.blocked.length} conservée(s) : ${names}`);
+        }
+      } else {
+        notify.success(`${result.deletedCount} fiche(s) supprimée(s)`);
+      }
+    },
+  });
+  const bulkArchiveMutation = useMutation({
+    mutationFn: recipesApi.bulkArchive,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      setSelectedIds(new Set());
+      notify.success(`${result.archivedCount} fiche(s) archivée(s)`);
+    },
+  });
+  const bulkRestoreMutation = useMutation({
+    mutationFn: recipesApi.bulkRestore,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      setSelectedIds(new Set());
+      notify.success(`${result.restoredCount} fiche(s) restaurée(s)`);
+    },
+  });
+
+  /** L'onglet Bases et l'onglet Produits partagent le tableau mais pas les colonnes :
+      perte et rendement net n'ont de sens que pour une préparation, marge que pour
+      un produit. */
+  const isBaseTab = activeTab === 'base';
+
   const filtered = recipes.filter((r: Record<string, any>) => {
     const s = search.toLowerCase();
     const matchSearch = !s || (r.name as string).toLowerCase().includes(s) || (r.product_name as string || '').toLowerCase().includes(s);
-    const matchTab = activeTab === 'base' ? r.is_base === true : !r.is_base;
+    const matchTab = isBaseTab ? r.is_base === true : !r.is_base;
     const matchCategory = !categoryFilter || (r.category_id as string) === categoryFilter;
     return matchSearch && matchTab && matchCategory;
   });
@@ -256,9 +318,22 @@ export default function RecipesPage() {
         case 'contenant_nom': cmp = ((a.contenant_nom as string) || '').localeCompare((b.contenant_nom as string) || ''); break;
         case 'yield_quantity': cmp = ((a.yield_quantity as number) || 0) - ((b.yield_quantity as number) || 0); break;
         case 'total_cost': cmp = parseFloat((a.total_cost as string) || '0') - parseFloat((b.total_cost as string) || '0'); break;
+        case 'perte': cmp = parseFloat((a.perte_standard_pct as string) || '0') - parseFloat((b.perte_standard_pct as string) || '0'); break;
+        case 'net': {
+          const nA = parseFloat((a.total_weight_kg as string) || '0') * (1 - (parseFloat((a.perte_standard_pct as string) || '0') / 100));
+          const nB = parseFloat((b.total_weight_kg as string) || '0') * (1 - (parseFloat((b.perte_standard_pct as string) || '0') / 100));
+          cmp = nA - nB; break;
+        }
+        case 'utilisee_par': cmp = (parseInt((a.utilisee_par as string) || '0') || 0) - (parseInt((b.utilisee_par as string) || '0') || 0); break;
         case 'cost_per_unit': {
-          const cA = parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
-          const cB = parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
+          // Même normalisation que l'affichage : une base se trie au kg net,
+          // sinon le tri classerait des DH/g face à des DH/kg.
+          const perKg = (x: Record<string, any>) => {
+            const net = parseFloat((x.total_weight_kg as string) || '0') * (1 - (parseFloat((x.perte_standard_pct as string) || '0') / 100));
+            return net > 0 ? parseFloat((x.total_cost as string) || '0') / net : 0;
+          };
+          const cA = a.is_base ? perKg(a) : parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
+          const cB = b.is_base ? perKg(b) : parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
           cmp = cA - cB; break;
         }
         case 'margin': {
@@ -288,13 +363,32 @@ export default function RecipesPage() {
 
   // Produit composé → ouverture directe en plein écran (page composition).
   // Préparation de base → modal de consultation (pas de format/composition par contenant).
+  // Une préparation et un produit fini ouvrent désormais la même chose : une page
+  // pleine. Consultation et édition y sont fusionnées, comme côté produit — deux
+  // entrées vers un même écran n'avaient plus de raison d'être.
   const openRecipe = (r: Record<string, any>) => {
-    if (r.is_base) setSelectedRecipeId(r.id as string);
-    else navigate(`/recipes/${r.id}/nomenclature`);
+    navigate(r.is_base ? `/recipes/${r.id}/preparation` : `/recipes/${r.id}/nomenclature`);
   };
-  const editRecipe = (r: Record<string, any>) => {
-    if (r.is_base) openEdit(r.id as string);
-    else navigate(`/recipes/${r.id}/nomenclature`);
+  const editRecipe = openRecipe;
+
+  /**
+   * Fiche technique imprimable. On ouvre le PDF dans un onglet plutôt que de le
+   * télécharger : le geste attendu est « imprimer », et la visionneuse du
+   * navigateur enchaîne directement sur Ctrl+P. Compatible Capacitor.
+   */
+  const [printingId, setPrintingId] = useState<string | null>(null);
+  const printFiche = async (r: Record<string, any>) => {
+    setPrintingId(r.id as string);
+    try {
+      const response = await recipesApi.fichePdf(r.id as string);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      notify.error('Erreur lors de la génération de la fiche technique');
+    } finally {
+      setPrintingId(null);
+    }
   };
 
   const openCreate = () => {
@@ -307,6 +401,7 @@ export default function RecipesPage() {
     setActiveTab(tab);
     setSearch('');
     setCategoryFilter('');
+    setSelectedIds(new Set());
   };
 
   const askDelete = (r: Record<string, any>) => {
@@ -316,10 +411,42 @@ export default function RecipesPage() {
     }
   };
 
+  // « Tout sélectionner » porte sur les lignes visibles (onglet + filtres actifs),
+  // pas sur tout le référentiel : ce que l'utilisateur voit est ce qu'il supprime.
+  const visibleIds = useMemo(() => sortedFiltered.map((r: Record<string, any>) => r.id as string), [sortedFiltered]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleIds));
+  };
+  const askBulkDelete = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    const label = isBaseTab ? 'préparation(s) de base' : 'recette(s) produit fini';
+    if (confirm(`Supprimer ${n} ${label} ?\n\nCette action est définitive. Les fiches utilisées ailleurs (sous-recette, plan de production) seront conservées.`)) {
+      bulkDeleteMutation.mutate([...selectedIds]);
+    }
+  };
+  const askBulkArchive = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    if (confirm(`Archiver ${n} fiche(s) ?\n\nElles disparaissent des listes et des sélecteurs mais restent restaurables depuis la vue « Archivées ».`)) {
+      bulkArchiveMutation.mutate([...selectedIds]);
+    }
+  };
+
   // Distingue « le référentiel est vide » de « les filtres ne renvoient rien » :
   // le message et l'action utile ne sont pas les mêmes.
   const hasAnyInTab = activeTab === 'base' ? baseCount > 0 : productCount > 0;
-  const emptyState = hasAnyInTab
+  const emptyState = showArchived
+    ? { title: 'Aucune fiche archivée', hint: 'Les fiches archivées disparaissent des listes et des sélecteurs sans être supprimées — elles restent restaurables ici.', action: 'clear' as const }
+    : hasAnyInTab
     ? { title: 'Aucun résultat', hint: 'Aucune fiche ne correspond aux filtres actifs.', action: 'clear' as const }
     : {
         title: activeTab === 'base' ? 'Aucune préparation de base' : 'Aucune recette produit fini',
@@ -358,6 +485,7 @@ export default function RecipesPage() {
             {activeTab === 'contenants' ? 'Formats de production'
               : activeTab === 'base' ? 'Préparations de base'
               : 'Recettes produits finis'}
+            {showArchived && activeTab !== 'contenants' && ' — archivées'}
           </span>
         </div>
         {/* L'onglet Formats gère son propre référentiel : le bouton reste dans la barre
@@ -452,6 +580,13 @@ export default function RecipesPage() {
             placeholder="Toutes catégories"
           />
         </div>
+        <button
+          onClick={() => { setShowArchived(v => !v); setSelectedIds(new Set()); }}
+          className={showArchived ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+          style={{ marginLeft: 8, flexShrink: 0 }}
+          title={showArchived ? 'Revenir aux fiches actives' : 'Voir les fiches archivées'}>
+          <Archive size={13} /> Archivées
+        </button>
         {search && (
           <span className="odoo-filter-chip">
             Recherche: {search}
@@ -468,6 +603,38 @@ export default function RecipesPage() {
           ) : null;
         })()}
       </div>
+
+      {/* ══════ BARRE DE SÉLECTION (suppression en masse) ══════ */}
+      {viewMode === 'list' && selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '0.45rem 0.75rem',
+          background: 'rgba(220,53,69,0.06)', borderBottom: '1px solid var(--theme-bg-separator)',
+          fontSize: '0.8125rem',
+        }}>
+          <span>
+            <strong>{selectedIds.size}</strong> {isBaseTab ? 'préparation(s) sélectionnée(s)' : 'recette(s) sélectionnée(s)'}
+          </span>
+          <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary">
+            Tout désélectionner
+          </button>
+          {showArchived ? (
+            <button onClick={() => bulkRestoreMutation.mutate([...selectedIds])} className="odoo-btn-secondary"
+              disabled={bulkRestoreMutation.isPending}>
+              <ArchiveRestore size={13} /> {bulkRestoreMutation.isPending ? 'Restauration…' : 'Restaurer la sélection'}
+            </button>
+          ) : (
+            <button onClick={askBulkArchive} className="odoo-btn-secondary"
+              disabled={bulkArchiveMutation.isPending}>
+              <Archive size={13} /> {bulkArchiveMutation.isPending ? 'Archivage…' : 'Archiver la sélection'}
+            </button>
+          )}
+          <button onClick={askBulkDelete} className="odoo-btn-secondary"
+            disabled={bulkDeleteMutation.isPending}
+            style={{ color: '#dc3545', borderColor: '#dc3545' }}>
+            <Trash2 size={13} /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer la sélection'}
+          </button>
+        </div>
+      )}
 
       {/* ══════ CONTENT ══════ */}
       {isLoading ? (
@@ -551,34 +718,70 @@ export default function RecipesPage() {
           <table className="odoo-table">
             <thead>
               <tr>
+                <th style={{ width: 28 }}>
+                  <input type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAll}
+                    title={allVisibleSelected ? 'Tout désélectionner' : 'Sélectionner toutes les fiches visibles'}
+                    style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
+                </th>
                 <th style={{ width: 24 }}></th>
                 <SortHeader label="Recette" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                {/* Onglet Bases : « Type » ne dit rien (tout est Base) et « Marge »
+                    est vide (une préparation ne se vend pas). On rend ces deux
+                    colonnes à ce qui manque vraiment — la perte et le net. */}
+                {!isBaseTab && <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
                 <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Rendement" sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label={isBaseTab ? 'Rendement brut' : 'Rendement'} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                {isBaseTab && (
+                  <>
+                    <SortHeader label="Perte" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                      title="Perte de transformation (cuisson, réduction). Elle sépare le poids engagé du poids réellement utilisable." />
+                    <SortHeader label="Rendement net" sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                      title="Poids brut moins la perte de transformation." />
+                  </>
+                )}
                 {/* Ces colonnes viennent de v_recipe_total_cost = matière seule
                     (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
                     frais de structure ne sont ajoutés que dans l'éditeur de composition.
                     Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
-                <SortHeader label="Coût matière" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                <SortHeader label={isBaseTab ? 'Coût fournée' : 'Coût matière'} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />
-                <SortHeader label="Coût mat./u." sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title="Coût matière rapporté à une unité produite." />
-                <SortHeader label="Marge mat." sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title="Marge sur coût matière — majorée par rapport à la marge réelle, qui déduit aussi main d'œuvre, énergie et structure (voir l'éditeur de composition)." />
+                <SortHeader label={isBaseTab ? 'Coût / kg net' : 'Coût mat./u.'} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  title={isBaseTab
+                    ? "Coût de la fournée rapporté au kilo réellement utilisable. Normalisé au kg pour que deux préparations soient comparables, quelle que soit l'unité de leur rendement."
+                    : 'Coût matière rapporté à une unité produite.'} />
+                {isBaseTab ? (
+                  <SortHeader label="Utilisée par" sortKey="utilisee_par" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                    title="Nombre de recettes qui consomment cette préparation. À zéro, la fiche n'est utilisée nulle part." />
+                ) : (
+                  <SortHeader label="Marge mat." sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                    title="Marge sur coût matière — majorée par rapport à la marge réelle, qui déduit aussi main d'œuvre, énergie et structure (voir l'éditeur de composition)." />
+                )}
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {sortedFiltered.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: 0 }}><EmptyState /></td></tr>
+                <tr><td colSpan={isBaseTab ? 11 : 10} style={{ padding: 0 }}><EmptyState /></td></tr>
               ) : sortedFiltered.map((r: Record<string, any>) => {
                 const isComposeRow = r.mode_cout === 'compose';
                 const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 // Composé : coût/pièce = coût total ÷ rendement (format) ; sinon legacy ÷ yield.
                 const rendement = parseInt(String(r.rendement ?? '')) || (isComposeRow ? Math.round(yieldQty) : yieldQty) || 1;
-                const costPerUnit = isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty;
+                // Base : le coût est ramené au kilo NET. Diviser par le rendement
+                // tel quel donnait DH/g pour une fiche en grammes et DH/kg pour sa
+                // voisine en kilos — deux lignes du même tableau à un facteur 1000.
+                // On passe par le poids réel des ingrédients, pas par le rendement
+                // saisi, puis on retire la perte de transformation.
+                const perteBase = parseFloat(String(r.perte_standard_pct ?? '0')) || 0;
+                const utiliseePar = parseInt(String(r.utilisee_par ?? '0')) || 0;
+                const poidsKg = parseFloat(String(r.total_weight_kg ?? '0')) || 0;
+                const poidsNetKg = poidsKg * (1 - perteBase / 100);
+                const costPerUnit = r.is_base
+                  ? (poidsNetKg > 0 ? totalCost / poidsNetKg : 0)
+                  : (isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty);
                 const productPrice = parseFloat(r.product_price as string || '0');
                 const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
                 // Composé : prix conseillé théorique = coût/pièce × multiplicateur.
@@ -599,6 +802,12 @@ export default function RecipesPage() {
 
                 return (
                   <tr key={r.id as string} onClick={() => openRecipe(r)}>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={selectedIds.has(r.id as string)}
+                        onChange={() => toggleSelect(r.id as string)}
+                        style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
+                    </td>
                     <td><span className={`odoo-status-dot ${dotClass}`} title={dotTitle} /></td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
@@ -611,11 +820,13 @@ export default function RecipesPage() {
                         )}
                       </span>
                     </td>
-                    <td>
-                      <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
-                        {r.is_base ? 'Base' : 'Produit'}
-                      </span>
-                    </td>
+                    {!isBaseTab && (
+                      <td>
+                        <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
+                          {r.is_base ? 'Base' : 'Produit'}
+                        </span>
+                      </td>
+                    )}
                     <td style={{ color: 'var(--theme-text-muted)' }}>
                       {formatNom ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -627,42 +838,63 @@ export default function RecipesPage() {
                       <span style={{ fontWeight: 500 }}>{isComposeRow ? rendement : yieldQty}</span>
                       <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isComposeRow ? 'p.' : (r.yield_unit as string || 'u.')}</span>
                     </td>
+                    {isBaseTab && (
+                      <>
+                        <td style={{ textAlign: 'right', color: perteBase > 0 ? '#b45309' : undefined }}>
+                          {perteBase > 0
+                            ? <><span style={{ fontWeight: 500 }}>{perteBase.toFixed(1)}</span><span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>%</span></>
+                            : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        </td>
+                        <td style={{ textAlign: 'right', color: '#15803d' }}>
+                          {poidsNetKg > 0
+                            ? <><span style={{ fontWeight: 500 }}>{poidsNetKg >= 1 ? poidsNetKg.toFixed(2) : Math.round(poidsNetKg * 1000)}</span><span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{poidsNetKg >= 1 ? 'kg' : 'g'}</span></>
+                            : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        </td>
+                      </>
+                    )}
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{totalCost.toFixed(2)}</span>
                       <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 500 }}>{costPerUnit.toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isBaseTab ? 'DH/kg' : 'DH'}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {!r.is_base && price > 0 ? (
+                      {isBaseTab ? (
+                        utiliseePar > 0
+                          ? <span className="odoo-tag odoo-tag-blue" title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
+                          : <span style={{ color: 'var(--theme-bg-separator)' }} title="Aucune recette n’utilise cette préparation">—</span>
+                      ) : (!r.is_base && price > 0 ? (
                         <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}>
                           {margin.toFixed(0)}%
                         </span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>)}
                     </td>
-                    {/* Produit fini : « Voir » et « Modifier » menaient tous deux à
-                        l'éditeur de composition — deux boutons pour une seule action.
-                        Une seule entrée y mène désormais ; la base garde consultation
-                        (modal) et édition (formulaire), qui sont bien distinctes. */}
+                    {/* Une seule entrée vers la fiche, des deux côtés : « Voir » et
+                        « Modifier » menaient au même écran depuis que la préparation
+                        s'ouvre en page pleine comme un produit fini. */}
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'inline-flex', gap: 2 }}>
-                        {r.is_base ? (
-                          <>
-                            <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
-                              className="odoo-pager-btn" title="Consulter la fiche">
-                              <Eye size={13} />
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); editRecipe(r); }}
-                              className="odoo-pager-btn" title="Modifier la fiche">
-                              <Pencil size={13} />
-                            </button>
-                          </>
-                        ) : (
-                          <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
-                            className="odoo-pager-btn" title="Ouvrir la composition">
-                            <Layers size={13} />
+                        <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
+                          className="odoo-pager-btn"
+                          title={r.is_base ? 'Ouvrir la préparation' : 'Ouvrir la composition'}>
+                          <Layers size={13} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setIdentityEdit({ id: r.id as string, name: r.name as string, category_id: r.category_id ?? null, is_base: !!r.is_base }); }}
+                          className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); printFiche(r); }}
+                          className="odoo-pager-btn" title="Imprimer la fiche technique"
+                          disabled={printingId === r.id}>
+                          <Printer size={13} />
+                        </button>
+                        {showArchived && (
+                          <button onClick={(e) => { e.stopPropagation(); bulkRestoreMutation.mutate([r.id as string]); }}
+                            className="odoo-pager-btn" title="Restaurer la fiche"
+                            disabled={bulkRestoreMutation.isPending}>
+                            <ArchiveRestore size={13} />
                           </button>
                         )}
                         <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
@@ -688,7 +920,18 @@ export default function RecipesPage() {
         />
       )}
 
-      {showForm && (
+      {/* Création : petite fenêtre d'identité, puis la page complète (la même
+          qu'en modification). L'ancien formulaire ne sert plus qu'à l'édition
+          par lien profond. */}
+      {identityEdit && (
+        <RecipeCreateDialog recipe={identityEdit} onClose={() => setIdentityEdit(null)} />
+      )}
+
+      {showForm && !editingRecipeId && (
+        <RecipeCreateDialog defaultIsBase={activeTab === 'base'} onClose={() => setShowForm(false)} />
+      )}
+
+      {showForm && editingRecipeId && (
         <RecipeFormModal
           recipeId={editingRecipeId}
           defaultIsBase={activeTab === 'base'}
@@ -1412,11 +1655,20 @@ interface FormSubRecipe {
 interface FormEtape {
   ordre: number;
   nom: string;
+  /** Libellé en darija. Les fiches Ôfauria sont bilingues ; c'est souvent la
+      colonne arabe qui est lue au poste. */
+  nom_ar: string;
+  /** Points de contrôle en darija — comptés à part : la version arabe d'une
+      fiche ne dit pas forcément le même nombre de choses que la française. */
+  checklist_items_ar: string[];
   duree_estimee_min: string;
   est_bloquante: boolean;
   timer_auto: boolean;
   controle_qualite: boolean;
   checklist_items: string[];
+  /** Réfs d'ingrédients pesés à cette étape (voir RecipeEtape.ingredient_refs).
+      null = jamais affectée (l'assistant montre toute la recette). */
+  ingredient_refs: string[] | null;
   est_repetable: boolean;
   nb_repetitions: string;
   responsable_role: string;
@@ -1651,6 +1903,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const [contenantId, setContenantId] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('1');
   const [yieldUnit, setYieldUnit] = useState('unit');
+  // Perte de transformation — propre aux préparations : c'est elle qui sépare le
+  // poids engagé du poids réellement utilisable, donc le coût au kg NET.
+  const [perteStandardPct, setPerteStandardPct] = useState('0');
   // Poids unitaire d'une piece (kg). Saisi quand yield_unit != product.sale_unit.
   const [pieceWeightKg, setPieceWeightKg] = useState('');
   // Categorie operationnelle (recipe_categories.id)
@@ -1676,6 +1931,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
     setContenantId(existingRecipe.contenant_id || '');
     setYieldQuantity(String(existingRecipe.yield_quantity));
     setYieldUnit(existingRecipe.yield_unit || 'unit');
+    setPerteStandardPct(String(parseFloat(String(existingRecipe.perte_standard_pct ?? 0)) || 0));
     setPieceWeightKg(
       existingRecipe.piece_weight_kg !== null && existingRecipe.piece_weight_kg !== undefined
         ? String(parseFloat(String(existingRecipe.piece_weight_kg)))
@@ -1711,7 +1967,10 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         ? existingRecipe.etapes.map(e => ({
             ordre: e.ordre, nom: e.nom, duree_estimee_min: e.duree_estimee_min ? String(e.duree_estimee_min) : '',
             est_bloquante: e.est_bloquante, timer_auto: e.timer_auto, controle_qualite: e.controle_qualite,
+            nom_ar: (e as unknown as Record<string, unknown>).nom_ar as string || '',
+            checklist_items_ar: ((e as unknown as Record<string, unknown>).checklist_items_ar as string[]) || [],
             checklist_items: e.checklist_items || [], est_repetable: e.est_repetable,
+            ingredient_refs: Array.isArray(e.ingredient_refs) ? e.ingredient_refs : null,
             nb_repetitions: String(e.nb_repetitions || 1), responsable_role: e.responsable_role || '',
           }))
         : []
@@ -1771,9 +2030,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const updateSubRecipeRow = (idx: number, field: keyof FormSubRecipe, value: string) => setFormSubRecipes(formSubRecipes.map((row, i) => i === idx ? { ...row, [field]: value } : row));
 
   const addEtapeRow = () => setFormEtapes([...formEtapes, {
-    ordre: formEtapes.length + 1, nom: '', duree_estimee_min: '', est_bloquante: true,
-    timer_auto: false, controle_qualite: false, checklist_items: [], est_repetable: false,
-    nb_repetitions: '1', responsable_role: '',
+    ordre: formEtapes.length + 1, nom: '', nom_ar: '', duree_estimee_min: '', est_bloquante: true,
+    timer_auto: false, controle_qualite: false, checklist_items: [], checklist_items_ar: [], est_repetable: false,
+    ingredient_refs: null, nb_repetitions: '1', responsable_role: '',
   }]);
   const removeEtapeRow = (idx: number) => {
     const updated = formEtapes.filter((_, i) => i !== idx).map((e, i) => ({ ...e, ordre: i + 1 }));
@@ -1995,9 +2254,12 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         timer_auto: e.timer_auto,
         controle_qualite: e.controle_qualite,
         checklist_items: e.checklist_items.filter(c => c.trim()),
+        nom_ar: e.nom_ar.trim() || null,
+        checklist_items_ar: (e.checklist_items_ar || []).filter(c => c.trim()),
         est_repetable: e.est_repetable,
         nb_repetitions: parseInt(e.nb_repetitions) || 1,
         responsable_role: e.responsable_role || null,
+        ...(e.ingredient_refs ? { ingredient_refs: e.ingredient_refs } : {}),
       }));
 
     // Packaging valides : on filtre les lignes vides
@@ -2027,6 +2289,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       contenantId: contenantId || null,
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
+      // Envoyée pour les préparations seulement : côté produit fini, la perte est
+      // gérée par l'éditeur de nomenclature, l'omettre évite de l'écraser.
+      ...(isBase ? { perteStandardPct: Math.min(99.99, Math.max(0, parseFloat(perteStandardPct) || 0)) } : {}),
       pieceWeightKg: pieceWeightKg && parseFloat(pieceWeightKg) > 0 ? parseFloat(pieceWeightKg) : null,
       categoryId: categoryId || null,
       marginMultiplier: parseFloat(marginMultiplier) || 3,
@@ -2175,6 +2440,31 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                       </select>
                     </div>
                     <p className="text-xs text-gray-400 mt-1">Ex: 2167 g pour une pâte croissante, 5 kg pour une crème pâtissière</p>
+
+                    {/* Perte de transformation — l'entrée qui manquait pour que le
+                        rendement net et le coût au kg net veuillent dire quelque chose.
+                        Une Joconde à 15 % ne coûte pas la même chose qu'un sirop à 0 %. */}
+                    <div className="mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Perte de transformation</label>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min={0} max={99.99} step="0.1"
+                          className="w-28 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-bold"
+                          value={perteStandardPct} onChange={(e) => setPerteStandardPct(e.target.value)} />
+                        <span className="text-sm text-gray-500">%</span>
+                        {(() => {
+                          const brut = parseFloat(yieldQuantity) || 0;
+                          const pct = Math.min(99.99, Math.max(0, parseFloat(perteStandardPct) || 0));
+                          if (brut <= 0) return null;
+                          const net = brut * (1 - pct / 100);
+                          return (
+                            <span className="text-sm text-gray-600">
+                              → rendement net <strong className="text-green-700">{net.toFixed(net < 10 ? 2 : 0)} {yieldUnit}</strong>
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Cuisson, réduction, évaporation. À 0 %, le poids sortant égale le poids engagé.</p>
+                    </div>
                   </div>
                 )}
 
@@ -2267,7 +2557,10 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                                   <Trash2 size={14} />
                                 </button>
                               </div>
-                              {/* Overrides prix/marge par format (mig 168) — 2eme ligne du grid */}
+                              {/* Overrides prix/marge par format (mig 168) — 2eme ligne du grid.
+                                  Masqués sur une préparation de base : forcer un prix de vente
+                                  sur une pâte qui n'est jamais vendue n'a pas de sens. */}
+                              {!isBase && (
                               <div className="col-span-12 grid grid-cols-12 gap-2 mt-1 pt-2 border-t border-gray-200">
                                 <div className="col-span-1 text-[10px] uppercase font-semibold text-gray-400 flex items-center">Override</div>
                                 <div className="col-span-3">
@@ -2303,6 +2596,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                                     : 'Pas d\'override → utilise la marge de la recette'}
                                 </div>
                               </div>
+                              )}
                             </div>
                           ))}
                           <button type="button" onClick={addFormatRow}
@@ -2384,6 +2678,11 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                           const coutComplet = parseFloat(String(f.cout_unitaire_complet || '0'));
                           const pv = parseFloat(String(f.prix_vente_unitaire || '0'));
                           const marge = pv > 0 ? ((pv - coutComplet) / pv * 100) : 0;
+                          // Coût ramené au kilo réellement utilisable : poids de la
+                          // fournée moins la perte de transformation saisie plus haut.
+                          const pertePct = Math.min(99.99, Math.max(0, parseFloat(perteStandardPct) || 0));
+                          const poidsNetUniteKg = poidsParUniteKg * (1 - pertePct / 100);
+                          const coutKgNet = poidsNetUniteKg > 0 ? coutComplet / poidsNetUniteKg : 0;
                           return (
                             <div key={f.id} className="bg-white border border-gray-200 rounded-lg p-3">
                               <div className="flex items-center justify-between mb-2">
@@ -2391,9 +2690,19 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                                   <Box size={13} className="text-pink-500" />
                                   {f.contenant_nom} · {poidsParUniteKg < 1 ? `${(poidsParUniteKg * 1000).toFixed(0)} g` : `${poidsParUniteKg.toFixed(3)} kg`} / unité · ×{f.nb_par_defaut}
                                 </span>
-                                <span className="text-xs text-gray-500">
-                                  Marge : <strong className={marge >= 50 ? 'text-green-600' : marge >= 30 ? 'text-amber-600' : 'text-red-600'}>{marge.toFixed(1)}%</strong>
-                                </span>
+                                {/* Une préparation de base ne se vend pas : afficher une
+                                    marge et un prix conseillé y était un non-sens (une plaque
+                                    de Joconde « à 134 DH »). On montre à la place le repère
+                                    qui compte au labo — le coût au kilo net. */}
+                                {isBase ? (
+                                  <span className="text-xs text-gray-500">
+                                    Coût / kg net : <strong className="text-gray-700">{coutKgNet > 0 ? `${coutKgNet.toFixed(2)} DH` : '—'}</strong>
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-gray-500">
+                                    Marge : <strong className={marge >= 50 ? 'text-green-600' : marge >= 30 ? 'text-amber-600' : 'text-red-600'}>{marge.toFixed(1)}%</strong>
+                                  </span>
+                                )}
                               </div>
                               <div className="grid grid-cols-6 gap-2 text-[11px]">
                                 <div>
@@ -2422,8 +2731,10 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                                 </div>
                               </div>
                               <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
-                                <span className="text-xs text-gray-500">Prix de vente proposé</span>
-                                <span className="text-base font-bold text-amber-700">{pv.toFixed(2)} DH</span>
+                                <span className="text-xs text-gray-500">{isBase ? 'Coût de la fournée' : 'Prix de vente proposé'}</span>
+                                <span className="text-base font-bold text-amber-700">
+                                  {(isBase ? coutComplet * nb : pv).toFixed(2)} DH
+                                </span>
                               </div>
                             </div>
                           );
@@ -2912,6 +3223,62 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                             </div>
                           )}
                         </div>
+
+                        {/* Ingrédients pesés à cette étape (refs "id" / "id#n" sur les lignes
+                            de l'onglet Composition, dans leur ordre de saisie). */}
+                        {(() => {
+                          const seen = new Map<string, number>();
+                          const rows = formIngredients
+                            .filter(r => r.ingredientId)
+                            .map(r => {
+                              const n = (seen.get(r.ingredientId) || 0) + 1;
+                              seen.set(r.ingredientId, n);
+                              const ing = allIngredients.find((i: Record<string, any>) => i.id === r.ingredientId) as Record<string, any> | undefined;
+                              return { row: r, occ: n, name: (ing?.name as string) || '?' };
+                            });
+                          const dup = new Set([...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+                          const refOf = (x: { row: FormIngredient; occ: number }) => dup.has(x.row.ingredientId) ? `${x.row.ingredientId}#${x.occ}` : x.row.ingredientId;
+                          const refs = etape.ingredient_refs;
+                          const isOn = (ref: string, id: string) => !!refs && (refs.includes(ref) || refs.includes(id));
+                          const toggle = (ref: string) => {
+                            const cur = refs || [];
+                            updateEtapeRow(idx, 'ingredient_refs', cur.includes(ref) ? cur.filter(r => r !== ref) : [...cur, ref]);
+                          };
+                          return (
+                            <div className="ml-14 bg-emerald-50/60 border border-emerald-200 rounded-lg p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-emerald-800 flex items-center gap-1">
+                                  <Scale size={12} /> Ingrédients pesés à cette étape
+                                  {refs === null && <span className="text-[10px] font-normal text-emerald-600">— non affectée : l'assistant montrera toute la recette</span>}
+                                  {refs !== null && refs.length === 0 && <span className="text-[10px] font-normal text-emerald-600">— aucune pesée</span>}
+                                </span>
+                                {refs !== null && (
+                                  <button type="button" onClick={() => updateEtapeRow(idx, 'ingredient_refs', null)}
+                                    className="text-[10px] text-emerald-700 hover:underline">Ne pas affecter</button>
+                                )}
+                              </div>
+                              {rows.length === 0 ? (
+                                <p className="text-[11px] text-emerald-700">Ajoutez d'abord des ingrédients dans l'onglet Composition.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {rows.map((x) => {
+                                    const ref = refOf(x);
+                                    const on = isOn(ref, x.row.ingredientId);
+                                    return (
+                                      <button key={ref} type="button" onClick={() => toggle(ref)}
+                                        className={`px-2 py-1 rounded-md text-xs border transition-colors ${on
+                                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                                          : 'bg-white border-emerald-200 text-emerald-800 hover:bg-emerald-100'}`}>
+                                        {x.name}{dup.has(x.row.ingredientId) ? ` (${x.occ})` : ''}
+                                        {x.row.quantity && <span className={`ml-1 ${on ? 'text-emerald-100' : 'text-emerald-500'}`}>{x.row.quantity} {x.row.unit}</span>}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Checklist (visible if controle_qualite) */}
                         {etape.controle_qualite && (

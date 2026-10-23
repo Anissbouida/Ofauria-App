@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { useAuth } from './AuthContext';
 import { usersApi } from '../api/users.api';
 import type { AppModule, UserPermission } from '@ofauria/shared';
-import { DEFAULT_ROLE_MODULES, getRoleCategorySlugs } from '@ofauria/shared';
+import { DEFAULT_ROLE_MODULES, MODULE_ALIASES, getRoleCategorySlugs } from '@ofauria/shared';
 
 interface PermissionsContextType {
   permissions: UserPermission[];
@@ -52,14 +52,17 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const hasCustomPermissions = permissions.length > 0;
 
+  // Un module est accorde par sa cle canonique OU par l'une de ses cles historiques
+  // (droits enregistres avant la fusion Économat + Pesage -> Stock).
   const hasModule = (module: AppModule): boolean => {
     if (isAdmin) return true;
+    const keys = [module, ...(MODULE_ALIASES[module] ?? [])];
     if (hasCustomPermissions) {
-      return permissions.some(p => p.module === module && p.canView);
+      return permissions.some(p => keys.includes(p.module) && p.canView);
     }
     // Fallback to default role permissions
     const defaults = DEFAULT_ROLE_MODULES[user?.role || ''] || [];
-    return defaults.includes(module);
+    return keys.some(k => defaults.includes(k));
   };
 
   const canView = (module: AppModule): boolean => {

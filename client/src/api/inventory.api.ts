@@ -4,7 +4,7 @@ export const inventoryApi = {
   list: () => api.get('/inventory').then(r => r.data.data),
   alerts: () => api.get('/inventory/alerts').then(r => r.data.data),
   restock: (data: { ingredientId: string; quantity: number; note?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }) => api.post('/inventory/restock', data).then(r => r.data),
-  adjust: (data: { ingredientId: string; quantity: number; type: string; note?: string }) => api.post('/inventory/adjust', data),
+  adjust: (data: { ingredientId: string; quantity: number; type: string; note?: string; reasonCode?: string }) => api.post('/inventory/adjust', data),
   updateThreshold: (data: { ingredientId: string; threshold: number }) => api.put('/inventory/threshold', data),
   transactions: (ingredientId?: string) => api.get('/inventory/transactions', { params: { ingredientId } }).then(r => r.data.data),
   /** Consommation matieres par periode (sorties de stock x cout unitaire). */
@@ -15,6 +15,17 @@ export const inventoryApi = {
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
 };
 
+export type LotMovementType = 'open' | 'return' | 'waste' | 'losses' | 'quarantine';
+export interface LotMovementPayload {
+  type: LotMovementType;
+  quantity?: number;
+  containerCount?: number;
+  reason?: string;
+  /** Perte partielle : code du referentiel material_loss_reasons (mig 333). */
+  reasonCode?: string;
+  note?: string;
+}
+
 export const ingredientLotsApi = {
   list: (params?: Record<string, string>) => api.get('/ingredient-lots', { params }).then(r => r.data),
   getById: (id: string) => api.get(`/ingredient-lots/${id}`).then(r => r.data.data),
@@ -23,16 +34,24 @@ export const ingredientLotsApi = {
   /** Stock actuel au Pesage (sacs ouverts), agrege par ingredient. Magasinier-only. */
   pesageStock: () => api.get('/ingredient-lots/pesage-stock').then(r => r.data.data),
   expiredActive: () => api.get('/ingredient-lots/expired-active').then(r => r.data.data),
-  stats: () => api.get('/ingredient-lots/stats').then(r => r.data.data),
   traceability: (lotId: string) => api.get(`/ingredient-lots/${lotId}/traceability`).then(r => r.data.data),
   productionLots: (planId: string) => api.get(`/ingredient-lots/production/${planId}`).then(r => r.data.data),
   quarantine: (id: string) => api.post(`/ingredient-lots/${id}/quarantine`).then(r => r.data.data),
-  markAsWaste: (id: string) => api.post(`/ingredient-lots/${id}/waste`).then(r => r.data.data),
-  /** Phase Économat/Pesage : ouverture contenant + envoi aux pertes */
-  openContainer: (id: string, quantity: number, note?: string) =>
-    api.post(`/ingredient-lots/${id}/open-container`, { quantity, note }).then(r => r.data.data),
-  markDepleted: (id: string, note?: string) =>
-    api.post(`/ingredient-lots/${id}/mark-depleted`, { note }).then(r => r.data.data),
+  /**
+   * Mouvement de lot unique (module Stock) : open (scelle -> entame), return (entame -> scelle),
+   * waste (perte partielle en zone entamee), losses (lot entier aux pertes), quarantine.
+   */
+  movement: (id: string, data: LotMovementPayload) =>
+    api.post(`/ingredient-lots/${id}/movement`, data).then(r => r.data.data),
+  /** Zone pesage : ouverture a l'avance d'un contenant (economat -> pesage), hors bon de sortie. */
+  openToPesage: (id: string, data: { quantity: number; containerCount?: number; reason?: string }) =>
+    api.post(`/ingredient-lots/${id}/open-to-pesage`, data).then(r => r.data.data),
+  /** Zone pesage : reliquat range en reserve (pesage -> economat, mouvement de zone trace). */
+  returnToEconomat: (id: string, quantity: number, reason?: string) =>
+    api.post(`/ingredient-lots/${id}/return-to-economat`, { quantity, reason }).then(r => r.data.data),
+  /** Zone pesage : perte / casse sur la quantite perdue (sortie d'inventaire 'waste', motif obligatoire). */
+  wasteFromPesage: (id: string, quantity: number, reason: string) =>
+    api.post(`/ingredient-lots/${id}/pesage-waste`, { quantity, reason }).then(r => r.data.data),
   sendToLosses: (id: string, reason: string, note?: string) =>
     api.post(`/ingredient-lots/${id}/send-to-losses`, { reason, note }).then(r => r.data.data),
   saveQualityCheck: (rvId: string, data: Record<string, any>) => api.post(`/ingredient-lots/quality-check/${rvId}`, data).then(r => r.data.data),

@@ -136,30 +136,70 @@ export const fiscalPeriodRepository = {
    *   closed  -> locked  (verrou definitif post-validation expert-comptable)
    * Refuse : toute transition depuis 'locked' (verrou dur, irreversible ici).
    */
-  async updateStatus(id: string, status: 'open' | 'closed' | 'locked', userId: string, note?: string) {
-    const cur = await db.query(`SELECT status FROM fiscal_periods WHERE id = $1`, [id]);
-    if (!cur.rows[0]) throw new Error('Periode introuvable');
-    if (cur.rows[0].status === 'locked') {
-      throw new Error('Periode verrouillee : transition impossible');
+  /**
+   * Change le statut d'une période (mig 311, G-D8-16).
+   *   open → closed  : checklist de clôture sans point bloquant ; période précédente close (trigger)
+   *   closed → open  : réouverture motivée (note obligatoire)
+   *   closed → locked : verrou définitif, administrateur seulement
+   * Chaque transition est historisée (fiscal_period_events) avec la checklist figée.
+   */
+  async updateStatus(id: string, status: 'open' | 'closed' | 'locked', userId: string, note?: string, role?: string) {
+    const fail = (code: number, message: string) => Object.assign(new Error(message), { statusCode: code });
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const cur = await client.query(`SELECT status FROM fiscal_periods WHERE id = $1 FOR UPDATE`, [id]);
+      if (!cur.rows[0]) throw fail(404, 'Periode introuvable');
+      const from = cur.rows[0].status as string;
+      const valid: Record<string, string[]> = { open: ['closed'], closed: ['open', 'locked'] };
+      if (!valid[from]?.includes(status)) throw fail(409, `Transition ${from} -> ${status} non autorisee`);
+      if (status === 'locked' && role !== 'admin') throw fail(403, 'Seul un administrateur peut verrouiller une période');
+      if (status === 'open' && (!note || note.trim().length < 3)) throw fail(400, 'Motif de réouverture obligatoire');
+      let checklist: unknown[] | null = null;
+      if (status === 'closed') {
+        const ck = await client.query(`SELECT * FROM fn_close_checklist($1)`, [id]);
+        checklist = ck.rows;
+        const blocking = ck.rows.filter((r: { blocking: boolean; item_count: string }) => r.blocking && parseInt(r.item_count, 10) > 0);
+        if (blocking.length) {
+          throw fail(409, `Clôture impossible : ${blocking.map((b: { label: string; item_count: string }) => `${b.label} (${b.item_count})`).join(', ')}`);
+        }
+      }
+      await client.query(
+        `SELECT set_config('app.user_id', $1, true), set_config('app.period_note', $2, true), set_config('app.period_checklist', $3, true)`,
+        [userId, note ?? '', checklist ? JSON.stringify(checklist) : '']);
+      const result = await client.query(
+        `UPDATE fiscal_periods
+         SET status = $1::varchar,
+             closed_at = CASE WHEN $1::varchar IN ('closed','locked') THEN NOW() ELSE NULL END,
+             closed_by = CASE WHEN $1::varchar IN ('closed','locked') THEN $2::uuid ELSE NULL END,
+             closed_note = CASE WHEN $1::varchar IN ('closed','locked') THEN $3::text ELSE NULL END
+         WHERE id = $4::uuid
+         RETURNING *`,
+        [status, userId, note || null, id]
+      );
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-    const valid: Record<string, string[]> = {
-      open: ['closed'],
-      closed: ['open', 'locked'],
-    };
-    if (!valid[cur.rows[0].status]?.includes(status)) {
-      throw new Error(`Transition ${cur.rows[0].status} -> ${status} non autorisee`);
-    }
-    const result = await db.query(
-      `UPDATE fiscal_periods
-       SET status = $1::varchar,
-           closed_at = CASE WHEN $1::varchar IN ('closed','locked') THEN NOW() ELSE NULL END,
-           closed_by = CASE WHEN $1::varchar IN ('closed','locked') THEN $2::uuid ELSE NULL END,
-           closed_note = CASE WHEN $1::varchar IN ('closed','locked') THEN $3::text ELSE NULL END
-       WHERE id = $4::uuid
-       RETURNING *`,
-      [status, userId, note || null, id]
-    );
-    return result.rows[0];
+  },
+
+  /** Checklist de clôture d'une période (contrôles bloquants / avertissements). */
+  async checklist(id: string) {
+    const r = await db.query(`SELECT * FROM fn_close_checklist($1)`, [id]);
+    return r.rows.map((x: Record<string, unknown>) => ({ ...x, item_count: parseInt(String(x.item_count), 10) }));
+  },
+
+  /** Historique des transitions d'une période. */
+  async events(id: string) {
+    const r = await db.query(
+      `SELECT e.*, TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS user_name
+         FROM fiscal_period_events e LEFT JOIN users u ON u.id = e.user_id
+        WHERE e.period_id = $1 ORDER BY e.at DESC`, [id]);
+    return r.rows;
   },
 };
 
@@ -349,7 +389,7 @@ export const financialStatementsRepository = {
     endDate?: string;
     storeId?: string;
   }) {
-    const where: string[] = [`a.code = $1`, `je.status = 'posted'`];
+    const where: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`];
     const values: unknown[] = [params.accountCode];
     let p = 2;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
@@ -381,7 +421,7 @@ export const financialStatementsRepository = {
     // Solde d'ouverture : mouvements anterieurs a startDate (si fourni).
     let opening = 0;
     if (params.startDate) {
-      const openWhere: string[] = [`a.code = $1`, `je.status = 'posted'`, `je.entry_date < $2`];
+      const openWhere: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`, `je.entry_date < $2`];
       const openValues: unknown[] = [params.accountCode, params.startDate];
       let op = 3;
       if (params.storeId) { openValues.push(params.storeId); openWhere.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
@@ -409,7 +449,7 @@ export const financialStatementsRepository = {
     startDate?: string; endDate?: string; storeId?: string;
     accountCode?: string; accountClass?: number;
   }) {
-    const where: string[] = [`je.status = 'posted'`];
+    const where: string[] = [`je.status IN ('posted','reversed')`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate)   { values.push(params.startDate);   where.push(`je.entry_date >= $${p++}`); }
@@ -437,7 +477,7 @@ export const financialStatementsRepository = {
     // Soldes d'ouverture par compte (mouvements anterieurs a startDate).
     const openingByCode = new Map<string, number>();
     if (params.startDate) {
-      const ow: string[] = [`je.status = 'posted'`, `je.entry_date < $1`];
+      const ow: string[] = [`je.status IN ('posted','reversed')`, `je.entry_date < $1`];
       const ov: unknown[] = [params.startDate];
       let op = 2;
       if (params.storeId)     { ov.push(params.storeId);     ow.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
@@ -511,7 +551,7 @@ export const financialStatementsRepository = {
    * total debit, total credit et solde. Triee par code.
    */
   async balance(params: { startDate?: string; endDate?: string; storeId?: string }) {
-    const where: string[] = [`je.status = 'posted'`];
+    const where: string[] = [`je.status IN ('posted','reversed')`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
@@ -541,7 +581,7 @@ export const financialStatementsRepository = {
    * classe 7 (produits) par compte, et resultat net = produits - charges.
    */
   async incomeStatement(params: { startDate?: string; endDate?: string; storeId?: string }) {
-    const where: string[] = [`je.status = 'posted'`, `a.account_class IN (6, 7)`];
+    const where: string[] = [`je.status IN ('posted','reversed')`, `a.account_class IN (6, 7)`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
@@ -593,7 +633,7 @@ export const tvaDeclarationRepository = {
    */
   async declaration(params: { startDate: string; endDate: string; storeId?: string }) {
     const where: string[] = [
-      `je.status = 'posted'`,
+      `je.status IN ('posted','reversed')`,
       `je.entry_date >= $1`,
       `je.entry_date <= $2`,
       `a.tva_direction IS NOT NULL`,
@@ -621,7 +661,41 @@ export const tvaDeclarationRepository = {
     );
 
     const collected = rows.rows.filter((r: { tva_direction: string }) => r.tva_direction === 'collected');
-    const deductible = rows.rows.filter((r: { tva_direction: string }) => r.tva_direction === 'deductible');
+    // Mig 311 (G-D8-15) : TVA déductible = factures fournisseurs dont le droit est
+    // né dans la période (date du règlement qui les solde, CGI art. 101), hors
+    // exclusions (espèces au-delà du plafond…). Plus la date de facture.
+    const ded = await db.query(
+      `WITH inv AS (
+         SELECT i.id, i.amount, i.tax_amount FROM invoices i
+          WHERE i.invoice_type = 'received' AND i.status <> 'cancelled' AND i.tax_amount > 0
+            AND i.is_vat_recoverable AND i.vat_recoverable_from BETWEEN $1 AND $2
+       ), by_line AS (
+         SELECT ROUND(ii.tva_rate)::int AS rate, SUM(ii.tva_amount) AS tva
+           FROM invoice_items ii JOIN inv ON inv.id = ii.invoice_id
+          WHERE ii.tva_rate IS NOT NULL AND ii.tva_amount IS NOT NULL
+          GROUP BY 1
+       ), by_header AS (
+         SELECT CASE WHEN inv.amount > 0 THEN ROUND(inv.tax_amount / inv.amount * 100)::int ELSE 0 END AS rate, SUM(inv.tax_amount) AS tva
+           FROM inv WHERE NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = inv.id AND ii.tva_rate IS NOT NULL AND ii.tva_amount IS NOT NULL)
+          GROUP BY 1
+       )
+       SELECT rate, ROUND(SUM(tva), 2) AS amount FROM (SELECT * FROM by_line UNION ALL SELECT * FROM by_header) x
+        GROUP BY rate HAVING ROUND(SUM(tva), 2) <> 0 ORDER BY rate`,
+      [params.startDate, params.endDate]);
+    const codeFor = (r: number) => (r === 20 ? '34552' : r === 14 ? '34553' : r === 10 ? '34554' : r === 7 ? '34555' : '3455');
+    const deductible = ded.rows.map((r: { rate: number; amount: string }) => ({
+      code: codeFor(r.rate), label: `TVA récupérable sur achats ${r.rate} %`, tva_rate: r.rate,
+      tva_direction: 'deductible', amount: r.amount,
+    }));
+    const pend = await db.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(SUM(tax_amount), 0) AS tva FROM invoices
+        WHERE invoice_type = 'received' AND status <> 'cancelled' AND tax_amount > 0 AND is_vat_recoverable
+          AND invoice_date <= $1 AND (vat_recoverable_from IS NULL OR vat_recoverable_from > $1)`, [params.endDate]);
+    const excl = await db.query(
+      `SELECT vat_non_recoverable_reason AS reason, COUNT(*)::int AS n, COALESCE(SUM(tax_amount), 0) AS tva FROM invoices
+        WHERE invoice_type = 'received' AND status <> 'cancelled' AND tax_amount > 0 AND NOT is_vat_recoverable
+          AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2
+        GROUP BY 1`, [params.startDate, params.endDate]);
     const totalCollected = collected.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
     const totalDeductible = deductible.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
 
@@ -633,6 +707,9 @@ export const tvaDeclarationRepository = {
       total_deductible: totalDeductible,
       // TVA due (a payer si positif, credit de TVA a reporter si negatif)
       tva_due: totalCollected - totalDeductible,
+      // Mig 311 : TVA des factures non encore réglées (droit pas encore né) et exclusions.
+      pending_payment: { count: pend.rows[0].n, amount: parseFloat(pend.rows[0].tva) },
+      excluded: excl.rows.map((r: { reason: string; n: number; tva: string }) => ({ reason: r.reason, count: r.n, amount: parseFloat(r.tva) })),
     };
   },
 };
@@ -664,7 +741,7 @@ export const balanceSheetRepository = {
        FROM accounts a
        JOIN journal_entry_lines jel ON jel.account_id = a.id
        JOIN journal_entries je ON je.id = jel.journal_entry_id
-       WHERE je.status = 'posted'
+       WHERE je.status IN ('posted','reversed')
          AND je.entry_date <= $1::date
          AND a.account_class BETWEEN 1 AND 5
          ${storeFilter}
@@ -682,7 +759,7 @@ export const balanceSheetRepository = {
        FROM journal_entry_lines jel
        JOIN journal_entries je ON je.id = jel.journal_entry_id
        JOIN accounts a ON a.id = jel.account_id
-       WHERE je.status = 'posted'
+       WHERE je.status IN ('posted','reversed')
          AND je.entry_date <= $1::date
          AND a.account_class IN (6, 7)
          ${storeFilter}`,
@@ -748,5 +825,45 @@ export const balanceSheetRepository = {
       },
       ecart: Math.round((totalActif - totalPassif) * 100) / 100,
     };
+  },
+};
+
+/* ═══ Mig 311 (D8) : réceptions à facturer, relevé des déductions, paramétrage ═══ */
+export const purchaseLedgerRepository = {
+  async grirOpenItems(params: { supplierId?: string; minAge?: number }) {
+    const r = await db.query(
+      `SELECT * FROM v_grir_open_items
+        WHERE ($1::uuid IS NULL OR supplier_id = $1) AND ($2::int IS NULL OR age_days >= $2)
+        ORDER BY age_days DESC, order_number`, [params.supplierId ?? null, params.minAge ?? null]);
+    return r.rows;
+  },
+  async vatDeductionStatement(params: { startDate: string; endDate: string }) {
+    const r = await db.query(
+      `SELECT * FROM v_vat_deduction_statement
+        WHERE (vat_recoverable_from BETWEEN $1 AND $2)
+           OR (NOT is_vat_recoverable AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2)
+        ORDER BY vat_recoverable_from NULLS LAST, invoice_date`, [params.startDate, params.endDate]);
+    return r.rows;
+  },
+  async postingProfiles() {
+    const r = await db.query(
+      `SELECT pp.*, a.label AS account_label, ec.name AS category_name
+         FROM posting_profiles pp JOIN accounts a ON a.code = pp.account_code
+         LEFT JOIN expense_categories ec ON ec.id = pp.category_id
+        ORDER BY pp.event_type`);
+    return r.rows;
+  },
+  /** Catégories de charge actives sans compte (ni chez leurs parents) : bloqueraient la comptabilisation. */
+  async categoriesWithoutAccount() {
+    const r = await db.query(
+      `WITH RECURSIVE chain AS (
+         SELECT id AS leaf, id, parent_id, account_id, posting_block_reason FROM expense_categories WHERE is_active
+         UNION ALL
+         SELECT ch.leaf, c.id, c.parent_id, c.account_id, c.posting_block_reason FROM expense_categories c JOIN chain ch ON ch.parent_id = c.id)
+       SELECT ec.id, ec.name FROM expense_categories ec
+        WHERE ec.is_active
+          AND NOT EXISTS (SELECT 1 FROM chain WHERE chain.leaf = ec.id AND (chain.account_id IS NOT NULL OR chain.posting_block_reason IS NOT NULL))
+        ORDER BY ec.name`);
+    return r.rows;
   },
 };

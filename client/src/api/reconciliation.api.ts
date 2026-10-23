@@ -76,10 +76,15 @@ export type SuggestProduct = {
   ref_appro: string | null;
   ref_vendu: string | null;
   ref_invendu: string | null;
+  /** Origine de suggested_qty : prévision de la demande (mig 314) ou vendu J-7/J-14. */
+  method?: 'prevision' | 'j7';
+  explanation?: string;
 };
 
 export type SuggestResult = {
   referenceDate: string | null;
+  /** Nombre d'articles dont la suggestion vient de la prévision. */
+  forecastCount?: number;
   products: SuggestProduct[];
 };
 

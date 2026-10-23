@@ -109,7 +109,7 @@ export const recipeComponentRepository = {
                    ELSE 0 END AS cout_unitaire
        FROM recipes r
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
-       WHERE r.is_base = true
+       WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
     );
     const ingredients = await db.query(
@@ -200,7 +200,7 @@ export const recipeComponentRepository = {
       const ings = await db.query(
         `SELECT NULL::uuid AS id, NULL AS role, NULL::uuid AS source_recipe_id, ri.ingredient_id AS source_ingredient_id,
                 ing.name AS source_name, 'ingredient' AS source_type, ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite,
-                ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+                ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, ing.densite_kg_l) * COALESCE(ing.unit_cost, 0) AS cout_dh,
                 -- Legacy : idem, applique fn_unit_conv_ok sur le meme couple, incluant
                 -- la validation par densite si un croisement poids↔volume est en jeu.
                 (fn_unit_conv_ok(COALESCE(ri.unit, ing.unit), ing.unit::text)
@@ -360,6 +360,25 @@ export const recipeComponentRepository = {
     return { recipe: rec.rows[0], components: components.rows, finance: computeFinance(rec.rows[0]) };
   },
 
+  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null }) {
+    const r = await db.query(
+      `UPDATE recipes SET name = $2, category_id = $3, updated_at = NOW() WHERE id = $1
+       RETURNING id, name, category_id`,
+      [recipeId, data.name.trim(), data.categoryId ?? null]
+    );
+    return r.rows[0] ?? null;
+  },
+
+  // Remplace le mode opératoire seul, sans toucher à la composition : le PUT
+  // complet de la recette exigerait de renvoyer ingrédients, formats, etc.
+  async updateEtapes(recipeId: string, etapes: unknown[]) {
+    const r = await db.query(
+      `UPDATE recipes SET etapes = $2::jsonb, updated_at = NOW() WHERE id = $1 RETURNING etapes`,
+      [recipeId, JSON.stringify(etapes)]
+    );
+    return r.rows[0]?.etapes ?? null;
+  },
+
   // Met à jour les leviers financiers saisissables (frais indirects + multiplicateur).
   // Renvoie la composition recalculée (coûts/prix/marge à jour).
   async updateFinance(recipeId: string, data: FinanceInput) {
@@ -429,7 +448,7 @@ export const recipeComponentRepository = {
       `SELECT ing.name AS source_name, NULL::uuid AS source_recipe_id,
               ri.ingredient_id AS source_ingredient_id, 'ingredient' AS source_type,
               ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite, NULL AS role,
-              ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit), ing.unit::text) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+              ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, ing.densite_kg_l) * COALESCE(ing.unit_cost, 0) AS cout_dh,
               false AS costed_on_default_format
        FROM recipe_ingredients ri
        JOIN ingredients ing ON ing.id = ri.ingredient_id

@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
 
 export const ingredientLotRepository = {
@@ -34,7 +35,8 @@ export const ingredientLotRepository = {
     const offset = params.offset || 0;
 
     const countResult = await db.query(
-      `SELECT COUNT(*) FROM ingredient_lots il JOIN ingredients ing ON ing.id = il.ingredient_id ${where}`,
+      `SELECT COUNT(*) FROM ingredient_lots il JOIN ingredients ing ON ing.id = il.ingredient_id
+         LEFT JOIN suppliers s ON s.id = il.supplier_id ${where}`,
       values
     );
     const total = parseInt(countResult.rows[0].count);
@@ -109,7 +111,8 @@ export const ingredientLotRepository = {
    *  Retourne agrege par ingredient avec details des lots ouverts.
    *  Sert pour la vue magasinier "Stock pesage". */
   async findPesageStock(storeId?: string) {
-    const conditions = [`il.status = 'active'`, `il.pesage_quantity > 0`];
+    // >= 1 g : un residu de 0,4 g n'est pas un contenant ouvert a afficher.
+    const conditions = [`il.status IN ('active', 'expired')`, `il.pesage_quantity >= 0.001`];
     const values: unknown[] = [];
     if (storeId) { conditions.push(`il.store_id = $1`); values.push(storeId); }
 
@@ -121,7 +124,8 @@ export const ingredientLotRepository = {
          ing.category as ingredient_category,
          SUM(il.pesage_quantity) as total_pesage,
          COUNT(*) as lots_count,
-         MIN(COALESCE(il.effective_expiry_after_opening, il.expiration_date)) as nearest_dlc_effective,
+         MIN(il.expiration_date) as nearest_dlc_effective,
+         BOOL_OR(il.expiration_date IS NOT NULL AND il.expiration_date < CURRENT_DATE) as has_expired_lot,
          json_agg(
            json_build_object(
              'lot_id', il.id,
@@ -131,9 +135,9 @@ export const ingredientLotRepository = {
              'economat_quantity', il.economat_quantity,
              'first_opened_at', il.first_opened_at,
              'expiration_date', il.expiration_date,
-             'effective_expiry_after_opening', il.effective_expiry_after_opening,
+             'is_expired', (il.expiration_date IS NOT NULL AND il.expiration_date < CURRENT_DATE),
              'supplier_name', s.name
-           ) ORDER BY COALESCE(il.effective_expiry_after_opening, il.expiration_date) ASC NULLS LAST
+           ) ORDER BY il.expiration_date ASC NULLS LAST
          ) as lots
        FROM ingredient_lots il
        JOIN ingredients ing ON ing.id = il.ingredient_id
@@ -144,6 +148,146 @@ export const ingredientLotRepository = {
       values
     );
     return result.rows;
+  },
+
+  /** Retour Pesage -> Economat d'un reliquat (sac referme et range en reserve).
+   *  Mouvement de zone trace (ingredient_stock_zone_transfers, sens PESAGE->ECONOMAT),
+   *  aucun mouvement d'inventaire : le stock total du lot ne change pas. */
+  async returnToEconomat(lotId: string, quantity: number, userId: string, reason?: string) {
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantite a retourner invalide');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const r = await client.query(
+        `SELECT il.id, il.ingredient_id, il.store_id, il.lot_number, il.pesage_quantity, il.status,
+                ing.name AS ingredient_name, ing.unit AS ingredient_unit
+           FROM ingredient_lots il JOIN ingredients ing ON ing.id = il.ingredient_id
+          WHERE il.id = $1 FOR UPDATE`, [lotId]);
+      const lot = r.rows[0];
+      if (!lot) throw new Error('Lot introuvable');
+      const pesage = parseFloat(lot.pesage_quantity);
+      if (quantity > pesage + 1e-9) {
+        throw new Error(`Quantite au pesage insuffisante : ${pesage.toFixed(3)} ${lot.ingredient_unit} disponibles, ${quantity} demandes`);
+      }
+      await client.query(
+        `INSERT INTO ingredient_stock_zone_transfers
+           (ingredient_lot_id, store_id, from_zone, to_zone, quantity, reason, transferred_by)
+         VALUES ($1, $2, 'PESAGE', 'ECONOMAT', $3, $4, $5)`,
+        [lot.id, lot.store_id, quantity, reason || 'Retour en reserve', userId]);
+      await client.query(
+        `UPDATE ingredient_lots
+            SET pesage_quantity = pesage_quantity - $1,
+                economat_quantity = economat_quantity + $1
+          WHERE id = $2`, [quantity, lot.id]);
+      await client.query('COMMIT');
+      return { lot_id: lot.id, lot_number: lot.lot_number, returned_quantity: quantity, pesage_quantity: pesage - quantity };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Ouverture d'un contenant A L'AVANCE (hors bon de sortie) : le magasinier
+   *  prepare le pesage le matin, les bons du jour trouveront le stock « a peser ».
+   *  Meme ecriture que l'ouverture faite au moment de la pesee (zone_transfers
+   *  ECONOMAT -> PESAGE, nombre de contenants), aucun mouvement d'inventaire :
+   *  le stock total du lot ne change pas. Lot perime : refuse. */
+  async openToPesage(lotId: string, quantity: number, userId: string,
+    options: { containerCount?: number | null; containerTypeId?: string | null; reason?: string | null } = {}) {
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantite a ouvrir invalide');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const r = await client.query(
+        `SELECT il.id, il.ingredient_id, il.store_id, il.lot_number, il.economat_quantity, il.status, il.expiration_date,
+                (il.expiration_date IS NOT NULL AND il.expiration_date < CURRENT_DATE) AS is_expired,
+                ing.name AS ingredient_name, ing.unit AS ingredient_unit, ing.container_type_id, ing.container_size
+           FROM ingredient_lots il JOIN ingredients ing ON ing.id = il.ingredient_id
+          WHERE il.id = $1 FOR UPDATE`, [lotId]);
+      const lot = r.rows[0];
+      if (!lot) throw new Error('Lot introuvable');
+      if (lot.status !== 'active') throw new Error(`Lot ${lot.lot_number || ''} non actif (${lot.status})`);
+      if (lot.is_expired) throw new Error(`Lot ${lot.lot_number || ''} perime (DLC ${lot.expiration_date}) : ouverture interdite, sortez-le en perte`);
+      const eco = parseFloat(lot.economat_quantity);
+      // Regle « contenant entier » : arrondi au contenant superieur, sauf dernier
+      // contenant entame (on transfere ce qui reste).
+      const size = lot.container_size != null && lot.container_type_id ? parseFloat(lot.container_size) : 0;
+      let containerCount = options.containerCount || null;
+      if (size > 0) {
+        const r = strictContainerQty(quantity, size, eco);
+        if (!r.ok) throw new Error(`${lot.ingredient_name} : ${r.reason}`);
+        quantity = r.qty; containerCount = r.count;
+      }
+      if (quantity > eco + 1e-9) {
+        throw new Error(`Quantite en economat insuffisante : ${eco.toFixed(3)} ${lot.ingredient_unit} disponibles, ${quantity} demandes`);
+      }
+      await client.query(
+        `INSERT INTO ingredient_stock_zone_transfers
+           (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count, container_type_id, reason, transferred_by)
+         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7)`,
+        [lot.id, lot.store_id, quantity, containerCount, options.containerTypeId || lot.container_type_id || null,
+         options.reason || 'Mise au pesage (preparation)', userId]);
+      await client.query(
+        `UPDATE ingredient_lots
+            SET economat_quantity = economat_quantity - $1,
+                pesage_quantity = pesage_quantity + $1,
+                first_opened_at = COALESCE(first_opened_at, NOW()),
+                opening_history = opening_history || $2::jsonb
+          WHERE id = $3`,
+        [quantity, JSON.stringify({ qty: quantity, opened_at: new Date().toISOString(), opened_by: userId, container_count: containerCount, note: options.reason || null }), lot.id]);
+      await client.query('COMMIT');
+      return { lot_id: lot.id, lot_number: lot.lot_number, ingredient_name: lot.ingredient_name, opened_quantity: quantity, container_count: containerCount, economat_quantity: eco - quantity };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Perte / casse en zone pesage (renversement, contamination, fond de sac, DLC
+   *  depassee) : sortie d'inventaire typee 'waste' sur la quantite perdue uniquement,
+   *  pesage decremente, lot 'depleted' s'il ne reste plus rien. */
+  async wasteFromPesage(lotId: string, quantity: number, userId: string, reason: string, reasonCode?: string) {
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantite perdue invalide');
+    if (!reason || !reason.trim()) throw new Error('Motif obligatoire pour une perte');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const r = await client.query(
+        `SELECT il.id, il.ingredient_id, il.store_id, il.lot_number, il.pesage_quantity, il.economat_quantity,
+                il.unit_cost, ing.name AS ingredient_name, ing.unit AS ingredient_unit
+           FROM ingredient_lots il JOIN ingredients ing ON ing.id = il.ingredient_id
+          WHERE il.id = $1 FOR UPDATE`, [lotId]);
+      const lot = r.rows[0];
+      if (!lot) throw new Error('Lot introuvable');
+      const pesage = parseFloat(lot.pesage_quantity);
+      if (quantity > pesage + 1e-9) {
+        throw new Error(`Quantite au pesage insuffisante : ${pesage.toFixed(3)} ${lot.ingredient_unit} disponibles, ${quantity} declares perdus`);
+      }
+      await client.query(
+        `INSERT INTO inventory_transactions
+           (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, reason_code)
+         VALUES ($1, 'waste', $2, $3, $4, $5, $6, $7)`,
+        [lot.ingredient_id, -quantity,
+         `Perte au pesage (lot ${lot.lot_number}) : ${quantity.toFixed(3)} ${lot.ingredient_unit} ${lot.ingredient_name} — ${reason.trim()}`,
+         userId, lot.store_id, lot.id, reasonCode || 'autre']);
+      await client.query(
+        `UPDATE ingredient_lots
+            SET pesage_quantity = pesage_quantity - $1,
+                status = CASE WHEN economat_quantity + pesage_quantity - $1 <= 0.0005 THEN 'depleted' ELSE status END
+          WHERE id = $2`, [quantity, lot.id]);
+      await client.query('COMMIT');
+      const unitCost = lot.unit_cost != null ? parseFloat(lot.unit_cost) : 0;
+      return { lot_id: lot.id, lot_number: lot.lot_number, wasted_quantity: quantity, lost_value: quantity * unitCost };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /** Expired lots still active */
@@ -481,23 +625,20 @@ export const ingredientLotRepository = {
   },
 
   /** Quarantine a lot */
-  async quarantine(id: string) {
-    const result = await db.query(
-      `UPDATE ingredient_lots SET status = 'quarantine' WHERE id = $1 RETURNING *`,
-      [id]
+  /** Quarantaine : qui et quand (colonnes mig 308) ; le motif s'ajoute aux notes du lot. */
+  async quarantine(id: string, userId?: string, reason?: string, client: { query: typeof db.query } = db) {
+    const result = await client.query(
+      `UPDATE ingredient_lots
+          SET status = 'quarantine', status_changed_by = $2, status_changed_at = NOW(),
+              notes = CASE WHEN $3::text IS NULL THEN notes
+                           ELSE concat_ws(E'\n', NULLIF(notes, ''), 'Quarantaine : ' || $3::text) END
+        WHERE id = $1 RETURNING *`,
+      [id, userId ?? null, reason ?? null]
     );
     return result.rows[0] || null;
   },
 
   /** Mark lot as waste */
-  async markAsWaste(id: string) {
-    const result = await db.query(
-      `UPDATE ingredient_lots SET status = 'waste', quantity_remaining = 0 WHERE id = $1 RETURNING *`,
-      [id]
-    );
-    return result.rows[0] || null;
-  },
-
   /**
    * Envoie un lot aux pertes : retire l'integralite du stock (Economat + Pesage),
    * trace dans inventory_transactions type='waste' avec motif explicite,
@@ -549,13 +690,15 @@ export const ingredientLotRepository = {
         other: 'Autre',
       };
       const reasonLabel = reasonLabels[reason] || reasonLabels.other;
+      // Code du referentiel material_loss_reasons (mig 333), lu par le registre des pertes.
+      const reasonCode = ({ dlc_expired: 'dlc_expiree', damaged: 'casse', quarantine_failed: 'qualite' } as Record<string, string>)[reason] ?? 'autre';
 
       // Trace mouvement de waste
       if (totalLost > 0) {
         await client.query(
           `INSERT INTO inventory_transactions
-             (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
-           VALUES ($1, 'waste', $2, $3, $4, $5, $6)`,
+             (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, reason_code)
+           VALUES ($1, 'waste', $2, $3, $4, $5, $6, $7)`,
           [
             lot.ingredient_id,
             -totalLost,
@@ -563,6 +706,7 @@ export const ingredientLotRepository = {
             userId,
             lot.store_id,
             lotId,
+            reasonCode,
           ]
         );
       }

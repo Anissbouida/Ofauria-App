@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
 import { productLossesApi } from '../../api/product-losses.api';
@@ -20,6 +20,24 @@ interface Props {
   /** Titre/sous-titre personnalises (optionnels). */
   title?: string;
   subtitle?: string;
+  /** Contexte 'production' : articles du plan (remplace le catalogue). La perte est
+   *  rattachee a l'article, plafonnee a « produit − deja declare », et retiree de
+   *  la reserve / du lot produit si la production a deja ete enregistree. */
+  planItems?: PlanLossItem[];
+}
+
+export interface PlanLossItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  lotNumber?: string | null;
+  status: string;
+  plannedQty: number;
+  producedQty: number;
+  /** 'weight' = produit vendu au poids (quantite en kg, decimales) ; sinon pieces. */
+  saleUnit?: 'unit' | 'weight' | null;
+  costPrice?: number | null;
+  imageUrl?: string | null;
 }
 
 const LOSS_REASONS_VITRINE = [
@@ -44,7 +62,7 @@ const LOSS_REASONS_PRODUCTION = [
 ];
 
 export default function LossDeclarationModal({
-  onClose, sessionId, context = 'vitrine', productionPlanId, productIdFilter,
+  onClose, sessionId, context = 'vitrine', productionPlanId, productIdFilter, planItems,
 }: Props) {
   void sessionId; // reserve pour futur besoin
   const isProduction = context === 'production';
@@ -55,6 +73,8 @@ export default function LossDeclarationModal({
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Record<string, any> | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [quantityRaw, setQuantityRaw] = useState('1');
+  const [selectedItem, setSelectedItem] = useState<PlanLossItem | null>(null);
   const [reason, setReason] = useState('');
   const [reasonNote, setReasonNote] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -69,6 +89,45 @@ export default function LossDeclarationModal({
   });
 
   const products = (productsData?.data || []) as Record<string, any>[];
+
+  // Pertes deja declarees sur ce plan : sert au plafond « reste a declarer ».
+  const { data: planLosses = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['product-losses', 'plan', productionPlanId],
+    queryFn: () => productLossesApi.list({ productionPlanId: productionPlanId!, lossType: 'production' }),
+    enabled: isProduction && !!productionPlanId,
+  });
+  const alreadyDeclared = (item: PlanLossItem) => planLosses
+    .filter((l) => l.product_id === item.productId && (!l.plan_item_id || l.plan_item_id === item.id))
+    .reduce((sum, l) => sum + (parseFloat(String(l.quantity)) || 0), 0);
+
+  const usePlanItems = isProduction && !!planItems;
+  const isWeight = selectedItem?.saleUnit === 'weight';
+  const unitLabel = isWeight ? 'kg' : (quantity > 1 ? 'pièces' : 'pièce');
+  const qtyStep = isWeight ? 0.01 : 1;
+  // Plafond : produit − deja declare (0 = article pas encore produit : on laisse
+  // declarer, c'est le serveur qui tranche).
+  const remaining = useMemo(() => {
+    if (!selectedItem) return null;
+    const r = selectedItem.producedQty - alreadyDeclared(selectedItem);
+    return selectedItem.producedQty > 0 ? Math.max(0, r) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItem, planLosses]);
+  const overLimit = remaining !== null && quantity > remaining + 1e-9;
+
+  const setQty = (v: number) => {
+    const clean = isWeight ? Math.max(0, Math.round(v * 1000) / 1000) : Math.max(0, Math.round(v));
+    setQuantity(clean);
+    setQuantityRaw(String(clean));
+  };
+  const chooseItem = (it: PlanLossItem) => {
+    setSelectedItem(it);
+    setSelectedProduct({
+      id: it.productId, name: it.productName, cost_price: it.costPrice ?? null, image_url: it.imageUrl ?? null,
+      category_name: it.lotNumber ? `Lot ${it.lotNumber}` : '',
+    });
+    setQuantity(1); setQuantityRaw('1');
+    setStep('details');
+  };
   const filtered = products.filter((p) => {
     // Filtre par liste de produits autorises (ex: produits du plan en cours)
     if (productIdFilter && productIdFilter.length > 0 && !productIdFilter.includes(p.id as string)) {
@@ -115,6 +174,10 @@ export default function LossDeclarationModal({
 
   const handleSubmit = async () => {
     if (!selectedProduct || !reason || quantity <= 0) return;
+    if (overLimit) {
+      notify.error(`Quantité supérieure au reste déclarable (${remaining} ${unitLabel})`);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -126,6 +189,7 @@ export default function LossDeclarationModal({
         reasonNote: reasonNote || undefined,
         photoUrl: photoUrl || undefined,
         ...(productionPlanId ? { productionPlanId } : {}),
+        ...(selectedItem ? { planItemId: selectedItem.id } : {}),
       });
       notify.success('Perte declaree avec succes');
       setStep('done');
@@ -148,7 +212,7 @@ export default function LossDeclarationModal({
             <div>
               <h2 className="font-bold text-gray-900">Declarer une perte</h2>
               <p className="text-xs text-gray-500">
-                {step === 'product' ? 'Selectionnez le produit' :
+                {step === 'product' ? (usePlanItems ? 'Quel article du plan ?' : 'Selectionnez le produit') :
                  step === 'details' ? (selectedProduct?.name as string) :
                  'Declaration enregistree'}
               </p>
@@ -160,7 +224,53 @@ export default function LossDeclarationModal({
         </div>
 
         {/* Step 1: Product selection */}
-        {step === 'product' && (
+        {step === 'product' && usePlanItems && (
+          <div className="p-5 flex-1 flex flex-col">
+            <p className="text-xs text-gray-500 mb-3">
+              Choisissez l'article du plan concerné. Le reste déclarable tient compte des pertes déjà enregistrées.
+            </p>
+            <div className="flex-1 overflow-y-auto max-h-[55vh] space-y-1">
+              {(planItems || []).filter(it => it.productId).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">Aucun article de produit fini sur ce plan.</p>
+              ) : (planItems || []).filter(it => it.productId).map((it) => {
+                const produced = ['produced', 'transferred', 'received'].includes(it.status);
+                const already = alreadyDeclared(it);
+                const reste = Math.max(0, it.producedQty - already);
+                const u = it.saleUnit === 'weight' ? 'kg' : 'pc';
+                return (
+                  <button
+                    key={it.id}
+                    onClick={() => chooseItem(it)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left border border-transparent hover:border-gray-200"
+                  >
+                    {it.imageUrl ? (
+                      <img src={serverUrl(it.imageUrl)} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-xs">N/A</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{it.productName}</div>
+                      <div className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
+                        {it.lotNumber && <span className="font-mono">{it.lotNumber}</span>}
+                        {produced
+                          ? <span>produit <strong className="text-gray-600">{it.producedQty} {u}</strong>{already > 0 && <> · déjà déclaré {already} {u}</>}</span>
+                          : <span>planifié {it.plannedQty} {u} — pas encore produit</span>}
+                      </div>
+                    </div>
+                    {produced && (
+                      <span className={`text-xs font-semibold px-2 py-1 rounded-md ${reste > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                        reste {reste} {u}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={onClose} className="btn-secondary w-full mt-4 py-3">Annuler</button>
+          </div>
+        )}
+
+        {step === 'product' && !usePlanItems && (
           <div className="p-5 flex-1 flex flex-col">
             <div className="relative mb-4">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -218,26 +328,70 @@ export default function LossDeclarationModal({
                   {(selectedProduct.category_name as string)} — {parseFloat(String(selectedProduct.price || 0)).toFixed(2)} DH
                 </div>
               </div>
-              <button onClick={() => { setStep('product'); setSelectedProduct(null); }}
+              <button onClick={() => { setStep('product'); setSelectedProduct(null); setSelectedItem(null); }}
                 className="text-xs text-blue-600 hover:text-blue-700 font-medium">Changer</button>
             </div>
 
             {/* Quantity */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Quantite perdue</label>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <label className="text-sm font-medium text-gray-700">Quantité perdue</label>
+                {selectedItem && remaining !== null && (
+                  <span className="text-xs text-gray-500">
+                    reste déclarable : <strong className={overLimit ? 'text-red-600' : 'text-gray-700'}>{remaining} {isWeight ? 'kg' : 'pc'}</strong>
+                    {' '}sur {selectedItem.producedQty} produits
+                  </span>
+                )}
+                {selectedItem && remaining === null && (
+                  <span className="text-xs text-amber-600">article pas encore produit — perte en cours de fabrication</span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                <button type="button" onClick={() => setQty(quantity - qtyStep)}
                   className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-lg">-</button>
-                <input
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-20 h-10 text-center text-lg font-bold border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-300"
-                />
-                <button onClick={() => setQuantity(q => q + 1)}
+                <div className={`flex items-center h-10 border rounded-xl overflow-hidden ${overLimit ? 'border-red-400 ring-1 ring-red-300' : 'border-gray-300'}`}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={qtyStep}
+                    inputMode="decimal"
+                    value={quantityRaw}
+                    onChange={(e) => {
+                      setQuantityRaw(e.target.value);
+                      const v = parseFloat(e.target.value.replace(',', '.'));
+                      setQuantity(Number.isFinite(v) && v >= 0 ? (isWeight ? v : Math.round(v)) : 0);
+                    }}
+                    className="w-24 h-full text-center text-lg font-bold outline-none"
+                  />
+                  <span className="px-2 text-xs text-gray-500 bg-gray-50 h-full flex items-center border-l border-gray-200">{unitLabel}</span>
+                </div>
+                <button type="button" onClick={() => setQty(quantity + qtyStep)}
                   className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-lg">+</button>
               </div>
+              {selectedItem && (
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {(isWeight ? [0.25, 0.5, 1, 2] : [1, 2, 5, 10]).filter(v => remaining === null || v <= remaining).map(v => (
+                    <button key={v} type="button" onClick={() => setQty(v)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border ${quantity === v ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {v} {isWeight ? 'kg' : ''}
+                    </button>
+                  ))}
+                  {remaining !== null && remaining > 0 && (
+                    <button type="button" onClick={() => setQty(remaining)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border ${quantity === remaining ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-red-200 text-red-700 hover:bg-red-50'}`}>
+                      Tout le lot ({remaining} {isWeight ? 'kg' : 'pc'})
+                    </button>
+                  )}
+                </div>
+              )}
+              {overLimit && (
+                <p className="text-xs text-red-600 mt-1.5">
+                  Vous ne pouvez pas déclarer plus que ce qui a été produit et pas encore déclaré ({remaining} {isWeight ? 'kg' : 'pc'}).
+                </p>
+              )}
+              {!selectedItem && isProduction && (
+                <p className="text-xs text-gray-400 mt-1.5">Perte en cours de fabrication, hors stock.</p>
+              )}
             </div>
 
             {/* Reason */}
@@ -320,11 +474,11 @@ export default function LossDeclarationModal({
 
             {/* Actions */}
             <div className="flex gap-3 mt-auto pt-2">
-              <button onClick={() => { setStep('product'); setSelectedProduct(null); setReason(''); setReasonNote(''); removePhoto(); setQuantity(1); }}
+              <button onClick={() => { setStep('product'); setSelectedProduct(null); setSelectedItem(null); setReason(''); setReasonNote(''); removePhoto(); setQty(1); }}
                 className="btn-secondary flex-1 py-3">Retour</button>
               <button
                 onClick={handleSubmit}
-                disabled={!reason || saving || uploading}
+                disabled={!reason || saving || uploading || quantity <= 0 || overLimit}
                 className="btn-primary flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? 'Enregistrement...' : 'Declarer la perte'}
@@ -341,15 +495,16 @@ export default function LossDeclarationModal({
             </div>
             <h3 className="text-lg font-bold text-gray-900">Perte declaree</h3>
             <p className="text-sm text-gray-500 text-center">
-              {quantity}x {selectedProduct?.name as string} — {LOSS_REASONS.find(r => r.value === reason)?.label}
+              {quantity} {unitLabel} — {selectedProduct?.name as string}{selectedItem?.lotNumber ? ` (lot ${selectedItem.lotNumber})` : ''} — {LOSS_REASONS.find(r => r.value === reason)?.label}
             </p>
             <div className="flex gap-3 w-full mt-4">
               <button onClick={() => {
                 setStep('product');
                 setSelectedProduct(null);
+                setSelectedItem(null);
                 setReason('');
                 setReasonNote('');
-                setQuantity(1);
+                setQty(1);
                 removePhoto();
               }} className="btn-secondary flex-1 py-3">Nouvelle perte</button>
               <button onClick={onClose} className="btn-primary flex-1 py-3">Fermer</button>

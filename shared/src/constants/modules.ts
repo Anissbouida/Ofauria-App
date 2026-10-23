@@ -6,9 +6,15 @@ export const APP_MODULES = {
   orders: 'orders',
   products: 'products',
   customers: 'customers',
-  /** ex-inventory : stock principal scelle (sacs/boites intacts). */
+  /**
+   * Stock : fusion de l'Économat (stock scelle) et du Pesage (stock entame + bons de
+   * sortie magasinier), decision du 2026-10-11. Les quatre cles ci-dessous restent
+   * acceptees comme alias (droits deja enregistres), voir MODULE_ALIASES.
+   */
+  stock: 'stock',
+  /** @deprecated alias de stock (ex-Économat). */
   economat: 'economat',
-  /** alias retrocompat pour inventory : meme module que economat */
+  /** @deprecated alias de stock (ex-inventory). */
   inventory: 'inventory',
   recipes: 'recipes',
   production: 'production',
@@ -20,17 +26,44 @@ export const APP_MODULES = {
   settings: 'settings',
   replenishment: 'replenishment',
   unsold: 'unsold',
-  /** ex-warehouse : pesage = stock en cours d'utilisation + file BSI magasinier. */
+  /** @deprecated alias de stock (ex-Pesage). */
   pesage: 'pesage',
-  /** alias retrocompat pour warehouse */
+  /** @deprecated alias de stock (ex-warehouse). */
   warehouse: 'warehouse',
   /** Catalogue + stock des emballages (caissettes, boites, etiquettes...). */
   packaging: 'packaging',
   /** Rapprochement journalier (ISOLE, TEMPORAIRE) : appro - vendu - invendu. */
   reconciliation: 'reconciliation',
+  /**
+   * Contrôle & Qualité (2026-10-18) : vue d'ensemble des anomalies, contrôles des
+   * ventes / achats / production et registre unifié des pertes (mig 313).
+   */
+  controle: 'controle',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
+
+/**
+ * Cles historiques designant le meme module. hasModule (client) accorde le module
+ * des qu'UNE des cles est presente dans les droits de l'utilisateur, sinon un compte
+ * dont les droits ont ete enregistres sous l'ancienne cle perdrait l'acces.
+ */
+export const MODULE_ALIASES: Partial<Record<AppModule, AppModule[]>> = {
+  stock: ['economat', 'inventory', 'pesage', 'warehouse'],
+};
+
+/** Cles qui ne sont que des alias : masquees dans l'ecran des droits et la navigation. */
+export const LEGACY_MODULE_KEYS: ReadonlySet<AppModule> = new Set(
+  Object.values(MODULE_ALIASES).flat() as AppModule[],
+);
+
+/** Module canonique d'une cle (elle-meme si ce n'est pas un alias). */
+export function canonicalModule(module: AppModule): AppModule {
+  for (const [canon, aliases] of Object.entries(MODULE_ALIASES)) {
+    if (aliases?.includes(module)) return canon as AppModule;
+  }
+  return module;
+}
 
 /**
  * Source de verite UNIQUE des libelles de modules, cote client comme serveur.
@@ -50,8 +83,9 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   orders: 'Commandes',
   products: 'Produits',
   customers: 'Clients',
-  economat: 'Économat',
-  inventory: 'Économat',  // alias
+  stock: 'Stock',
+  economat: 'Stock',   // alias
+  inventory: 'Stock',  // alias
   recipes: 'Fiches techniques',
   production: 'Production',
   employees: 'Personnel',
@@ -62,24 +96,27 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   settings: 'Paramètres',
   replenishment: 'Besoins',
   unsold: 'Invendus',
-  pesage: 'Pesage',
-  warehouse: 'Pesage',  // alias retrocompat
+  pesage: 'Stock',     // alias
+  warehouse: 'Stock',  // alias
   packaging: 'Emballages',
   reconciliation: 'Contrôle des ventes',
+  controle: 'Contrôle & Qualité',
 };
 
 /** Default permissions per role (used when no custom permissions are set) */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging', 'reconciliation'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
-  baker: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  pastry_chef: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  viennoiserie: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  beldi_sale: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  /** Magasinier : pesage (BSI + sacs ouverts) + economat (stock scelle) + approv + emballages. */
-  magasinier: ['pesage', 'economat', 'replenishment', 'packaging'],
+  // Les chefs demandent les ingredients depuis leur plan ; le pesage (preparation
+  // des bons) est le poste du magasinier.
+  baker: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  pastry_chef: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  viennoiserie: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  beldi_sale: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  /** Magasinier : stock (scelle + entame + BSI) + approv + emballages. */
+  magasinier: ['stock', 'replenishment', 'packaging'],
 };
 
 export interface UserPermission {

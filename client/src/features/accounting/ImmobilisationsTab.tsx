@@ -252,11 +252,16 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
   const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
 
   return (
-    <ModalBackdrop onClose={onClose}>
-      <div style={{ background: 'var(--theme-bg-card)', borderRadius: 8, maxWidth: 560, width: '95vw', maxHeight: '90vh', overflow: 'auto' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Building2 size={16} /><strong style={{ fontSize: '0.9375rem' }}>Nouvelle immobilisation</strong>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Building2 size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span className="odoo-breadcrumb-current">Nouvelle immobilisation</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
@@ -328,11 +333,16 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
 function ScheduleModal({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({ queryKey: ['fixed-asset-schedule', id], queryFn: () => fixedAssetsApi.schedule(id) });
   return (
-    <ModalBackdrop onClose={onClose}>
-      <div style={{ background: 'var(--theme-bg-card)', borderRadius: 8, maxWidth: 640, width: '95vw', maxHeight: '90vh', overflow: 'auto' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <CalendarClock size={16} /><strong style={{ fontSize: '0.9375rem' }}>{data ? `Plan d'amortissement — ${data.asset.label}` : 'Chargement...'}</strong>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <CalendarClock size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span className="odoo-breadcrumb-current">{data ? `Plan d'amortissement — ${data.asset.label}` : 'Chargement...'}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         {isLoading || !data ? (
           <div style={{ padding: '2rem', textAlign: 'center' }}><Loader2 size={20} className="animate-spin" /></div>

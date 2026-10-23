@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { listOutbox, replayOutbox } from '../services/ledger-posting.service.js';
 import { runFullBackfill } from '../services/ledger-backfill.service.js';
 import {
   accountRepository,
@@ -11,6 +12,7 @@ import {
   financialStatementsRepository,
   tvaDeclarationRepository,
   balanceSheetRepository,
+  purchaseLedgerRepository,
 } from '../repositories/ledger.repository.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -93,12 +95,20 @@ export const fiscalPeriodController = {
     }
     try {
       const period = await fiscalPeriodRepository.updateStatus(
-        req.params.id, status as 'open' | 'closed' | 'locked', req.user!.userId, note
+        req.params.id, status as 'open' | 'closed' | 'locked', req.user!.userId, note, req.user!.role
       );
       res.json({ success: true, data: period });
     } catch (err) {
-      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+      const code = (err as { statusCode?: number }).statusCode ?? 400;
+      res.status(code).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
     }
+  },
+  /** GET /ledger/fiscal-periods/:id/checklist — contrôles de clôture (mig 311). */
+  async checklist(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await fiscalPeriodRepository.checklist(req.params.id) });
+  },
+  async events(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await fiscalPeriodRepository.events(req.params.id) });
   },
 };
 
@@ -279,5 +289,31 @@ export const balanceSheetController = {
     }
     const data = await balanceSheetRepository.balanceSheet({ endDate, storeId: req.user!.storeId });
     res.json({ success: true, data });
+  },
+};
+
+/* ═══ Mig 311 (D8) : file de comptabilisation, GR/IR, relevé des déductions ═══ */
+export const purchaseLedgerController = {
+  async outbox(req: AuthRequest, res: Response) {
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    res.json({ success: true, data: await listOutbox(status) });
+  },
+  async replay(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await replayOutbox(req.user!.userId, req.params.id) });
+  },
+  async grirOpenItems(req: AuthRequest, res: Response) {
+    const { supplierId, minAge } = req.query as Record<string, string>;
+    res.json({ success: true, data: await purchaseLedgerRepository.grirOpenItems({
+      supplierId: supplierId || undefined, minAge: minAge ? parseInt(minAge, 10) || 0 : undefined }) });
+  },
+  async vatStatement(req: AuthRequest, res: Response) {
+    const { startDate, endDate } = req.query as Record<string, string>;
+    if (!startDate || !endDate) { res.status(400).json({ success: false, error: { message: 'startDate et endDate requis' } }); return; }
+    res.json({ success: true, data: await purchaseLedgerRepository.vatDeductionStatement({ startDate, endDate }) });
+  },
+  async postingProfiles(_req: AuthRequest, res: Response) {
+    const [profiles, missing] = await Promise.all([
+      purchaseLedgerRepository.postingProfiles(), purchaseLedgerRepository.categoriesWithoutAccount()]);
+    res.json({ success: true, data: { profiles, categoriesWithoutAccount: missing } });
   },
 };

@@ -98,6 +98,9 @@ export default function NotificationBell() {
       navigate(`/replenishment/${notif.reference_id}`);
     } else if (notif.reference_type === 'order' && notif.reference_id) {
       navigate('/orders');
+    } else if (notif.reference_type === 'bon_sortie' && notif.reference_id) {
+      // Demande d'ingredients : ouvre directement le bon dans le module Stock.
+      navigate(`/stock?tab=bons&bon=${notif.reference_id}`);
     }
 
     setOpen(false);

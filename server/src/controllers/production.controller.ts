@@ -5,13 +5,36 @@ import { orderRepository } from '../repositories/order.repository.js';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { productionCoutRepository } from '../repositories/production-cout.repository.js';
+import { isTransitionError, listPlanEvents } from '../services/production-state.js';
+
+/** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
+ *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
+async function loadOwnedPlan(req: AuthRequest, res: Response) {
+  const plan = await productionRepository.findById(req.params.id);
+  if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return null; }
+  if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
+    res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return null;
+  }
+  return plan;
+}
+
+/** Erreur métier -> 409 (transition refusée, garde de statut), autre -> 500 via asyncHandler. */
+function conflictOrThrow(res: Response, err: unknown, fallback: string) {
+  const message = err instanceof Error ? err.message : fallback;
+  if (isTransitionError(err)) {
+    res.status(409).json({ success: false, error: { code: 'TRANSITION_INVALIDE', message: message.replace(/^.*TRANSITION_INVALIDE:\s*/, 'Transition refusée : ') } });
+    return;
+  }
+  res.status(409).json({ success: false, error: { message } });
+}
 
 const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 
 export const productionController = {
   async list(req: AuthRequest, res: Response) {
-    const { status, type, dateFrom, dateTo, targetRole, page = '1', limit = '20' } = req.query as Record<string, string>;
-    const p = parseInt(page); const l = parseInt(limit);
+    const q = ((req as any).validatedQuery || req.query) as Record<string, any>;
+    const { status, type, dateFrom, dateTo, targetRole } = q;
+    const p = Number(q.page) || 1; const l = Number(q.limit) || 20;
     const userRole = req.user!.role;
 
     // Chefs only see plans targeting their role
@@ -25,14 +48,8 @@ export const productionController = {
   },
 
   async getById(req: AuthRequest, res: Response) {
-    // Validate UUID format to prevent DB crash
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(req.params.id)) {
-      res.status(400).json({ success: false, error: { message: 'ID invalide' } });
-      return;
-    }
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
@@ -72,8 +89,8 @@ export const productionController = {
   },
 
   async updateItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'draft') {
       res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent etre modifies' } });
       return;
@@ -84,8 +101,8 @@ export const productionController = {
   },
 
   async confirm(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'draft') {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en brouillon pour etre confirme' } });
       return;
@@ -115,26 +132,12 @@ export const productionController = {
       }
     }
 
-    // Auto-generate bon de sortie ingredients
-    // L'erreur est tracee dans les warnings retournees au client (au lieu d'etre
-    // silencieusement avalee dans les logs) — sinon le chef confirme le plan
-    // et la magasinier ne voit aucune demande, sans aucun feedback.
-    let bsiError: string | null = null;
-    try {
-      if (!req.user!.storeId) {
-        throw new Error('Magasin requis pour generer un bon de sortie');
-      }
-      await bonSortieRepository.generate(req.params.id, req.user!.storeId, req.user!.userId);
-    } catch (err) {
-      bsiError = err instanceof Error ? err.message : String(err);
-      console.error('Auto-generation bon de sortie echouee:', err);
-    }
-
+    // Le bon de sortie est genere par productionRepository.confirm() (avec le
+    // passage du plan en 'awaiting_ingredients' et la notification au magasinier).
+    // Une seconde generation ici echouait toujours en « Bon deja genere » et, pour
+    // un admin sans magasin, produisait une fausse alerte « Magasin requis ».
     const updated = await productionRepository.findById(req.params.id);
     const finalWarnings = [...(warnings || [])];
-    if (bsiError && !bsiError.startsWith('Bon deja')) {
-      finalWarnings.push(`Bon de sortie ingredients non genere : ${bsiError}. Le magasinier ne verra pas la demande tant que ce probleme n'est pas corrige.`);
-    }
     res.json({
       success: true,
       data: updated,
@@ -149,24 +152,58 @@ export const productionController = {
   // Revert un plan confirme -> draft pour permettre des modifications.
   // Pre-condition : status='confirmed' ET aucun item demarre/produit ET BSI non preleve.
   async revertToDraft(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) {
-      res.status(404).json({ success: false, error: { message: 'Plan non trouve' } });
-      return;
-    }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     try {
-      const result = await productionRepository.revertToDraft(req.params.id);
+      const result = await productionRepository.revertToDraft(req.params.id, req.user!.userId);
       const updated = await productionRepository.findById(req.params.id);
       res.json({ success: true, data: updated, info: result });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la repasse en brouillon';
-      res.status(409).json({ success: false, error: { message } });
+      conflictOrThrow(res, err, 'Erreur lors de la repasse en brouillon');
+    }
+  },
+
+  /** Relance un plan bloque sans en creer un nouveau : reactive les articles annules /
+   *  en attente et, si la preparation n'est pas engagee, recalcule les besoins et
+   *  regenere le bon de sortie depuis les recettes actuelles. */
+  async relaunch(req: AuthRequest, res: Response) {
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
+    if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const { itemIds } = req.body || {};
+    try {
+      const result = await productionRepository.relaunch(req.params.id, req.user!.userId, itemIds);
+      const updated = await productionRepository.findById(req.params.id);
+
+      // Le magasinier doit savoir que la preparation repart : BSI regenere ou
+      // articles remis en production, dans les deux cas il y a des prelevements a prevoir.
+      if (result.newStatus === 'awaiting_ingredients' || result.newStatus === 'ready_to_produce') {
+        const quoi = result.relaunchedCount > 0
+          ? `${result.relaunchedCount} article(s) remis en production`
+          : 'bon de sortie regenere';
+        await createNotification({
+          targetRole: 'magasinier',
+          storeId: req.user!.storeId,
+          type: 'production_plan_relaunched',
+          title: 'Plan de production relance',
+          message: `${quoi} sur le plan du ${String(plan.plan_date).slice(0, 10)}`,
+          referenceType: 'production_plan',
+          referenceId: req.params.id,
+          createdBy: req.user!.userId,
+        });
+      }
+
+      res.json({ success: true, data: updated, meta: result, warnings: result.warnings });
+    } catch (err) {
+      conflictOrThrow(res, err, 'Erreur lors de la relance du plan');
     }
   },
 
   async start(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     // Delta v1 point 1 : depuis l'introduction du cycle awaiting_ingredients ->
     // ready_to_produce, le plan peut etre dans n'importe lequel de ces statuts
     // au moment du demarrage. 'confirmed' couvre les plans sans BSI (aucun
@@ -177,19 +214,18 @@ export const productionController = {
       return;
     }
     try {
-      await productionRepository.start(req.params.id);
+      await productionRepository.start(req.params.id, req.user!.userId);
       const updated = await productionRepository.findById(req.params.id);
       res.json({ success: true, data: updated });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors du demarrage';
-      res.status(409).json({ success: false, error: { message } });
+      conflictOrThrow(res, err, 'Erreur lors du demarrage');
     }
   },
 
   // ═══ Start items: pending → in_progress ═══
   async startItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'in_progress') {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour lancer des productions' } });
       return;
@@ -206,8 +242,8 @@ export const productionController = {
 
   // ═══ Partial Production: produce selected items ═══
   async produceItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'in_progress') {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour produire des articles' } });
       return;
@@ -237,15 +273,14 @@ export const productionController = {
 
       res.json({ success: true, data: updated, warnings, autoCompleted });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de la production';
-      res.status(409).json({ success: false, error: { message } });
+      conflictOrThrow(res, err, 'Erreur lors de la production');
     }
   },
 
   // ═══ Partial Transfer: transfer produced items to store ═══
   async transferItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'in_progress') {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour transferer' } });
       return;
@@ -321,8 +356,8 @@ export const productionController = {
 
   // ═══ Modification 2: Restore items from waiting list ═══
   async restoreItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     const { itemIds } = req.body;
     if (!itemIds || itemIds.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Aucun article a restaurer' } });
@@ -385,15 +420,15 @@ export const productionController = {
   },
 
   async analyzeSubRecipes(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     const analysis = await productionRepository.analyzeSubRecipes(req.params.id);
     res.json({ success: true, data: analysis });
   },
 
   async complete(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'in_progress') {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour etre termine' } });
       return;
@@ -416,7 +451,7 @@ export const productionController = {
       });
       return;
     }
-    const { warnings } = await productionRepository.complete(req.params.id, bodyItems || req.body.items, req.user!.userId, req.user!.storeId, completionType);
+    const { warnings } = await productionRepository.complete(req.params.id, bodyItems || [], req.user!.userId, req.user!.storeId, completionType);
     const updated = await productionRepository.findById(req.params.id);
 
     // If linked to an order, mark order as 'ready'
@@ -489,8 +524,8 @@ export const productionController = {
 
   // ═══ Point 8: Cancel individual production items ═══
   async cancelItems(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status)) {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme ou en cours' } });
       return;
@@ -505,14 +540,13 @@ export const productionController = {
       const updated = await productionRepository.findById(req.params.id);
       res.json({ success: true, data: updated });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erreur lors de l\'annulation';
-      res.status(409).json({ success: false, error: { message } });
+      conflictOrThrow(res, err, 'Erreur lors de l\'annulation');
     }
   },
 
   async remove(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (plan.status !== 'draft') {
       res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent etre supprimes' } });
       return;
@@ -527,12 +561,6 @@ export const productionController = {
   async requestStockVerification(req: AuthRequest, res: Response) {
     const { id, ingredientId } = req.params as { id: string; ingredientId: string };
     const { note } = (req.body || {}) as { note?: string };
-
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id) || !uuidRegex.test(ingredientId)) {
-      res.status(400).json({ success: false, error: { message: 'ID invalide' } });
-      return;
-    }
 
     const plan = await productionRepository.findById(id);
     if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
@@ -593,8 +621,8 @@ export const productionController = {
   // ═══ Semi-finished detection ═══
 
   async detectSemiFinished(req: AuthRequest, res: Response) {
-    const plan = await productionRepository.findById(req.params.id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
     if (!['draft', 'confirmed'].includes(plan.status)) {
       res.status(409).json({ success: false, error: { message: 'Detection possible uniquement sur les plans brouillon ou confirmes' } });
       return;
@@ -627,6 +655,13 @@ export const productionController = {
   async getPlanDependencies(req: AuthRequest, res: Response) {
     const result = await productionRepository.getPlanDependencies(req.params.id);
     res.json({ success: true, data: result });
+  },
+
+  /** GET /production/:id/events — journal des transitions plan + bons (mig 299). */
+  async getEvents(req: AuthRequest, res: Response) {
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
+    res.json({ success: true, data: await listPlanEvents(req.params.id) });
   },
 
   async getActivities(req: AuthRequest, res: Response) {

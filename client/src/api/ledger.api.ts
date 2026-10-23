@@ -38,6 +38,41 @@ export const fiscalPeriodsApi = {
        .then(r => r.data.data),
   updateStatus: (id: string, status: 'open' | 'closed' | 'locked', note?: string): Promise<FiscalPeriod> =>
     api.patch(`/ledger/fiscal-periods/${id}/status`, { status, note }).then(r => r.data.data),
+  /** Mig 311 : contrôles de clôture (bloquants / avertissements) et historique. */
+  checklist: (id: string): Promise<CloseCheck[]> =>
+    api.get(`/ledger/fiscal-periods/${id}/checklist`).then(r => r.data.data),
+  events: (id: string): Promise<PeriodEvent[]> =>
+    api.get(`/ledger/fiscal-periods/${id}/events`).then(r => r.data.data),
+};
+
+export interface CloseCheck { code: string; label: string; item_count: number; amount: string | null; blocking: boolean }
+export interface PeriodEvent { id: string; from_status: string; to_status: string; user_name: string | null; note: string | null; at: string }
+
+/* ═══ Mig 311 (D8) : comptabilité des achats ═══ */
+export interface OutboxItem {
+  id: string; source_kind: string; source_id: string; status: 'pending' | 'posted' | 'failed';
+  attempts: number; last_error: string | null; created_at: string; document_label: string | null;
+}
+export interface GrirOpenItem {
+  po_line_id: string; purchase_order_id: string; order_number: string; supplier_name: string | null;
+  item_name: string | null; open_amount: string; first_event: string; age_days: number;
+}
+export interface VatStatementRow {
+  invoice_id: string; invoice_number: string; supplier_invoice_number: string | null; invoice_date: string;
+  supplier_name: string; supplier_ice: string | null; supplier_if: string | null;
+  amount_ht: string; amount_tva: string; amount_ttc: string; vat_recoverable_from: string | null;
+  is_vat_recoverable: boolean; vat_non_recoverable_reason: string | null; legal_issues: unknown; payments: string | null;
+  flag_no_ice?: boolean; flag_internal_number?: boolean;
+}
+export const purchaseLedgerApi = {
+  outbox: (status?: string): Promise<OutboxItem[]> =>
+    api.get('/ledger/outbox', { params: status ? { status } : {} }).then(r => r.data.data),
+  replay: (id?: string) =>
+    api.post(id ? `/ledger/outbox/${id}/replay` : '/ledger/outbox/replay').then(r => r.data.data as { replayed: number; posted: number; failed: number; errors: string[] }),
+  grirOpenItems: (params?: { supplierId?: string; minAge?: number }): Promise<GrirOpenItem[]> =>
+    api.get('/ledger/grir/open-items', { params }).then(r => r.data.data),
+  vatStatement: (startDate: string, endDate: string): Promise<VatStatementRow[]> =>
+    api.get('/ledger/vat-deduction-statement', { params: { startDate, endDate } }).then(r => r.data.data),
 };
 
 /* ═══ Reconciliation legacy <-> ledger ═══ */
@@ -197,6 +232,9 @@ export interface TvaDeclaration {
   total_collected: number;
   total_deductible: number;
   tva_due: number;
+  // Mig 311 : TVA dont le droit n'est pas encore né (facture non soldée) et exclusions.
+  pending_payment?: { count: number; amount: number };
+  excluded?: { reason: string; count: number; amount: number }[];
 }
 
 export const tvaDeclarationApi = {

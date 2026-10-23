@@ -55,6 +55,8 @@ interface POData {
   supplierPhone?: string;
   supplierEmail?: string;
   supplierAddress?: string;
+  /** Identifiants légaux du fournisseur (ICE, IF, RC…) : mentions exigées sur les pièces (CGI art. 145). */
+  supplierIdentifiers?: Array<{ label: string; value: string; qualifier?: string | null }>;
   items: POItem[];
   totalHT: number;
   companyName: string;
@@ -196,6 +198,13 @@ export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
   if (data.supplierPhone) supplierLines.push(`T\u00e9l : ${data.supplierPhone}`);
   if (data.supplierEmail) supplierLines.push(data.supplierEmail);
   if (data.supplierAddress) supplierLines.push(data.supplierAddress);
+  if (data.supplierIdentifiers?.length) {
+    supplierLines.push(
+      data.supplierIdentifiers
+        .map(i => `${i.label} : ${i.value}${i.qualifier ? ` ${i.qualifier}` : ''}`)
+        .join('   '),
+    );
+  }
 
   const headerH = 20;
   const contentH = Math.max(40, supplierLines.length * 14 + 10);

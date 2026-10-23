@@ -1,10 +1,11 @@
 import { db } from '../config/database.js';
+import { adjustProductStock } from './product-stock.helper.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 export const productLossRepository = {
-  async findAll(filters: { month?: number; year?: number; lossType?: string; productId?: string; storeId?: string }) {
+  async findAll(filters: { month?: number; year?: number; lossType?: string; productId?: string; storeId?: string; productionPlanId?: string }) {
     const conditions: string[] = [];
     const params: (string | number)[] = [];
     let idx = 1;
@@ -30,6 +31,10 @@ export const productLossRepository = {
       params.push(filters.storeId);
     }
 
+    if (filters.productionPlanId) {
+      conditions.push(`pl.production_plan_id = $${idx++}`);
+      params.push(filters.productionPlanId);
+    }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const result = await db.query(
@@ -103,7 +108,7 @@ export const productLossRepository = {
     try {
       await client.query('BEGIN');
       const found = await client.query(
-        `SELECT id, product_id, quantity, loss_type, reason, store_id, source_product_lot_id
+        `SELECT id, product_id, quantity, loss_type, reason, store_id, source_product_lot_id, plan_item_id
            FROM product_losses WHERE id = $1 FOR UPDATE`,
         [id]
       );
@@ -141,6 +146,27 @@ export const productLossRepository = {
            VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
           [loss.product_id, qty,
            `Reversal suppression perte ${loss.loss_type}/${loss.reason} (id=${id})`,
+           actorId, storeId]
+        );
+      }
+
+      // Perte de production rattachee a un lot produit (mig 301) : la reserve et
+      // le lot avaient ete decrementes a la declaration, on les restitue.
+      if (loss.loss_type === 'production' && loss.source_product_lot_id && qty > 0) {
+        await client.query(
+          `UPDATE product_lots
+              SET backroom_qty = backroom_qty + $1,
+                  wasted_qty = GREATEST(0, wasted_qty - $1),
+                  status = CASE WHEN status = 'depleted' THEN 'active' ELSE status END
+            WHERE id = $2`,
+          [qty, loss.source_product_lot_id]
+        );
+        const restored = await adjustProductStock(client, loss.product_id, qty, storeId);
+        await client.query(
+          `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
+           VALUES ($1, 'adjust', $2, $3, $4, $5, $6)`,
+          [loss.product_id, qty, restored,
+           `Reversal suppression perte production/${loss.reason} (id=${id})`,
            actorId, storeId]
         );
       }

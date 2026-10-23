@@ -10,7 +10,11 @@ import {
   tvaDeclarationController,
   balanceSheetController,
   backfillController,
+  purchaseLedgerController,
 } from '../controllers/ledger.controller.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { ROLES } from '@ofauria/shared';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
@@ -34,6 +38,15 @@ ledgerRouter.get('/journals',         authenticate, authorize(...ROLE_GROUPS.ADM
 // Periodes fiscales
 ledgerRouter.get('/fiscal-periods',   authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), fiscalPeriodController.list);
 ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), fiscalPeriodController.updateStatus);
+// Mig 311 (D8) : checklist de clôture, historique, file de comptabilisation, GR/IR, relevé TVA, paramétrage.
+ledgerRouter.get('/fiscal-periods/:id/checklist', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.checklist));
+ledgerRouter.get('/fiscal-periods/:id/events', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.events));
+ledgerRouter.get('/outbox', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.outbox));
+ledgerRouter.post('/outbox/replay', authenticate, authorize(ROLES.ADMIN), asyncHandler(purchaseLedgerController.replay));
+ledgerRouter.post('/outbox/:id/replay', authenticate, authorize(ROLES.ADMIN), validateUuidParams('id'), asyncHandler(purchaseLedgerController.replay));
+ledgerRouter.get('/grir/open-items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.grirOpenItems));
+ledgerRouter.get('/vat-deduction-statement', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.vatStatement));
+ledgerRouter.get('/posting-profiles', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.postingProfiles));
 
 // Ecritures comptables
 ledgerRouter.get('/entries',          authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), journalEntryController.list);

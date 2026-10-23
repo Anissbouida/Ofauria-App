@@ -50,6 +50,18 @@ export const recipeComponentController = {
     res.json({ success: true, data });
   },
 
+  async saveIdentity(req: AuthRequest, res: Response) {
+    const row = await recipeComponentRepository.updateIdentity(req.params.recipeId, req.body);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
+    res.json({ success: true, data: row });
+  },
+
+  async saveEtapes(req: AuthRequest, res: Response) {
+    const etapes = await recipeComponentRepository.updateEtapes(req.params.recipeId, req.body.etapes);
+    if (!etapes) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
+    res.json({ success: true, data: etapes });
+  },
+
   async children(req: AuthRequest, res: Response) {
     const data = await recipeComponentRepository.findChildren(req.params.recipeId);
     res.json({ success: true, data });

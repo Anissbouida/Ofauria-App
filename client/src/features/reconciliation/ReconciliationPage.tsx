@@ -3,9 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, CalendarDays,
-  ArrowLeftRight, ScrollText, Info, ClipboardPaste, ClipboardList, Printer, Check,
-  Settings, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy, Scale,
+  Upload, Plus, Trash2, Lock, Unlock, Download, Loader2, ScrollText, Info, ClipboardPaste, Printer, Check, Clock, Package, RotateCcw, Save, TrendingDown, TrendingUp, Minus, Copy, Scale,
 } from 'lucide-react';
 import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, type ReconReportRow, type SuggestProduct, type SupplySlot, type ReconFicheLineInput } from '../../api/reconciliation.api';
 import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
@@ -123,52 +121,7 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-export default function ReconciliationPage() {
-  const [tab, setTab] = useState<'fiche' | 'day' | 'catalog' | 'report' | 'settings'>('fiche');
-  const tabLabel = { fiche: 'Fiche de besoin', day: 'Journée', catalog: 'Catalogue', report: 'Rapport période', settings: 'Paramètres' }[tab];
-  return (
-    <div className="odoo-scope">
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Contrôle des ventes</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{tabLabel}</span>
-        </div>
-      </div>
-
-      <div className="odoo-tabs">
-        <button type="button" onClick={() => setTab('fiche')} className={`odoo-tab ${tab === 'fiche' ? 'active' : ''}`}>
-          <ClipboardList size={13} /> <span>Fiche de besoin</span>
-        </button>
-        <button type="button" onClick={() => setTab('day')} className={`odoo-tab ${tab === 'day' ? 'active' : ''}`}>
-          <CalendarDays size={13} /> <span>Journée</span>
-        </button>
-        <button type="button" onClick={() => setTab('catalog')} className={`odoo-tab ${tab === 'catalog' ? 'active' : ''}`}>
-          <Package size={13} /> <span>Catalogue</span>
-        </button>
-        <button type="button" onClick={() => setTab('report')} className={`odoo-tab ${tab === 'report' ? 'active' : ''}`}>
-          <ScrollText size={13} /> <span>Rapport période</span>
-        </button>
-        <button type="button" onClick={() => setTab('settings')} className={`odoo-tab ${tab === 'settings' ? 'active' : ''}`}>
-          <Settings size={13} /> <span>Paramètres</span>
-        </button>
-      </div>
-
-      <div style={{ padding: '1rem' }}>
-        {tab === 'fiche' ? <FicheBesoinsView onValidated={() => setTab('day')} />
-         : tab === 'day' ? <DayView />
-         : tab === 'catalog' ? <CatalogView />
-         : tab === 'report' ? <ReportView />
-         : <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-             <CarryOverSettingsView />
-             <SlotsSettingsView />
-             <DarijaSettingsView />
-           </div>}
-      </div>
-    </div>
-  );
-}
+/* Les vues sont hébergées par la Journée boutique (features/boutique). */
 
 // ════════════════════════ FICHE DE BESOIN ══════════════════════
 
@@ -863,7 +816,7 @@ ${pages.join('')}
  }
 }
 
-function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
+export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
   const qc = useQueryClient();
   // La fiche de besoin prépare la production du LENDEMAIN : date par défaut J+1.
   const [date, setDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
@@ -1279,8 +1232,9 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
         <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Fiche de besoin d'approvisionnement par créneau.</strong> Le système propose les quantités vendues (J-7)
-          réparties selon les créneaux configurés dans <strong>Paramètres</strong>. Ajustez par créneau, puis validez.
+          <strong>Fiche de besoin d'approvisionnement par créneau.</strong> Le système propose la demande prévue
+          (historique des mêmes jours, tendance, événements du calendrier ; à défaut le vendu J-7)
+          répartie selon les créneaux configurés dans <strong>Paramètres</strong>. Ajustez par créneau, puis validez.
         </div>
       </div>
 
@@ -1303,7 +1257,13 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             Basé sur <strong>{refLabel}</strong>
           </span>
         )}
-        {data && !data.referenceDate && data.products.length > 0 && (
+        {(data?.forecastCount ?? 0) > 0 && (
+          <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.6875rem' }}
+            title="Articles reliés au catalogue : suggestion issue de la prévision de la demande">
+            Prévision : {data!.forecastCount} article(s)
+          </span>
+        )}
+        {data && !data.referenceDate && !data.forecastCount && data.products.length > 0 && (
           <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>
             Pas de référence J-7/J-14
           </span>
@@ -1557,7 +1517,7 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     <tr>
                       <th>Produit</th>
                       <th style={{ width: 150 }}>Darija</th>
-                      <th style={{ textAlign: 'right', width: 70 }}>J-7</th>
+                      <th style={{ textAlign: 'right', width: 70 }} title="Demande prévue (violet) ou vendu J-7">Prévu</th>
                       {catSlots.length > 0 ? (
                         catSlots.map(s => (
                           <th key={s.id} style={{ textAlign: 'right', width: 85 }}>
@@ -1587,7 +1547,8 @@ function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                           <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem', direction: 'rtl', textAlign: 'right' }}>
                             {darijaOf(p.product_name) || '—'}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>
+                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--theme-accent)' : 'var(--theme-text-muted)' }}
+                            title={p.method === 'prevision' ? p.explanation : 'Vendu J-7 (article non relié au catalogue ou historique insuffisant)'}>
                             {suggested > 0 ? qf(suggested) : '—'}
                           </td>
                           {catSlots.length > 0 ? (
@@ -1891,7 +1852,7 @@ function ReportVeilleCell({ qty, passation }: { qty: number; passation?: boolean
   );
 }
 
-function DayView() {
+export function DayView() {
   const qc = useQueryClient();
   const { user } = useAuth();
   // L'appro est la reference du rapprochement : seul l'admin peut la modifier.
@@ -2878,7 +2839,7 @@ function AddLineModal({ onClose, onSave, isLoading }: {
  * Pâtisserie : oui (la vitrine n'est pas vidée). Viennoiserie / boulangerie :
  * non, ces produits sont jetés — un report y créerait des manques fictifs.
  */
-function CarryOverSettingsView() {
+export function CarryOverSettingsView() {
   const qc = useQueryClient();
   const { data: cats = [], isLoading } = useQuery({
     queryKey: ['recon-carryover'],
@@ -2961,7 +2922,7 @@ function CarryOverSettingsView() {
   );
 }
 
-function SlotsSettingsView() {
+export function SlotsSettingsView() {
   const qc = useQueryClient();
   const { data: slots = [], isLoading } = useQuery({
     queryKey: ['recon-slots'],
@@ -3145,7 +3106,7 @@ function SlotsSettingsView() {
  * Edition des traductions darija. La base a priorite sur le dictionnaire
  * statique ; les produits du catalogue sans traduction remontent en tete.
  */
-function DarijaSettingsView() {
+export function DarijaSettingsView() {
   const qc = useQueryClient();
   const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -3277,7 +3238,7 @@ function DarijaSettingsView() {
  * enregistrent automatiquement les nouveaux produits ; cet onglet permet de
  * corriger un nom, une categorie, un prix, ou de supprimer un produit obsolete.
  */
-function CatalogView() {
+export function CatalogView() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState('');
   const [editing, setEditing] = useState<(Partial<ReconProduct> & { darija?: string }) | null>(null);
@@ -3517,7 +3478,7 @@ function CatalogView() {
 }
 
 // ════════════════════════ ONGLET RAPPORT ════════════════════════
-function ReportView() {
+export function ReportView() {
   const now = new Date();
   const [from, setFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
   const [to, setTo] = useState(format(now, 'yyyy-MM-dd'));

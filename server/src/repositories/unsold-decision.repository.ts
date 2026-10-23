@@ -549,7 +549,7 @@ export const unsoldDecisionRepository = {
 
             // Mirror sur product_lots : recycled_qty += qty pour chaque lot consomme FEFO
             for (const step of fefoPlan) {
-              await productLotRepository.consumeVitrineRecycle(client, step.lotId, step.qty);
+              await productLotRepository.consumeVitrineRecycle(client, step.lotId, step.qty, { type: 'unsold_decision' });
             }
 
             let recycledIngredientLotId: string | null = null;
@@ -632,7 +632,7 @@ export const unsoldDecisionRepository = {
             );
             // Mirror sur product_lots
             for (const step of fefoPlan) {
-              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'unsold_decision' });
             }
             // Transaction stock
             await client.query(
@@ -743,7 +743,7 @@ export const unsoldDecisionRepository = {
             client, d.productId, data.storeId, discrepancy, { includeExpired: true }
           );
           for (const step of ecartFefo) {
-            await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+            await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'unsold_decision' });
           }
 
           await client.query(
@@ -1107,7 +1107,7 @@ export const unsoldDecisionRepository = {
 
         // Miroir sur product_lots : marquer les lots comme wasted
         for (const step of consumedLots) {
-          await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+          await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'unsold_decision' });
         }
         const primaryLotId = consumedLots[0]?.lotId ?? null;
 

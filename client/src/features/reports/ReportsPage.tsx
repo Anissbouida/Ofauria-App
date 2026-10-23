@@ -3,6 +3,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi, type MenuEngineeringClass } from '../../api/reports.api';
 import { productLossesApi } from '../../api/product-losses.api';
+import MarginsTab from './MarginsTab';
 import { format, subDays, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -13,16 +14,17 @@ import {
 import {
   TrendingUp, ShoppingCart, Banknote, Package, ClipboardList,
   AlertTriangle, Calendar, ArrowUpRight, ArrowDownRight, Crown, BarChart3,
-  ChevronRight, LayoutDashboard, Sparkles, Wallet, Search, X,
+  ChevronRight, LayoutDashboard, Sparkles, Wallet, Search, X, Percent,
 } from 'lucide-react';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
-type Tab = 'overview' | 'menu' | 'cost';
+type Tab = 'overview' | 'menu' | 'cost' | 'margins';
 
 const tabs: { key: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'overview', label: "Vue d'ensemble", icon: LayoutDashboard },
   { key: 'menu', label: 'Menu Engineering', icon: Sparkles },
   { key: 'cost', label: 'Couts', icon: Wallet },
+  { key: 'margins', label: 'Marges', icon: Percent },
 ];
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
@@ -163,6 +165,46 @@ export default function ReportsPage() {
     }
   };
 
+  // Barre de période : partagée par la vue d'ensemble et l'onglet Marges.
+  const periodBar = (
+  <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
+    <BarChart3 size={18} className="text-gray-400" />
+    <span className="text-sm font-medium text-gray-600 mr-1">Periode :</span>
+    <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
+      {presets.map((p) => (
+        <button
+          key={p.key}
+          onClick={() => handlePreset(p.key)}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+            activePreset === p.key
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+    {activePreset === 'custom' && (
+      <div className="flex items-center gap-2 ml-2">
+        <input
+          type="date"
+          value={customStart}
+          onChange={(e) => setCustomStart(e.target.value)}
+          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+        <span className="text-gray-400 text-xs">a</span>
+        <input
+          type="date"
+          value={customEnd}
+          onChange={(e) => setCustomEnd(e.target.value)}
+          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+      </div>
+    )}
+  </div>
+  );
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -274,43 +316,7 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Date filter bar */}
-      <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
-        <BarChart3 size={18} className="text-gray-400" />
-        <span className="text-sm font-medium text-gray-600 mr-1">Periode :</span>
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
-          {presets.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => handlePreset(p.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activePreset === p.key
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {activePreset === 'custom' && (
-          <div className="flex items-center gap-2 ml-2">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-            />
-            <span className="text-gray-400 text-xs">a</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-            />
-          </div>
-        )}
-      </div>
+      {periodBar}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -564,6 +570,9 @@ export default function ReportsPage() {
           menuLoading={menuLoading}
         />
       )}
+
+      {/* ============ Tab: Marges (mig 317) ============ */}
+      {activeTab === 'margins' && <>{periodBar}<MarginsTab from={startDate} to={endDate} /></>}
 
       {/* ============ Tab: Couts ============ */}
       {activeTab === 'cost' && (

@@ -8,8 +8,22 @@ import {
   User, Coins,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { containerOf, roundUpToContainer, containerLabel } from '../../utils/container';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { format } from 'date-fns';
+import { apiErrorMessage } from '../../api/errors';
+
+/** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
+const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> = {
+  pending:   { label: 'À commander', tag: 'odoo-tag-yellow', dot: 'warning' },
+  assigned:  { label: 'Commandé',    tag: 'odoo-tag-blue',   dot: 'neutral' },
+  ordered:   { label: 'Commandé',    tag: 'odoo-tag-blue',   dot: 'neutral' },
+  received:  { label: 'Reçu',        tag: 'odoo-tag-green',  dot: 'ok' },
+  closed:    { label: 'Clôturé',     tag: 'odoo-tag-grey',   dot: 'neutral' },
+  cancelled: { label: 'Annulé',      tag: 'odoo-tag-grey',   dot: 'neutral' },
+};
+
+type ReasonAction = { kind: 'cancel' | 'close'; id: string; label: string };
 
 const REASON_LABELS: Record<string, { label: string; color: string }> = {
   stock_bas: { label: 'Stock bas', color: 'bg-red-100 text-red-700' },
@@ -78,13 +92,19 @@ export default function PurchaseRequestsPage() {
     enabled: viewMode === 'all',
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: ({ id, note }: { id: string; note?: string }) => purchaseRequestsApi.cancel(id, note),
-    onSuccess: () => {
+  // Annuler (demande en attente) et clôturer le reliquat (demande commandée) exigent
+  // un motif : ce sont des actions humaines définitives, journalisées en base.
+  const [reasonAction, setReasonAction] = useState<ReasonAction | null>(null);
+  const reasonMutation = useMutation({
+    mutationFn: ({ kind, id, reason }: { kind: 'cancel' | 'close'; id: string; reason: string }) =>
+      kind === 'cancel' ? purchaseRequestsApi.cancel(id, reason) : purchaseRequestsApi.close(id, reason),
+    onSuccess: (_d, v) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
-      notify.success('Demande annulee');
+      notify.success(v.kind === 'cancel' ? 'Demande annulée' : 'Reliquat clôturé');
+      setReasonAction(null);
     },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Action impossible')),
   });
 
   const generatePOMutation = useMutation({
@@ -318,7 +338,7 @@ export default function PurchaseRequestsPage() {
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); cancelMutation.mutate({ id: req.id }); }}
+                                  onClick={(e) => { e.stopPropagation(); setReasonAction({ kind: 'cancel', id: req.id, label: req.ingredient_name }); }}
                                   className="odoo-pager-btn"
                                   title="Annuler cette demande"
                                   style={{ color: '#dc3545' }}>
@@ -342,8 +362,8 @@ export default function PurchaseRequestsPage() {
       {viewMode === 'all' && (
         <>
           <div className="odoo-search-panel">
-            {['pending', 'assigned', 'ordered', 'cancelled', ''].map(s => {
-              const label = s === 'pending' ? 'En attente' : s === 'assigned' ? 'Attribué' : s === 'ordered' ? 'Commandé' : s === 'cancelled' ? 'Annulé' : 'Tous';
+            {['pending', 'assigned', 'received', 'closed', 'cancelled', ''].map(s => {
+              const label = s ? STATUS_INFO[s].label : 'Tous';
               return (
                 <button key={s} onClick={() => setStatusFilter(s)} className="odoo-filter-dropdown"
                   style={{
@@ -369,43 +389,64 @@ export default function PurchaseRequestsPage() {
                   <th>Date</th>
                   <th>BC</th>
                   <th style={{ textAlign: 'right' }}>Quantité</th>
+                  <th style={{ textAlign: 'right' }} title="Part commandée et part reçue, calculées depuis les lignes de BC">Couverture</th>
+                  <th style={{ width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {allLoading ? (
-                  <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
+                  <tr><td colSpan={11} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
                 ) : (allRequests as Record<string, any>[]).length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande</td></tr>
+                  <tr><td colSpan={11} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande</td></tr>
                 ) : (allRequests as Record<string, any>[]).map((req) => {
                   const reasonInfo = REASON_LABELS[req.reason as string] || REASON_LABELS.manual;
                   const reasonTag = req.reason === 'stock_bas' ? 'odoo-tag-red'
                     : req.reason === 'production' ? 'odoo-tag-blue'
                     : req.reason === 'replenishment' ? 'odoo-tag-purple'
                     : 'odoo-tag-grey';
-                  const statusTag = req.status === 'pending' ? 'odoo-tag-yellow'
-                    : req.status === 'assigned' ? 'odoo-tag-blue'
-                    : req.status === 'ordered' ? 'odoo-tag-green'
-                    : 'odoo-tag-grey';
-                  const dotClass = req.status === 'pending' ? 'warning'
-                    : req.status === 'assigned' ? 'neutral'
-                    : req.status === 'ordered' ? 'ok' : 'neutral';
-                  const statusLabel = req.status === 'pending' ? 'En attente'
-                    : req.status === 'assigned' ? 'Attribué'
-                    : req.status === 'ordered' ? 'Commandé'
-                    : req.status === 'cancelled' ? 'Annulé' : (req.status as string);
+                  const st = STATUS_INFO[req.status as string] ?? { label: req.status as string, tag: 'odoo-tag-grey', dot: 'neutral' };
+                  const statusTag = st.tag;
+                  const dotClass = st.dot;
+                  const statusLabel = st.label;
+                  const qReq = parseFloat(req.quantity as string) || 0;
+                  const qOrd = parseFloat(req.quantity_ordered as string) || 0;
+                  const qRec = parseFloat(req.quantity_received as string) || 0;
+                  const traceTitle = req.status === 'cancelled'
+                    ? `Annulée${req.cancelled_by_name ? ` par ${req.cancelled_by_name}` : ''} : ${req.cancel_reason ?? ''}`
+                    : req.status === 'closed'
+                      ? `Reliquat clôturé${req.closed_by_name ? ` par ${req.closed_by_name}` : ''} : ${req.close_reason ?? ''}`
+                      : undefined;
                   return (
                     <tr key={req.id as string}>
                       <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td style={{ fontWeight: 500 }}>{req.ingredient_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{(req.supplier_name as string) || '—'}</td>
                       <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
-                      <td><span className={`odoo-tag ${statusTag}`}>{statusLabel}</span></td>
+                      <td><span className={`odoo-tag ${statusTag}`} title={traceTitle}>{statusLabel}</span></td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{req.requested_by_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(req.created_at as string), 'dd/MM HH:mm')}</td>
                       <td style={{ color: 'var(--theme-accent)', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{(req.purchase_order_number as string) || '—'}</td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: 600 }}>{parseFloat(req.quantity as string).toFixed(1)}</span>
                         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{req.ingredient_unit as string}</span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontSize: '0.75rem', whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}
+                        title={`Commandé ${qOrd.toFixed(2)} · reçu ${qRec.toFixed(2)} sur ${qReq.toFixed(2)} ${req.ingredient_unit ?? ''}`}>
+                        {qReq > 0 ? `${Math.round(Math.min(qOrd, qReq) / qReq * 100)} % cmd · ${Math.round(Math.min(qRec, qReq) / qReq * 100)} % reçu` : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {req.status === 'pending' && (
+                          <button className="odoo-pager-btn" title="Annuler cette demande" style={{ color: '#dc3545' }}
+                            onClick={() => setReasonAction({ kind: 'cancel', id: req.id as string, label: req.ingredient_name as string })}>
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                        {(req.status === 'assigned' || req.status === 'ordered') && qRec > 0 && qRec < qReq && (
+                          <button className="odoo-pager-btn" title="Clôturer le reliquat (renoncer au manquant)"
+                            onClick={() => setReasonAction({ kind: 'close', id: req.id as string, label: req.ingredient_name as string })}>
+                            <Check size={12} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -414,6 +455,15 @@ export default function PurchaseRequestsPage() {
             </table>
           </div>
         </>
+      )}
+
+      {reasonAction && (
+        <ReasonModal
+          action={reasonAction}
+          pending={reasonMutation.isPending}
+          onClose={() => setReasonAction(null)}
+          onSubmit={(reason) => reasonMutation.mutate({ kind: reasonAction.kind, id: reasonAction.id, reason })}
+        />
       )}
 
       {/* Generate PO modal */}
@@ -468,7 +518,9 @@ function GeneratePOModal({ supplierName, supplierId, requests, quantityOverrides
   const [notes, setNotes] = useState('');
 
   const totalEstimated = requests.reduce((sum, r) => {
-    const qty = parseFloat(quantityOverrides[r.id] || r.quantity);
+    const c = containerOf(r);
+    const rawQty = parseFloat(quantityOverrides[r.id] || r.quantity);
+    const qty = c ? roundUpToContainer(rawQty, c.size).qty : rawQty;
     const cost = parseFloat(r.ingredient_unit_cost || '0');
     return sum + (isNaN(qty) ? 0 : qty * cost);
   }, 0);
@@ -506,7 +558,9 @@ function GeneratePOModal({ supplierName, supplierId, requests, quantityOverrides
               </thead>
               <tbody>
                 {requests.map(req => {
-                  const qty = parseFloat(quantityOverrides[req.id] || req.quantity);
+                  const reqContainer = containerOf(req);
+                  const rawQty = parseFloat(quantityOverrides[req.id] || req.quantity);
+                  const qty = reqContainer ? roundUpToContainer(rawQty, reqContainer.size).qty : rawQty;
                   const cost = parseFloat(req.ingredient_unit_cost || '0');
                   return (
                     <tr key={req.id}>
@@ -515,11 +569,33 @@ function GeneratePOModal({ supplierName, supplierId, requests, quantityOverrides
                         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({req.ingredient_unit})</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <input type="number" step="0.1" min="0.1"
-                          className="w-full px-2 py-1 border border-gray-200 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          style={{ maxWidth: 100, display: 'inline-block' }}
-                          value={quantityOverrides[req.id] ?? req.quantity}
-                          onChange={e => onQuantityChange(req.id, e.target.value)} />
+                        {(() => {
+                          const container = containerOf(req);
+                          if (!container) {
+                            return (
+                              <input type="number" step="0.1" min="0.1"
+                                className="w-full px-2 py-1 border border-gray-200 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                style={{ maxWidth: 100, display: 'inline-block' }}
+                                value={quantityOverrides[req.id] ?? req.quantity}
+                                onChange={e => onQuantityChange(req.id, e.target.value)} />
+                            );
+                          }
+                          // Regle « contenant entier » : saisie en nombre de contenants, arrondi au superieur.
+                          const rounded = roundUpToContainer(parseFloat(quantityOverrides[req.id] ?? req.quantity) || 0, container.size);
+                          return (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <input type="number" step="1" min="1"
+                                className="px-2 py-1 border border-gray-200 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                style={{ width: 64 }}
+                                value={rounded.count || ''}
+                                onChange={e => onQuantityChange(req.id, String(Math.max(1, Math.floor(parseFloat(e.target.value) || 1)) * container.size))}
+                                title={`${containerLabel(container, req.ingredient_unit)} — commande par contenant entier`} />
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
+                                × {containerLabel(container, req.ingredient_unit)} = <strong>{rounded.qty} {req.ingredient_unit}</strong>
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
                         {cost > 0 ? `${cost.toFixed(2)} DH` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
@@ -560,6 +636,46 @@ function GeneratePOModal({ supplierName, supplierId, requests, quantityOverrides
             <Check size={13} /> {isLoading ? 'Génération...' : 'Générer le BC'}
           </button>
         </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/** Saisie du motif d'une annulation ou d'une clôture de reliquat (action journalisée). */
+function ReasonModal({ action, pending, onClose, onSubmit }: {
+  action: ReasonAction; pending: boolean; onClose: () => void; onSubmit: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const isCancel = action.kind === 'cancel';
+  const valid = reason.trim().length >= 3;
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <span className="odoo-breadcrumb-current">{isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'} · {action.label}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit(reason.trim()); }} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+            {isCancel
+              ? 'La demande ne sera plus proposée à la commande. Cette action est définitive et journalisée.'
+              : 'La part non reçue ne sera plus attendue : la demande est close avec ce qui est arrivé. Action définitive et journalisée.'}
+          </p>
+          <label htmlFor="pr-reason" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Motif *</label>
+          <textarea id="pr-reason" rows={3} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500}
+            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+            placeholder={isCancel ? 'Ex. besoin couvert par un transfert, erreur de saisie' : 'Ex. fournisseur en rupture, reliquat abandonné'} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
+            <button type="submit" disabled={!valid || pending} className={isCancel ? 'odoo-btn-danger' : 'odoo-btn-primary'}>
+              {isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'}
+            </button>
+          </div>
+        </form>
       </div>
     </ModalBackdrop>
   );

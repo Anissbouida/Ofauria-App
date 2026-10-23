@@ -3,8 +3,21 @@ import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
-import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries } from '../services/journal-generator.service.js';
+import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
+import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
+import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
+
+/**
+ * Règle d'édition d'une facture reçue (mig 309, G-D6-08) : annulée = jamais ; réglée même
+ * partiellement = jamais (correction par avoir). Les factures émises ne sont pas concernées.
+ */
+function assertInvoiceEditable(row: { invoice_type: string; validation_status: string }, paidAmount: number) {
+  if (row.invoice_type !== 'received') return;
+  const fail = (m: string) => { const e = new Error(m) as Error & { statusCode: number; code: string }; e.statusCode = 409; e.code = 'INVOICE_LOCKED'; throw e; };
+  if (row.validation_status === 'cancelled') fail('Cette facture est annulée : elle ne se modifie plus.');
+  if (paidAmount > 0.005) fail('Cette facture a déjà un règlement : elle ne se modifie plus, la correction passe par un avoir.');
+}
 
 /* ═══ Caisse / Daily Register ═══ */
 export const caisseRepository = {
@@ -310,45 +323,8 @@ export const caisseRepository = {
 };
 
 /* ═══ Suppliers ═══ */
-export const supplierRepository = {
-  async findAll() {
-    const result = await db.query('SELECT * FROM suppliers ORDER BY name');
-    return result.rows;
-  },
-  async findById(id: string) {
-    const result = await db.query('SELECT * FROM suppliers WHERE id = $1', [id]);
-    return result.rows[0] || null;
-  },
-  async create(data: {
-    name: string; contactName?: string; phone?: string; email?: string;
-    address?: string; city?: string; ice?: string; notes?: string;
-  }) {
-    const result = await db.query(
-      `INSERT INTO suppliers (name, contact_name, phone, email, address, city, ice, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [data.name, data.contactName || null, data.phone || null, data.email || null,
-       data.address || null, data.city || null, data.ice || null, data.notes || null]
-    );
-    return result.rows[0];
-  },
-  async update(id: string, data: Record<string, unknown>) {
-    const mapping: Record<string, string> = {
-      name: 'name', contactName: 'contact_name', phone: 'phone', email: 'email',
-      address: 'address', city: 'city', ice: 'ice', notes: 'notes', isActive: 'is_active',
-    };
-    const fields: string[] = []; const values: unknown[] = []; let i = 1;
-    for (const [key, col] of Object.entries(mapping)) {
-      if (data[key] !== undefined) { fields.push(`${col} = $${i++}`); values.push(data[key]); }
-    }
-    if (fields.length === 0) return this.findById(id);
-    values.push(id);
-    const result = await db.query(`UPDATE suppliers SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
-    return result.rows[0];
-  },
-  async delete(id: string) {
-    await db.query('UPDATE suppliers SET is_active = false WHERE id = $1', [id]);
-  },
-};
+// Déplacé dans supplier.repository.ts (refonte Achats D1, mig 304) ; ré-exporté pour les imports existants.
+export { supplierRepository } from './supplier.repository.js';
 
 /* ═══ Expense Categories (hierarchical) ═══ */
 export const expenseCategoryRepository = {
@@ -520,7 +496,10 @@ export const invoiceRepository = {
               ec.name as category_name,
               po.order_number as purchase_order_number,
               rv.voucher_number as reception_voucher_number,
-              o.order_number as order_number_ref
+              o.order_number as order_number_ref,
+              -- Contrôle (mig 309) : blocages ouverts, dont bloquants pour le paiement.
+              (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL)::int AS open_holds,
+              (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL AND h.blocks_payment)::int AS blocking_holds
        FROM invoices inv
        LEFT JOIN suppliers s ON s.id = inv.supplier_id
        LEFT JOIN customers c ON c.id = inv.customer_id
@@ -533,6 +512,128 @@ export const invoiceRepository = {
       values
     );
     return result.rows;
+  },
+
+  /**
+   * Factures reçues par étape du processus (écran Factures) : paginé, filtré côté
+   * serveur. view=open → à traiter (brouillon, bloquée/litige, à payer, partielle) ;
+   * view=history → réglées et annulées. Totaux calculés sur tout le filtre.
+   */
+  async findReceivedBoard(params: {
+    storeId?: string; view: 'open' | 'history'; stage?: string; status?: string;
+    supplierId?: string; categoryId?: string; search?: string; dateFrom?: string; dateTo?: string;
+    sort: string; dir: 'asc' | 'desc'; limit: number; offset: number;
+  }) {
+    const values: unknown[] = [];
+    const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
+    const cond: string[] = [params.view === 'history' ? `stage IN ('paid', 'cancelled')` : `stage NOT IN ('paid', 'cancelled')`];
+    if (params.stage) cond.push(`stage = ${add(params.stage)}`);
+    // Statuts « métier » : late / blocked / to_check sont dérivés, les autres sont des valeurs de status.
+    if (params.status === 'late') cond.push('is_late');
+    else if (params.status === 'blocked') cond.push('blocking_holds > 0');
+    else if (params.status === 'to_check') cond.push('open_holds > blocking_holds');
+    else if (params.status === 'pending') cond.push(`status IN ('pending', 'overdue')`);
+    else if (params.status) cond.push(`status = ${add(params.status)}`);
+    if (params.supplierId) cond.push(`supplier_id = ${add(params.supplierId)}`);
+    if (params.categoryId) cond.push(`category_id = ${add(params.categoryId)}`);
+    if (params.search) {
+      const p = add(`%${params.search}%`);
+      cond.push(`(invoice_number ILIKE ${p} OR COALESCE(supplier_invoice_number, '') ILIKE ${p} OR COALESCE(supplier_name, '') ILIKE ${p}
+                 OR COALESCE(purchase_order_number, '') ILIKE ${p} OR COALESCE(category_name, '') ILIKE ${p})`);
+    }
+    if (params.dateFrom) cond.push(`invoice_date >= ${add(params.dateFrom)}::date`);
+    if (params.dateTo) cond.push(`invoice_date <= ${add(params.dateTo)}::date`);
+    const SORTS: Record<string, string> = {
+      invoice_date: 'invoice_date', due_date: 'due_date', total_amount: 'total_amount',
+      supplier_name: 'supplier_name', invoice_number: 'invoice_number', category_name: 'category_name',
+    };
+    const dir = params.dir === 'asc' ? 'ASC' : 'DESC';
+    // Défaut « à traiter » : retards puis échéance la plus proche ; historique : plus récentes.
+    const orderBy = params.sort === 'urgency'
+      ? 'is_late DESC, due_date ASC NULLS LAST, invoice_date DESC'
+      : `${SORTS[params.sort] ?? 'invoice_date'} ${dir} NULLS LAST, created_at DESC`;
+    const cte = this._receivedStagedCte(params.storeId ? add(params.storeId) : null);
+    const limit = add(params.limit);
+    const offset = add(params.offset);
+    const result = await db.query(
+      `${cte}, filtered AS (SELECT * FROM staged WHERE ${cond.join(' AND ')})
+       SELECT f.*, COUNT(*) OVER() AS total_count,
+              SUM(total_amount) OVER() AS sum_total,
+              SUM(CASE WHEN stage <> 'cancelled' THEN total_amount - paid_amount ELSE 0 END) OVER() AS sum_remaining
+       FROM filtered f
+       ORDER BY ${orderBy}
+       LIMIT ${limit} OFFSET ${offset}`,
+      values
+    );
+    const first = result.rows[0];
+    return {
+      rows: result.rows.map(({ total_count: _a, sum_total: _b, sum_remaining: _c, ...r }) => r),
+      total: first ? parseInt(first.total_count, 10) : 0,
+      sumTotal: first ? Number(first.sum_total) : 0,
+      sumRemaining: first ? Number(first.sum_remaining) : 0,
+    };
+  },
+
+  /** Compteurs par étape, factures en retard de paiement et catégories utilisées. */
+  async receivedPipeline(storeId?: string) {
+    const values: unknown[] = storeId ? [storeId] : [];
+    const cte = this._receivedStagedCte(storeId ? '$1' : null);
+    const [stages, late, categories] = await Promise.all([
+      db.query(
+        `${cte}
+         SELECT stage, COUNT(*)::int AS count,
+                COALESCE(SUM(total_amount), 0) AS amount,
+                COALESCE(SUM(total_amount - paid_amount), 0) AS remaining,
+                COUNT(*) FILTER (WHERE is_late)::int AS late_count
+         FROM staged GROUP BY stage`,
+        values
+      ),
+      db.query(
+        `${cte}
+         SELECT id, invoice_number, supplier_name, due_date, total_amount - paid_amount AS remaining,
+                (CURRENT_DATE - due_date::date)::int AS days_late
+         FROM staged WHERE is_late ORDER BY due_date ASC LIMIT 5`,
+        values
+      ),
+      db.query(
+        `${cte}
+         SELECT category_id AS id, category_name AS name, COUNT(*)::int AS count
+         FROM staged WHERE category_id IS NOT NULL
+         GROUP BY category_id, category_name ORDER BY category_name`,
+        values
+      ),
+    ]);
+    return { stages: stages.rows, late: late.rows, categories: categories.rows };
+  },
+
+  /** CTE commune : factures reçues + blocages + étape du processus. */
+  _receivedStagedCte(storeParam: string | null) {
+    return `WITH base AS (
+        SELECT inv.*,
+               s.name AS supplier_name,
+               ec.name AS category_name,
+               po.order_number AS purchase_order_number,
+               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL)::int AS open_holds,
+               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL AND h.blocks_payment)::int AS blocking_holds
+        FROM invoices inv
+        LEFT JOIN suppliers s ON s.id = inv.supplier_id
+        LEFT JOIN expense_categories ec ON ec.id = inv.category_id
+        LEFT JOIN purchase_orders po ON po.id = inv.purchase_order_id
+        WHERE inv.invoice_type = 'received' ${storeParam ? `AND inv.store_id = ${storeParam}` : ''}
+      ), staged AS (
+        SELECT base.*,
+               CASE
+                 WHEN status = 'cancelled' OR validation_status = 'cancelled' THEN 'cancelled'
+                 WHEN status = 'paid' THEN 'paid'
+                 WHEN validation_status = 'draft' THEN 'draft'
+                 WHEN status = 'disputed' OR blocking_holds > 0 THEN 'blocked'
+                 WHEN status = 'partial' THEN 'partial'
+                 ELSE 'to_pay'
+               END AS stage,
+               (status NOT IN ('paid', 'cancelled')
+                 AND (status = 'overdue' OR (due_date IS NOT NULL AND due_date::date < CURRENT_DATE))) AS is_late
+        FROM base
+      )`;
   },
 
   async findById(id: string) {
@@ -646,21 +747,14 @@ export const invoiceRepository = {
       // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
       // SAVEPOINT pour isoler : si la generation echoue, la facture reste
       // creee, l'ecriture sera regeneree par le job de reconciliation.
-      if (FLAGS.LEDGER_AUTOGEN) {
-        await client.query('SAVEPOINT ledger_gen');
-        try {
-          const entry = await fromInvoice(client, invResult.rows[0]);
-          if (entry) {
-            await persistEntry(client, entry, { userId: data.createdBy });
-          }
-          await client.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec pour facture', invResult.rows[0].id,
-            genErr instanceof Error ? genErr.message : genErr);
+      // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
+      // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
+      await postOrQueue(client, { kind: 'invoice', id: invResult.rows[0].id }, async () => {
+        const entry = await fromInvoice(client, invResult.rows[0]);
+        if (entry) {
+        await persistEntry(client, entry, { userId: data.createdBy });
         }
-      }
+      });
 
       await client.query('COMMIT');
       return invResult.rows[0];
@@ -713,19 +807,12 @@ export const invoiceRepository = {
       }
 
       // Generation de l'ecriture de facture client (pattern B : 3421 / 7111 + TVA).
-      if (FLAGS.LEDGER_AUTOGEN) {
-        await client.query('SAVEPOINT ledger_gen');
-        try {
-          const entry = await fromInvoice(client, invResult.rows[0]);
-          if (entry) await persistEntry(client, entry, { userId: createdBy });
-          await client.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec pour facture commande', invResult.rows[0].id,
-            genErr instanceof Error ? genErr.message : genErr);
-        }
-      }
+      // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
+      // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
+      await postOrQueue(client, { kind: 'invoice', id: invResult.rows[0].id }, async () => {
+        const entry = await fromInvoice(client, invResult.rows[0]);
+        if (entry) await persistEntry(client, entry, { userId: createdBy });
+      });
 
       await client.query('COMMIT');
       return invResult.rows[0];
@@ -770,6 +857,9 @@ export const invoiceRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+
+      // Fusion = réécriture contrôlée de factures validées (mig 309) : contexte explicite.
+      await client.query(`SELECT set_config('app.invoice_edit', 'on', true)`);
 
       // 0. Pre-generer une facture pour les BCs partiels sans facture. On
       //    importe la fonction dynamiquement pour eviter une dependance
@@ -890,12 +980,21 @@ export const invoiceRepository = {
         );
       }
 
-      // 10. Supprimer les autres factures (CASCADE nettoie les invoice_items
-      //     restants — il n'y en a normalement plus apres l'UPDATE ci-dessus).
+      // 10. Les autres factures sont ANNULÉES, jamais supprimées (mig 309, G-D6-03) : la pièce reste,
+      //     son écriture est extournée, la facture maître porte la sienne régénérée.
       await client.query(
-        `DELETE FROM invoices WHERE id = ANY($1::uuid[])`,
-        [otherIds]
+        `UPDATE invoices
+            SET status = 'cancelled', validation_status = 'cancelled', cancelled_at = NOW(), cancelled_by = $2,
+                cancel_note = 'Fusionnée dans ' || $3, source = source, merged_into_invoice_id = $4
+          WHERE id = ANY($1::uuid[])`,
+        [otherIds, options.createdBy, master.invoice_number ?? master.id, master.id]
       );
+      if (FLAGS.LEDGER_AUTOGEN) {
+        for (const oid of otherIds) {
+          await reverseEntriesForSource(client, { sourceId: oid, sourceKinds: ['invoice', 'backfill'] });
+        }
+        await regenerateInvoiceEntry(client, master.id as string, options.createdBy);
+      }
 
       await client.query('COMMIT');
 
@@ -970,6 +1069,90 @@ export const invoiceRepository = {
     }
   },
 
+  /**
+   * Annulation motivée d'une facture reçue (mig 309) : refusée si un règlement existe ; la pièce
+   * reste, son écriture est extournée, le contrôle libère ses blocages.
+   */
+  async cancelReceived(id: string, userId: string, reasonCodeId: string, note: string | null) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const cur = (await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      const fail = (code: number, m: string) => { const e = new Error(m) as Error & { statusCode: number }; e.statusCode = code; return e; };
+      if (!cur) throw fail(404, 'Facture non trouvee');
+      if (cur.validation_status === 'cancelled') throw fail(409, 'Facture déjà annulée');
+      if (parseFloat(cur.paid_amount || '0') > 0.005) throw fail(409, 'Facture déjà réglée (même partiellement) : annulez d\'abord les paiements ou faites un avoir');
+      const ok = await client.query(
+        `SELECT 1 FROM ref_entries WHERE id = $1 AND table_id = 'purchase_reason_codes' AND is_active AND metadata->'scope' ? 'cancel_invoice'`, [reasonCodeId]);
+      if (!ok.rowCount) throw fail(400, 'Motif invalide pour une annulation de facture');
+      const r = await client.query(
+        `UPDATE invoices SET status = 'cancelled', validation_status = 'cancelled', cancelled_at = NOW(), cancelled_by = $2,
+                cancel_reason_code_id = $3, cancel_note = $4, updated_by = $2
+          WHERE id = $1 RETURNING *`,
+        [id, userId, reasonCodeId, note]
+      );
+      if (FLAGS.LEDGER_AUTOGEN) await regenerateInvoiceEntry(client, id, userId);
+      await client.query('COMMIT');
+      return r.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Contrôle d'une facture : blocages, mentions légales, rapprochement par ligne (mig 309). */
+  async control(id: string, revalidate = false) {
+    if (revalidate) await db.query(`SELECT fn_validate_invoice($1)`, [id]);
+    const inv = (await db.query(
+      `SELECT i.id, i.invoice_number, i.supplier_invoice_number, i.validation_status, i.payment_status, i.legal_issues, i.checked_at,
+              i.declared_ttc, i.total_amount, p.payable
+         FROM invoices i LEFT JOIN v_invoice_payable p ON p.invoice_id = i.id WHERE i.id = $1`, [id])).rows[0];
+    if (!inv) return null;
+    const holds = (await db.query(
+      `SELECT h.id, h.hold_code, hc.label, h.blocks_payment, h.is_system, h.details, h.held_at, h.released_at, h.release_mode,
+              h.release_note, re.label AS release_reason, COALESCE(u.first_name || ' ' || u.last_name, u.email) AS released_by_name
+         FROM invoice_holds h JOIN hold_codes hc ON hc.code = h.hold_code
+         LEFT JOIN ref_entries re ON re.id = h.release_reason_code_id
+         LEFT JOIN users u ON u.id = h.released_by
+        WHERE h.invoice_id = $1 ORDER BY h.released_at NULLS FIRST, h.held_at DESC`, [id])).rows;
+    const match = (await db.query(`SELECT * FROM v_invoice_item_match WHERE invoice_id = $1 ORDER BY item_name`, [id])).rows;
+    return { ...inv, holds, match };
+  },
+
+  /** Levée manuelle d'un blocage, motif obligatoire ; le blocage reste dans l'historique. */
+  async releaseHold(holdId: string, userId: string, reasonCodeId: string, note: string | null) {
+    const ok = await db.query(
+      `SELECT 1 FROM ref_entries WHERE id = $1 AND table_id = 'purchase_reason_codes' AND is_active AND metadata->'scope' ? 'release_hold'`, [reasonCodeId]);
+    if (!ok.rowCount) { const e = new Error('Motif invalide pour lever un blocage') as Error & { statusCode: number }; e.statusCode = 400; throw e; }
+    const r = await db.query(
+      `UPDATE invoice_holds SET released_at = NOW(), released_by = $2, release_mode = 'manual', release_reason_code_id = $3, release_note = $4
+        WHERE id = $1 AND released_at IS NULL RETURNING invoice_id`,
+      [holdId, userId, reasonCodeId, note]);
+    if (!r.rowCount) { const e = new Error('Blocage introuvable ou déjà levé') as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+    return r.rows[0];
+  },
+
+  /** Blocage manuel (litige, qualité…) : bloque le paiement jusqu'à levée motivée. */
+  async addManualHold(invoiceId: string, userId: string, note: string) {
+    const r = await db.query(
+      `INSERT INTO invoice_holds (invoice_id, hold_code, blocks_payment, is_system, details, held_by)
+       VALUES ($1, 'MANUAL', true, false, jsonb_build_object('note', $3::text), $2) RETURNING *`,
+      [invoiceId, userId, note]);
+    return r.rows[0];
+  },
+
+  async taxCodes(at?: string) {
+    const r = await db.query(
+      `SELECT code, label, rate, kind, recoverable, valid_from, valid_to, legal_ref FROM tax_codes
+        WHERE country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+          AND valid_from <= COALESCE($1::date, CURRENT_DATE) AND (valid_to IS NULL OR valid_to >= COALESCE($1::date, CURRENT_DATE))
+        ORDER BY rate DESC, code`, [at ?? null]);
+    return r.rows;
+  },
+
   async updateStatus(id: string, status: string) {
     if (!FLAGS.LEDGER_AUTOGEN) {
       const result = await db.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
@@ -1006,13 +1189,49 @@ export const invoiceRepository = {
   // Categorise UNE seule ligne de charge (invoice_items ou
   // reception_voucher_items). Contrairement a updateCategory (qui touche la
   // facture entiere), chaque ligne garde sa propre categorie.
-  async updateLineCategory(lineId: string, source: string, categoryId: string | null) {
-    const table = source === 'reception_item' ? 'reception_voucher_items' : 'invoice_items';
-    const result = await db.query(
-      `UPDATE ${table} SET category_id = $1 WHERE id = $2 RETURNING *`,
-      [categoryId, lineId]
-    );
-    return result.rows[0] ?? null;
+  /**
+   * Catégorie d'une ligne (mig 194). Mig 311 (G-D8-04/08) : l'imputation
+   * comptable se fait par ligne, donc l'écriture de la pièce est régénérée dans
+   * la même transaction (extourne + nouvelle écriture) : CPC et écran Charges
+   * racontent la même histoire.
+   */
+  async updateLineCategory(lineId: string, source: string, categoryId: string | null, userId?: string) {
+    const isReception = source === 'reception_item';
+    const table = isReception ? 'reception_voucher_items' : 'invoice_items';
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      if (userId) await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const result = await client.query(
+        `UPDATE ${table} SET category_id = $1 WHERE id = $2 RETURNING *`,
+        [categoryId, lineId]
+      );
+      const row = result.rows[0];
+      if (row) {
+        if (isReception) {
+          const hadGr = await client.query(
+            `SELECT 1 FROM journal_entries WHERE source_id = $1 AND source_kind IN ('goods_receipt','goods_receipt_return') AND status = 'posted' LIMIT 1`, [lineId]);
+          if (hadGr.rows[0]) {
+            await reverseEntriesForSource(client, { sourceId: lineId, sourceKinds: ['goods_receipt', 'goods_receipt_return'] });
+            await postOrQueue(client, { kind: 'goods_receipt', id: lineId }, async () => {
+              const entry = await fromGoodsReceipt(client, lineId);
+              if (entry) await persistEntry(client, entry, { userId: userId ?? row.created_by });
+            });
+          }
+        } else if (row.invoice_id) {
+          await postOrQueue(client, { kind: 'invoice', id: row.invoice_id }, async () => {
+            await regenerateInvoiceEntry(client, row.invoice_id, userId);
+          });
+        }
+      }
+      await client.query('COMMIT');
+      return row ?? null;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async updateAttachment(id: string, url: string | null) {
@@ -1067,11 +1286,15 @@ export const invoiceRepository = {
       await client.query('BEGIN');
 
       const cur = await client.query(
-        `SELECT tax_amount, paid_amount FROM invoices WHERE id = $1 FOR UPDATE`,
+        `SELECT tax_amount, paid_amount, invoice_type, validation_status FROM invoices WHERE id = $1 FOR UPDATE`,
         [id]
       );
       if (!cur.rows[0]) { await client.query('ROLLBACK'); return null; }
       const paidAmount = parseFloat(cur.rows[0].paid_amount || '0');
+      // Facture reçue validée (mig 309) : modifiable seulement tant qu'aucun règlement n'existe ;
+      // au-delà, la correction passe par un avoir. Le contrôle est rejoué au commit.
+      assertInvoiceEditable(cur.rows[0], paidAmount);
+      await client.query(`SELECT set_config('app.invoice_edit', 'on', true)`);
 
       // Si au moins une ligne porte un taux, la TVA est la somme des TVA
       // lignes. Sinon on conserve la TVA globale d'en-tete (retrocompat).
@@ -1155,13 +1378,15 @@ export const invoiceRepository = {
 
       // Lock + lecture etat courant pour valider totalAmount vs paid_amount
       const current = await client.query(
-        `SELECT amount, tax_amount, total_amount, paid_amount FROM invoices WHERE id = $1 FOR UPDATE`,
+        `SELECT amount, tax_amount, total_amount, paid_amount, invoice_type, validation_status FROM invoices WHERE id = $1 FOR UPDATE`,
         [id]
       );
       if (!current.rows[0]) {
         await client.query('ROLLBACK');
         return null;
       }
+      assertInvoiceEditable(current.rows[0], parseFloat(current.rows[0].paid_amount || '0'));
+      await client.query(`SELECT set_config('app.invoice_edit', 'on', true)`);
       const currentAmount = parseFloat(current.rows[0].amount);
       const currentTax = parseFloat(current.rows[0].tax_amount);
       const paidAmount = parseFloat(current.rows[0].paid_amount || '0');
@@ -1303,20 +1528,29 @@ export const invoiceRepository = {
    *     approche. Une facture reglee par cheque passe en 'paid' et sort de la
    *     premiere famille, mais le cash ne quitte la banque qu'a l'encaissement —
    *     sans cette branche, l'echeance disparaissait du radar.
+   *   - kind='schedule' (mig 258) : echeances de l'echeancier — mensualite d'un
+   *     materiel achete a credit, loyer ou electricite du mois. Une facture
+   *     ECHELONNEE sort de la famille 'invoice' (elle y apparaitrait a sa date
+   *     finale, pas a la prochaine mensualite) : ses echeances la remplacent.
    */
   async findPaymentAlerts(params: { storeId?: string; alertDays?: number }) {
     const alertDays = params.alertDays ?? 7;
     const values: unknown[] = [String(alertDays)];
     let storeFilterInv = '';
     let storeFilterP = '';
+    let storeFilterSp = '';
     if (params.storeId) {
       storeFilterInv = 'AND inv.store_id = $2';
       storeFilterP = 'AND p.store_id = $2';
+      storeFilterSp = 'AND (sp.store_id IS NULL OR sp.store_id = $2)';
       values.push(params.storeId);
     }
+    // Les echeances recurrentes a venir doivent exister pour pouvoir alerter :
+    // la generation est idempotente, l'appeler ici est sans effet de bord.
+    await db.query('SELECT fn_generate_recurring_schedules(90)');
     const result = await db.query(
       `SELECT * FROM (
-         SELECT inv.id, 'invoice' AS kind, inv.invoice_number, inv.supplier_id,
+         SELECT inv.id, 'invoice' AS kind, NULL::varchar AS label, inv.invoice_number, inv.supplier_id,
                 inv.invoice_date, inv.due_date, inv.total_amount, inv.paid_amount,
                 inv.status, inv.expected_payment_mode, inv.notes,
                 inv.check_number,
@@ -1330,9 +1564,13 @@ export const invoiceRepository = {
             AND inv.due_date IS NOT NULL
             AND inv.due_date <= CURRENT_DATE + ($1 || ' days')::interval
             AND inv.status IN ('pending', 'partial', 'overdue', 'disputed')
+            AND NOT EXISTS (
+              SELECT 1 FROM scheduled_payments sp
+               WHERE sp.invoice_id = inv.id AND sp.status IN ('pending', 'partial')
+            )
             ${storeFilterInv}
          UNION ALL
-         SELECT p.id, 'check' AS kind, inv.invoice_number, p.supplier_id,
+         SELECT p.id, 'check' AS kind, NULL::varchar AS label, inv.invoice_number, p.supplier_id,
                 inv.invoice_date, COALESCE(p.check_date, inv.due_date) AS due_date,
                 p.amount AS total_amount, 0 AS paid_amount,
                 'check_pending' AS status, p.payment_method AS expected_payment_mode,
@@ -1351,6 +1589,24 @@ export const invoiceRepository = {
             AND COALESCE(p.check_date, inv.due_date) IS NOT NULL
             AND COALESCE(p.check_date, inv.due_date) <= CURRENT_DATE + ($1 || ' days')::interval
             ${storeFilterP}
+         UNION ALL
+         SELECT sp.id, 'schedule' AS kind, sp.label, inv2.invoice_number, sp.supplier_id,
+                NULL::date AS invoice_date, sp.due_date,
+                COALESCE(sp.amount_due, 0) AS total_amount, sp.amount_paid AS paid_amount,
+                sp.status, sp.expected_payment_mode, sp.notes,
+                NULL::varchar AS check_number,
+                COALESCE(s2.name, d.label, rc.label) AS supplier_name,
+                COALESCE(sp.amount_due, 0) - sp.amount_paid AS remaining_amount,
+                (sp.due_date - CURRENT_DATE) AS days_until_due,
+                (sp.due_date < CURRENT_DATE) AS is_overdue
+           FROM scheduled_payments sp
+           LEFT JOIN suppliers s2         ON s2.id = sp.supplier_id
+           LEFT JOIN invoices inv2        ON inv2.id = sp.invoice_id
+           LEFT JOIN debts d              ON d.id = sp.debt_id
+           LEFT JOIN recurring_charges rc ON rc.id = sp.recurring_charge_id
+          WHERE sp.status IN ('pending', 'partial')
+            AND sp.due_date <= CURRENT_DATE + ($1 || ' days')::interval
+            ${storeFilterSp}
        ) t
        ORDER BY t.due_date ASC, t.invoice_date ASC NULLS LAST`,
       values
@@ -1671,7 +1927,8 @@ export const paymentRepository = {
     supplierId?: string; employeeId?: string;
     storeId?: string;
   }) {
-    const conditions: string[] = [`p.payment_method IN ('check', 'traite')`];
+    // Mig 310 : un chèque annulé (et sa contre-pièce) sort du registre d'encaissement.
+    const conditions: string[] = [`p.payment_method IN ('check', 'traite')`, `p.status <> 'void'`, `p.voids_payment_id IS NULL`];
     const values: unknown[] = []; let i = 1;
     if (params.storeId) { conditions.push(`p.store_id = $${i++}`); values.push(params.storeId); }
     if (params.status === 'pending') conditions.push(`p.cashed_at IS NULL`);
@@ -1801,57 +2058,90 @@ export const paymentRepository = {
     withholdingTypeId?: string | null; withholdingAmount?: number | null;
     avoirAmount?: number | null;
     sessionId?: string; // Section 4.3 — paid-out/paid-in rattache a une session ouverte
+    // Mig 258 — echeance soldee par ce paiement (echeancier dettes/charges fixes).
+    // Le trigger trg_sync_scheduled_payment recalcule amount_paid/status.
+    scheduledPaymentId?: string | null;
+    // Mig 310 (D7) — mode typé, compte de trésorerie, ré-émission, dérogation espèces.
+    paymentMode?: string | null;
+    treasuryAccountId?: string | null;
+    toTreasuryAccountId?: string | null;
+    replacesPaymentId?: string | null;
+    cashOverride?: { reasonCodeId: string; note?: string | null } | null;
   }) {
+    // Contexte de session lu par les triggers (auteur, dérogation au plafond espèces).
+    const applyContext = async (client: PoolClient) => {
+      await withActor(client, data.createdBy);
+      if (data.cashOverride?.reasonCodeId) {
+        await assertReasonCode(client, data.cashOverride.reasonCodeId, 'cash_override', data.cashOverride.note);
+        await client.query(`SELECT set_config('app.cash_override_reason', $1, true), set_config('app.cash_override_note', $2, true)`,
+          [data.cashOverride.reasonCodeId, data.cashOverride.note ?? '']);
+      }
+    };
+    // Garde sur-paiement d'echeance (equivalent de la garde facture plus bas,
+    // pour les echeances de dette autonome / charge fixe qui n'ont pas de
+    // facture en face). Tolerance 0.01 DH pour les arrondis d'echeancier.
+    if (data.scheduledPaymentId && !data.invoiceId) {
+      const sched = await db.query(
+        `SELECT label, amount_due, amount_paid FROM scheduled_payments WHERE id = $1`,
+        [data.scheduledPaymentId]
+      );
+      if (!sched.rows[0]) {
+        const e: Error & { statusCode?: number } = new Error('Echeance introuvable');
+        e.statusCode = 404;
+        throw e;
+      }
+      const due = sched.rows[0].amount_due !== null ? parseFloat(sched.rows[0].amount_due) : null;
+      if (due === null) {
+        const e: Error & { statusCode?: number } = new Error(
+          `Le montant de l'échéance « ${sched.rows[0].label} » n'est pas encore renseigné. `
+          + 'Saisissez-le avant d\'enregistrer le règlement.'
+        );
+        e.statusCode = 400;
+        throw e;
+      }
+      const dejaPaye = parseFloat(sched.rows[0].amount_paid || '0');
+      if (dejaPaye + data.amount > due + 0.01) {
+        const reste = Math.max(0, due - dejaPaye);
+        const e: Error & { statusCode?: number } = new Error(
+          `Le règlement de ${data.amount.toFixed(2)} DH dépasse le reste à payer `
+          + `(${reste.toFixed(2)} DH) de l'échéance « ${sched.rows[0].label} ».`
+        );
+        e.statusCode = 409;
+        throw e;
+      }
+    }
+
     // ─── Cas simple : pas de facture liee ───────────────────────────────
     if (!data.invoiceId) {
-      // Si LEDGER_AUTOGEN, on passe en transaction pour generer l'ecriture
-      // dans le meme acte. Sinon INSERT direct (legacy).
-      if (!FLAGS.LEDGER_AUTOGEN) {
-        const result = await db.query(
-          `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
-            amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-            check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
-            session_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
-          [data.reference || null, data.type, data.categoryId || null, null,
-           data.supplierId || null, data.employeeId || null, data.amount,
-           data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
-           data.storeId || null, data.purchaseOrderId || null,
-           data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
-           data.withholdingTypeId || null, data.withholdingAmount ?? null,
-           data.sessionId || null]
-        );
-        return result.rows[0];
-      }
-
+      // Toujours en transaction : le contexte de session (auteur, dérogation)
+      // est local à la transaction (mig 310).
       const client = await db.getClient();
       try {
         await client.query('BEGIN');
+        await applyContext(client);
         const result = await client.query(
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
             check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
-            session_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+            session_id, scheduled_payment_id, payment_mode, treasury_account_id, to_treasury_account_id,
+            replaces_payment_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
           [data.reference || null, data.type, data.categoryId || null, null,
            data.supplierId || null, data.employeeId || null, data.amount,
-           data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+           data.paymentMethod || 'cash', data.paymentDate, data.description || null, data.createdBy,
            data.storeId || null, data.purchaseOrderId || null,
            data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
            data.withholdingTypeId || null, data.withholdingAmount ?? null,
-           data.sessionId || null]
+           data.sessionId || null, data.scheduledPaymentId || null,
+           data.paymentMode || null, data.treasuryAccountId || null, data.toTreasuryAccountId || null,
+           data.replacesPaymentId || null]
         );
-        await client.query('SAVEPOINT ledger_gen');
-        try {
+        // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
+        // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
+        await postOrQueue(client, { kind: 'payment', id: result.rows[0].id }, async () => {
           const emission = await fromPaymentEmission(client, result.rows[0]);
           if (emission) await persistEntry(client, emission, { userId: data.createdBy });
-          await client.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec pour paiement', result.rows[0].id,
-            genErr instanceof Error ? genErr.message : genErr);
-        }
+        });
         await client.query('COMMIT');
         return result.rows[0];
       } catch (err) {
@@ -1867,6 +2157,7 @@ export const paymentRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await applyContext(client);
 
       // Lock la facture + lit l'etat courant
       const inv = await client.query(
@@ -1914,20 +2205,24 @@ export const paymentRepository = {
       const result = await client.query(
         `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
           amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
-          check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+          check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
+          scheduled_payment_id, payment_mode, treasury_account_id, replaces_payment_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
         [data.reference || null, data.type, data.categoryId || null, data.invoiceId,
          data.supplierId || null, data.employeeId || null, data.amount,
-         data.paymentMethod, data.paymentDate, data.description || null, data.createdBy,
+         data.paymentMethod || 'cash', data.paymentDate, data.description || null, data.createdBy,
          data.storeId || null, data.purchaseOrderId || null,
          data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
-         data.withholdingTypeId || null, data.withholdingAmount ?? null]
+         data.withholdingTypeId || null, data.withholdingAmount ?? null,
+         data.scheduledPaymentId || null,
+         data.paymentMode || null, data.treasuryAccountId || null, data.replacesPaymentId || null]
       );
 
       // Sync invoice.check_number avec le N° reellement utilise au paiement.
       // Sinon le modal facture continue a afficher l'ancien N° prevu alors que
       // l'onglet Effets montre le vrai → incoherence visible par l'utilisateur.
-      if ((data.paymentMethod === 'check' || data.paymentMethod === 'traite') && data.checkNumber) {
+      const insertedMethod = result.rows[0].payment_method as string;
+      if ((insertedMethod === 'check' || insertedMethod === 'traite') && data.checkNumber) {
         await client.query(
           `UPDATE invoices SET check_number = $1 WHERE id = $2`,
           [data.checkNumber, data.invoiceId]
@@ -1940,44 +2235,32 @@ export const paymentRepository = {
       if (data.avoirAmount && data.avoirAmount > 0) {
         const avoirResult = await client.query(
           `INSERT INTO payments (type, category_id, invoice_id, supplier_id, employee_id,
-            amount, payment_method, payment_date, description, created_by, store_id)
-           VALUES ($1,$2,$3,$4,$5,$6,'avoir',$7,$8,$9,$10) RETURNING *`,
+            amount, payment_method, payment_date, description, created_by, store_id,
+            scheduled_payment_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'avoir',$7,$8,$9,$10,$11) RETURNING *`,
           [data.type, data.categoryId || null, data.invoiceId,
            data.supplierId || null, data.employeeId || null,
            data.avoirAmount, data.paymentDate,
-           `Avoir déduit du ${data.paymentMethod === 'traite' ? 'traite' : 'chèque'} ${data.checkNumber || ''}`.trim(),
-           data.createdBy, data.storeId || null]
+           `Avoir déduit du ${insertedMethod === 'traite' ? 'traite' : 'chèque'} ${data.checkNumber || ''}`.trim(),
+           data.createdBy, data.storeId || null, data.scheduledPaymentId || null]
         );
-        if (FLAGS.LEDGER_AUTOGEN) {
-          await client.query('SAVEPOINT ledger_avoir');
-          try {
-            const avoirEmission = await fromPaymentEmission(client, avoirResult.rows[0]);
-            if (avoirEmission) await persistEntry(client, avoirEmission, { userId: data.createdBy });
-            await client.query('RELEASE SAVEPOINT ledger_avoir');
-          } catch (genErr) {
-            await client.query('ROLLBACK TO SAVEPOINT ledger_avoir');
-            console.error('[ledger] generation echec pour avoir', avoirResult.rows[0].id,
-              genErr instanceof Error ? genErr.message : genErr);
-          }
-        }
+        // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
+        // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
+        await postOrQueue(client, { kind: 'payment', id: avoirResult.rows[0].id }, async () => {
+          const avoirEmission = await fromPaymentEmission(client, avoirResult.rows[0]);
+          if (avoirEmission) await persistEntry(client, avoirEmission, { userId: data.createdBy });
+        });
       }
 
       // Generation auto de l'ecriture comptable + auto-lettrage (LEDGER_AUTOGEN)
-      if (FLAGS.LEDGER_AUTOGEN) {
-        await client.query('SAVEPOINT ledger_gen');
-        try {
-          const emission = await fromPaymentEmission(client, result.rows[0]);
-          if (emission) await persistEntry(client, emission, { userId: data.createdBy });
-          // Auto-lettrage : si la somme paiement+facture s'equilibre sur le tiers
-          await autoLettrer(client, data.invoiceId);
-          await client.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec pour paiement', result.rows[0].id,
-            genErr instanceof Error ? genErr.message : genErr);
-        }
-      }
+      // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
+      // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
+      await postOrQueue(client, { kind: 'payment', id: result.rows[0].id }, async () => {
+        const emission = await fromPaymentEmission(client, result.rows[0]);
+        if (emission) await persistEntry(client, emission, { userId: data.createdBy });
+        // Auto-lettrage : si la somme paiement+facture s'equilibre sur le tiers
+        await autoLettrer(client, data.invoiceId as string);
+      });
 
       // Resync paid_amount + status DANS la meme transaction : legacy et ledger
       // sont ainsi commit/rollback ensemble (plus de derive paid_amount vs ledger).
@@ -1993,34 +2276,40 @@ export const paymentRepository = {
       client.release();
     }
   },
-  async update(id: string, data: { categoryId?: string; description?: string; amount?: number; paymentMethod?: string; paymentDate?: string }) {
+  /**
+   * Modification d'un paiement (mig 310, G-D7-07). Seuls les champs descriptifs
+   * restent modifiables : montant, mode, date, tiers d'un paiement exécuté sont
+   * figés par trigger (OF409) — corriger = annuler avec motif puis ressaisir.
+   */
+  async update(id: string, data: {
+    categoryId?: string; description?: string; reference?: string; checkDate?: string | null;
+    amount?: number; paymentMethod?: string; paymentDate?: string;
+  }, userId?: string) {
     const sets: string[] = []; const values: unknown[] = []; let i = 1;
     if (data.categoryId !== undefined) { sets.push(`category_id = $${i++}`); values.push(data.categoryId || null); }
     if (data.description !== undefined) { sets.push(`description = $${i++}`); values.push(data.description); }
+    if (data.reference !== undefined) { sets.push(`reference = $${i++}`); values.push(data.reference || null); }
+    if (data.checkDate !== undefined) { sets.push(`check_date = $${i++}`); values.push(data.checkDate || null); }
+    // Montant / mode / date : transmis tels quels, le trigger refuse si le paiement est exécuté.
     if (data.amount !== undefined) { sets.push(`amount = $${i++}`); values.push(data.amount); }
     if (data.paymentMethod !== undefined) { sets.push(`payment_method = $${i++}`); values.push(data.paymentMethod); }
     if (data.paymentDate !== undefined) { sets.push(`payment_date = $${i++}`); values.push(data.paymentDate); }
     if (sets.length === 0) return null;
-
-    if (!FLAGS.LEDGER_AUTOGEN) {
-      values.push(id);
-      const r = await db.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
-      return r.rows[0];
-    }
+    if (userId) { sets.push(`updated_by = $${i++}`); values.push(userId); }
 
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await withActor(client, userId);
       values.push(id);
       const result = await client.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
-      // Montant/methode/date ont pu changer -> reverser + regenerer les ecritures
-      // du paiement (emission + cashing) et re-lettrer la facture liee.
-      await regeneratePaymentEntries(client, id, result.rows[0].created_by);
-
-      // Resync paid_amount DANS la meme transaction (atomicite legacy <-> ledger).
-      if (result.rows[0].invoice_id) {
-        await invoiceRepository.updatePaidAmount(result.rows[0].invoice_id, client);
+      if (!result.rows[0]) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
+      // La catégorie d'une dépense change son compte de charge : on régénère.
+      if (FLAGS.LEDGER_AUTOGEN && data.categoryId !== undefined && result.rows[0].status === 'executed') {
+        await regeneratePaymentEntries(client, id, userId ?? result.rows[0].created_by);
       }
+      await recordAction(client, { documentType: 'payment', documentId: id, action: 'changed', actorId: userId ?? null,
+        diff: { fields: Object.keys(data).filter(k => (data as Record<string, unknown>)[k] !== undefined) } });
       await client.query('COMMIT');
       return result.rows[0];
     } catch (err) {
@@ -2030,32 +2319,98 @@ export const paymentRepository = {
       client.release();
     }
   },
+
+  /** Suppression physique : réservée aux brouillons (trigger payments_no_delete). Sinon → void. */
   async delete(id: string) {
+    const st = await db.query(`SELECT status FROM payments WHERE id = $1`, [id]);
+    if (!st.rows[0]) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
+    if (st.rows[0].status !== 'draft') {
+      throw Object.assign(new Error('Un paiement exécuté ne se supprime pas : utilisez « Annuler le paiement » avec un motif.'),
+        { statusCode: 409 });
+    }
+    await db.query('DELETE FROM payments WHERE id = $1', [id]);
+  },
+
+  /**
+   * Annulation (void) d'un paiement — mig 310, G-D7-08.
+   *  - le paiement reste, passe en statut 'void' avec motif, auteur, date ;
+   *  - une contre-pièce de montant négatif (voids_payment_id) neutralise toutes
+   *    les sommes (reste dû facture, solde caisse, échéancier) ;
+   *  - ses écritures sont EXTOURNÉES (jamais supprimées), même en période ouverte ;
+   *  - refus si chèque/effet déjà encaissé ou écriture pointée sur un relevé bancaire.
+   */
+  async voidPayment(id: string, input: { reasonCodeId: string; note?: string | null; userId: string }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await withActor(client, input.userId);
+      await assertReasonCode(client, input.reasonCodeId, 'void_payment', input.note);
 
-      // Recuperer la facture liee avant suppression.
-      const payment = await client.query('SELECT invoice_id FROM payments WHERE id = $1', [id]);
-      const invoiceId = payment.rows[0]?.invoice_id;
+      const r = await client.query(`SELECT * FROM payments WHERE id = $1 FOR UPDATE`, [id]);
+      const p = r.rows[0];
+      if (!p) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
+      const conflict = (msg: string) => Object.assign(new Error(msg), { statusCode: 409 });
+      if (p.voids_payment_id) throw conflict('Une contre-pièce d\'annulation ne s\'annule pas.');
+      if (p.status === 'void') throw conflict('Ce paiement est déjà annulé.');
+      if (p.payment_method === 'avoir') throw conflict('Un avoir déduit ne s\'annule pas ici : il suit le règlement qui l\'a appliqué.');
+      if (p.type === 'salary' || p.type === 'advance') {
+        throw conflict('Un paiement de paie ou d\'avance s\'annule depuis le module Paie, qui tient aussi le bulletin et la retenue.');
+      }
+      if (p.cashed_at) {
+        throw conflict(`Le ${p.payment_method === 'traite' ? 'effet' : 'chèque'} est déjà encaissé le ${String(p.cashed_at).slice(0, 10)} : annulez d'abord l'encaissement.`);
+      }
+      const reconciled = await client.query(
+        `SELECT 1 FROM bank_statement_lines bsl
+           JOIN journal_entry_lines jel ON jel.id = bsl.matched_entry_line_id
+           JOIN journal_entries je ON je.id = jel.journal_entry_id
+          WHERE je.source_id = $1 LIMIT 1`, [id]);
+      if (reconciled.rows[0]) throw conflict('Ce paiement est rapproché sur un relevé bancaire : dé-rapprochez la ligne avant de l\'annuler.');
 
-      // Reverser les ecritures comptables auto-generees pour ce paiement, et
-      // delettrer la facture associee (qui redevient ouverte). Si la periode
-      // est cloturee, reverseEntriesForSource leve une erreur -> rollback ->
-      // la suppression du paiement est bloquee (comportement attendu : on ne
-      // touche pas a une periode close).
-      if (FLAGS.LEDGER_AUTOGEN) {
-        await reverseEntriesForSource(client, { sourceId: id, sourceKinds: ['payment', 'backfill'] });
+      // Avoir déduit dans le même acte (même facture, même date) : il suit le règlement.
+      const linkedAvoir = p.invoice_id ? await client.query(
+        `SELECT id FROM payments WHERE invoice_id = $1 AND payment_method = 'avoir' AND payment_date = $2
+           AND status <> 'void' AND voids_payment_id IS NULL AND created_at BETWEEN $3::timestamptz - interval '5 seconds' AND $3::timestamptz + interval '5 seconds'`,
+        [p.invoice_id, p.payment_date, p.created_at]) : { rows: [] as { id: string }[] };
+
+      const toVoid = [p.id as string, ...linkedAvoir.rows.map((a: { id: string }) => a.id)];
+      const today = new Date().toISOString().slice(0, 10);
+      for (const pid of toVoid) {
+        await client.query(
+          `UPDATE payments SET status = 'void', voided_at = now(), voided_by = $2, void_reason_code_id = $3,
+                  void_note = $4, updated_by = $2 WHERE id = $1`,
+          [pid, input.userId, input.reasonCodeId, input.note ?? null]);
+        // Contre-pièce : mêmes attributs, montant opposé, même date (les cumuls du jour se neutralisent).
+        await client.query(
+          `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id, amount,
+              payment_method, payment_mode, payment_date, description, created_by, store_id, purchase_order_id,
+              withholding_type_id, withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
+              to_treasury_account_id, status, voids_payment_id, executed_at, executed_by)
+           SELECT reference, type, category_id, invoice_id, supplier_id, employee_id, -amount,
+              payment_method, payment_mode, payment_date,
+              'Annulation : ' || COALESCE(description, reference, check_number, ''), $2, store_id, purchase_order_id,
+              withholding_type_id, -withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
+              to_treasury_account_id, 'void', id, now(), $2
+             FROM payments WHERE id = $1`,
+          [pid, input.userId]);
+        if (FLAGS.LEDGER_AUTOGEN) {
+          await reverseEntriesForSource(client, {
+            sourceId: pid, sourceKinds: ['payment', 'backfill'], forceExtourne: true, extourneDate: today,
+          });
+        }
       }
 
-      await client.query('DELETE FROM payments WHERE id = $1', [id]);
-
-      // Resync paid_amount DANS la meme transaction (atomicite legacy <-> ledger).
-      if (invoiceId) {
-        await invoiceRepository.updatePaidAmount(invoiceId, client);
+      if (p.invoice_id) {
+        await invoiceRepository.updatePaidAmount(p.invoice_id, client);
+        if (FLAGS.LEDGER_AUTOGEN) await autoLettrer(client, p.invoice_id);
       }
-
+      await recordAction(client, {
+        documentType: 'payment', documentId: id, action: 'cancelled', actorId: input.userId,
+        reasonCodeId: input.reasonCodeId, note: input.note ?? null, snapshotAmount: parseFloat(p.amount),
+        diff: linkedAvoir.rows.length ? { linked_avoirs: linkedAvoir.rows.map((a: { id: string }) => a.id) } : null,
+      });
       await client.query('COMMIT');
+      const out = await db.query(`SELECT * FROM payments WHERE id = $1`, [id]);
+      return out.rows[0];
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -2063,6 +2418,111 @@ export const paymentRepository = {
       client.release();
     }
   },
+
+  /**
+   * Ré-émission d'un paiement annulé (chèque perdu, rejet) : nouveau paiement lié
+   * (replaces_payment_id), mêmes facture / tiers / montant, nouveau mode et référence.
+   */
+  async reissue(id: string, input: {
+    paymentMode: string; reference?: string | null; checkNumber?: string | null; checkDate?: string | null;
+    paymentDate: string; treasuryAccountId?: string | null; userId: string; storeId?: string;
+    cashOverride?: { reasonCodeId: string; note?: string | null } | null;
+  }) {
+    const r = await db.query(`SELECT * FROM payments WHERE id = $1`, [id]);
+    const p = r.rows[0];
+    if (!p) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
+    if (p.status !== 'void' || p.voids_payment_id) {
+      throw Object.assign(new Error('Seul un paiement annulé peut être ré-émis.'), { statusCode: 409 });
+    }
+    const already = await db.query(`SELECT id FROM payments WHERE replaces_payment_id = $1 AND status <> 'void' LIMIT 1`, [id]);
+    if (already.rows[0]) throw Object.assign(new Error('Ce paiement a déjà été ré-émis.'), { statusCode: 409 });
+    return this.create({
+      type: p.type, categoryId: p.category_id ?? undefined, invoiceId: p.invoice_id ?? undefined,
+      supplierId: p.supplier_id ?? undefined, employeeId: p.employee_id ?? undefined,
+      amount: parseFloat(p.amount), paymentMethod: '', paymentMode: input.paymentMode,
+      paymentDate: input.paymentDate, reference: input.reference ?? undefined,
+      checkNumber: input.checkNumber ?? undefined, checkDate: input.checkDate ?? undefined,
+      description: p.description ? `${p.description} (ré-émission)` : 'Ré-émission',
+      createdBy: input.userId, storeId: p.store_id ?? input.storeId,
+      purchaseOrderId: p.purchase_order_id ?? undefined,
+      withholdingTypeId: p.withholding_type_id, withholdingAmount: p.withholding_amount != null ? parseFloat(p.withholding_amount) : null,
+      scheduledPaymentId: p.scheduled_payment_id, treasuryAccountId: input.treasuryAccountId ?? null,
+      replacesPaymentId: id, cashOverride: input.cashOverride ?? null,
+    });
+  },
+
+  /** Modes de paiement typés et comptes de trésorerie actifs (mig 310). */
+  async listModes() {
+    const [modes, accounts] = await Promise.all([
+      db.query(`SELECT code, label, legacy_method, is_cash, treasury_kind, requires_reference, deductible_over_cash_limit
+                  FROM payment_modes WHERE is_active ORDER BY display_order`),
+      db.query(`SELECT id, code, label, kind, account_code, bank_name, is_default
+                  FROM treasury_accounts WHERE is_active ORDER BY kind DESC, label`),
+    ]);
+    return { modes: modes.rows, treasuryAccounts: accounts.rows };
+  },
+
+  /**
+   * Prévisualisation du compteur espèces (G-D7-04) avant saisie : cumul jour et
+   * mois chez le fournisseur, plafonds datés, seuil d'alerte, effet du montant saisi.
+   */
+  async cashCumul(supplierId: string, date: string, amount = 0) {
+    const r = await db.query(
+      `SELECT c.day_total, c.month_total, c.day_count,
+              fn_fiscal_threshold('CASH_DAILY_PER_SUPPLIER', $2::date)   AS day_limit,
+              fn_fiscal_threshold('CASH_MONTHLY_PER_SUPPLIER', $2::date) AS month_limit,
+              COALESCE(fn_fiscal_threshold('CASH_WARN_PCT', $2::date), 80) AS warn_pct,
+              s.name, s.kind, s.supplies_unprocessed_agri,
+              (SELECT value->>'mode' FROM module_parameters WHERE key = 'purchasing.cash_limit_enforcement') AS enforcement
+         FROM suppliers s, fn_cash_cumul($1, $2::date) c
+        WHERE s.id = $1`, [supplierId, date]);
+    const row = r.rows[0];
+    if (!row) throw Object.assign(new Error('Fournisseur introuvable'), { statusCode: 404 });
+    const dayAfter = parseFloat(row.day_total) + amount;
+    const monthAfter = parseFloat(row.month_total) + amount;
+    const dayLimit = row.day_limit != null ? parseFloat(row.day_limit) : null;
+    const monthLimit = row.month_limit != null ? parseFloat(row.month_limit) : null;
+    const warnPct = parseFloat(row.warn_pct);
+    const pctDay = dayLimit ? Math.round((dayAfter / dayLimit) * 1000) / 10 : null;
+    const pctMonth = monthLimit ? Math.round((monthAfter / monthLimit) * 1000) / 10 : null;
+    const applies = row.kind !== 'divers';
+    const exceeded = applies && ((dayLimit != null && dayAfter > dayLimit) || (monthLimit != null && monthAfter > monthLimit));
+    return {
+      supplierName: row.name, applies, agriException: row.supplies_unprocessed_agri as boolean,
+      enforcement: (row.enforcement as string) || 'warn',
+      dayTotal: parseFloat(row.day_total), monthTotal: parseFloat(row.month_total), dayCount: row.day_count as number,
+      dayLimit, monthLimit, warnPct, amount, dayAfter, monthAfter, pctDay, pctMonth,
+      warning: applies && ((pctDay ?? 0) >= warnPct || (pctMonth ?? 0) >= warnPct),
+      exceeded,
+      blocked: exceeded && !row.supplies_unprocessed_agri && row.enforcement === 'block',
+    };
+  },
+
+  /** Dépassements et fractionnements suspects (vue v_cash_limit_breaches). */
+  async cashLimitBreaches() {
+    const r = await db.query(`SELECT * FROM v_cash_limit_breaches ORDER BY payment_date DESC`);
+    return r.rows;
+  },
+
+  /** Virement interne entre deux comptes de trésorerie (G-D7-17) : ni charge, ni tiers. */
+  async createInternalTransfer(input: {
+    fromAccountId: string; toAccountId: string; amount: number; paymentDate: string;
+    reference?: string | null; description?: string | null; userId: string; storeId?: string;
+  }) {
+    const acc = await db.query(`SELECT id, kind FROM treasury_accounts WHERE id = ANY($1::uuid[]) AND is_active`,
+      [[input.fromAccountId, input.toAccountId]]);
+    const from = acc.rows.find((a: { id: string }) => a.id === input.fromAccountId);
+    if (!from || acc.rows.length < 2) throw Object.assign(new Error('Compte de trésorerie introuvable ou inactif'), { statusCode: 400 });
+    const mode = from.kind === 'cash' ? 'cash' : 'virement';
+    return this.create({
+      type: 'internal_transfer', amount: input.amount, paymentMethod: '', paymentMode: mode,
+      paymentDate: input.paymentDate, reference: input.reference ?? undefined,
+      description: input.description || (from.kind === 'cash' ? 'Versement espèces en banque' : 'Virement interne'),
+      createdBy: input.userId, storeId: input.storeId,
+      treasuryAccountId: input.fromAccountId, toTreasuryAccountId: input.toAccountId,
+    });
+  },
+
   async summary(params: { dateFrom: string; dateTo: string; storeId?: string }) {
     const storeFilter = params.storeId ? ' AND p.store_id = $3' : '';
     const values: unknown[] = [params.dateFrom, params.dateTo];

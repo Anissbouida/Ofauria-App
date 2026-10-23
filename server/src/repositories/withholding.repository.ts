@@ -65,7 +65,7 @@ export const withholdingRepository = {
    * 4452x sur la periode (montant retenu - deja reverse), avec l'echeance.
    */
   async toRemit(params: { startDate?: string; endDate?: string; storeId?: string }) {
-    const where: string[] = [`je.status = 'posted'`];
+    const where: string[] = [`je.status IN ('posted','reversed')`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }

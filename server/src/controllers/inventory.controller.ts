@@ -66,6 +66,10 @@ export const inventoryController = {
   },
   async adjust(req: AuthRequest, res: Response) {
     const { ingredientId, quantity, type = 'adjustment', note } = req.body;
+    // Motif d'une perte (referentiel material_loss_reasons, mig 333) ; ignore pour les autres types.
+    const reasonCode = type === 'waste'
+      ? (typeof req.body?.reasonCode === 'string' && /^[a-z0-9_]{1,40}$/.test(req.body.reasonCode) ? req.body.reasonCode : 'autre')
+      : null;
 
     // Whitelist types acceptes (doit matcher la contrainte DB
     // inventory_transactions_type_check).
@@ -116,14 +120,11 @@ export const inventoryController = {
       if (qty > 0) {
         // Ajustement positif : cree un lot d'ajustement (economat). Pas de fournisseur,
         // pas de DLC. Marque par lot_number 'ADJ-YYMMDD-NNN' pour audit.
-        const now = new Date();
-        const yymmdd = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        // Numéro tiré de la séquence des lots (mig 308) : COUNT+1 non verrouillé produisait des doublons.
         const seqRes = await client.query(
-          `SELECT COUNT(*)::int AS n FROM ingredient_lots WHERE lot_number LIKE $1`,
-          [`ADJ-${yymmdd}-%`]
+          `SELECT 'ADJ-' || to_char(CURRENT_DATE, 'YYMMDD') || '-' || lpad(nextval('lot_number_seq')::text, 5, '0') AS n`
         );
-        const seq = String((seqRes.rows[0]?.n ?? 0) + 1).padStart(3, '0');
-        const lotNumber = `ADJ-${yymmdd}-${seq}`;
+        const lotNumber = seqRes.rows[0].n as string;
 
         await client.query(
           `INSERT INTO ingredient_lots
@@ -174,9 +175,9 @@ export const inventoryController = {
       // qty === 0 : no-op stock, mais on garde l'audit transaction.
 
       await client.query(
-        `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [ingredientId, type, qty, note || null, req.user!.userId, storeId]
+        `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id, reason_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [ingredientId, type, qty, note || null, req.user!.userId, storeId, reasonCode]
       );
       await client.query('COMMIT');
     } catch (err) {

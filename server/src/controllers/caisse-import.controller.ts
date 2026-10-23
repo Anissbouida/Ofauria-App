@@ -128,7 +128,7 @@ export const caisseImportController = {
       for (const sup of suppliers.toCreate) {
         const inserted = await client.query(
           `INSERT INTO suppliers (name, notes) VALUES ($1, $2) RETURNING id`,
-          [sup.name, sup.kind === 'personnel' ? 'Supplier générique pour les avances/achats effectués par le personnel' : null]
+          [sup.name.trim(), sup.kind === 'personnel' ? 'Supplier générique pour les avances/achats effectués par le personnel' : null]
         );
         supplierIdByKey.set(sup.key, inserted.rows[0].id);
       }

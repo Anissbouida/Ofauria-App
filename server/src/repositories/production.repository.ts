@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { format } from 'date-fns';
 import { adjustProductStock } from './product-stock.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { bonSortieRepository } from './bon-sortie.repository.js';
@@ -7,6 +8,7 @@ import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
+import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 
 export const productionRepository = {
@@ -35,6 +37,9 @@ export const productionRepository = {
               o.order_number, o.status as order_status,
               oc.first_name || ' ' || oc.last_name as order_customer_name,
               (SELECT COUNT(*) FROM production_plan_items WHERE plan_id = pp.id) as item_count,
+              -- Articles relancables (annules ou en liste d'attente) : pilote le bouton "Relancer"
+              (SELECT COUNT(*) FROM production_plan_items
+                WHERE plan_id = pp.id AND (status = 'cancelled' OR waiting_status = 'waiting')) as relaunchable_count,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id) as dep_total,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled
        FROM production_plans pp
@@ -70,7 +75,7 @@ export const productionRepository = {
       `SELECT ppi.*, COALESCE(p.name, br.name) as product_name, p.image_url as product_image,
               c.slug as category_slug, c.name as category_name,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
-              p.sale_type, p.cost_price,
+              p.sale_type, p.sale_unit, p.cost_price,
               pdt.produced_at, pdt.expires_at, pdt.display_expires_at,
               pst.created_at as production_timestamp,
               pu.first_name as produced_by_first_name, pu.last_name as produced_by_last_name,
@@ -82,7 +87,26 @@ export const productionRepository = {
               rf.quantite_par_format as format_qte_par_unite,
               rf.quantite_par_format_unite as format_unite,
               rf.nb_par_defaut as format_nb_par_defaut,
-              fpc.nom as format_nom
+              fpc.nom as format_nom,
+              -- Coupe (mig 302) : format applicable (contenant, rendement), suggestions
+              -- de sorties et ce qui a ete reellement sorti a la production.
+              cf.cut_format_id, cf.cut_rendement, cf.cut_contenant_nom,
+              -- Suggestions : sorties deja utilisees pour ce produit (derniere equivalence connue).
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'product_id', h.product_id, 'label', h.label, 'equiv_pieces', h.equiv_pieces)), '[]'::jsonb)
+                 FROM (
+                   SELECT DISTINCT ON (io2.product_id) io2.product_id, p3.name AS label, io2.equiv_pieces
+                     FROM production_item_outputs io2
+                     JOIN production_plan_items i2 ON i2.id = io2.plan_item_id
+                     JOIN products p3 ON p3.id = io2.product_id
+                    WHERE i2.product_id = ppi.product_id AND io2.product_id <> ppi.product_id
+                    ORDER BY io2.product_id, io2.created_at DESC
+                 ) h) AS cut_presets,
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'label', io.label, 'quantity', io.quantity, 'equiv_pieces', io.equiv_pieces,
+                        'lot_number', pl2.lot_number) ORDER BY io.id), '[]'::jsonb)
+                 FROM production_item_outputs io LEFT JOIN product_lots pl2 ON pl2.id = io.product_lot_id
+                WHERE io.plan_item_id = ppi.id) AS outputs
        FROM production_plan_items ppi
        LEFT JOIN products p ON p.id = ppi.product_id
        LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
@@ -105,6 +129,19 @@ export const productionRepository = {
          ORDER BY pst2.created_at DESC LIMIT 1
        ) pst ON true
        LEFT JOIN users pu ON pu.id = pst.performed_by
+       LEFT JOIN LATERAL (
+         SELECT rf2.id AS cut_format_id, rf2.nb_par_defaut AS cut_rendement, pc2.nom AS cut_contenant_nom
+           FROM recipe_formats rf2
+           JOIN recipes r2 ON r2.id = rf2.recipe_id
+           LEFT JOIN production_contenants pc2 ON pc2.id = rf2.contenant_id
+          WHERE rf2.is_active AND ppi.product_id IS NOT NULL
+            AND (rf2.id = ppi.format_id
+                 OR (ppi.format_id IS NULL AND (rf2.product_id = ppi.product_id
+                                                OR (r2.product_id = ppi.product_id AND rf2.is_default))))
+          ORDER BY (rf2.id = ppi.format_id) DESC NULLS LAST,
+                   (rf2.product_id = ppi.product_id) DESC NULLS LAST, rf2.is_default DESC
+          LIMIT 1
+       ) cf ON true
        WHERE ppi.plan_id = $1
        ORDER BY p.name`,
       [id]
@@ -330,6 +367,10 @@ export const productionRepository = {
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+      await setActor(client, userId, 'Confirmation du plan');
+      // Verrou : deux confirmations simultanees se serialisent ici (la 2e echoue
+      // sur la transition au lieu de remettre le plan en 'confirmed').
+      await client.query(`SELECT id FROM production_plans WHERE id = $1 FOR UPDATE`, [planId]);
 
       // Get plan items
       const itemsResult = await client.query(
@@ -380,14 +421,24 @@ export const productionRepository = {
       // pour que l'agregation et les consommateurs aval (BSI, FEFO) comparent
       // des kg avec des kg.
       const needsMap = new Map<string, { ingredientId: string; productId: string; quantity: number }>();
+      let semiFlag: boolean | null = null;
+      const isSemiFinishedPlanQ = async () => {
+        if (semiFlag === null) {
+          const r = await client.query(`SELECT COALESCE(is_semi_finished_plan, false) AS is_semi FROM production_plans WHERE id = $1`, [planId]);
+          semiFlag = r.rows[0]?.is_semi === true;
+        }
+        return semiFlag;
+      };
 
       for (const item of itemsResult.rows) {
         const recipeResult = await client.query(
-          `SELECT r.id FROM recipes r WHERE r.product_id = $1`,
+          RECIPE_FOR_PRODUCT_SQL,
           [item.product_id]
         );
         if (!recipeResult.rows[0]) {
-          warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
+          if (!(await isSemiFinishedPlanQ())) {
+            warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
+          }
           continue;
         }
         const productId = item.product_id as string;
@@ -399,11 +450,13 @@ export const productionRepository = {
             if (existing) existing.quantity += qty;
             else needsMap.set(key, { ingredientId, productId, quantity: qty });
           },
-          { formatId: item.format_id ?? null, warnings }
+          { formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null, warnings }
         );
       }
 
-      if (needsMap.size === 0 && itemsResult.rows.length > 0) {
+      // Un plan semi-fini n'a pas de besoins propres (ils sont portes par le BSI du
+      // plan parent) : pas d'alerte dans ce cas.
+      if (needsMap.size === 0 && itemsResult.rows.length > 0 && !(await isSemiFinishedPlanQ())) {
         warnings.push(`Aucun besoin ingrédient calculé pour ce plan : vérifier la composition des recettes (aucun bon de sortie ne sera généré).`);
       }
 
@@ -435,10 +488,7 @@ export const productionRepository = {
       // au moment du pesage (bon de sortie), pas a la confirmation du plan.
 
       // Update plan status and persist warnings
-      await client.query(
-        `UPDATE production_plans SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW(), warnings = $2 WHERE id = $1`,
-        [planId, warnings]
-      );
+      await transitionPlan(client, planId, 'confirmed', { extraSet: 'confirmed_at = NOW(), warnings = $2', params: [warnings] });
 
       // Assign lot numbers (LOT-AAMMJJ-NNN) to plan items
       const planDateResult = await client.query(`SELECT plan_date, store_id FROM production_plans WHERE id = $1`, [planId]);
@@ -460,11 +510,7 @@ export const productionRepository = {
             // Transition cycle de vie (delta v1 point 1) : BSI genere -> le plan
             // entre en phase "en attente ingredients" jusqu'a ce que le magasinier
             // marque la preparation comme prete.
-            await db.query(
-              `UPDATE production_plans SET status = 'awaiting_ingredients', updated_at = NOW()
-               WHERE id = $1 AND status = 'confirmed'`,
-              [planId]
-            );
+            await withActor(userId, (c) => transitionPlan(c, planId, 'awaiting_ingredients'), `Bon de sortie ${bsi.numero} genere`);
 
             // Notification aux magasiniers du store : nouveau BSI a preparer.
             // Non-bloquant : si le systeme de notifs echoue, la confirmation du plan reste OK.
@@ -517,10 +563,11 @@ export const productionRepository = {
    *  Les production_plan_dependencies (semi-finis) restent : le prochain
    *  confirm les re-evaluera.
    */
-  async revertToDraft(planId: string) {
+  async revertToDraft(planId: string, userId?: string) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await setActor(client, userId, 'Retour en brouillon');
 
       // 1) Verifie l'etat du plan
       const planResult = await client.query(
@@ -545,37 +592,43 @@ export const productionRepository = {
         throw new Error('Impossible : au moins un produit a deja ete demarre ou produit. Annulez d\'abord les items en cours.');
       }
 
-      // 3) Verifie l'etat du BSI : refuse si preleve/verifie/cloture
+      // 3) Verifie l'etat du BSI : refuse si le prelevement est engage
+      //    (prelevement / verifie / cloture). 'preleve' est un statut de LIGNE,
+      //    pas de bon — l'ancien filtre ne bloquait jamais un BSI en 'prelevement'.
       const bsiActive = await client.query(
         `SELECT COUNT(*)::int AS nb FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('preleve', 'verifie', 'cloture')`,
+         WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')`,
         [planId],
       );
       if (bsiActive.rows[0].nb > 0) {
         throw new Error('Impossible : le bon de sortie a deja ete preleve. Annulez d\'abord le BSI.');
       }
 
-      // 4) Supprime BSI 'genere' (et lignes via cascade ou explicite)
+      // 4) Supprime les BSI non engages (genere, en preparation, pret, annule) :
+      //    un BSI en preparation/pret survivant au retour en brouillon bloquait
+      //    la regeneration au prochain confirm ("Bon deja genere").
       const bsiToDelete = await client.query(
-        `SELECT id FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('genere', 'annule')`,
+        `SELECT id, status FROM production_bons_sortie
+         WHERE plan_id = $1 AND status IN ('genere', 'preparation', 'preparation_partielle', 'pret', 'annule')`,
         [planId],
       );
+      // Annulation LOGIQUE (mig 300) : le bon et ses lignes restent en base pour
+      // l'audit, avec auteur et motif ; la generation suivante ignore les 'annule'.
+      await setReason(client, 'Retour en brouillon du plan');
       for (const row of bsiToDelete.rows) {
-        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bs_id = $1`, [row.id]);
-        await client.query(`DELETE FROM production_bons_sortie WHERE id = $1`, [row.id]);
+        await client.query(`UPDATE production_plans SET bon_sortie_id = NULL WHERE bon_sortie_id = $1`, [row.id]);
+        if (row.status !== 'annule') {
+          await transitionBon(client, row.id, 'annule', {
+            extraSet: "cancelled_by = $2, cancelled_at = NOW(), cancel_reason = 'Retour en brouillon du plan'", params: [userId || null],
+          });
+        }
       }
 
       // 5) Supprime les besoins en ingredients (recalcules au prochain confirm)
       await client.query(`DELETE FROM production_ingredient_needs WHERE plan_id = $1`, [planId]);
 
       // 6) Plan -> draft, confirmed_at -> NULL, warnings nettoye
-      await client.query(
-        `UPDATE production_plans
-         SET status = 'draft', confirmed_at = NULL, warnings = NULL, updated_at = NOW()
-         WHERE id = $1`,
-        [planId],
-      );
+      await transitionPlan(client, planId, 'draft', { extraSet: 'confirmed_at = NULL, warnings = NULL' });
 
       await client.query('COMMIT');
       return { reverted: true, bsiDeleted: bsiToDelete.rows.length };
@@ -587,7 +640,274 @@ export const productionRepository = {
     }
   },
 
-  async start(planId: string) {
+  /** Relance un plan bloque, quelle que soit la cause du blocage. Aucun nouveau
+   *  plan n'est cree : c'est CE plan qui repart.
+   *
+   *  Deux causes de blocage sont traitees, cumulables :
+   *   a) des articles ont ete annules (cloture partielle) ou mis en liste d'attente
+   *      -> ils reviennent en 'pending'
+   *   b) le plan a ete confirme sur un referentiel incomplet — produit sans recette,
+   *      composition vide — donc aucun besoin ingredient n'a ete calcule et aucun BSI
+   *      genere. Une fois la recette creee, le plan reste fige sur son ancien calcul.
+   *      -> les besoins sont RECALCULES et le BSI regenere depuis les recettes actuelles
+   *
+   *  Eligibilite : tout plan sauf un brouillon (un brouillon se confirme, il n'y a
+   *  rien a relancer).
+   *
+   *  Le recalcul (b) n'est possible que si la preparation n'est pas engagee :
+   *  aucun article demarre/produit et aucun BSI preleve, verifie ou cloture — sinon
+   *  on retoucherait un prelevement deja fait. Dans ce cas seul (a) s'applique et un
+   *  warning l'explique.
+   *
+   *  Ce qui n'est PAS refait : les articles deja produits restent produits (stock et
+   *  cout intacts), et les reservations de semi-finis liberees a l'annulation ne sont
+   *  pas reprises — un warning le signale.
+   */
+  async relaunch(planId: string, userId?: string, itemIds?: string[]) {
+    const client = await db.getClient();
+    const warnings: string[] = [];
+    let recomputeNeeds = false;
+    let relaunchedIds: string[] = [];
+    try {
+      await client.query('BEGIN');
+      await setActor(client, userId, 'Relance du plan');
+
+      const planResult = await client.query(
+        `SELECT id, status, store_id, plan_date, is_semi_finished_plan
+         FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId],
+      );
+      if (planResult.rows.length === 0) throw new Error('Plan introuvable');
+      const plan = planResult.rows[0];
+      const planStatus = plan.status as string;
+
+      if (planStatus === 'draft') {
+        throw new Error('Ce plan est un brouillon : confirmez-le, il n\'y a rien a relancer.');
+      }
+
+      // 1) Articles a reactiver : annules ou en liste d'attente. Peut etre vide —
+      //    un plan confirme sans recette n'a aucun article annule, c'est son calcul
+      //    de besoins qui est a refaire (cas b).
+      //    itemIds optionnel = relance ciblee, sinon tout ce qui est relancable.
+      const targetFilter = itemIds && itemIds.length > 0 ? ' AND ppi.id = ANY($2)' : '';
+      const targetParams: unknown[] = itemIds && itemIds.length > 0 ? [planId, itemIds] : [planId];
+      const targetsResult = await client.query(
+        `SELECT ppi.id, ppi.product_id, ppi.status, ppi.waiting_status,
+                COALESCE(p.name, br.name) as product_name
+         FROM production_plan_items ppi
+         LEFT JOIN products p ON p.id = ppi.product_id
+         LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
+         WHERE ppi.plan_id = $1
+           AND (ppi.status = 'cancelled' OR ppi.waiting_status = 'waiting')${targetFilter}`,
+        targetParams,
+      );
+      const targetIds = targetsResult.rows.map((r: Record<string, unknown>) => r.id as string);
+      relaunchedIds = targetIds;
+
+      // 2) Le recalcul des besoins n'est sur que tant que la preparation n'est pas
+      //    engagee : un BSI preleve a deja sorti du stock, on n'y retouche pas.
+      const engagedResult = await client.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM production_plan_items
+             WHERE plan_id = $1 AND status IN ('in_progress', 'produced', 'transferred', 'received')) AS started,
+           (SELECT COUNT(*)::int FROM production_bons_sortie
+             WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')) AS bsi_engaged`,
+        [planId],
+      );
+      const startedItems = engagedResult.rows[0].started as number;
+      const bsiEngaged = engagedResult.rows[0].bsi_engaged as number;
+      recomputeNeeds = startedItems === 0 && bsiEngaged === 0;
+
+      if (targetIds.length === 0 && !recomputeNeeds) {
+        throw new Error(
+          'Rien a relancer : aucun article annule ou en attente, et la preparation est deja engagee (production demarree ou bon de sortie preleve).'
+        );
+      }
+      if (!recomputeNeeds) {
+        warnings.push(
+          startedItems > 0
+            ? 'Besoins et bon de sortie non recalcules : la production a deja demarre sur ce plan.'
+            : 'Besoins et bon de sortie non recalcules : le bon de sortie a deja ete preleve.'
+        );
+      }
+
+      // 2) Reactivation : annule -> pending, sortie de liste d'attente.
+      if (targetIds.length > 0) {
+        await client.query(
+          `UPDATE production_plan_items
+           SET status = CASE WHEN status = 'cancelled' THEN 'pending' ELSE status END,
+               waiting_status = NULL,
+               cancelled_at = NULL,
+               cancellation_reason = NULL
+           WHERE plan_id = $1 AND id = ANY($2)`,
+          [planId, targetIds],
+        );
+      }
+
+      // 3) Preparation non engagee : on efface le BSI obsolete (genere / annule) pour
+      //    que la re-confirmation, apres COMMIT, en produise un a jour. Les besoins
+      //    eux-memes sont purges par confirm().
+      //    Preparation engagee : on se contente de rafraichir l'instantane de dispo
+      //    de production_ingredient_needs et de signaler ce qui manque encore
+      //    (non bloquant — le magasinier tranchera au prelevement).
+      if (recomputeNeeds) {
+        // Annulation logique (mig 300) : on garde le bon pour l'audit.
+        const bsiToCancel = await client.query(
+          `SELECT id FROM production_bons_sortie WHERE plan_id = $1 AND status = 'genere'`,
+          [planId],
+        );
+        await setReason(client, 'Relance : bon de sortie regenere');
+        for (const row of bsiToCancel.rows) {
+          await client.query(`UPDATE production_plans SET bon_sortie_id = NULL WHERE bon_sortie_id = $1`, [row.id]);
+          await transitionBon(client, row.id, 'annule', {
+            extraSet: "cancelled_by = $2, cancelled_at = NOW(), cancel_reason = 'Relance : bon de sortie regenere'", params: [userId || null],
+          });
+        }
+      } else {
+        const needsResult = await client.query(
+          `SELECT pin.ingredient_id, pin.product_id, pin.needed_quantity,
+                  COALESCE((SELECT SUM(current_quantity) FROM inventory WHERE ingredient_id = pin.ingredient_id), 0) as current_available,
+                  i.name as ingredient_name
+           FROM production_ingredient_needs pin
+           JOIN ingredients i ON i.id = pin.ingredient_id
+           WHERE pin.plan_id = $1`,
+          [planId],
+        );
+        const targetProductIds = new Set(targetsResult.rows.map((r: Record<string, unknown>) => r.product_id as string));
+        const shortIngredients = new Set<string>();
+        for (const need of needsResult.rows) {
+          await client.query(
+            `UPDATE production_ingredient_needs SET available_quantity = $1
+             WHERE plan_id = $2 AND ingredient_id = $3
+               AND (product_id = $4 OR ($4 IS NULL AND product_id IS NULL))`,
+            [need.current_available, planId, need.ingredient_id, need.product_id],
+          );
+          const isTargetProduct = !need.product_id || targetProductIds.has(need.product_id as string);
+          if (isTargetProduct && parseFloat(need.current_available) < parseFloat(need.needed_quantity)) {
+            shortIngredients.add(need.ingredient_name as string);
+          }
+        }
+        if (shortIngredients.size > 0) {
+          warnings.push(`Stock encore insuffisant sur : ${[...shortIngredients].join(', ')}.`);
+        }
+      }
+
+      // 4) Semi-finis : les reservations liberees a l'annulation ne sont pas reprises.
+      const cancelledDeps = await client.query(
+        `SELECT r.name FROM production_plan_dependencies ppd
+         JOIN recipes r ON r.id = ppd.sub_recipe_id
+         WHERE ppd.parent_plan_id = $1 AND ppd.status = 'cancelled'`,
+        [planId],
+      );
+      if (cancelledDeps.rows.length > 0) {
+        const names = cancelledDeps.rows.map((r: Record<string, unknown>) => r.name as string).join(', ');
+        warnings.push(`Semi-finis liberes a l'annulation (${names}) — verifiez leur stock avant de produire.`);
+      }
+
+      // 5) Numeros de lot pour les articles reactives (ils en etaient prives tant
+      //    qu'ils etaient annules).
+      await assignLotNumbersInternal(client, planId, plan.plan_date);
+
+      // 6) Statut. Quand les besoins sont recalcules, c'est confirm() (apres COMMIT)
+      //    qui positionnera le statut — on se contente ici d'effacer les marqueurs de
+      //    cloture. Sinon on le deduit de l'etat du BSI :
+      //    BSI cloture / aucun BSI      -> in_progress si la production avait demarre, statut inchange sinon
+      //    BSI 'pret'                   -> ready_to_produce
+      //    BSI en cours de preparation  -> awaiting_ingredients
+      const wasStarted = planStatus === 'in_progress' || planStatus === 'completed';
+      let newStatus = planStatus;
+      if (!recomputeNeeds) {
+        const bsiResult = await client.query(
+          `SELECT status FROM production_bons_sortie
+           WHERE plan_id = $1 AND status != 'annule'
+           ORDER BY created_at DESC LIMIT 1`,
+          [planId],
+        );
+        const bsiStatus = bsiResult.rows[0]?.status as string | undefined;
+        if (bsiStatus && bsiStatus !== 'cloture') {
+          newStatus = bsiStatus === 'pret' ? 'ready_to_produce' : 'awaiting_ingredients';
+          if (wasStarted) {
+            warnings.push('Le bon de sortie n\'est pas cloture : le plan repasse en attente des ingredients.');
+          }
+        } else if (wasStarted) {
+          newStatus = 'in_progress';
+        }
+      } else if (wasStarted) {
+        warnings.push('Preparation reconstruite : le plan repasse en amont du cycle (confirme / en attente des ingredients).');
+      }
+
+      const relaunchSet = 'completed_at = NULL, completion_type = NULL, cancelled_at = NULL, cancellation_reason = NULL, warnings = $2';
+      if (newStatus !== planStatus) {
+        await transitionPlan(client, planId, newStatus as any, { extraSet: relaunchSet, params: [warnings.length > 0 ? warnings : null] });
+      } else {
+        await client.query(
+          `UPDATE production_plans SET ${relaunchSet}, updated_at = NOW() WHERE id = $1`,
+          [planId, warnings.length > 0 ? warnings : null],
+        );
+      }
+
+      // 7) Journal du plan : la relance doit rester tracable (qui, quoi, quand).
+      const relaunchedNames = targetsResult.rows
+        .map((r: Record<string, unknown>) => r.product_name as string)
+        .filter(Boolean)
+        .join(', ');
+      const journal = targetIds.length > 0
+        ? `Plan relance : ${targetIds.length} article(s) remis en production${relaunchedNames ? ` (${relaunchedNames})` : ''}.`
+        : 'Plan relance : besoins en ingredients et bon de sortie recalcules.';
+      await client.query(
+        `INSERT INTO production_plan_activity (plan_id, activity_type, message, created_by)
+         VALUES ($1, 'plan_relaunched', $2, $3)`,
+        [planId, journal, userId || null],
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // ═══ Hors transaction : reconstruction de la preparation ═══
+    // confirm() recalcule les besoins depuis les recettes ACTUELLES, regenere le BSI,
+    // attribue les lots et repositionne le statut. C'est ce qui debloque un plan
+    // confirme trop tot (produit sans recette a l'epoque). Il ouvre sa propre
+    // transaction, d'ou l'appel apres COMMIT.
+    if (recomputeNeeds) {
+      const { warnings: confirmWarnings } = await productionRepository.confirm(planId, userId || '');
+      warnings.push(...confirmWarnings);
+
+      // Les semi-finis peuvent apparaitre maintenant que la recette existe.
+      const planInfo = await db.query(
+        `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
+      );
+      if (!planInfo.rows[0]?.is_semi_finished_plan && userId) {
+        try {
+          await productionRepository.detectAndCreateSemiFinishedPlans(planId, userId);
+        } catch (err) {
+          console.error('[production.relaunch] detection semi-finis echouee:', err);
+          warnings.push('La detection des semi-finis a echoue — verifiez les dependances du plan.');
+        }
+      }
+
+      // confirm() a ecrase la colonne warnings avec les siennes : on y remet celles
+      // de la relance pour ne pas perdre le contexte du deblocage.
+      await db.query(
+        `UPDATE production_plans SET warnings = $2, updated_at = NOW() WHERE id = $1`,
+        [planId, warnings.length > 0 ? warnings : null],
+      );
+    }
+
+    const finalPlan = await db.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
+    return {
+      relaunchedCount: relaunchedIds.length,
+      recomputed: recomputeNeeds,
+      newStatus: finalPlan.rows[0]?.status as string,
+      warnings,
+    };
+  },
+
+  async start(planId: string, userId?: string) {
     // Check if this plan has unfulfilled semi-finished dependencies
     const depsResult = await db.query(
       `SELECT ppd.status, r.name as sub_recipe_name
@@ -635,10 +955,9 @@ export const productionRepository = {
       }
     }
 
-    await db.query(
-      `UPDATE production_plans SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
-      [planId]
-    );
+    // Transition gardee (confirmed / awaiting_ingredients / ready_to_produce -> in_progress),
+    // journalisee avec l'acteur. Un demarrage qui croise une cloture est refuse.
+    await withActor(userId, (c) => transitionPlan(c, planId, 'in_progress'), 'Demarrage de la production');
   },
 
   async complete(planId: string, actualItems: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, completionType?: string): Promise<{ warnings: string[] }> {
@@ -646,19 +965,32 @@ export const productionRepository = {
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+      await setActor(client, userId, completionType === 'partial' ? 'Cloture partielle' : 'Cloture de la production');
 
-      // Update actual quantities and mark as produced
+      // Verrou + garde de statut dans la transaction : deux clotures simultanees
+      // (double clic, deux postes) passaient toutes les deux et doublaient le stock.
+      const planLock = await client.query(`SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`, [planId]);
+      if (!planLock.rows[0]) throw new Error('Plan introuvable');
+      if (planLock.rows[0].status !== 'in_progress') throw new Error('Le plan doit etre en cours pour etre termine');
+
+      // Articles qui passent en 'produced' PAR CET APPEL. Ceux deja produits via
+      // produceItems ont deja alimente le stock et les lots : on ne les retraite pas.
+      const newlyProducedIds: string[] = [];
       for (const item of actualItems) {
-        await client.query(
-          `UPDATE production_plan_items SET actual_quantity = $1, status = CASE WHEN $1 > 0 THEN 'produced' ELSE status END WHERE id = $2 AND plan_id = $3`,
+        if (!(item.actualQuantity > 0)) continue;
+        const r = await client.query(
+          `UPDATE production_plan_items SET actual_quantity = $1, status = 'produced'
+            WHERE id = $2 AND plan_id = $3 AND status IN ('pending', 'in_progress')
+            RETURNING id`,
           [item.actualQuantity, item.planItemId, planId]
         );
+        if (r.rows[0]) newlyProducedIds.push(r.rows[0].id);
       }
 
       // Si un BSI de ce plan a deja deduit le stock (status >= 'prelevement', cad
       // chef a accepte la reception), on saute la deduction ingredient ici pour
       // eviter une double consommation. Les lots ont ete decremente​s dans
-      // bonSortieRepository.startPrelevement.
+      // bonSortieRepository.acceptReception (consumeBonLines).
       const bsiDeductedResult = await client.query(
         `SELECT 1 FROM production_bons_sortie
           WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')
@@ -667,11 +999,11 @@ export const productionRepository = {
       );
       const bsiAlreadyDeducted = bsiDeductedResult.rows.length > 0;
 
-      // Deduct ingredients based on actual production
+      // Deduct ingredients based on actual production — uniquement les articles produits ici
       const itemsResult = await client.query(
         `SELECT ppi.*, p.name as product_name FROM production_plan_items ppi
-         JOIN products p ON p.id = ppi.product_id WHERE ppi.plan_id = $1`,
-        [planId]
+         JOIN products p ON p.id = ppi.product_id WHERE ppi.plan_id = $1 AND ppi.id = ANY($2)`,
+        [planId, newlyProducedIds]
       );
 
       for (const item of itemsResult.rows) {
@@ -679,7 +1011,7 @@ export const productionRepository = {
         if (bsiAlreadyDeducted) continue;
 
         const recipeResult = await client.query(
-          `SELECT r.id, r.yield_quantity FROM recipes r WHERE r.product_id = $1`,
+          RECIPE_FOR_PRODUCT_SQL,
           [item.product_id]
         );
         if (!recipeResult.rows[0]) continue;
@@ -690,7 +1022,7 @@ export const productionRepository = {
         await collectIngredientNeedsForUnits(
           client, recipe.id, item.actual_quantity,
           (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
-          { formatId: item.format_id ?? null, warnings }
+          { formatId: item.format_id ?? recipe.linked_format_id ?? null, warnings }
         );
 
         for (const [ingredientId, consumption] of ingredientNeeds) {
@@ -729,9 +1061,14 @@ export const productionRepository = {
 
           // FEFO lot consumption for ONSSA traceability — consume only what's actually available
           if (actualConsumption > 0) {
+            // SAVEPOINT : une erreur SQL ici abandonnait toute la transaction et le
+            // COMMIT final devenait un rollback silencieux.
+            await client.query('SAVEPOINT fefo_consume');
             try {
               await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId);
+              await client.query('RELEASE SAVEPOINT fefo_consume');
             } catch (fefoErr) {
+              await client.query('ROLLBACK TO SAVEPOINT fefo_consume');
               const ingNameFEFO = await client.query('SELECT name FROM ingredients WHERE id = $1', [ingredientId]);
               console.error(`[consumeFEFO] Erreur pour ${ingNameFEFO.rows[0]?.name || ingredientId}:`, fefoErr);
               warnings.push(`Traçabilité lots: erreur FEFO pour ${ingNameFEFO.rows[0]?.name || ingredientId}`);
@@ -753,6 +1090,7 @@ export const productionRepository = {
           for (const pk of packagingNeeds.rows) {
             const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
             if (pkConsumption <= 0) continue;
+            await client.query('SAVEPOINT pk_consume');
             try {
               await packagingItemRepository.adjustStock(client, {
                 packagingId: pk.packaging_id,
@@ -765,7 +1103,9 @@ export const productionRepository = {
                 note: `Production: ${item.product_name} x${item.actual_quantity}`,
                 performedBy: userId,
               });
+              await client.query('RELEASE SAVEPOINT pk_consume');
             } catch (pkErr) {
+              await client.query('ROLLBACK TO SAVEPOINT pk_consume');
               console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
               warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
             }
@@ -808,6 +1148,8 @@ export const productionRepository = {
               productId: item.product_id,
               storeId,
               productionPlanId: planId,
+              planItemId: item.id,
+              lotNumber: await planItemLotNumber(client, item.id),
               quantityProduced: parseFloat(item.actual_quantity),
               shelfLifeDays: shelfDays,
               notes: `Production plan ${planId}`,
@@ -833,13 +1175,11 @@ export const productionRepository = {
       );
       const effectiveType = parseInt(cancelledCheck.rows[0].cnt) > 0 ? 'partial' : 'complete';
 
-      // Update plan status and append warnings
-      await client.query(
-        `UPDATE production_plans SET status = 'completed', completed_at = NOW(), updated_at = NOW(), completion_type = $2,
-         warnings = COALESCE(warnings, '{}') || $3::text[]
-         WHERE id = $1`,
-        [planId, effectiveType, warnings]
-      );
+      // Update plan status and append warnings (garde : encore 'in_progress')
+      await transitionPlan(client, planId, 'completed', {
+        extraSet: "completed_at = NOW(), completion_type = $2, warnings = COALESCE(warnings, '{}') || $3::text[]",
+        params: [effectiveType, warnings],
+      });
 
       // Note: Replenishment V2 decouples production from replenishment.
       // The responsable manually manages the link between production output and replenishment preparation.
@@ -848,7 +1188,13 @@ export const productionRepository = {
       const planResult = await client.query(`SELECT plan_date FROM production_plans WHERE id = $1`, [planId]);
       if (planResult.rows[0]) {
         const planDate = planResult.rows[0].plan_date;
-        const productIds = itemsResult.rows.map((it: Record<string, unknown>) => it.product_id);
+        // Toutes les references produites du plan (pas seulement celles de cet appel)
+        const allProduced = await client.query(
+          `SELECT DISTINCT product_id FROM production_plan_items
+            WHERE plan_id = $1 AND status = 'produced' AND product_id IS NOT NULL`,
+          [planId]
+        );
+        const productIds = allProduced.rows.map((it: Record<string, unknown>) => it.product_id);
         if (productIds.length > 0) {
           await client.query(
             `UPDATE orders SET status = 'ready'
@@ -958,14 +1304,16 @@ export const productionRepository = {
   },
 
   // ═══ Partial Production: produce selected items (in_progress → produced) ═══
-  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, producedAt?: string): Promise<{ warnings: string[]; autoCompleted: boolean }> {
+  async produceItems(planId: string, items: { planItemId: string; actualQuantity: number; outputs?: CutInput[] }[], userId: string, storeId?: string, producedAt?: string): Promise<{ warnings: string[]; autoCompleted: boolean }> {
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+      await setActor(client, userId, 'Production enregistree');
 
-      // Verify plan status
-      const planCheck = await client.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
+      // Verify plan status — verrouille le plan : deux productions simultanees du meme
+      // article (double clic, relance apres erreur reseau) ajoutaient le stock deux fois.
+      const planCheck = await client.query(`SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`, [planId]);
       if (!planCheck.rows[0] || planCheck.rows[0].status !== 'in_progress') {
         throw new Error('Le plan doit etre en cours pour produire des articles');
       }
@@ -983,8 +1331,21 @@ export const productionRepository = {
         /* column doesn't exist yet — feature disabled */
       }
 
-      // Update actual quantities and status for selected items
+      // Update actual quantities and status for selected items. On ne retient que
+      // les articles reellement passes en 'produced' par cet appel : un article deja
+      // produit (second clic) ne doit plus alimenter stock, lots ni semi-finis.
+      const changedItemIds: string[] = [];
+      // Coupe declaree par article : la quantite produite devient la somme en
+      // pieces equivalentes (1 entremets de 8 + 42 tranches = 50).
+      const cutByItem = new Map<string, CutOutput[]>();
       for (const item of items) {
+        if (item.outputs && item.outputs.length > 0) {
+          const resolved = await resolveCutOutputs(client, item.planItemId, item.outputs);
+          if (resolved.length > 0) {
+            cutByItem.set(item.planItemId, resolved);
+            item.actualQuantity = Math.round(resolved.reduce((sum, o) => sum + o.quantity * o.equiv, 0));
+          }
+        }
         if (item.actualQuantity <= 0) continue;
 
         // Phase 4: guard — if blocking steps are enforced, verify all are complete
@@ -996,11 +1357,13 @@ export const productionRepository = {
           }
         }
 
-        await client.query(
+        const changed = await client.query(
           `UPDATE production_plan_items SET actual_quantity = $1, status = 'produced'
-           WHERE id = $2 AND plan_id = $3 AND status IN ('pending', 'in_progress') AND (waiting_status IS NULL OR waiting_status = 'restored')`,
+           WHERE id = $2 AND plan_id = $3 AND status IN ('pending', 'in_progress') AND (waiting_status IS NULL OR waiting_status = 'restored')
+           RETURNING id`,
           [item.actualQuantity, item.planItemId, planId]
         );
+        if (changed.rows[0]) changedItemIds.push(changed.rows[0].id);
       }
 
       // Check if this is a semi-finished plan
@@ -1027,10 +1390,10 @@ export const productionRepository = {
          LEFT JOIN products p ON p.id = ppi.product_id
          LEFT JOIN recipes r ON r.id = ppi.base_recipe_id
          WHERE ppi.plan_id = $1 AND ppi.id = ANY($2) AND ppi.status = 'produced'`,
-        [planId, items.map(i => i.planItemId)]
+        [planId, changedItemIds]
       );
 
-      // Si BSI deja en prelevement+ on saute la deduction (faite par startPrelevement).
+      // Si BSI deja en prelevement+ on saute la deduction (faite par acceptReception).
       // Sauf pour les semi-finis qui n'ont pas de BSI propre (dependances internes).
       const bsiDeductedResult2 = await client.query(
         `SELECT 1 FROM production_bons_sortie
@@ -1038,7 +1401,19 @@ export const productionRepository = {
           LIMIT 1`,
         [planId]
       );
-      const bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
+      let bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
+      if (isSemiFinishedPlan) {
+        // Les ingredients d'un semi-fini sont dans le bon de sortie du plan PARENT
+        // (nomenclature resolue a sa confirmation) : ils sont consommes au
+        // prelevement de ce bon. Les deduire ici une seconde fois faussait le stock.
+        const parentBsi = await client.query(
+          `SELECT 1 FROM production_plan_dependencies d
+             JOIN production_bons_sortie b ON b.plan_id = d.parent_plan_id AND b.status <> 'annule'
+            WHERE d.dependency_plan_id = $1 LIMIT 1`,
+          [planId]
+        );
+        if (parentBsi.rows.length > 0) bsiAlreadyDeducted2 = true;
+      }
 
       // Deduct ingredients for produced items
       for (const item of producedItems.rows) {
@@ -1055,14 +1430,14 @@ export const productionRepository = {
           );
         } else {
           recipeResult = await client.query(
-            `SELECT r.id, r.yield_quantity FROM recipes r WHERE r.product_id = $1`,
+            RECIPE_FOR_PRODUCT_SQL,
             [item.product_id]
           );
         }
 
         // Deduction des ingredients : a sauter si le BSI a deja consomme le stock
         // (chaine BSI 'prelevement' -> on a deja decremente l'inventaire dans
-        // startPrelevement). Sans ce skip, on decompterait deux fois les ingredients.
+        // acceptReception). Sans ce skip, on decompterait deux fois les ingredients.
         // ATTENTION : ce skip ne doit PAS empecher l'incrementation du stock produit
         // ni la creation du product_lot — les blocs ci-dessous restent obligatoires.
         if (!bsiAlreadyDeducted2 && recipeResult.rows[0]) {
@@ -1075,7 +1450,7 @@ export const productionRepository = {
             client, recipe.id, item.actual_quantity,
             (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
             {
-              formatId: item.format_id ?? null,
+              formatId: item.format_id ?? recipe.linked_format_id ?? null,
               skipSubRecipe: (subRecipeId) => fulfilledSubRecipes.has(subRecipeId),
               warnings,
             }
@@ -1112,6 +1487,48 @@ export const productionRepository = {
                VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
               [ingredientId, -actualConsumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
             );
+            // Lots consommes FEFO -> production_lot_usage (tracabilite + cout FIFO),
+            // comme dans complete(). Isole par SAVEPOINT.
+            if (actualConsumption > 0) {
+              await client.query('SAVEPOINT fefo_consume');
+              try {
+                await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId);
+                await client.query('RELEASE SAVEPOINT fefo_consume');
+              } catch (fefoErr) {
+                await client.query('ROLLBACK TO SAVEPOINT fefo_consume');
+                console.error('[consumeFEFO] produceItems:', fefoErr);
+                warnings.push(`Traçabilité lots : erreur FEFO pour l'ingrédient ${ingredientId}`);
+              }
+            }
+          }
+
+          // Emballages : au prorata produit / rendement, comme dans complete().
+          // Quand un BSI existe, ils ont ete consommes au prelevement (bon-sortie).
+          if (storeId && recipe.yield_quantity && parseFloat(recipe.yield_quantity) > 0) {
+            const packagingNeeds = await client.query(
+              `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
+                 FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
+                WHERE rp.recipe_id = $1`,
+              [recipe.id]
+            );
+            for (const pk of packagingNeeds.rows) {
+              const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
+              if (pkConsumption <= 0) continue;
+              await client.query('SAVEPOINT pk_consume');
+              try {
+                await packagingItemRepository.adjustStock(client, {
+                  packagingId: pk.packaging_id, storeId, change: -pkConsumption, type: 'consumption',
+                  referenceId: planId, referenceType: 'production_plan',
+                  unitCost: pk.unit_cost != null ? parseFloat(pk.unit_cost) : null,
+                  note: `Production: ${item.product_name} x${item.actual_quantity}`, performedBy: userId,
+                });
+                await client.query('RELEASE SAVEPOINT pk_consume');
+              } catch (pkErr) {
+                await client.query('ROLLBACK TO SAVEPOINT pk_consume');
+                console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+                warnings.push(`Stock emballage : ${pk.name} non consomme (besoin ${pkConsumption.toFixed(2)})`);
+              }
+            }
           }
         }
 
@@ -1137,6 +1554,21 @@ export const productionRepository = {
             [item.base_recipe_id, effectiveStoreId, item.actual_quantity, planId, userId,
              `Production semi-fini: ${item.product_name} x${item.actual_quantity}`]
           );
+          // Lot de semi-fini (mig 300) : identite de lot pour la chaine
+          // ingredient -> semi-fini -> produit fini. Numero = celui de l'article.
+          {
+            const sfLot = (await planItemLotNumber(client, item.id)) || `SF-${format(new Date(), 'yyMMdd')}-${String(item.id).slice(0, 6).toUpperCase()}`;
+            const taken = await client.query(
+              `SELECT COUNT(*)::int AS n FROM semi_finished_lots WHERE store_id = $1 AND (lot_number = $2 OR lot_number LIKE $2 || '-%')`,
+              [effectiveStoreId, sfLot]);
+            const sfLotNumber = taken.rows[0].n > 0 ? `${sfLot}-${taken.rows[0].n + 1}` : sfLot;
+            await client.query(
+              `INSERT INTO semi_finished_lots
+                 (recipe_id, store_id, lot_number, production_plan_id, plan_item_id, quantity_produced, quantity_remaining, unit, produced_at, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $6, $7, COALESCE($8::timestamptz, NOW()), $9)`,
+              [item.base_recipe_id, effectiveStoreId, sfLotNumber, planId, item.id, item.actual_quantity, yieldUnit, producedAt || null, userId]
+            );
+          }
 
           // Fulfill dependencies pointing to this plan
           await client.query(
@@ -1146,54 +1578,77 @@ export const productionRepository = {
             [planId]
           );
         } else if (item.product_id) {
-          // Normal flow: update product stock
-          const stockAfter = await adjustProductStock(client, item.product_id, item.actual_quantity, storeId);
-          await client.query(
-            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
-             VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
-            [item.product_id, item.actual_quantity, stockAfter,
-             `Production partielle: ${item.product_name} x${item.actual_quantity}`, planId, userId, storeId || null]
-          );
-        }
-
-        // Calculate and store expiration date based on shelf_life_days
-        if (storeId && item.product_id) {
-          const productLifecycle = await client.query(
-            `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
-            [item.product_id]
-          );
-          if (productLifecycle.rows[0]?.shelf_life_days) {
-            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
-            const shelfDays = parseInt(shelf_life_days);
-            const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
-            const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';
-            const params: unknown[] = [item.product_id, storeId];
-            if (producedAt) params.push(producedAt);
-            const shelfIdx = params.length + 1;
-            params.push(shelfDays);
-            const expiresExpr = `${baseTime} + ($${shelfIdx} * INTERVAL '1 day')`;
-            let displayExpiresExpr = 'NULL';
-            if (displayHours !== null) {
-              const displayIdx = params.length + 1;
-              params.push(displayHours);
-              displayExpiresExpr = `${baseTime} + ($${displayIdx} * INTERVAL '1 hour')`;
-            }
+          // Sorties de l'article : par defaut son produit ; avec une coupe declaree,
+          // une ligne par sortie (entremets, tranches...), chacune avec son stock,
+          // son suivi de DLC et son lot (suffixe -A, -B... sur le lot de l'article).
+          const cut = cutByItem.get(item.id);
+          const outs: CutOutput[] = cut && cut.length > 0
+            ? cut
+            : [{ productId: item.product_id, label: item.product_name, quantity: parseFloat(item.actual_quantity), equiv: 1 }];
+          const baseLot = await planItemLotNumber(client, item.id);
+          let n = 0;
+          for (const out of outs) {
+            const suffix = outs.length > 1 ? `-${String.fromCharCode(65 + n)}` : '';
+            n++;
+            const stockAfter = await adjustProductStock(client, out.productId, out.quantity, storeId);
             await client.query(
-              `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
-               VALUES ($1, $2, ${baseTime}, ${expiresExpr}, ${displayExpiresExpr}, 'active')`,
-              params
+              `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+               VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+              [out.productId, out.quantity, stockAfter,
+               `Production${cut ? ' (coupe)' : ' partielle'}: ${out.label} x${out.quantity}`, planId, userId, storeId || null]
             );
 
-            // Phase 1 — product_lot pour la fournee (additif, n'impacte pas les flux legacy)
-            await productLotRepository.createFromProduction(client, {
-              productId: item.product_id,
-              storeId,
-              productionPlanId: planId,
-              quantityProduced: parseFloat(item.actual_quantity),
-              shelfLifeDays: shelfDays,
-              producedAt: producedAt ? new Date(producedAt) : undefined,
-              notes: `Production partielle plan ${planId}`,
-            });
+            let lotId: string | null = null;
+            if (storeId) {
+              const productLifecycle = await client.query(
+                `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
+                [out.productId]
+              );
+              if (productLifecycle.rows[0]?.shelf_life_days) {
+                const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
+                const shelfDays = parseInt(shelf_life_days);
+                const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
+                const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';
+                const params: unknown[] = [out.productId, storeId];
+                if (producedAt) params.push(producedAt);
+                const shelfIdx = params.length + 1;
+                params.push(shelfDays);
+                const expiresExpr = `${baseTime} + ($${shelfIdx} * INTERVAL '1 day')`;
+                let displayExpiresExpr = 'NULL';
+                if (displayHours !== null) {
+                  const displayIdx = params.length + 1;
+                  params.push(displayHours);
+                  displayExpiresExpr = `${baseTime} + ($${displayIdx} * INTERVAL '1 hour')`;
+                }
+                await client.query(
+                  `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
+                   VALUES ($1, $2, ${baseTime}, ${expiresExpr}, ${displayExpiresExpr}, 'active')`,
+                  params
+                );
+
+                // product_lot de la sortie (tracabilite + FEFO), lie a l'article du plan.
+                const lot = await productLotRepository.createFromProduction(client, {
+                  productId: out.productId,
+                  storeId,
+                  productionPlanId: planId,
+                  planItemId: item.id,
+                  lotNumber: baseLot ? `${baseLot}${suffix}` : null,
+                  quantityProduced: out.quantity,
+                  shelfLifeDays: shelfDays,
+                  producedAt: producedAt ? new Date(producedAt) : undefined,
+                  notes: cut ? `Coupe plan ${planId} — ${out.label}` : `Production partielle plan ${planId}`,
+                });
+                lotId = (lot as unknown as { id?: string })?.id || null;
+              }
+            }
+
+            if (cut) {
+              await client.query(
+                `INSERT INTO production_item_outputs (plan_item_id, product_id, label, quantity, equiv_pieces, product_lot_id, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [item.id, out.productId, out.label, out.quantity, out.equiv, lotId, userId]
+              );
+            }
           }
         }
       }
@@ -1213,10 +1668,7 @@ export const productionRepository = {
           `SELECT COUNT(*) as cnt FROM production_plan_items WHERE plan_id = $1 AND status = 'cancelled'`, [planId]
         );
         const completionType = parseInt(cancelledCheck.rows[0].cnt) > 0 ? 'partial' : 'complete';
-        await client.query(
-          `UPDATE production_plans SET status = 'completed', completed_at = NOW(), updated_at = NOW(), completion_type = $2 WHERE id = $1`,
-          [planId, completionType]
-        );
+        await transitionPlan(client, planId, 'completed', { extraSet: 'completed_at = NOW(), completion_type = $2', params: [completionType], reason: 'Tous les articles produits' });
         autoCompleted = true;
 
         // Mark related pre-orders as 'ready' when plan is auto-completed
@@ -1596,11 +2048,6 @@ export const productionRepository = {
     }
   },
 
-  // ═══ Assign lot numbers in LOT-AAMMJJ-NNN format ═══
-  async assignLotNumbers(client: import('pg').PoolClient, planId: string, planDate: string): Promise<void> {
-    await assignLotNumbersInternal(client, planId, planDate);
-  },
-
   async analyzeSubRecipes(planId: string) {
     // Get plan items with their recipes
     const itemsResult = await db.query(
@@ -1816,6 +2263,31 @@ export const productionRepository = {
             [subRecipeId, plan.store_id || '00000000-0000-0000-0000-000000000000', -fromStock, planId, createdBy,
              `Reserve pour production: ${need.usedBy.map(u => u.productName).join(', ')}`]
           );
+          // Quels lots de semi-fini partent dans ce plan (FEFO) — mig 300.
+          let remainingToTake = fromStock;
+          const sfLots = await client.query(
+            `SELECT id, quantity_remaining FROM semi_finished_lots
+              WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0
+              ORDER BY expires_at ASC NULLS LAST, produced_at ASC
+              FOR UPDATE`,
+            [subRecipeId, plan.store_id]
+          );
+          for (const lot of sfLots.rows) {
+            if (remainingToTake <= 0) break;
+            const take = Math.min(remainingToTake, parseFloat(lot.quantity_remaining));
+            await client.query(
+              `UPDATE semi_finished_lots
+                  SET quantity_remaining = quantity_remaining - $1,
+                      status = CASE WHEN quantity_remaining - $1 <= 0 THEN 'depleted' ELSE status END
+                WHERE id = $2`,
+              [take, lot.id]
+            );
+            await client.query(
+              `INSERT INTO semi_finished_lot_usage (semi_finished_lot_id, parent_plan_id, quantity) VALUES ($1, $2, $3)`,
+              [lot.id, planId, take]
+            );
+            remainingToTake -= take;
+          }
         }
 
         if (toProduce <= 0) {
@@ -1889,86 +2361,6 @@ export const productionRepository = {
     return { dependencies: asParent.rows, dependencyOf: asDepOf.rows };
   },
 
-  /**
-   * Check if a plan has all dependencies fulfilled (can start).
-   */
-  async checkDependenciesFulfilled(planId: string): Promise<{ allFulfilled: boolean; pending: { subRecipeName: string; status: string; depPlanId: string | null }[] }> {
-    const result = await db.query(
-      `SELECT ppd.status, ppd.dependency_plan_id, r.name as sub_recipe_name
-       FROM production_plan_dependencies ppd
-       JOIN recipes r ON r.id = ppd.sub_recipe_id
-       WHERE ppd.parent_plan_id = $1 AND ppd.status != 'fulfilled' AND ppd.status != 'cancelled'`,
-      [planId]
-    );
-    return {
-      allFulfilled: result.rows.length === 0,
-      pending: result.rows.map((r: Record<string, unknown>) => ({
-        subRecipeName: r.sub_recipe_name as string,
-        status: r.status as string,
-        depPlanId: r.dependency_plan_id as string | null,
-      })),
-    };
-  },
-
-  /**
-   * When a semi-finished plan completes, fulfill its dependencies and feed stock.
-   */
-  async fulfillSemiFinishedPlan(planId: string, storeId?: string): Promise<void> {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-
-      // Get all items produced in this semi-finished plan
-      const itemsResult = await client.query(
-        `SELECT ppi.base_recipe_id, ppi.actual_quantity, r.yield_unit
-         FROM production_plan_items ppi
-         JOIN recipes r ON r.id = ppi.base_recipe_id
-         WHERE ppi.plan_id = $1 AND ppi.status = 'produced' AND ppi.base_recipe_id IS NOT NULL`,
-        [planId]
-      );
-
-      for (const item of itemsResult.rows) {
-        const qty = parseFloat(item.actual_quantity);
-        if (qty <= 0) continue;
-
-        const effectiveStoreId = storeId || '00000000-0000-0000-0000-000000000000';
-
-        // Upsert semi_finished_stock
-        await client.query(
-          `INSERT INTO semi_finished_stock (recipe_id, store_id, quantity_available, unit, last_produced_at, updated_at)
-           VALUES ($1, $2, $3, $4, NOW(), NOW())
-           ON CONFLICT (recipe_id, store_id)
-           DO UPDATE SET quantity_available = semi_finished_stock.quantity_available + $3,
-                         last_produced_at = NOW(), updated_at = NOW()`,
-          [item.base_recipe_id, effectiveStoreId, qty, item.yield_unit || 'unit']
-        );
-
-        // Record transaction
-        await client.query(
-          `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, production_plan_id, notes)
-           VALUES ($1, $2, 'production', $3, $4, 'Production semi-fini terminee')`,
-          [item.base_recipe_id, effectiveStoreId, qty, planId]
-        );
-      }
-
-      // Mark all dependencies pointing to this plan as fulfilled
-      await client.query(
-        `UPDATE production_plan_dependencies SET status = 'fulfilled'
-         WHERE dependency_plan_id = $1 AND status = 'pending'`,
-        [planId]
-      );
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  },
-
-  // ═══════════ ACTIVITY FEED ═══════════
-
   async addActivity(planId: string, activityType: string, message: string, createdBy?: string) {
     const result = await db.query(
       `INSERT INTO production_plan_activity (plan_id, activity_type, message, created_by)
@@ -1992,87 +2384,6 @@ export const productionRepository = {
     return result.rows;
   },
 
-  /**
-   * Suggest production quantities for a target plan date.
-   *
-   * For each input { productId, requestedQty }, returns:
-   *   - vitrineQty: quantity left on the vitrine for that product/store
-   *   - suggestedQty: requestedQty − vitrineQty for is_reexposable products,
-   *                   else requestedQty (baguettes etc. start from zero each day)
-   *   - isReexposable: flag from products
-   *   - explanation: human-readable rationale
-   *
-   * Used by the front to pre-fill plans for J+1 — the planner can still override.
-   */
-  async suggestPlannedQuantities(params: {
-    storeId: string | null;
-    items: Array<{ productId: string; requestedQty: number }>;
-  }) {
-    if (params.items.length === 0) return [];
-
-    const productIds = params.items.map((it) => it.productId);
-    const result = await db.query(
-      `SELECT p.id AS product_id, p.name, p.is_reexposable,
-              COALESCE(SUM(pl.vitrine_qty), 0)::numeric AS vitrine_qty
-       FROM products p
-       LEFT JOIN product_lots pl
-         ON pl.product_id = p.id
-        AND pl.status = 'active'
-        AND pl.vitrine_qty > 0
-        ${params.storeId ? 'AND pl.store_id = $2' : ''}
-       WHERE p.id = ANY($1)
-       GROUP BY p.id`,
-      params.storeId ? [productIds, params.storeId] : [productIds]
-    );
-
-    const byProduct = new Map<string, { isReexposable: boolean; vitrineQty: number; name: string }>();
-    for (const row of result.rows) {
-      byProduct.set(row.product_id, {
-        isReexposable: row.is_reexposable === true,
-        vitrineQty: parseFloat(row.vitrine_qty) || 0,
-        name: row.name,
-      });
-    }
-
-    return params.items.map((it) => {
-      const info = byProduct.get(it.productId);
-      const requestedQty = it.requestedQty;
-      if (!info) {
-        return {
-          productId: it.productId,
-          requestedQty,
-          vitrineQty: 0,
-          suggestedQty: requestedQty,
-          isReexposable: false,
-          explanation: 'Produit introuvable.',
-        };
-      }
-      if (!info.isReexposable) {
-        return {
-          productId: it.productId,
-          productName: info.name,
-          requestedQty,
-          vitrineQty: info.vitrineQty,
-          suggestedQty: requestedQty,
-          isReexposable: false,
-          explanation: 'Produit non réexposable — production complète.',
-        };
-      }
-      const suggestedQty = Math.max(0, requestedQty - info.vitrineQty);
-      return {
-        productId: it.productId,
-        productName: info.name,
-        requestedQty,
-        vitrineQty: info.vitrineQty,
-        suggestedQty,
-        isReexposable: true,
-        explanation:
-          info.vitrineQty > 0
-            ? `Cible ${requestedQty} − ${info.vitrineQty} restant en vitrine = produire ${suggestedQty}.`
-            : `Aucun stock vitrine — production complète (${requestedQty}).`,
-      };
-    });
-  },
 };
 
 /**
@@ -2109,6 +2420,25 @@ async function releaseSemiFinishedReservations(
        VALUES ($1, $2, 'release', $3, $4, $5)`,
       [dep.sub_recipe_id, storeId || '00000000-0000-0000-0000-000000000000', qty, planId, reason],
     );
+    // Restitue la quantite aux lots d'ou elle venait (mig 300).
+    const usage = await client.query(
+      `SELECT u.id, u.semi_finished_lot_id, u.quantity
+         FROM semi_finished_lot_usage u
+         JOIN semi_finished_lots l ON l.id = u.semi_finished_lot_id
+        WHERE u.parent_plan_id = $1 AND u.released_at IS NULL AND l.recipe_id = $2
+        FOR UPDATE OF u`,
+      [planId, dep.sub_recipe_id],
+    );
+    for (const u of usage.rows) {
+      await client.query(
+        `UPDATE semi_finished_lots
+            SET quantity_remaining = quantity_remaining + $1,
+                status = CASE WHEN status = 'depleted' THEN 'active' ELSE status END
+          WHERE id = $2`,
+        [parseFloat(u.quantity), u.semi_finished_lot_id],
+      );
+      await client.query(`UPDATE semi_finished_lot_usage SET released_at = NOW() WHERE id = $1`, [u.id]);
+    }
     await client.query(
       `UPDATE production_plan_dependencies
        SET status = 'cancelled', quantity_from_stock = 0
@@ -2116,6 +2446,79 @@ async function releaseSemiFinishedReservations(
       [dep.id],
     );
   }
+}
+
+/**
+ * Recette d'un produit : lien direct (recipes.product_id) ou par un format de la
+ * fiche (recipe_formats.product_id, « Produit vendu au POS »). Renvoie aussi le
+ * format lie, pour calculer les besoins sur la bonne nomenclature.
+ */
+const RECIPE_FOR_PRODUCT_SQL = `
+  SELECT r.id, r.yield_quantity,
+         (SELECT rf.id FROM recipe_formats rf
+           WHERE rf.recipe_id = r.id AND rf.product_id = $1 AND rf.is_active LIMIT 1) AS linked_format_id
+    FROM recipes r
+   WHERE r.product_id = $1
+      OR r.id IN (SELECT rf.recipe_id FROM recipe_formats rf WHERE rf.product_id = $1 AND rf.is_active)
+   ORDER BY (r.product_id = $1) DESC NULLS LAST
+   LIMIT 1`;
+
+export interface CutOutput {
+  productId: string;
+  label: string;
+  quantity: number;
+  /** Equivalence en pieces de l'article, figee au moment de la production. */
+  equiv: number;
+}
+
+type CutInput = { productId?: string | null; equivPieces?: number; quantity: number };
+
+/**
+ * Coupe (mig 302) : transforme la saisie du chef en lignes exploitables.
+ * Sans productId (ou = produit de l'article) : la piece de l'article, equivalence 1.
+ * Sinon : un autre produit du catalogue, avec l'equivalence saisie par le chef.
+ * La repartition se decide dans le plan, a la coupe — rien n'est parametre en amont.
+ */
+async function resolveCutOutputs(
+  client: import('pg').PoolClient, planItemId: string, outputs: CutInput[],
+): Promise<CutOutput[]> {
+  const it = await client.query(
+    `SELECT ppi.product_id, COALESCE(p.name, '') AS product_name
+       FROM production_plan_items ppi LEFT JOIN products p ON p.id = ppi.product_id
+      WHERE ppi.id = $1`, [planItemId]);
+  const base = it.rows[0];
+  if (!base?.product_id) throw new Error('La coupe ne s\'applique qu\'aux produits finis');
+  const ids = [...new Set(outputs.map(o => o.productId).filter((x): x is string => !!x && x !== base.product_id))];
+  const prods = ids.length > 0
+    ? (await client.query(`SELECT id, name FROM products WHERE id = ANY($1::uuid[])`, [ids])).rows
+    : [];
+  const merged = new Map<string, CutOutput>();
+  for (const o of outputs) {
+    if (!(o.quantity > 0)) continue;
+    const isBase = !o.productId || o.productId === base.product_id;
+    let line: CutOutput;
+    if (isBase) {
+      line = { productId: base.product_id, label: base.product_name, quantity: o.quantity, equiv: 1 };
+    } else {
+      const p = prods.find((x: Record<string, any>) => x.id === o.productId);
+      if (!p) throw new Error('Produit de sortie introuvable');
+      if (!(o.equivPieces && o.equivPieces > 0)) {
+        throw new Error(`Indiquez combien de pièces vaut « ${p.name} » dans le cadre`);
+      }
+      line = { productId: p.id, label: p.name, quantity: o.quantity, equiv: o.equivPieces };
+    }
+    // Meme produit saisi deux fois avec la meme equivalence : on cumule.
+    const key = `${line.productId}::${line.equiv}`;
+    const prev = merged.get(key);
+    if (prev) prev.quantity += line.quantity; else merged.set(key, line);
+  }
+  return [...merged.values()];
+}
+
+/** Numero LOT-AAMMJJ-NNN attribue a l'article a la confirmation (null si absent). */
+async function planItemLotNumber(client: import('pg').PoolClient, planItemId: string): Promise<string | null> {
+  const r = await client.query(`SELECT lot_number FROM production_lot_numbers WHERE plan_item_id = $1 LIMIT 1`, [planItemId]);
+  return r.rows[0]?.lot_number || null;
 }
 
 async function assignLotNumbersInternal(client: import('pg').PoolClient, planId: string, planDate: string | Date): Promise<void> {

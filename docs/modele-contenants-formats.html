@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contenants · Formats · Nomenclature — modèle Ôfauria</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#14181d; --muted:#5d6773; --line:#dfe4ea;
+  --c1:#7c5cff; --c1bg:#f0ecff;   /* contenant */
+  --c2:#0f9d76; --c2bg:#e6f6f1;   /* format */
+  --c3:#e08600; --c3bg:#fdf1de;   /* nomenclature */
+  --warn:#d92d20; --warnbg:#fdeceb;
+  --ok:#0f9d76;
+  --code:#eef1f5;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#2a313a;
+    --c1:#a78bfa; --c1bg:#241f3d;
+    --c2:#3fd0a2; --c2bg:#12302a;
+    --c3:#f0a93a; --c3bg:#33260f;
+    --warn:#ff7b72; --warnbg:#3a1d1c;
+    --ok:#3fd0a2;
+    --code:#1c222b;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+h1{font-size:27px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 36px;font-size:15px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:52px 0 16px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:0 0 10px}
+p{margin:0 0 12px}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.88em;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px}
+
+/* ─── pile 3 niveaux ─── */
+.stack{display:flex;flex-direction:column;gap:0}
+.lvl{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+  border-left:5px solid var(--lc,var(--line))}
+.lvl.n1{--lc:var(--c1)} .lvl.n2{--lc:var(--c2)} .lvl.n3{--lc:var(--c3)}
+.lvl-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.tag{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 8px;border-radius:5px}
+.tag.n1{background:var(--c1bg);color:var(--c1)}
+.tag.n2{background:var(--c2bg);color:var(--c2)}
+.tag.n3{background:var(--c3bg);color:var(--c3)}
+.tbl-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;font-weight:600}
+.count{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+.lvl p{font-size:13.5px;color:var(--muted);margin:6px 0 12px}
+.cols{display:flex;flex-wrap:wrap;gap:5px}
+.col{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  background:var(--code);border:1px solid var(--line);border-radius:5px;padding:2px 7px;color:var(--muted)}
+.col.key{border-color:var(--lc);color:var(--lc);font-weight:600}
+.link{display:flex;align-items:center;gap:10px;padding:7px 0 7px 26px;color:var(--muted);font-size:12.5px}
+.link::before{content:"↓";font-size:17px;color:var(--muted);margin-right:2px}
+.link b{color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:12px}
+
+/* ─── deux moteurs ─── */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:820px){.duo{grid-template-columns:1fr}}
+.engine{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.engine-h{padding:14px 18px;border-bottom:1px solid var(--line)}
+.engine-h .mode{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:14px}
+.engine-h .view{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+.engine.a .engine-h{background:linear-gradient(var(--c2bg),transparent)}
+.engine.b .engine-h{background:linear-gradient(var(--c3bg),transparent)}
+.engine-b{padding:16px 18px}
+.formula{background:var(--code);border-radius:8px;padding:11px 13px;font-size:12.5px;
+  font-family:ui-monospace,Menlo,monospace;line-height:1.6;margin-bottom:14px;overflow-x:auto}
+.ex{font-size:13px}
+.ex-title{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;
+  letter-spacing:.05em;padding:0 8px 6px 0;border-bottom:1px solid var(--line)}
+td{padding:7px 8px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right;font-family:ui-monospace,Menlo,monospace;white-space:nowrap}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+
+/* ─── double chemin ─── */
+.paths{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px}
+@media(max-width:820px){.paths{grid-template-columns:1fr;gap:16px}}
+.path{text-align:center}
+.node{display:inline-block;background:var(--code);border:1px solid var(--line);border-radius:7px;
+  padding:6px 11px;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:3px 0}
+.arrow{color:var(--muted);font-size:15px;margin:2px 0}
+.path-label{font-size:11.5px;color:var(--muted);margin-top:9px;line-height:1.45}
+.target{background:var(--c1bg);border:2px solid var(--c1);border-radius:9px;padding:12px 16px;
+  font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;color:var(--c1);text-align:center}
+.gap{padding:0 20px;text-align:center;color:var(--warn);font-size:12px;font-weight:600}
+
+/* ─── état réel ─── */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:820px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px}
+.kpi .v{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.kpi .v.bad{color:var(--warn)}
+.kpi .v.good{color:var(--ok)}
+.kpi .l{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.4}
+.callout{background:var(--warnbg);border:1px solid var(--warn);border-left:5px solid var(--warn);
+  border-radius:11px;padding:18px 20px;margin-top:18px}
+.callout h3{color:var(--warn)}
+.callout p{font-size:13.5px;margin-bottom:8px}
+.callout p:last-child{margin-bottom:0}
+.chain{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0;font-size:13px}
+.chain .b{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 12px;
+  font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.chain .b.hi{border-color:var(--ok);color:var(--ok);font-weight:600}
+.chain .op{color:var(--muted)}
+ul{margin:8px 0 0;padding-left:20px;font-size:13.5px;color:var(--muted)}
+li{margin-bottom:6px}
+li b{color:var(--ink)}
+.foot{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Contenants · Formats · Nomenclature</h1>
+<p class="sub">Le modèle tel qu'il est réellement en base aujourd'hui — chiffres relevés sur la base locale, 18 août 2026.</p>
+
+<h2>1 · La pile à trois niveaux</h2>
+
+<div class="stack">
+
+  <div class="lvl n1">
+    <div class="lvl-head">
+      <span class="tag n1">Niveau 1 — le matériel</span>
+      <span class="tbl-name">production_contenants</span>
+      <span class="count">22 lignes · dont 17 injectées par la mig 272</span>
+    </div>
+    <p>Référentiel pur : aucun coût, aucune recette. Décrit le cadre, la plaque, le moule, le cercle et ce qu'il rend une fois plein. Un contenant sert N formats.</p>
+    <div class="cols">
+      <span class="col key">nom</span>
+      <span class="col">type_production 1-5</span>
+      <span class="col">unite_lancement</span>
+      <span class="col key">quantite_theorique</span>
+      <span class="col">pertes_fixes</span>
+      <span class="col">quantite_nette_cible ⚙︎ générée</span>
+      <span class="col">seuil_rendement_defaut</span>
+      <span class="col">longueur / largeur / profondeur / diametre_cm</span>
+      <span class="col">type_decoupe</span>
+      <span class="col">nb_pieces_decoupe</span>
+      <span class="col">etapes_defaut jsonb</span>
+    </div>
+  </div>
+
+  <div class="link"><span>clé étrangère <b>recipe_formats.contenant_id</b> — <em>nullable</em> depuis la migration 267</span></div>
+
+  <div class="lvl n2">
+    <div class="lvl-head">
+      <span class="tag n2">Niveau 2 — la déclinaison vendable</span>
+      <span class="tbl-name">recipe_formats</span>
+      <span class="count">57 lignes</span>
+    </div>
+    <p>La règle d'or : <strong>1 format = 1 recette × 1 contenant</strong>, garantie par <code>UNIQUE(recipe_id, contenant_id)</code>. C'est ici que vivent toutes les quantités, le prix et le lien vers la caisse.</p>
+    <div class="cols">
+      <span class="col key">recipe_id</span>
+      <span class="col key">contenant_id</span>
+      <span class="col key">quantite_par_format</span>
+      <span class="col">quantite_par_format_unite g/kg/ml/l</span>
+      <span class="col">densite_kg_l</span>
+      <span class="col key">nb_par_defaut</span>
+      <span class="col">nb_parts</span>
+      <span class="col">poids_cru_g / poids_cuit_g</span>
+      <span class="col">cout_emballage_unitaire</span>
+      <span class="col">is_default ⚙︎ 1 seul par recette</span>
+      <span class="col">product_id → POS</span>
+      <span class="col">prix_vente_unitaire_override</span>
+      <span class="col">margin_multiplier_override</span>
+    </div>
+  </div>
+
+  <div class="link"><span>clé étrangère <b>recipe_format_components.format_id</b> — la BOM pend au FORMAT, jamais à la recette</span></div>
+
+  <div class="lvl n3">
+    <div class="lvl-head">
+      <span class="tag n3">Niveau 3 — la nomenclature</span>
+      <span class="tbl-name">recipe_format_components</span>
+      <span class="count">117 lignes</span>
+    </div>
+    <p>Une ligne par composant du format : un rôle, une source <em>exclusivement</em> recette OU ingrédient (contrainte <code>CHECK … = 1</code>), une quantité, et une perte propre à la ligne.</p>
+    <div class="cols">
+      <span class="col key">format_id</span>
+      <span class="col">role → ref_entries</span>
+      <span class="col key">source_recipe_id</span>
+      <span class="col">⊕ exclusif</span>
+      <span class="col key">source_ingredient_id</span>
+      <span class="col">quantite</span>
+      <span class="col">unite</span>
+      <span class="col">perte_pct</span>
+      <span class="col">ordre</span>
+    </div>
+  </div>
+
+</div>
+
+<h2>2 · Deux moteurs de coût, choisis par <code>recipes.mode_cout</code></h2>
+
+<div class="duo">
+
+  <div class="engine a">
+    <div class="engine-h">
+      <div class="mode">ratio_poids</div>
+      <div class="view">v_recipe_format_cost</div>
+    </div>
+    <div class="engine-b">
+      <p style="font-size:13.5px;color:var(--muted)">Une seule masse est produite puis répartie entre les formats. Chaque format prend sa <strong>quote-part du poids engagé</strong>. La nomenclature est ignorée.</p>
+      <div class="formula">poids_format = quantite_par_format × unité × nb_par_defaut
+ratio        = poids_format ÷ Σ poids de TOUS les formats <em>actifs</em>
+coût_unitaire = (matière + MO + énergie + structure) × ratio
+                ÷ nb_par_defaut + emballage</div>
+      <div class="ex">
+        <div class="ex-title">Exemple réel — CAKE NATURE</div>
+        <table>
+          <thead><tr><th>Format</th><th class="num">Poids</th><th class="num">Ratio</th><th class="num">Coût/u</th><th class="num">PV</th></tr></thead>
+          <tbody>
+            <tr><td>Moule 300<br><span style="color:var(--muted);font-size:11.5px">300 g × 3</span></td><td class="num">900 g</td><td class="num">33,3 %</td><td class="num">6,52</td><td class="num">16,31</td></tr>
+            <tr><td>Moule 600 g<br><span style="color:var(--muted);font-size:11.5px">600 g × 3</span></td><td class="num">1 800 g</td><td class="num">66,7 %</td><td class="num">12,70</td><td class="num">31,74</td></tr>
+          </tbody>
+          <tfoot><tr><td>Fournée</td><td class="num">2 700 g</td><td class="num">100 %</td><td class="num"></td><td class="num"></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="engine b">
+    <div class="engine-h">
+      <div class="mode">compose</div>
+      <div class="view">v_recipe_compose_cost</div>
+    </div>
+    <div class="engine-b">
+      <p style="font-size:13.5px;color:var(--muted)">Assemblage strict : chaque format a sa propre nomenclature. Pas de prorata — on additionne ce qu'on met dedans.</p>
+      <div class="formula">coût_format = ingrédients propres de la recette
+            + Σ composants du format
+            + emballage
+
+composant = qté × conv_unité × coût_source
+            ÷ (1 − perte_pct ÷ 100)</div>
+      <div class="ex">
+        <div class="ex-title">Exemple réel — Royal chocolat</div>
+        <table>
+          <thead><tr><th>Rôle</th><th>Source</th><th class="num">Qté</th><th class="num">DH</th></tr></thead>
+          <tbody>
+            <tr><td>biscuit</td><td>Biscuit génoise chocolat</td><td class="num">812 g</td><td class="num">16,42</td></tr>
+            <tr><td>garniture</td><td>Mousse Royal chocolat</td><td class="num">1,952 kg</td><td class="num">101,96</td></tr>
+            <tr><td>glaçage</td><td>Glaçage noir</td><td class="num">1,010 kg</td><td class="num">22,10</td></tr>
+            <tr><td>croustillant</td><td>Nougatine amandes</td><td class="num">1,002 kg</td><td class="num">46,06</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="3">Coût du format</td><td class="num">186,54</td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="panel" style="margin-top:18px">
+  <h3>La table miroir <code>recipe_components</code></h3>
+  <p style="font-size:13.5px;color:var(--muted);margin:0">C'est une <strong>copie</strong> de la nomenclature du format par défaut, réécrite en <code>DELETE</code> + <code>INSERT</code> par le code applicatif à chaque sauvegarde. Elle n'existe que pour que <code>v_recipe_total_cost</code> — la vue récursive lue partout dans l'app, avec son garde-fou <code>depth &lt; 12</code> — n'ait pas besoin de connaître la notion de format. Pas de trigger : la cohérence repose entièrement sur le service.</p>
+</div>
+
+<h2>3 · Le point qui coince : le contenant est rattaché deux fois</h2>
+
+<div class="paths">
+  <div class="path">
+    <div class="node">products</div>
+    <div class="arrow">↓</div>
+    <div class="node">produit_profil_production</div>
+    <div class="arrow">↓ contenant_id</div>
+    <div class="path-label">Chemin <strong>production</strong> (mig 082)<br>lu par sourcing.helper.ts et<br>production-rendement.repository.ts<br>→ calcul inverse : combien de cadres ?</div>
+  </div>
+  <div class="gap">
+    <div class="target">production_contenants</div>
+    <div style="margin-top:14px">⚠︎ aucune contrainte<br>ne force les deux chemins<br>à désigner le même contenant</div>
+  </div>
+  <div class="path">
+    <div class="node">recipes</div>
+    <div class="arrow">↓</div>
+    <div class="node">recipe_formats</div>
+    <div class="arrow">↓ contenant_id</div>
+    <div class="path-label">Chemin <strong>coût</strong> (mig 157)<br>lu par v_recipe_format_cost et<br>v_plan_item_rendement<br>→ coût, prix de vente, rendement</div>
+  </div>
+</div>
+
+<h2>4 · État réel du branchement</h2>
+
+<div class="kpis">
+  <div class="kpi"><div class="v good">22</div><div class="l">contenants au référentiel<br>(5 avant la mig 272)</div></div>
+  <div class="kpi"><div class="v bad">51 / 57</div><div class="l">formats avec<br><code>contenant_id = NULL</code></div></div>
+  <div class="kpi"><div class="v bad">0</div><div class="l">ligne dans<br><code>produit_profil_production</code></div></div>
+  <div class="kpi"><div class="v bad">0 / 25</div><div class="l">plan items avec un<br><code>format_id</code> ou un <code>contenant_id</code></div></div>
+</div>
+
+<div class="callout">
+  <h3>Ce que ça produit concrètement</h3>
+  <p>Le <strong>Royal chocolat</strong> est un entremets de cadre. Son unique format n'a aucun contenant et déclare <code>nb_par_defaut = 1</code>. Le système en conclut donc, très logiquement, qu'un Royal chocolat coûte <strong>186,54 DH l'unité</strong>.</p>
+  <p>Or 186,54 DH, c'est le coût d'un <em>cadre entier</em>. Rattaché au Cadre 60x40x4,5 cm — 70 pièces théoriques, 68 nettes après pertes fixes — la même nomenclature donnerait :</p>
+  <div class="chain">
+    <span class="b">186,54 DH</span>
+    <span class="op">÷</span>
+    <span class="b hi">68 pièces nettes</span>
+    <span class="op">=</span>
+    <span class="b hi">2,74 DH la pièce</span>
+    <span class="op">×</span>
+    <span class="b">marge 3</span>
+    <span class="op">≈</span>
+    <span class="b hi">8,23 DH</span>
+  </div>
+  <p>C'est exactement le trou que le référentiel contenants vient combler : sans lui, le coût existe mais il n'est rapporté à rien de vendable.</p>
+</div>
+
+<h2>5 · Les deux garde-fous qui manquent encore</h2>
+
+<div class="panel">
+  <ul>
+    <li><b>Rien ne confronte <code>nb_par_defaut</code> (format) à <code>quantite_theorique</code> (contenant).</b> Un cadre déclare 70 pièces, le format peut en déclarer 50 sans qu'aucune contrainte ne bronche. <code>v_plan_item_rendement</code> ne lit du contenant que <code>seuil_rendement_defaut</code> et <code>pertes_fixes</code> — jamais la quantité théorique.</li>
+    <li><b>Le prorata <code>ratio_poids</code> se calcule sur les formats <em>actifs</em>.</b> Le dénominateur, c'est <code>WHERE rf.is_active = true</code>. Archiver un format redistribue donc mécaniquement son coût sur tous les autres : le prix du Moule 300 change parce qu'on a désactivé le Moule 600. C'est cohérent en logique de co-produits, mais c'est un effet de bord qu'il faut connaître avant de désactiver quoi que ce soit.</li>
+  </ul>
+</div>
+
+<div class="foot">
+  Sources : migrations 082 · 157 · 167 · 199 · 200 · 205 · 218 · 263 · 265 · 266 · 267 · 269 · 272.
+  Vues : v_recipe_format_cost · v_recipe_compose_cost · v_recipe_component_cost · v_recipe_total_cost · v_plan_item_rendement.
+  Chiffres relevés sur la base locale <code>ofauria_db</code>.
+</div>
+
+</div>
+</body>
+</html>

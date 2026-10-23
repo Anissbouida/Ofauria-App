@@ -250,7 +250,7 @@ export const saleRepository = {
             client, item.productId, data.storeId, item.quantity
           );
           for (const step of fefoPlan) {
-            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty);
+            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty, { type: 'sale', id: saleResult.rows[0].id });
           }
         }
       }

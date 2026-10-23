@@ -11,7 +11,22 @@ const etapeSchema = z.object({
   est_repetable: z.boolean().default(false),
   nb_repetitions: z.number().int().min(1).default(1),
   responsable_role: z.string().max(50).nullable().optional(),
+  // Version arabe (darija) du libelle et des points de controle. zod DEPOUILLE
+  // les cles inconnues : sans ces deux champs, toute sauvegarde depuis l'UI
+  // effacerait silencieusement la colonne arabe des fiches bilingues.
+  nom_ar: z.string().max(300).nullable().optional(),
+  checklist_items_ar: z.array(z.string()).default([]),
 });
+
+// Enregistrement des seules étapes depuis la page de la fiche (PUT /:id/etapes).
+// Identité d'une fiche (nom, catégorie) modifiée depuis la liste ou l'en-tête de
+// la page, sans renvoyer composition ni étapes.
+export const identitySchema = z.object({
+  name: z.string().min(1, 'Le nom est requis').max(200),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrough()) });
 
 export const createRecipeSchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
@@ -32,6 +47,9 @@ export const createRecipeSchema = z.object({
   tauxMainOeuvreDhH: z.number().nonnegative().optional(),
   coutEnergieFournee: z.number().nonnegative().optional(),
   tauxFraisStructurePct: z.number().min(0).max(100).optional(),
+  // Perte de transformation (cuisson, reduction) — saisie sur les preparations
+  // de base. Borne a <100 : une perte totale rendrait le rendement net nul.
+  perteStandardPct: z.number().min(0).max(99.99).optional(),
   isBase: z.boolean().default(false),
   etapes: z.array(etapeSchema).default([]),
   ingredients: z.array(z.object({
@@ -66,3 +84,8 @@ export const createRecipeSchema = z.object({
 // En édition unifiée, le formulaire n'envoie que les métadonnées (la composition/les
 // formats sont gérés par l'éditeur) → ingredients devient optionnel à la mise à jour.
 export const updateRecipeSchema = createRecipeSchema.partial({ ingredients: true });
+
+// Suppression en masse depuis la liste (sélection par onglet Produits/Bases).
+export const bulkDeleteRecipesSchema = z.object({
+  ids: z.array(z.string().uuid('ID recette invalide')).min(1, 'Aucune recette sélectionnée').max(500),
+});

@@ -1,11 +1,20 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, Package, Recycle } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { notify } from '../../components/ui/InlineNotification';
+import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+
+/** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
+const PKG_SITUATIONS: StageDef[] = [
+  { key: 'rupture', label: 'Rupture', hint: 'plus en stock', icon: AlertTriangle },
+  { key: 'low', label: 'Sous le seuil', hint: 'à réapprovisionner', icon: TrendingDown },
+  { key: 'ok', label: 'OK', hint: 'rien à faire', icon: TrendingUp },
+];
+const PKG_DOT: Record<string, string> = { rupture: '#dc3545', low: '#d9822b', ok: '#28a745' };
 
 interface PackagingItem {
   id: string;
@@ -55,7 +64,13 @@ function useConsumableLeafOptions() {
 
 export default function PackagingPage({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   const [categoryIdFilter, setCategoryIdFilter] = useState<string>('');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'ok' | 'rupture'>('all');
   const [editingItem, setEditingItem] = useState<PackagingItem | null>(null);
@@ -108,7 +123,10 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
     return '';
   })();
   const hasActiveFilters = !!search || !!categoryIdFilter || stockFilter !== 'all';
-  const resetFilters = () => { setSearch(''); setCategoryIdFilter(''); setStockFilter('all'); };
+  const resetFilters = () => { setSearchInput(''); setSearch(''); setCategoryIdFilter(''); setStockFilter('all'); };
+  useEffect(() => { setPage(1); }, [search, categoryIdFilter, stockFilter]);
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const situationOf = (it: PackagingItem) => { const st = stockState(it); return st.isRupture ? 'rupture' : st.isLow ? 'low' : 'ok'; };
 
   return (
     <div className={embedded ? '' : 'odoo-scope'} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -126,47 +144,29 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
         </button>
       </div>
 
-      {/* ══════ STAT TILES ══════ */}
-      <div className="odoo-stat-grid">
-        <button onClick={() => setStockFilter('all')}
-          className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Total consommables
-          </div>
-          <div className="odoo-stat-card-value">{totalItems}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
-          className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: lowCount > 0 ? '#b85d1a' : undefined }}>{lowCount}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'ok' ? 'all' : 'ok')}
-          className={`odoo-stat-card ${stockFilter === 'ok' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Stock OK
-          </div>
-          <div className="odoo-stat-card-value">{totalItems - lowCount - ruptureCount}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'rupture' ? 'all' : 'rupture')}
-          className={`odoo-stat-card ${stockFilter === 'rupture' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: ruptureCount > 0 ? '#dc3545' : undefined }}>{ruptureCount}</div>
-        </button>
-      </div>
+      {/* ══════ SITUATION : une carte par situation, clic = filtre ══════ */}
+      <StagePipeline
+        title="Où en sont mes consommables"
+        summary={`${totalItems} article${totalItems > 1 ? 's' : ''} · ${lowCount + ruptureCount} à réapprovisionner`}
+        stages={PKG_SITUATIONS}
+        stats={{
+          rupture: { count: ruptureCount, sub: '' },
+          low: { count: lowCount, sub: '' },
+          ok: { count: totalItems - lowCount - ruptureCount, sub: '' },
+        }}
+        isActive={k => stockFilter === k}
+        onPick={k => setStockFilter(stockFilter === k ? 'all' : (k as 'low' | 'ok' | 'rupture'))}
+      />
 
       {/* ══════ BARRE DE FILTRES ══════ */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher un consommable..." className="odoo-search-input" />
+        <input type="text" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Rechercher un consommable"
+          placeholder="Rechercher un consommable..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
 
         {search && (
           <span className="odoo-filter-chip">Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+            <span className="odoo-filter-chip-remove" onClick={() => { setSearchInput(''); setSearch(''); }}>×</span>
           </span>
         )}
         {categoryIdFilter && (
@@ -208,15 +208,16 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
               <th style={{ textAlign: 'right' }} className="hidden md:table-cell">Dernier prix</th>
               <th style={{ textAlign: 'right' }}>Stock</th>
               <th className="hidden lg:table-cell">Fournisseur</th>
-              <th style={{ textAlign: 'center', width: 96 }}>Actions</th>
+              <th style={{ textAlign: 'right' }}>Prochaine action</th>
+              <th style={{ textAlign: 'right', width: 96 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
+              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun consommable trouvé</td></tr>
-            ) : filtered.map((it: PackagingItem) => {
+              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun consommable trouvé</td></tr>
+            ) : paged.map((it: PackagingItem) => {
               const { stock, isRupture, isLow } = stockState(it);
               return (
                 <tr key={it.id}>
@@ -224,6 +225,10 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                       {it.name}
                       {it.is_recyclable && <Recycle size={12} style={{ color: '#28a745' }} />}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: PKG_DOT[situationOf(it)] }} />
+                      {PKG_SITUATIONS.find(x => x.key === situationOf(it))?.label}
                     </div>
                     {it.notes && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.notes}</div>}
                   </td>
@@ -240,25 +245,32 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                     <button onClick={() => setStockDialog(it)}
                       style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'ui-monospace, monospace', fontWeight: 700,
                         color: isRupture ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text)' }}>
-                      {stock.toFixed(0)} {it.unit}
+                      {stock.toFixed(0)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{it.unit}</span>
                     </button>
-                    {isRupture && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>RUPTURE</span>}
-                    {isLow && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>BAS</span>}
+                    {parseFloat(String(it.stock_min_threshold || 0)) > 0 && (
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>seuil {parseFloat(String(it.stock_min_threshold)).toFixed(0)}</div>
+                    )}
                   </td>
                   <td className="hidden lg:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.supplier || '—'}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', gap: 4 }}>
-                      <button onClick={() => setStockDialog(it)} title="Mouvement de stock"
-                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-accent)' }}>
-                        <TrendingUp size={14} />
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {(isRupture || isLow) && (
+                      <button type="button" onClick={() => setStockDialog(it)} className={isRupture ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                        title="Enregistrer une entrée de stock">
+                        Réapprovisionner
                       </button>
-                      <button onClick={() => setEditingItem(it)} title="Modifier"
-                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
-                        <Pencil size={14} />
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: 2 }}>
+                      <button onClick={() => setStockDialog(it)} title="Mouvement de stock" aria-label="Mouvement de stock" className="odoo-pager-btn">
+                        <ArrowLeftRight size={13} />
                       </button>
-                      <button onClick={() => { if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id); }} title="Supprimer"
-                        style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}>
-                        <Trash2 size={14} />
+                      <button onClick={() => setEditingItem(it)} title="Modifier" aria-label="Modifier" className="odoo-pager-btn">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => { if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id); }} title="Supprimer" aria-label="Supprimer"
+                        className="odoo-pager-btn" style={{ color: '#dc3545' }}>
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </td>
@@ -267,6 +279,8 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             })}
           </tbody>
         </table>
+        <Pager page={page} total={filtered.length} onPage={setPage}
+          note={`${filtered.length} consommable${filtered.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />
       </div>
 
       {/* Modal create/edit */}
@@ -331,11 +345,17 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">{isEdit ? 'Modifier consommable' : 'Nouveau consommable'}</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" style={{ width: '100%', maxWidth: 576, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }} role="dialog" aria-label={isEdit ? 'Modifier le consommable' : 'Nouveau consommable'}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Consommable</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">{isEdit ? item?.name : 'Nouveau'}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <form onSubmit={onSubmit} className="p-5 space-y-4">
           <div>
@@ -453,16 +473,22 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full">
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">Mouvement de stock</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }} role="dialog" aria-label="Mouvement de stock">
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Mouvement de stock</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">{item.name}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-            <div className="text-sm font-semibold text-blue-900">{item.name}</div>
-            <div className="text-xs text-blue-700">Stock actuel : {parseFloat(String(item.stock_quantity || 0)).toFixed(0)} {item.unit}</div>
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>Stock actuel</span>
+            <strong>{parseFloat(String(item.stock_quantity || 0)).toFixed(0)} {item.unit}</strong>
           </div>
 
           <div>

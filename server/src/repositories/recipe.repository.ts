@@ -30,7 +30,9 @@ function unitConversionFactor(fromUnit: string, toUnit: string): number {
 }
 
 export const recipeRepository = {
-  async findAll() {
+  /** @param archivedOnly true = uniquement les fiches archivées (vue « Archivées ») ;
+      false (défaut) = uniquement les actives. Jamais les deux mélangées. */
+  async findAll(archivedOnly = false) {
     // total_cost vient de la vue v_recipe_total_cost (recalcule a la volee).
     // Le champ recipes.total_cost stocke n'est jamais lu — toujours obsolete potentiel.
     // formats_nb / formats_perte_pct exposes pour badge "multi-format" et alerte perte.
@@ -39,10 +41,27 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
-              r.category_id, r.mode_cout, r.compo_par_piece,
+              r.category_id, r.mode_cout, r.compo_par_piece, r.perte_standard_pct,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
-              r.created_at, r.updated_at,
+              r.created_at, r.updated_at, r.archived_at,
               vtc.total_cost,
+              -- Poids reel des ingredients : sert au cout ramene au kg NET, seule
+              -- facon de comparer deux preparations dont les rendements sont
+              -- saisis l'un en g et l'autre en kg (sinon DH/g face a DH/kg).
+              vtw.total_weight_kg,
+              -- Nombre de recettes qui consomment celle-ci, tous chemins confondus
+              -- (nomenclature par format, miroir recette, sous-recettes legacy).
+              -- Une preparation a 0 est soit morte, soit jamais rattachee.
+              (SELECT count(DISTINCT parent) FROM (
+                 SELECT rf2.recipe_id AS parent
+                   FROM recipe_format_components c2
+                   JOIN recipe_formats rf2 ON rf2.id = c2.format_id
+                  WHERE c2.source_recipe_id = r.id
+                 UNION
+                 SELECT c3.recipe_id FROM recipe_components c3 WHERE c3.source_recipe_id = r.id
+                 UNION
+                 SELECT s3.recipe_id FROM recipe_sub_recipes s3 WHERE s3.sub_recipe_id = r.id
+               ) u WHERE parent <> r.id) AS utilisee_par,
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
               df.nb_par_defaut AS rendement,
@@ -73,6 +92,7 @@ export const recipeRepository = {
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN recipe_categories rc ON rc.id = r.category_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        LEFT JOIN LATERAL (
          SELECT rf.nb_par_defaut, rf.contenant_id
@@ -81,6 +101,7 @@ export const recipeRepository = {
          ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
        ) df ON true
        LEFT JOIN production_contenants dfc ON dfc.id = df.contenant_id
+       WHERE r.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
@@ -125,7 +146,8 @@ export const recipeRepository = {
     const ingredientsResult = await db.query(
       `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
        FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1`,
+       WHERE ri.recipe_id = $1
+       ORDER BY ri.id`,
       [id]
     );
 
@@ -169,10 +191,14 @@ export const recipeRepository = {
               vfc.cout_mo_format, vfc.cout_energie_format, vfc.cout_struct_format,
               vfc.cout_unitaire_complet, vfc.prix_vente_unitaire, vfc.marge_resolue
        FROM recipe_formats rf
-       JOIN production_contenants pc ON pc.id = rf.contenant_id
+       -- LEFT JOIN : un format sans contenant est legitime — assemblage d'un
+       -- produit compose (mig 267) ou preparation pas encore rattachee a un
+       -- moule (mig 274). Le JOIN strict les faisait disparaitre de la fiche,
+       -- qui affichait alors « aucun format » sur une recette qui en avait un.
+       LEFT JOIN production_contenants pc ON pc.id = rf.contenant_id
        LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
        WHERE rf.recipe_id = $1 AND rf.is_active = true
-       ORDER BY rf.ordre ASC, pc.nom ASC`,
+       ORDER BY rf.ordre ASC, pc.nom ASC NULLS LAST`,
       [id]
     );
 
@@ -192,6 +218,49 @@ export const recipeRepository = {
       [id]
     );
 
+    // Recettes qui CONSOMMENT celle-ci, tous chemins confondus. Modifier une
+    // preparation change le cout de ses consommateurs : la fiche doit le montrer
+    // avant qu'on enregistre, pas apres.
+    const usedByResult = await db.query(
+      `SELECT p.id, p.name, p.is_base, u.quantite, u.unite, u.priorite
+         FROM (
+           -- Priorite 1 : la nomenclature par format, source de verite actuelle.
+           -- Un parent multi-format cite la preparation autant de fois qu'il a de
+           -- cadres (1200 g, 600 g, 450 g pour l'opera) : on retient celui du
+           -- format PAR DEFAUT, sinon la fiche montrerait une quantite au hasard.
+           SELECT rf.recipe_id AS parent, c.quantite, c.unite,
+                  CASE WHEN rf.is_default THEN 1 ELSE 2 END AS priorite
+             FROM recipe_format_components c
+             JOIN recipe_formats rf ON rf.id = c.format_id
+            WHERE c.source_recipe_id = $1
+           UNION ALL
+           -- Priorite 3 : le miroir du format par defaut (mig 205).
+           SELECT c.recipe_id, c.quantite, c.unite, 3
+             FROM recipe_components c WHERE c.source_recipe_id = $1
+           UNION ALL
+           -- Priorite 4 : le lien legacy. Sa quantite est une FRACTION de fournee,
+           -- pas une masse : elle n'a pas d'unite, d'ou le NULL. On ne l'affiche
+           -- que si aucune des deux sources ci-dessus ne couvre le parent.
+           SELECT s.recipe_id, s.quantity, NULL, 4
+             FROM recipe_sub_recipes s WHERE s.sub_recipe_id = $1
+         ) u
+         JOIN recipes p ON p.id = u.parent
+        WHERE u.parent <> $1
+        ORDER BY p.name, u.priorite`,
+      [id]
+    );
+    // Un meme parent remonte par plusieurs chemins : on garde la PREMIERE ligne,
+    // donc la mieux classee — sans quoi la fiche afficherait « 2.11 » (fraction
+    // legacy) la ou la nomenclature dit « 2110 g ».
+    const usedBy: Record<string, unknown>[] = [];
+    const vus = new Set<string>();
+    for (const row of usedByResult.rows as Record<string, unknown>[]) {
+      const key = String(row.id);
+      if (vus.has(key)) continue;
+      vus.add(key);
+      usedBy.push(row);
+    }
+
     return {
       ...recipeResult.rows[0],
       ingredients: ingredientsResult.rows,
@@ -199,6 +268,7 @@ export const recipeRepository = {
       composition: compositionResult.rows,
       packaging: packagingResult.rows,
       formats: formatsResult.rows,
+      used_by: usedBy,
     };
   },
 
@@ -213,7 +283,14 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
-       WHERE r.product_id = $1`,
+       -- Un produit est rattache a sa recette soit directement (recipes.product_id),
+       -- soit par un format de la fiche (« Produit vendu au POS », mig 263). Sans la
+       -- 2e branche, un produit lie depuis la fiche restait « sans recette » a la
+       -- production : ni etapes, ni ingredients.
+       WHERE r.product_id = $1
+          OR r.id IN (SELECT rf.recipe_id FROM recipe_formats rf WHERE rf.product_id = $1 AND rf.is_active)
+       ORDER BY (r.product_id = $1) DESC NULLS LAST
+       LIMIT 1`,
       [productId]
     );
     if (!recipeResult.rows[0]) return null;
@@ -222,7 +299,8 @@ export const recipeRepository = {
     const ingredientsResult = await db.query(
       `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
        FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1`,
+       WHERE ri.recipe_id = $1
+       ORDER BY ri.id`,
       [recipeId]
     );
     const subRecipesResult = await db.query(
@@ -290,7 +368,7 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
-       WHERE r.is_base = true
+       WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
     );
     return result.rows;
@@ -303,6 +381,7 @@ export const recipeRepository = {
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
+    perteStandardPct?: number;
     ingredients: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
@@ -564,6 +643,7 @@ export const recipeRepository = {
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
+    perteStandardPct?: number;
     ingredients?: { ingredientId: string; quantity: number; unit?: string | null }[];
     subRecipes?: { subRecipeId: string; quantity: number }[];
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
@@ -658,12 +738,17 @@ export const recipeRepository = {
            cout_energie_fournee = COALESCE($11, cout_energie_fournee),
            taux_frais_structure_pct = COALESCE($12, taux_frais_structure_pct),
            category_id = $13,
+           -- Perte de transformation : editable depuis le formulaire des
+           -- preparations de base (mig 274). COALESCE pour qu'un payload qui ne
+           -- la porte pas — le formulaire produit fini — n'ecrase pas la valeur
+           -- posee par l'editeur de nomenclature.
+           perte_standard_pct = COALESCE($14, perte_standard_pct),
            updated_at = NOW()
-         WHERE id = $14`,
+         WHERE id = $15`,
         [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
          data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
-         data.categoryId ?? null, id]
+         data.categoryId ?? null, data.perteStandardPct ?? null, id]
       );
 
       // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire
@@ -724,11 +809,25 @@ export const recipeRepository = {
       // métadonnées (édition unifiée) effaçait tous les formats gérés par l'éditeur.
       if (data.formats !== undefined && data.formats.length > 0) {
         const keptContenants = data.formats.map((f) => f.contenantId);
-        // 1. Soft-delete des formats qui ne sont plus dans data.formats
+        // 1. Soft-delete des formats qui ne sont plus dans data.formats.
+        //
+        //    Piege SQL : `contenant_id <> ALL(...)` vaut NULL — donc faux — pour
+        //    un format sans contenant. Ces formats echappaient au soft-delete.
+        //    Ca compte depuis la mig 274, qui donne a chaque preparation de base
+        //    un format d'attente a contenant NULL : sans le second predicat, le
+        //    jour ou le chef rattache un vrai contenant, l'ancien resterait actif
+        //    a cote et la base afficherait deux formats.
+        //
+        //    Restreint aux BASES a dessein : cote produits finis, 50 formats ont
+        //    aussi un contenant NULL (assemblages, mig 267) et sont legitimes —
+        //    les desactiver casserait leur nomenclature.
         await client.query(
-          `UPDATE recipe_formats
+          `UPDATE recipe_formats f
            SET is_active = false, updated_at = NOW()
-           WHERE recipe_id = $1 AND contenant_id <> ALL($2::uuid[])`,
+           FROM recipes r
+           WHERE r.id = f.recipe_id
+             AND f.recipe_id = $1
+             AND (f.contenant_id <> ALL($2::uuid[]) OR (f.contenant_id IS NULL AND r.is_base))`,
           [id, keptContenants],
         );
         // 2. Upsert (insert ou reactive + maj des valeurs)
@@ -872,5 +971,49 @@ export const recipeRepository = {
 
   async delete(id: string) {
     await db.query('DELETE FROM recipes WHERE id = $1', [id]);
+  },
+
+  /**
+   * Suppression en masse. Chaque fiche est supprimée dans son propre ordre SQL :
+   * une recette référencée ailleurs (sous-recette, composant, plan de production —
+   * FK ON DELETE RESTRICT) est conservée et remontée dans `blocked` au lieu de
+   * faire échouer tout le lot.
+   */
+  async bulkDelete(ids: string[]) {
+    const { rows } = await db.query('SELECT id, name FROM recipes WHERE id = ANY($1::uuid[])', [ids]);
+    let deletedCount = 0;
+    const blocked: { id: string; name: string }[] = [];
+    for (const r of rows) {
+      try {
+        await db.query('DELETE FROM recipes WHERE id = $1', [r.id]);
+        deletedCount++;
+      } catch (err) {
+        if ((err as { code?: string }).code === '23503') {
+          blocked.push({ id: r.id, name: r.name });
+          continue;
+        }
+        throw err;
+      }
+    }
+    return { deletedCount, blocked };
+  },
+
+  /** Archive (retire des listes/sélecteurs sans supprimer). Idempotent. */
+  async bulkArchive(ids: string[]) {
+    const result = await db.query(
+      `UPDATE recipes SET archived_at = now(), updated_at = now()
+       WHERE id = ANY($1::uuid[]) AND archived_at IS NULL`,
+      [ids]
+    );
+    return { archivedCount: result.rowCount ?? 0 };
+  },
+
+  async bulkRestore(ids: string[]) {
+    const result = await db.query(
+      `UPDATE recipes SET archived_at = NULL, updated_at = now()
+       WHERE id = ANY($1::uuid[]) AND archived_at IS NOT NULL`,
+      [ids]
+    );
+    return { restoredCount: result.rowCount ?? 0 };
   },
 };

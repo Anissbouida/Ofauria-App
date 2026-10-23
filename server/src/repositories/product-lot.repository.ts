@@ -31,6 +31,24 @@ export interface ProductLot {
   status: 'active' | 'depleted' | 'expired' | 'disposed';
 }
 
+/** Pièce à l'origine d'un mouvement de lot (mig 316) : vente, demande d'appro… */
+export type LotMovementRef = { type: string; id?: string | null };
+
+/**
+ * Journal des mouvements d'un lot produit fini (mig 316) : c'est lui qui permet,
+ * en cas de rappel, de dire quelles ventes et quels magasins ont reçu le lot.
+ */
+async function recordLotMovement(
+  client: PoolClient, lotId: string, kind: 'display' | 'sale' | 'waste' | 'recycle', qty: number, ref?: LotMovementRef,
+): Promise<void> {
+  if (qty <= 0) return;
+  await client.query(
+    `INSERT INTO product_lot_movements (product_lot_id, store_id, kind, quantity, ref_type, ref_id)
+     SELECT id, store_id, $2, $3, $4, $5 FROM product_lots WHERE id = $1`,
+    [lotId, kind, qty, ref?.type ?? null, ref?.id ?? null],
+  );
+}
+
 export const productLotRepository = {
   /** Cree un lot a la validation d'une fournee de production.
    *  Calcule la DLC depuis shelf_life_days du produit. */
@@ -44,6 +62,11 @@ export const productLotRepository = {
       producedAt?: Date;
       shelfLifeDays?: number | null;
       notes?: string;
+      /** Article du plan produit (mig 300) : lie le lot produit aux lots d'ingredients du plan. */
+      planItemId?: string | null;
+      /** Numero attribue a l'article a la confirmation (production_lot_numbers) :
+       *  une seule numerotation de lot produit, celle que le chef voit sur le plan. */
+      lotNumber?: string | null;
     }
   ): Promise<ProductLot> {
     const producedAt = data.producedAt ?? new Date();
@@ -52,20 +75,28 @@ export const productLotRepository = {
       ? new Date(producedAt.getTime() + shelfDays * 86400000)
       : null;
 
-    // Numero de lot incrementiel via sequence (zero collision)
-    const seqResult = await client.query(
-      `SELECT nextval('product_lot_number_seq') as n`
-    );
-    const seq = parseInt(seqResult.rows[0].n);
-    const ymd = producedAt.toISOString().slice(0, 10).replace(/-/g, '');
-    const lotNumber = `LOT-${ymd}-${String(seq).padStart(5, '0')}`;
+    let lotNumber = data.lotNumber || null;
+    if (lotNumber) {
+      // Deja pris pour ce magasin (2e production du meme article) : suffixe.
+      const taken = await client.query(
+        `SELECT COUNT(*)::int AS n FROM product_lots WHERE store_id = $1 AND (lot_number = $2 OR lot_number LIKE $2 || '-%')`,
+        [data.storeId, lotNumber]
+      );
+      if (taken.rows[0].n > 0) lotNumber = `${lotNumber}-${taken.rows[0].n + 1}`;
+    } else {
+      // Fallback historique : sequence globale (zero collision)
+      const seqResult = await client.query(`SELECT nextval('product_lot_number_seq') as n`);
+      const seq = parseInt(seqResult.rows[0].n);
+      const ymd = producedAt.toISOString().slice(0, 10).replace(/-/g, '');
+      lotNumber = `LOT-${ymd}-${String(seq).padStart(5, '0')}`;
+    }
 
     const result = await client.query(
       `INSERT INTO product_lots
          (product_id, production_plan_id, store_id, lot_number,
           produced_at, expires_at, quantity_total, backroom_qty,
-          status, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, 'active', $8)
+          status, notes, plan_item_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, 'active', $8, $9)
        RETURNING *`,
       [
         data.productId,
@@ -76,6 +107,7 @@ export const productLotRepository = {
         expiresAt ? expiresAt.toISOString().slice(0, 10) : null,
         data.quantityProduced,
         data.notes ?? null,
+        data.planItemId ?? null,
       ]
     );
     return result.rows[0];
@@ -185,9 +217,11 @@ export const productLotRepository = {
     client: PoolClient,
     lotId: string,
     qty: number,
-    displayLifeHours?: number | null
+    displayLifeHours?: number | null,
+    ref?: LotMovementRef,
   ): Promise<void> {
     if (qty <= 0) return;
+    await recordLotMovement(client, lotId, 'display', qty, ref);
 
     // Lock + lecture pour calculer DLV si premiere exposition
     const cur = await client.query(
@@ -243,9 +277,11 @@ export const productLotRepository = {
   async consumeVitrineSold(
     client: PoolClient,
     lotId: string,
-    qty: number
+    qty: number,
+    ref?: LotMovementRef,
   ): Promise<void> {
     if (qty <= 0) return;
+    await recordLotMovement(client, lotId, 'sale', qty, ref);
     await client.query(
       `UPDATE product_lots
        SET vitrine_qty = vitrine_qty - $2,
@@ -259,9 +295,11 @@ export const productLotRepository = {
   async consumeVitrineWaste(
     client: PoolClient,
     lotId: string,
-    qty: number
+    qty: number,
+    ref?: LotMovementRef,
   ): Promise<void> {
     if (qty <= 0) return;
+    await recordLotMovement(client, lotId, 'waste', qty, ref);
     await client.query(
       `UPDATE product_lots
        SET vitrine_qty = vitrine_qty - $2,
@@ -275,9 +313,11 @@ export const productLotRepository = {
   async consumeVitrineRecycle(
     client: PoolClient,
     lotId: string,
-    qty: number
+    qty: number,
+    ref?: LotMovementRef,
   ): Promise<void> {
     if (qty <= 0) return;
+    await recordLotMovement(client, lotId, 'recycle', qty, ref);
     await client.query(
       `UPDATE product_lots
        SET vitrine_qty   = vitrine_qty - $2,

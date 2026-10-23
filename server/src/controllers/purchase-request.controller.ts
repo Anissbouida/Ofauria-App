@@ -1,6 +1,9 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
+import { toOrderRepository } from '../repositories/to-order.repository.js';
+import { recordAction, listActions } from '../services/document-actions.service.js';
+import { db } from '../config/database.js';
 
 export const purchaseRequestController = {
   async list(req: AuthRequest, res: Response) {
@@ -14,17 +17,34 @@ export const purchaseRequestController = {
     res.json({ success: true, data: requests });
   },
 
+  /** GET /purchase-requests/to-order : besoins d'achat fusionnés par ingrédient. */
+  async toOrder(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await toOrderRepository.board(req.user!.storeId) });
+  },
+
+  /** POST /purchase-requests/order-direct : un BC brouillon par fournisseur, depuis À commander. */
+  async orderDirect(req: AuthRequest, res: Response) {
+    const { lines, expectedDeliveryDate } = req.body;
+    const result = await toOrderRepository.orderDirect({
+      lines, expectedDeliveryDate, createdBy: req.user!.userId, storeId: req.user!.storeId,
+    });
+    for (const po of result.orders) {
+      await recordAction(db, { documentType: 'purchase_order', documentId: po.id, action: 'created', actorId: req.user!.userId, note: 'depuis Stock › À commander' });
+    }
+    for (const id of new Set<string>(result.requestIds)) {
+      await recordAction(db, { documentType: 'purchase_request', documentId: id, action: 'approved', actorId: req.user!.userId, note: 'commandé depuis À commander', channel: 'web' });
+    }
+    res.status(201).json({ success: true, data: result.orders });
+  },
+
   async grouped(req: AuthRequest, res: Response) {
     const groups = await purchaseRequestRepository.findGroupedBySupplier(req.user!.storeId);
     res.json({ success: true, data: groups });
   },
 
   async create(req: AuthRequest, res: Response) {
+    // Corps validé par createPurchaseRequestSchema (zod) dans la route.
     const { ingredientId, supplierId, quantity, unit, reason, note } = req.body;
-    if (!ingredientId || !quantity || quantity <= 0 || !unit) {
-      res.status(400).json({ success: false, error: { message: 'Ingredient, quantite et unite requis' } });
-      return;
-    }
     const request = await purchaseRequestRepository.create({
       ingredientId,
       supplierId: supplierId || null,
@@ -35,16 +55,12 @@ export const purchaseRequestController = {
       requestedBy: req.user!.userId,
       storeId: req.user!.storeId,
     });
+    await recordAction(db, { documentType: 'purchase_request', documentId: request.id, action: 'created', actorId: req.user!.userId });
     res.status(201).json({ success: true, data: request });
   },
 
   async updateQuantity(req: AuthRequest, res: Response) {
-    const { quantity } = req.body;
-    if (!quantity || quantity <= 0) {
-      res.status(400).json({ success: false, error: { message: 'Quantite invalide' } });
-      return;
-    }
-    const updated = await purchaseRequestRepository.updateQuantity(req.params.id, quantity);
+    const updated = await purchaseRequestRepository.updateQuantity(req.params.id, req.body.quantity, req.user!.userId, req.user!.storeId);
     if (!updated) {
       res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
       return;
@@ -54,7 +70,7 @@ export const purchaseRequestController = {
 
   async assignSupplier(req: AuthRequest, res: Response) {
     const { supplierId } = req.body;
-    const updated = await purchaseRequestRepository.updateSupplier(req.params.id, supplierId || null);
+    const updated = await purchaseRequestRepository.updateSupplier(req.params.id, supplierId || null, req.user!.userId, req.user!.storeId);
     if (!updated) {
       res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
       return;
@@ -64,30 +80,41 @@ export const purchaseRequestController = {
 
   async bulkAssignSupplier(req: AuthRequest, res: Response) {
     const { requestIds, supplierId } = req.body;
-    if (!Array.isArray(requestIds) || requestIds.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'requestIds requis' } });
-      return;
-    }
-    const updated = await purchaseRequestRepository.bulkUpdateSupplier(requestIds, supplierId || null);
+    const updated = await purchaseRequestRepository.bulkUpdateSupplier(requestIds, supplierId || null, req.user!.userId, req.user!.storeId);
     res.json({ success: true, data: updated });
   },
 
   async cancel(req: AuthRequest, res: Response) {
-    const { note } = req.body;
-    const cancelled = await purchaseRequestRepository.cancel(req.params.id, note);
+    const cancelled = await purchaseRequestRepository.cancel(req.params.id, req.body.reason, req.user!.userId, req.user!.storeId);
     if (!cancelled) {
-      res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée ou déjà commandée : seule une demande en attente peut être annulée' } });
       return;
     }
+    await recordAction(db, { documentType: 'purchase_request', documentId: req.params.id, action: 'cancelled', actorId: req.user!.userId, note: req.body.reason });
     res.json({ success: true, data: cancelled });
+  },
+
+  /** Clôture du reliquat d'une demande commandée (on renonce au manquant). */
+  async close(req: AuthRequest, res: Response) {
+    const closed = await purchaseRequestRepository.close(req.params.id, req.body.reason, req.user!.userId, req.user!.storeId);
+    if (!closed) {
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée ou non commandée : seule une demande commandée peut être clôturée' } });
+      return;
+    }
+    await recordAction(db, { documentType: 'purchase_request', documentId: req.params.id, action: 'force_closed', actorId: req.user!.userId, note: req.body.reason });
+    res.json({ success: true, data: closed });
+  },
+
+  async history(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await purchaseRequestRepository.history(req.params.id) });
+  },
+
+  async actions(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await listActions('purchase_request', req.params.id) });
   },
 
   async generatePO(req: AuthRequest, res: Response) {
     const { supplierId, requestIds, expectedDeliveryDate, notes, quantityOverrides } = req.body;
-    if (!supplierId || !requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'Fournisseur et demandes requis' } });
-      return;
-    }
     const po = await purchaseRequestRepository.generatePurchaseOrder({
       supplierId,
       requestIds,
@@ -97,6 +124,10 @@ export const purchaseRequestController = {
       storeId: req.user!.storeId,
       quantityOverrides,
     });
+    for (const id of new Set<string>(requestIds)) {
+      await recordAction(db, { documentType: 'purchase_request', documentId: id, action: 'approved', actorId: req.user!.userId, note: `converti en ${po.order_number}`, channel: 'web' });
+    }
+    await recordAction(db, { documentType: 'purchase_order', documentId: po.id, action: 'created', actorId: req.user!.userId, note: `depuis ${new Set(requestIds).size} demande(s)` });
     res.status(201).json({ success: true, data: po });
   },
 

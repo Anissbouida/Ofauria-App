@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -66,7 +67,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
       queryClient.invalidateQueries({ queryKey: ['production-cout', planId] });
       notify.success('Cout de revient calcule');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur calcul'),
+    onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur calcul')),
   });
 
   if (planStatus !== 'completed' && planStatus !== 'in_progress') return null;

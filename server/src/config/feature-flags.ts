@@ -30,7 +30,9 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 export const FLAGS = {
   /** Generation automatique des ecritures lors de la creation d'une entite metier. */
-  LEDGER_AUTOGEN: parseFlag(process.env.LEDGER_AUTOGEN, isDev),
+  // Mig 311 (D8 G-D8-01) : la comptabilisation n'est plus optionnelle. Le flag reste
+  // pour compatibilité de lecture, toujours vrai ; l'échec est géré par ledger.posting_mode.
+  LEDGER_AUTOGEN: true,
 
   /** Dettes lit depuis le ledger (au lieu de SUM(payments)). */
   LEDGER_BACKED_DEBTS: parseFlag(process.env.LEDGER_BACKED_DEBTS, false),

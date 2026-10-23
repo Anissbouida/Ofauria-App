@@ -1,65 +1,89 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
-import { format } from 'date-fns';
+import { purchaseOrdersApi } from '../../api/purchase-orders.api';
+import { format, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, Truck, FileText, Banknote,
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Clock, CheckCircle2, Scale,
+  Clock, CheckCircle2, Scale, CalendarClock, Ban,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
-import PurchaseRequestsPage from './PurchaseRequestsPage';
+import SuppliersTab from './SuppliersTab';
+import PurchasingPilotageTab from './PurchasingPilotageTab';
+import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
+import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
+import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
+import { apiErrorMessage } from '../../api/errors';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, FilePenLine } from 'lucide-react';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import {
+  StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager,
+  PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
+} from '../../components/purchasing/ProcessBoard';
 
-type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'waiting_list';
+type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage';
 
-const INVOICE_STATUS_LABELS: Record<string, string> = {
-  pending: 'Non réglée', partial: 'Partiellement réglée', paid: 'Réglée',
-  overdue: 'En retard', cancelled: 'Annulée', disputed: 'En litige',
-};
-const INVOICE_STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700', partial: 'bg-blue-100 text-blue-700',
-  paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-500', disputed: 'bg-purple-100 text-purple-700',
-};
-// Statuts modifiables manuellement (admin/gérant). 'overdue' et 'cancelled' restent
-// pilotés par leur logique propre (cancel button + flag automatique d'echeance depassee).
-const MANUAL_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'pending', label: 'Non réglée' },
-  { value: 'partial', label: 'Partiellement réglée' },
-  { value: 'paid', label: 'Réglée' },
-  { value: 'disputed', label: 'En litige' },
+/**
+ * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
+ * invoiceRepository._receivedStagedCte). « Annulée » sort du processus : Historique seulement.
+ */
+const INV_STAGES: StageDef[] = [
+  { key: 'draft', label: 'Brouillon', hint: 'à compléter', icon: FilePenLine },
+  { key: 'blocked', label: 'Bloquée / litige', hint: 'paiement suspendu', icon: ShieldAlert },
+  { key: 'to_pay', label: 'À payer', hint: 'reste dû', icon: Clock },
+  { key: 'partial', label: 'Partiellement réglée', hint: 'reste dû', icon: Coins },
+  { key: 'paid', label: 'Réglée', hint: 'voir l\'historique', icon: CheckCircle2 },
 ];
-
-// Onglets de filtrage par statut pour les factures reçues (clé '' = toutes)
-// 'pending' regroupe désormais les factures non réglées ET partiellement réglées.
-const INVOICE_STATUS_TABS: Array<{ key: string; label: string; icon: typeof FileText; color: string }> = [
-  { key: '', label: 'Toutes', icon: Receipt, color: '#6b7280' },
-  { key: 'pending', label: 'Non réglées', icon: Clock, color: '#b45309' },
-  { key: 'paid', label: 'Réglées', icon: CheckCircle2, color: '#15803d' },
-  { key: 'overdue', label: 'En retard', icon: AlertTriangle, color: '#dc2626' },
-  { key: 'disputed', label: 'En litige', icon: Scale, color: '#7c3aed' },
-];
+const INV_OPEN_STAGES = ['draft', 'blocked', 'to_pay', 'partial'];
+// Filtre par statut : les choix dépendent de la vue (une facture réglée n'est jamais « à traiter »).
+const INV_VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: string }>> = {
+  open: [
+    { key: 'pending', label: 'Non réglée' },
+    { key: 'partial', label: 'Partiellement réglée' },
+    { key: 'late', label: 'Échéance dépassée' },
+    { key: 'disputed', label: 'En litige' },
+    { key: 'blocked', label: 'Paiement bloqué' },
+    { key: 'to_check', label: 'À vérifier (écarts)' },
+  ],
+  history: [
+    { key: 'paid', label: 'Réglée' },
+    { key: 'cancelled', label: 'Annulée' },
+  ],
+};
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 export default function PurchasingPage() {
-  const [tab, setTab] = useState<PurchasingTab>('suppliers');
+  // Onglet ouvrable par lien (?tab=purchase_orders), ex. depuis Stock › À commander après création des BC.
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<PurchasingTab>(() => {
+    const t = searchParams.get('tab') as PurchasingTab | null;
+    return t && ['suppliers', 'purchase_orders', 'invoices', 'pilotage'].includes(t) ? t : 'suppliers';
+  });
+  // Ouverture d'un onglet pré-filtré sur un fournisseur (depuis l'onglet Fournisseurs).
+  // Ouverture d'un onglet pré-filtré (fournisseur, recherche, vue) depuis Fournisseurs ou Pilotage.
+  const [focus, setFocus] = useState<TabFocus>({});
+  const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); setTab(next); };
 
   const allTabs: { key: PurchasingTab; label: string; icon: typeof Truck }[] = [
-    { key: 'waiting_list', label: "Liste d'attente", icon: ShoppingCart },
+    // « Liste d'attente » retirée : les besoins se traitent dans Stock › À commander (BC directs).
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
     { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList },
     { key: 'invoices', label: 'Factures reçues', icon: FileText },
+    // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
+    { key: 'pilotage', label: 'Pilotage', icon: Scale },
   ];
 
   const currentTab = allTabs.find(t => t.key === tab);
@@ -81,7 +105,7 @@ export default function PurchasingPage() {
         {allTabs.map(t => {
           const Icon = t.icon;
           return (
-            <button key={t.key} onClick={() => setTab(t.key)}
+            <button key={t.key} onClick={() => openTab(t.key)}
               className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
               <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
             </button>
@@ -90,340 +114,35 @@ export default function PurchasingPage() {
       </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {tab === 'waiting_list' && <PurchaseRequestsPage />}
-        {tab === 'suppliers' && <SuppliersTab />}
-        {tab === 'purchase_orders' && <PurchaseOrdersTab />}
-        {tab === 'invoices' && <InvoicesTab />}
+        {tab === 'suppliers' && (
+          <SuppliersTab
+            onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
+            onOpenInvoices={id => openTab('invoices', { supplierId: id })}
+          />
+        )}
+        {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
+        {tab === 'invoices' && <InvoicesTab {...focus} />}
+        {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════ SUPPLIERS TAB ═══════════════════════ */
-type SuppliersFilter = 'active' | 'inactive' | 'all';
-
-function SuppliersTab() {
-  const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Record<string, any> | null>(null);
-  const [statusFilter, setStatusFilter] = useState<SuppliersFilter>('active');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const { data: suppliers = [], isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
-
-  const saveMutation = useMutation({
-    mutationFn: (data: Record<string, any>) =>
-      editing ? suppliersApi.update(editing.id as string, data) : suppliersApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      notify.success(editing ? 'Fournisseur modifié' : 'Fournisseur ajouté');
-      setShowForm(false); setEditing(null);
-    },
-    onError: () => notify.error('Erreur'),
-  });
-
-  const deactivateMutation = useMutation({
-    mutationFn: (id: string) => suppliersApi.remove(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      notify.success('Fournisseur désactivé');
-    },
-    onError: () => notify.error('Erreur lors de la désactivation'),
-  });
-
-  const reactivateMutation = useMutation({
-    mutationFn: (id: string) => suppliersApi.update(id, { isActive: true }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      notify.success('Fournisseur réactivé');
-    },
-    onError: () => notify.error('Erreur lors de la réactivation'),
-  });
-
-  const suppliersList = suppliers as Record<string, any>[];
-  const activeCount = suppliersList.filter(s => s.is_active).length;
-  const inactiveCount = suppliersList.length - activeCount;
-
-  const filteredSuppliers = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    return suppliersList
-      .filter(s => {
-        if (statusFilter === 'active' && !s.is_active) return false;
-        if (statusFilter === 'inactive' && s.is_active) return false;
-        if (!q) return true;
-        return (
-          ((s.name as string) || '').toLowerCase().includes(q) ||
-          ((s.contact_name as string) || '').toLowerCase().includes(q) ||
-          ((s.phone as string) || '').toLowerCase().includes(q) ||
-          ((s.city as string) || '').toLowerCase().includes(q) ||
-          ((s.ice as string) || '').toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => ((a.name as string) || '').localeCompare((b.name as string) || '', 'fr', { sensitivity: 'base' }));
-  }, [suppliersList, statusFilter, searchTerm]);
-
-  const STATUS_TABS: Array<{ key: SuppliersFilter; label: string; icon: typeof Truck; color: string; count: number }> = [
-    { key: 'active', label: 'Actifs', icon: CheckCircle2, color: '#15803d', count: activeCount },
-    { key: 'inactive', label: 'Inactifs', icon: X, color: '#6b7280', count: inactiveCount },
-    { key: 'all', label: 'Tous', icon: Truck, color: '#374151', count: suppliersList.length },
-  ];
-
-  return (
-    <>
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Fournisseurs</div>
-          <div className="odoo-stat-card-value">{suppliersList.length}</div>
-          <div className="odoo-stat-card-sub">total</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4 }} />Actifs</div>
-          <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
-          <div className="odoo-stat-card-sub">en activité</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><X size={11} style={{ display: 'inline', marginRight: 4 }} />Inactifs</div>
-          <div className="odoo-stat-card-value" style={{ color: inactiveCount > 0 ? '#6b7280' : undefined }}>{inactiveCount}</div>
-          <div className="odoo-stat-card-sub">désactivés</div>
-        </div>
-      </div>
-
-      {/* Search panel — sous-onglets par statut + bouton nouveau fournisseur */}
-      <div className="odoo-search-panel">
-        {STATUS_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const active = statusFilter === tab.key;
-          return (
-            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                fontWeight: active ? 600 : 400,
-              }}>
-              <Icon size={11} style={{ color: active ? undefined : tab.color }} /> {tab.label}
-              {tab.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{tab.count}</span>}
-            </button>
-          );
-        })}
-        <div style={{ flex: 1 }} />
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau fournisseur
-        </button>
-      </div>
-
-      {/* Search panel — recherche texte */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par nom, contact, téléphone, ville ou ICE..."
-          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
-        {(searchTerm || statusFilter !== 'active') && (
-          <button onClick={() => { setSearchTerm(''); setStatusFilter('active'); }}
-            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Réinitialiser
-          </button>
-        )}
-      </div>
-
-      {/* Table */}
-      {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement des fournisseurs...</p>
-        </div>
-      ) : suppliersList.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun fournisseur</p>
-        </div>
-      ) : filteredSuppliers.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Search size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>
-            {statusFilter === 'inactive'
-              ? 'Aucun fournisseur inactif'
-              : statusFilter === 'active'
-                ? 'Aucun fournisseur actif ne correspond à la recherche'
-                : 'Aucun fournisseur ne correspond à la recherche'}
-          </p>
-        </div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
-            <thead>
-              <tr>
-                <th style={{ width: 24 }}></th>
-                <th>Nom</th>
-                <th>Contact</th>
-                <th>Téléphone</th>
-                <th>Ville</th>
-                <th>ICE</th>
-                <th>Statut</th>
-                <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSuppliers.map(s => (
-                <tr key={s.id as string} onClick={() => { setEditing(s); setShowForm(true); }} style={{ cursor: 'pointer' }}>
-                  <td><span className={`odoo-status-dot ${s.is_active ? 'ok' : 'neutral'}`} /></td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                      <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
-                      {s.name as string}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.contact_name as string) || '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.phone as string) || '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{(s.city as string) || '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem' }}>
-                    {(s.ice as string) || '—'}
-                  </td>
-                  <td>
-                    <span className={`odoo-tag ${s.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
-                      {s.is_active ? 'Actif' : 'Inactif'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      <button onClick={() => { setEditing(s); setShowForm(true); }}
-                        className="odoo-pager-btn" title="Modifier">
-                        <Pencil size={13} />
-                      </button>
-                      {s.is_active ? (
-                        <button
-                          onClick={() => {
-                            if (confirm(`Désactiver le fournisseur « ${s.name as string} » ?\n\nIl n'apparaîtra plus dans les listes de sélection.\nL'historique (factures, bons de commande, paiements) est conservé.`)) {
-                              deactivateMutation.mutate(s.id as string);
-                            }
-                          }}
-                          className="odoo-pager-btn" title="Désactiver" style={{ color: '#dc3545' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            if (confirm(`Réactiver le fournisseur « ${s.name as string} » ?`)) {
-                              reactivateMutation.mutate(s.id as string);
-                            }
-                          }}
-                          className="odoo-pager-btn" title="Réactiver" style={{ color: '#28a745' }}>
-                          <RotateCcw size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {showForm && (
-        <ModalBackdrop onClose={() => { setShowForm(false); setEditing(null); }}
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb">
-                <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span>Fournisseur</span>
-                <span className="odoo-breadcrumb-separator">/</span>
-                <span className="odoo-breadcrumb-current">{editing ? (editing.name as string) : 'Nouveau'}</span>
-              </div>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => { setShowForm(false); setEditing(null); }} className="odoo-pager-btn" title="Fermer">
-                <X size={14} />
-              </button>
-            </div>
-            <form onSubmit={e => {
-              e.preventDefault();
-              saveMutation.mutate(Object.fromEntries(new FormData(e.currentTarget)));
-            }} className="flex-1 overflow-y-auto">
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom *</label>
-                  <input name="name" defaultValue={editing?.name as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Contact</label>
-                    <input name="contactName" defaultValue={editing?.contact_name as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Téléphone</label>
-                    <input name="phone" defaultValue={editing?.phone as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Email</label>
-                    <input name="email" type="email" defaultValue={editing?.email as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Ville</label>
-                    <input name="city" defaultValue={editing?.city as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                </div>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Adresse</label>
-                  <input name="address" defaultValue={editing?.address as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>ICE</label>
-                  <input name="ice" defaultValue={editing?.ice as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
-                  <textarea name="notes" rows={2} defaultValue={editing?.notes as string} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-              </div>
-              <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" onClick={() => { setShowForm(false); setEditing(null); }} className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={saveMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </ModalBackdrop>
-      )}
-    </>
-  );
-}
+// Déplacé dans ./SuppliersTab.tsx (refonte Achats D1, mig 304).
 
 /* ═══════════════════════ INVOICES TAB (factures reçues only) ═══════════════════════ */
-function InvoicesTab() {
-  return <ReceivedInvoicesSection />;
+type TabFocus = { supplierId?: string; search?: string; view?: 'open' | 'history' };
+
+function InvoicesTab({ supplierId, search, view }: TabFocus) {
+  return <ReceivedInvoicesSection initialSupplierId={supplierId} initialSearch={search} initialView={view} />;
 }
 
 /* ═══ Factures reçues (fournisseurs) ═══ */
 
-// Cle mois (YYYY-MM) d'une facture, ou null si date absente/invalide
-function invoiceMonthKey(inv: Record<string, any>): string | null {
-  const raw = inv.invoice_date as string | undefined;
-  if (!raw) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-// Prédicats de filtre partagés entre la liste affichée et les options des dropdowns.
-// Passer undefined pour un critère l'ignore : chaque dropdown est ainsi « facetté »
-// (il ne propose que les valeurs présentes dans les factures satisfaisant les AUTRES filtres).
-function matchesInvoiceFilters(
-  inv: Record<string, any>,
-  f: { status?: string; search?: string; supplier?: string; category?: string; month?: string },
-): boolean {
-  if (f.status) {
-    // 'pending' regroupe non réglées + partiellement réglées
-    if (f.status === 'pending') {
-      if (inv.status !== 'pending' && inv.status !== 'partial') return false;
-    } else if (inv.status !== f.status) return false;
-  }
-  if (f.search) {
-    const q = f.search.toLowerCase();
-    const hit =
-      ((inv.invoice_number as string) || '').toLowerCase().includes(q) ||
-      ((inv.supplier_name as string) || '').toLowerCase().includes(q) ||
-      ((inv.purchase_order_number as string) || '').toLowerCase().includes(q) ||
-      ((inv.category_name as string) || '').toLowerCase().includes(q);
-    if (!hit) return false;
-  }
-  if (f.supplier && inv.supplier_id !== f.supplier) return false;
-  if (f.category && inv.category_id !== f.category) return false;
-  if (f.month && invoiceMonthKey(inv) !== f.month) return false;
-  return true;
-}
-
-function ReceivedInvoicesSection() {
+function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', initialView = 'open' }: {
+  initialSupplierId?: string; initialSearch?: string; initialView?: 'open' | 'history';
+}) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   // editInvoice = facture en cours de modification (null = creation, sinon edit)
@@ -434,24 +153,61 @@ function ReceivedInvoicesSection() {
   // (consulter les paiements existants + supprimer un paiement erroné)
   const [paymentsInvoiceId, setPaymentsInvoiceId] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
+  // scheduleInvoice = facture a echelonner en N echeances (materiel a credit) — mig 258
+  const [scheduleInvoice, setScheduleInvoice] = useState<Record<string, any> | null>(null);
+  // Mig 310 : payMethod porte désormais le mode TYPÉ (cash, cheque_barre, effet, virement…) ;
+  // payLegacy est la méthode héritée (check / traite…) qui pilote le bloc chèque/effet.
   const [payMethod, setPayMethod] = useState('cash');
+  const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [payOverride, setPayOverride] = useState<CashOverride>(null);
+  const { byCode: payModeByCode } = usePaymentModes();
+  const payModeDef = payModeByCode(payMethod);
+  const payLegacy = payModeDef?.legacy_method ?? payMethod;
   const [payAmount, setPayAmount] = useState('');
   const [payAvoir, setPayAvoir] = useState('');
+  // Vue processus : « À traiter » (non réglées, filtrables par étape) ou « Historique »
+  // (réglées / annulées, par période). Filtrage, tri et pagination côté serveur.
+  const [view, setView] = useState<'open' | 'history'>(initialView);
+  const [stage, setStage] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [supplierFilter, setSupplierFilter] = useState('');
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplierId);
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState('');
-  const [sortBy, setSortBy] = useState<string>('invoice_date');
+  // Période sur la date de facture : « Toutes » par défaut à traiter, 3 mois en historique.
+  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [page, setPage] = useState(1);
+  // 'urgency' = retards puis échéance la plus proche (défaut « À traiter »).
+  const [sortBy, setSortBy] = useState<string>(initialView === 'history' ? 'invoice_date' : 'urgency');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const { entries: paymentMethods, getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
 
-  // On charge toutes les factures reçues (sans filtre serveur) pour pouvoir
-  // afficher les compteurs par statut dans les onglets ; le filtrage par statut
-  // est appliqué côté client (cf. displayedInvoices).
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ['invoices', 'received'],
-    queryFn: () => invoicesApi.list({ invoiceType: 'received' }),
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [view, stage, statusFilter, period, customFrom, customTo, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
+
+  const boardParams = useMemo(() => {
+    const p: Record<string, string> = { view, page: String(page), pageSize: String(PAGE_SIZE), sort: sortBy, dir: sortDir };
+    if (view === 'open' && stage) p.stage = stage;
+    if (statusFilter) p.status = statusFilter;
+    if (searchTerm) p.search = searchTerm;
+    if (supplierFilter) p.supplierId = supplierFilter;
+    if (categoryFilter) p.categoryId = categoryFilter;
+    return { ...p, ...periodParams(period, customFrom, customTo) };
+  }, [view, stage, statusFilter, searchTerm, supplierFilter, categoryFilter, period, customFrom, customTo, page, sortBy, sortDir]);
+
+  const { data: board, isLoading, isFetching } = useQuery({
+    queryKey: ['invoices', 'received-board', boardParams],
+    queryFn: () => invoicesApi.receivedBoard(boardParams),
+    placeholderData: (prev) => prev,
+  });
+  const { data: pipeline } = useQuery({
+    queryKey: ['invoices', 'received-pipeline'],
+    queryFn: invoicesApi.receivedPipeline,
   });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
 
@@ -492,9 +248,13 @@ function ReceivedInvoicesSection() {
     },
   });
 
+  // Annulation motivée (mig 309) ; contrôle (blocages, rapprochement) dans une fenêtre dédiée.
+  const [cancelFor, setCancelFor] = useState<Record<string, any> | null>(null);
+  const [controlFor, setControlFor] = useState<string | null>(null);
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => invoicesApi.cancel(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
+    mutationFn: ({ id, reason }: { id: string; reason: { reasonCodeId: string; note?: string } }) => invoicesApi.cancel(id, reason),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); setCancelFor(null); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
   });
 
   /**
@@ -528,7 +288,7 @@ function ReceivedInvoicesSection() {
       queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
       notify.success('Statut mis à jour');
     },
-    onError: () => notify.error('Erreur lors du changement de statut'),
+    onError: (e) => notify.error(apiErrorMessage(e, 'Erreur lors du changement de statut')),
   });
 
   const payMutation = useMutation({
@@ -572,143 +332,111 @@ function ReceivedInvoicesSection() {
     input.click();
   };
 
-  const totalPending = (invoices as Record<string, any>[])
-    .filter(inv => inv.status !== 'paid' && inv.status !== 'cancelled')
-    .reduce((sum, inv) => sum + parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string), 0);
+  const rows = board?.rows ?? [];
+  const total = board?.total ?? 0;
 
-  const invoicesList = invoices as Record<string, any>[];
-  const totalFacture = invoicesList.reduce((s, inv) => s + parseFloat(inv.total_amount as string || '0'), 0);
-  const totalPaid = invoicesList.reduce((s, inv) => s + parseFloat(inv.paid_amount as string || '0'), 0);
-
-  // Options des dropdowns, facettées : chaque liste ne propose que les valeurs
-  // présentes dans les factures satisfaisant les AUTRES filtres actifs, avec le
-  // nombre de factures correspondantes. La valeur sélectionnée reste toujours
-  // proposée (compteur à 0) pour pouvoir la désélectionner.
-  const invoiceSuppliers = useMemo(() => {
-    const map = new Map<string, { name: string; count: number }>();
-    invoicesList.forEach(inv => {
-      if (!inv.supplier_id) return;
-      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, category: categoryFilter, month: monthFilter })) return;
-      const cur = map.get(inv.supplier_id as string);
-      if (cur) cur.count += 1;
-      else map.set(inv.supplier_id as string, { name: (inv.supplier_name as string) || '', count: 1 });
-    });
-    if (supplierFilter && !map.has(supplierFilter)) {
-      const inv = invoicesList.find(i => i.supplier_id === supplierFilter);
-      map.set(supplierFilter, { name: (inv?.supplier_name as string) || '', count: 0 });
+  const stageStats = useMemo(() => {
+    const m: Record<string, { count: number; amount: number; remaining: number; late: number }> = {};
+    for (const s of pipeline?.stages ?? []) {
+      m[s.stage] = { count: s.count, amount: parseFloat(s.amount) || 0, remaining: parseFloat(s.remaining) || 0, late: s.late_count };
     }
-    return Array.from(map.entries())
-      .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [invoicesList, statusFilter, searchTerm, categoryFilter, monthFilter, supplierFilter]);
+    return m;
+  }, [pipeline]);
+  const openStats = INV_OPEN_STAGES.reduce(
+    (acc, k) => ({ count: acc.count + (stageStats[k]?.count ?? 0), remaining: acc.remaining + (stageStats[k]?.remaining ?? 0) }),
+    { count: 0, remaining: 0 },
+  );
+  const historyCount = (stageStats.paid?.count ?? 0) + (stageStats.cancelled?.count ?? 0);
+  const lateList = pipeline?.late ?? [];
 
-  const invoiceCategories = useMemo(() => {
-    const map = new Map<string, { name: string; count: number }>();
-    invoicesList.forEach(inv => {
-      if (!inv.category_id) return;
-      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, supplier: supplierFilter, month: monthFilter })) return;
-      const cur = map.get(inv.category_id as string);
-      if (cur) cur.count += 1;
-      else map.set(inv.category_id as string, { name: (inv.category_name as string) || '', count: 1 });
-    });
-    if (categoryFilter && !map.has(categoryFilter)) {
-      const inv = invoicesList.find(i => i.category_id === categoryFilter);
-      map.set(categoryFilter, { name: (inv?.category_name as string) || '', count: 0 });
+  const supplierOptions = useMemo(
+    () => (suppliers as Record<string, any>[])
+      .map(s => ({ id: s.id as string, label: s.name as string }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [suppliers],
+  );
+  const categoryOptions = useMemo(
+    () => (pipeline?.categories ?? []).map(c => ({ id: c.id, label: c.name, detail: `${c.count}` })),
+    [pipeline],
+  );
+
+  const defaultPeriod = (v: 'open' | 'history'): PeriodKey => (v === 'history' ? '3m' : 'all');
+  const switchView = (next: 'open' | 'history') => {
+    if (next === view) return;
+    setView(next);
+    setStage('');
+    setStatusFilter('');
+    if (period !== 'custom') setPeriod(defaultPeriod(next));
+    setSortBy(next === 'history' ? 'invoice_date' : 'urgency');
+    setSortDir('desc');
+  };
+  const pickStage = (key: string) => {
+    if (key === 'paid') { switchView('history'); return; }
+    switchView('open');
+    setStage(stage === key ? '' : key);
+  };
+  const hasFilters = !!(statusFilter || searchTerm || supplierFilter || categoryFilter || period !== defaultPeriod(view));
+  const resetFilters = () => {
+    setStatusFilter(''); setSearchInput(''); setSearchTerm(''); setSupplierFilter(''); setCategoryFilter('');
+    setPeriod(defaultPeriod(view)); setCustomFrom(''); setCustomTo('');
+  };
+  const periodText = periodLabel(period, customFrom, customTo);
+
+  const openPay = (inv: Record<string, any>) => {
+    setShowPayForm(inv);
+    setPayMethod(modeFromLegacy((inv.expected_payment_mode as string) || 'cash'));
+    setPayDate(format(new Date(), 'yyyy-MM-dd'));
+    setPayOverride(null);
+    setPayAmount((parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string)).toFixed(2));
+    setPayAvoir('');
+  };
+
+  /** Prochaine action du processus pour une facture à traiter (bouton principal de la ligne). */
+  const nextAction = (inv: Record<string, any>): { label: string; run: () => void; cls: string } | null => {
+    switch (inv.stage as string) {
+      case 'draft':
+        return { label: 'Compléter', run: () => setEditInvoice(inv), cls: 'odoo-btn-primary' };
+      case 'blocked':
+        return {
+          label: inv.status === 'disputed' ? 'Voir le litige' : 'Lever le blocage',
+          run: () => setControlFor(inv.id as string), cls: 'odoo-btn-secondary',
+        };
+      case 'to_pay':
+      case 'partial':
+        return { label: inv.stage === 'partial' ? 'Payer le reste' : 'Payer', run: () => openPay(inv), cls: inv.is_late ? 'odoo-btn-danger' : 'odoo-btn-primary' };
+      default:
+        return null;
     }
-    return Array.from(map.entries())
-      .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [invoicesList, statusFilter, searchTerm, supplierFilter, monthFilter, categoryFilter]);
+  };
 
-  // Mois présents (cle YYYY-MM), du plus récent au plus ancien, facettés comme ci-dessus
-  const invoiceMonths = useMemo(() => {
-    const monthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-    const labelOf = (key: string) => {
-      const [y, m] = key.split('-');
-      return `${monthNames[parseInt(m, 10) - 1]} ${y}`;
-    };
-    const map = new Map<string, { name: string; count: number }>();
-    invoicesList.forEach(inv => {
-      const key = invoiceMonthKey(inv);
-      if (!key) return;
-      if (!matchesInvoiceFilters(inv, { status: statusFilter, search: searchTerm, supplier: supplierFilter, category: categoryFilter })) return;
-      const cur = map.get(key);
-      if (cur) cur.count += 1;
-      else map.set(key, { name: labelOf(key), count: 1 });
-    });
-    if (monthFilter && !map.has(monthFilter)) {
-      map.set(monthFilter, { name: labelOf(monthFilter), count: 0 });
-    }
-    return Array.from(map.entries())
-      .map(([id, v]) => ({ id, ...v }))
-      .sort((a, b) => b.id.localeCompare(a.id));
-  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, monthFilter]);
+  const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd/MM/yyyy') : '');
+  const daysTo = (d: string) => differenceInCalendarDays(new Date(d), new Date());
 
-  // Nombre de factures par statut, pour les badges des onglets
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    invoicesList.forEach(inv => {
-      const st = (inv.status as string) || '';
-      counts[st] = (counts[st] || 0) + 1;
-    });
-    return counts;
-  }, [invoicesList]);
-
-  // Application des filtres (statut, recherche, fournisseur, categorie) puis tri
-  const displayedInvoices = useMemo(() => {
-    const list = invoicesList.filter(inv => matchesInvoiceFilters(inv, {
-      status: statusFilter, search: searchTerm, supplier: supplierFilter, category: categoryFilter, month: monthFilter,
-    }));
-    const sorted = [...list].sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case 'invoice_number':
-          cmp = String(a.invoice_number || '').localeCompare(String(b.invoice_number || ''));
-          break;
-        case 'supplier_name':
-          cmp = String(a.supplier_name || '').localeCompare(String(b.supplier_name || ''));
-          break;
-        case 'invoice_date':
-          cmp = new Date(a.invoice_date as string).getTime() - new Date(b.invoice_date as string).getTime();
-          break;
-        case 'due_date': {
-          const ad = a.due_date ? new Date(a.due_date as string).getTime() : 0;
-          const bd = b.due_date ? new Date(b.due_date as string).getTime() : 0;
-          cmp = ad - bd;
-          break;
-        }
-        case 'category_name':
-          cmp = String(a.category_name || '').localeCompare(String(b.category_name || ''));
-          break;
-        case 'status':
-          cmp = String(a.status || '').localeCompare(String(b.status || ''));
-          break;
-        case 'total_amount':
-          cmp = parseFloat(a.total_amount as string || '0') - parseFloat(b.total_amount as string || '0');
-          break;
+  /** Sous-titre d'étape d'une ligne. */
+  const stageDetail = (inv: Record<string, any>): string => {
+    const remaining = parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string);
+    switch (inv.stage as string) {
+      case 'draft': return 'brouillon non validé';
+      case 'blocked': return inv.status === 'disputed'
+        ? 'en litige'
+        : `${inv.blocking_holds} blocage${Number(inv.blocking_holds) > 1 ? 's' : ''} de paiement`;
+      case 'to_pay': {
+        if (!inv.due_date) return 'sans échéance';
+        const d = daysTo(inv.due_date as string);
+        return d < 0 ? `échue depuis ${-d} j` : d === 0 ? 'échéance aujourd\'hui' : `échéance dans ${d} j`;
       }
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-    return sorted;
-  }, [invoicesList, statusFilter, searchTerm, supplierFilter, categoryFilter, monthFilter, sortBy, sortDir]);
-
-  // Totaux de la liste affichée (recalculés selon l'onglet de statut et les filtres)
-  const displayedTotals = useMemo(() => {
-    return displayedInvoices.reduce((acc, inv) => {
-      const total = parseFloat(inv.total_amount as string || '0');
-      const paid = parseFloat(inv.paid_amount as string || '0');
-      acc.total += total;
-      if (inv.status !== 'cancelled') acc.remaining += total - paid;
-      return acc;
-    }, { total: 0, remaining: 0 });
-  }, [displayedInvoices]);
+      case 'partial': return `reste ${n(remaining)} DH`;
+      case 'paid': return 'réglée';
+      default: return 'annulée';
+    }
+  };
 
   const toggleSort = (field: string) => {
     if (sortBy === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(field);
-      setSortDir('asc');
+      setSortDir(field === 'invoice_date' || field === 'total_amount' ? 'desc' : 'asc');
     }
   };
 
@@ -718,58 +446,74 @@ function ReceivedInvoicesSection() {
       ? <ArrowUp size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
       : <ArrowDown size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />;
   };
-
-  const hasActiveFilters = !!(searchTerm || supplierFilter || categoryFilter || monthFilter);
+  const sortableTh = (field: string, label: string, align?: 'right') => (
+    <th onClick={() => toggleSort(field)} aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      style={{ cursor: 'pointer', userSelect: 'none', textAlign: align }}>
+      {label} {sortIcon(field)}
+    </th>
+  );
+  const colCount = 8;
 
   return (
     <>
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Total facturé</div>
-          <div className="odoo-stat-card-value">{n(totalFacture)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{invoicesList.length} facture{invoicesList.length > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Payé</div>
-          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totalPaid)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">réglé</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Reste à payer</div>
-          <div className="odoo-stat-card-value" style={{ color: totalPending > 0 ? '#dc3545' : undefined }}>{n(totalPending)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">en attente</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Taux paiement</div>
-          <div className="odoo-stat-card-value">{totalFacture > 0 ? Math.round((totalPaid / totalFacture) * 100) : 0}%</div>
-          <div className="odoo-stat-card-sub">progression</div>
-        </div>
-      </div>
+      {controlFor && <InvoiceControlModal invoiceId={controlFor} onClose={() => setControlFor(null)} />}
+      {cancelFor && (
+        <ReasonCodeDialog
+          title={`Annuler la facture · ${(cancelFor.supplier_invoice_number ?? cancelFor.invoice_number) as string}`}
+          scope="cancel_invoice"
+          description="La facture reste conservée comme pièce, marquée annulée ; son écriture comptable est extournée. Impossible si un règlement existe."
+          confirmLabel="Annuler la facture"
+          danger
+          pending={cancelMutation.isPending}
+          onClose={() => setCancelFor(null)}
+          onSubmit={(reason) => cancelMutation.mutate({ id: cancelFor.id as string, reason })}
+        />
+      )}
+      {/* Échéances dépassées : seule alerte de l'écran, avec accès direct au paiement */}
+      {lateList.length > 0 && (
+        <StatusBanner
+          tone="danger"
+          icon={AlertTriangle}
+          title={`${lateList.length >= 5 ? '5+' : lateList.length} facture${lateList.length > 1 ? 's' : ''} à échéance dépassée`}
+        >
+          {lateList.slice(0, 3).map((l, i) => (
+            <span key={l.id}>
+              {i > 0 && ' · '}
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{l.invoice_number}</span>
+              {' '}{l.supplier_name} — {n(parseFloat(l.remaining))} DH, échue le {fmtDate(l.due_date)} ({l.days_late} j)
+            </span>
+          ))}
+          {lateList.length > 3 && <span> · et d'autres en tête de liste</span>}
+        </StatusBanner>
+      )}
 
-      {/* Search panel — onglets par statut + bouton nouvelle facture */}
-      <div className="odoo-search-panel">
-        {INVOICE_STATUS_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const count = tab.key === ''
-            ? invoicesList.length
-            : tab.key === 'pending'
-              ? (statusCounts['pending'] || 0) + (statusCounts['partial'] || 0)
-              : (statusCounts[tab.key] || 0);
-          const active = statusFilter === tab.key;
-          return (
-            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                fontWeight: active ? 600 : 400,
-              }}>
-              <Icon size={11} style={{ color: active ? undefined : tab.color }} /> {tab.label}
-              {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+      {/* Pipeline du processus : une carte par étape, clic = filtre */}
+      <StagePipeline
+        title="Où en sont mes factures"
+        summary={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter · ${n(openStats.remaining)} DH restant dus`}
+        stages={INV_STAGES}
+        stats={Object.fromEntries(INV_STAGES.map(s => {
+          const st = stageStats[s.key];
+          if (!st) return [s.key, undefined];
+          const amount = s.key === 'paid' ? st.amount : st.remaining;
+          return [s.key, { count: st.count, sub: `${n(amount)} DH`, late: st.late }];
+        }))}
+        isActive={k => (k === 'paid' ? view === 'history' : view === 'open' && stage === k)}
+        onPick={pickStage}
+      />
+
+      {/* Barre de vue + nouvelle facture */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`À traiter · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
+        {view === 'open' && stage && (
+          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Étape : {INV_STAGES.find(s => s.key === stage)?.label}
+            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre d'étape" style={{ display: 'inline-flex' }}>
+              <X size={11} />
             </button>
-          );
-        })}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -777,285 +521,258 @@ function ReceivedInvoicesSection() {
         </button>
       </div>
 
-      {/* Search panel — recherche texte + filtres fournisseur / categorie */}
-      <div className="odoo-search-panel">
+      {/* Recherche + filtres */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° facture, fournisseur, BC ou catégorie..."
-          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
-        {(invoiceSuppliers.length > 1 || supplierFilter) && (
-          <>
-            <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
-            <SearchSelect
-              options={invoiceSuppliers.map(s => ({
-                id: s.id,
-                label: s.name,
-                detail: `${s.count} facture${s.count > 1 ? 's' : ''}`,
-              }))}
-              value={supplierFilter}
-              onChange={setSupplierFilter}
-              placeholder="Tous les fournisseurs"
-            />
-          </>
-        )}
-        {(invoiceCategories.length > 1 || categoryFilter) && (
-          <SearchSelect
-            options={invoiceCategories.map(c => ({ id: c.id, label: c.name, detail: `${c.count}` }))}
-            value={categoryFilter}
-            onChange={setCategoryFilter}
-            placeholder="Toutes les catégories"
-          />
-        )}
-        {(invoiceMonths.length > 1 || monthFilter) && (
-          <SearchSelect
-            options={invoiceMonths.map(m => ({ id: m.id, label: m.name, detail: `${m.count}` }))}
-            value={monthFilter}
-            onChange={setMonthFilter}
-            placeholder="Tous les mois"
-          />
-        )}
-        {hasActiveFilters && (
-          <button onClick={() => { setSearchTerm(''); setSupplierFilter(''); setCategoryFilter(''); setMonthFilter(''); }}
-            className="odoo-filter-dropdown"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-            <X size={11} /> Effacer
+        <input type="text" placeholder="Rechercher par N° facture, fournisseur, BC ou catégorie..." aria-label="Rechercher une facture"
+          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
+          style={{ flex: '1 1 220px', minWidth: 0 }} />
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={INV_VIEW_STATUSES[view]} />
+        <PeriodFilter label="Facturé" title="Filtre sur la date de facture"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <SearchSelect
+          options={supplierOptions}
+          value={supplierFilter}
+          onChange={setSupplierFilter}
+          placeholder="Tous les fournisseurs"
+        />
+        <SearchSelect
+          options={categoryOptions}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          placeholder="Toutes les catégories"
+        />
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer les filtres
           </button>
         )}
       </div>
 
-      {/* Table */}
+      {/* Liste */}
       {isLoading ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
           <p style={{ fontSize: '0.8125rem' }}>Chargement des factures...</p>
         </div>
-      ) : displayedInvoices.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <FileText size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>
-            {(hasActiveFilters || statusFilter) ? 'Aucune facture ne correspond à ces filtres' : 'Aucune facture reçue'}
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+            {view === 'open' ? (stage ? 'Aucune facture à cette étape' : 'Aucune facture à traiter') : 'Aucune facture sur cette période'}
           </p>
+          {hasFilters && (
+            <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
+              Aucun résultat pour ces filtres —{' '}
+              <button type="button" onClick={resetFilters} style={{ textDecoration: 'underline', color: 'inherit' }}>les effacer</button>
+            </p>
+          )}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
-                <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  N° Facture {sortIcon('invoice_number')}
-                </th>
-                <th onClick={() => toggleSort('supplier_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Fournisseur {sortIcon('supplier_name')}
-                </th>
-                <th onClick={() => toggleSort('invoice_date')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Date {sortIcon('invoice_date')}
-                </th>
-                <th onClick={() => toggleSort('due_date')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Échéance / Mode {sortIcon('due_date')}
-                </th>
-                <th>BC</th>
-                <th onClick={() => toggleSort('category_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Catégorie {sortIcon('category_name')}
-                </th>
-                <th onClick={() => toggleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Statut {sortIcon('status')}
-                </th>
-                <th onClick={() => toggleSort('total_amount')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                  Montant {sortIcon('total_amount')}
-                </th>
+                {sortableTh('invoice_number', 'N° Facture')}
+                {sortableTh('supplier_name', 'Fournisseur')}
+                {sortableTh('invoice_date', 'Date')}
+                {sortableTh('due_date', 'Échéance / Mode')}
+                <th style={{ minWidth: 190 }}>Étape</th>
+                {sortableTh('total_amount', 'Montant', 'right')}
+                <th style={{ textAlign: 'right' }}>{view === 'open' ? 'Prochaine action' : ''}</th>
                 <th style={{ textAlign: 'right', width: 160 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {displayedInvoices.map(inv => {
+              {rows.map((inv, i) => {
                 const total = parseFloat(inv.total_amount as string);
                 const paid = parseFloat(inv.paid_amount as string);
                 const remaining = total - paid;
                 const hasAttachment = !!(inv.attachment_url as string);
-                const isFinalStatus = inv.status === 'paid' || inv.status === 'cancelled';
+                const invStage = inv.stage as string;
+                const stageIdx = INV_STAGES.findIndex(s => s.key === invStage);
                 const dueDateStr = inv.due_date as string | null;
-                let daysUntilDue: number | null = null;
-                let dueAlert = false;
-                if (dueDateStr && !isFinalStatus) {
-                  const today = new Date(); today.setHours(0, 0, 0, 0);
-                  const d = new Date(dueDateStr); d.setHours(0, 0, 0, 0);
-                  daysUntilDue = Math.round((d.getTime() - today.getTime()) / 86400000);
-                  dueAlert = daysUntilDue <= 7;
-                }
                 const expectedMode = (inv.expected_payment_mode as string) || '';
-                const statusTag = inv.status === 'paid' ? 'odoo-tag-green'
-                  : inv.status === 'partial' ? 'odoo-tag-blue'
-                  : inv.status === 'overdue' ? 'odoo-tag-red'
-                  : inv.status === 'cancelled' ? 'odoo-tag-grey'
-                  : inv.status === 'disputed' ? 'odoo-tag-orange'
-                  : 'odoo-tag-yellow';
-                const dotClass = inv.status === 'paid' ? 'ok'
-                  : inv.status === 'overdue' || inv.status === 'disputed' ? 'danger'
-                  : inv.status === 'cancelled' ? 'neutral'
-                  : 'warning';
+                const action = view === 'open' ? nextAction(inv) : null;
+                const toCheck = Number(inv.open_holds) > Number(inv.blocking_holds);
+                // Historique trié par date : un intertitre par mois.
+                const month = inv.invoice_date ? format(new Date(inv.invoice_date as string), 'MMMM yyyy', { locale: fr }) : '';
+                const prevMonth = i > 0 && rows[i - 1].invoice_date ? format(new Date(rows[i - 1].invoice_date as string), 'MMMM yyyy', { locale: fr }) : null;
                 return (
-                  <tr key={inv.id as string}>
-                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
-                        {hasAttachment && <Paperclip size={10} style={{ color: 'var(--theme-accent)' }} />}
-                        {dueAlert && (
-                          <span title={daysUntilDue !== null && daysUntilDue < 0
-                            ? `Échéance dépassée de ${Math.abs(daysUntilDue)} jour(s)`
-                            : `Échéance dans ${daysUntilDue} jour(s)`}
-                            style={{ display: 'inline-flex', alignItems: 'center' }}>
-                            <AlertTriangle size={11} style={{ color: '#dc3545' }} />
-                          </span>
+                  <Fragment key={inv.id as string}>
+                    {view === 'history' && sortBy === 'invoice_date' && month !== prevMonth && (
+                      <tr>
+                        <td colSpan={colCount} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
+                          {month}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
+                          {hasAttachment && <Paperclip size={10} style={{ color: 'var(--theme-accent)' }} aria-label="Pièce jointe" />}
+                        </span>
+                        {inv.purchase_order_number ? (
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontFamily: 'ui-monospace, monospace' }}>
+                            {inv.purchase_order_number as string}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{inv.supplier_name as string}</div>
+                        {inv.category_name ? (
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{inv.category_name as string}</div>
+                        ) : null}
+                      </td>
+                      <td style={{ color: 'var(--theme-text-muted)' }}>{fmtDate(inv.invoice_date as string)}</td>
+                      <td style={{ color: inv.is_late ? '#dc3545' : 'var(--theme-text-muted)' }}>
+                        {dueDateStr ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
+                            <span style={{ fontWeight: inv.is_late ? 600 : 400 }}>{fmtDate(dueDateStr)}</span>
+                            {expectedMode && <span style={{ fontSize: '0.6875rem' }}>{getPaymentLabel(expectedMode)}</span>}
+                          </div>
+                        ) : expectedMode ? (
+                          <span style={{ fontSize: '0.6875rem' }}>{getPaymentLabel(expectedMode)}</span>
+                        ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      </td>
+                      <td>
+                        {stageIdx >= 0 && (
+                          <StageProgress count={INV_STAGES.length} current={stageIdx} done={invStage === 'paid'} late={!!inv.is_late} />
                         )}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>{inv.supplier_name as string}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(inv.invoice_date as string), 'dd/MM/yyyy')}</td>
-                    <td style={{ color: dueAlert ? '#dc3545' : 'var(--theme-text-muted)' }}>
-                      {dueDateStr ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2 }}>
-                          <span style={{ fontWeight: dueAlert ? 600 : 400 }}>
-                            {format(new Date(dueDateStr), 'dd/MM/yyyy')}
-                          </span>
-                          {expectedMode && (
-                            <span style={{ fontSize: '0.6875rem' }}>
-                              {getPaymentLabel(expectedMode)}
-                            </span>
+                        <span style={{ fontSize: '0.75rem' }}>
+                          {invStage === 'cancelled'
+                            ? <span className="odoo-tag odoo-tag-grey">Annulée</span>
+                            : <strong style={{ fontWeight: 600 }}>{INV_STAGES[stageIdx]?.label}</strong>}
+                          <span style={{ color: inv.is_late ? '#dc3545' : 'var(--odoo-text-muted)' }}> · {stageDetail(inv)}</span>
+                        </span>
+                        {invStage !== 'cancelled' && toCheck && (
+                          <button type="button" onClick={() => setControlFor(inv.id as string)}
+                            className="odoo-tag odoo-tag-orange" style={{ border: 'none', cursor: 'pointer', marginLeft: 6 }}
+                            title="Points à régulariser : voir le contrôle">
+                            À vérifier
+                          </button>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 700 }}>{n(total)}</span>
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                        {remaining > 0 && invStage !== 'cancelled' && paid > 0 && (
+                          <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(remaining)}</div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {action && (
+                          <button type="button" onClick={action.run} className={action.cls}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {(invStage === 'to_pay' || invStage === 'partial') && <Banknote size={12} />}
+                            {action.label}
+                          </button>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                          {hasAttachment ? (
+                            <>
+                              <a href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer"
+                                className="odoo-pager-btn" title="Voir la pièce jointe" aria-label="Voir la pièce jointe">
+                                <Eye size={13} />
+                              </a>
+                              <button onClick={() => removeAttachMutation.mutate(inv.id as string)}
+                                className="odoo-pager-btn" title="Supprimer la pièce jointe" aria-label="Supprimer la pièce jointe" style={{ color: '#dc3545' }}>
+                                <Trash2 size={13} />
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => handleAttachFile(inv.id as string)} className="odoo-pager-btn" title="Joindre" aria-label="Joindre un fichier">
+                              <Upload size={13} />
+                            </button>
                           )}
-                        </div>
-                      ) : expectedMode ? (
-                        <span style={{ fontSize: '0.6875rem' }}>{getPaymentLabel(expectedMode)}</span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                    </td>
-                    <td>
-                      {inv.purchase_order_number ? (
-                        <span className="odoo-tag odoo-tag-blue" style={{ fontFamily: 'ui-monospace, monospace' }}>{inv.purchase_order_number as string}</span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                    </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(inv.category_name as string) || '—'}</td>
-                    <td>
-                      {inv.status === 'cancelled' ? (
-                        <span className={`odoo-tag ${statusTag}`}>{INVOICE_STATUS_LABELS[inv.status as string]}</span>
-                      ) : (
-                        <select
-                          value={inv.status as string}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            if (next === inv.status) return;
-                            if (confirm(`Mettre à jour le statut de la facture ${inv.invoice_number} vers « ${INVOICE_STATUS_LABELS[next]} » ?`)) {
-                              statusMutation.mutate({ id: inv.id as string, status: next });
-                            }
-                          }}
-                          disabled={statusMutation.isPending}
-                          className={`odoo-tag ${statusTag}`}
-                          style={{ border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: '0.6875rem' }}>
-                          {MANUAL_STATUS_OPTIONS.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                          {inv.status === 'overdue' && <option value="overdue">En retard</option>}
-                        </select>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 700 }}>{n(total)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                      {remaining > 0 && inv.status !== 'cancelled' && (
-                        <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(remaining)}</div>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        {hasAttachment ? (
-                          <>
-                            <a href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer"
-                              className="odoo-pager-btn" title="Voir la pièce jointe">
-                              <Eye size={13} />
-                            </a>
-                            <button onClick={() => removeAttachMutation.mutate(inv.id as string)}
-                              className="odoo-pager-btn" title="Supprimer la pièce jointe" style={{ color: '#dc3545' }}>
+                          {/* Échelonner : matériel acheté à crédit → N échéances (Compta → Dettes → Échéancier). */}
+                          {invStage !== 'paid' && invStage !== 'cancelled' && remaining > 0 && (
+                            <button onClick={() => setScheduleInvoice(inv)}
+                              className="odoo-pager-btn" title="Échelonner en plusieurs échéances" aria-label="Échelonner">
+                              <CalendarClock size={13} />
+                            </button>
+                          )}
+                          {/* Modifier : disponible même après paiement (ajustement comptable) */}
+                          <button onClick={() => setEditInvoice(inv)}
+                            className="odoo-pager-btn" title="Modifier la facture (en-tête)" aria-label="Modifier la facture">
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={() => setEditLinesInvoiceId(inv.id as string)}
+                            className="odoo-pager-btn" title="Éditer les lignes (corrige qté/prix)" aria-label="Éditer les lignes">
+                            <ClipboardList size={13} />
+                          </button>
+                          {paid > 0 && (
+                            <button onClick={() => setPaymentsInvoiceId(inv.id as string)}
+                              className="odoo-pager-btn" title="Voir / gérer les paiements" aria-label="Voir les paiements">
+                              <Coins size={13} />
+                            </button>
+                          )}
+                          {/* Litige (mig 309) : seul statut posé à la main, le règlement découle des paiements. */}
+                          {invStage !== 'cancelled' && (
+                            <button
+                              onClick={() => {
+                                const next = inv.status === 'disputed' ? 'pending' : 'disputed';
+                                const verb = next === 'disputed' ? 'Mettre en litige' : 'Lever le litige de';
+                                if (confirm(`${verb} la facture ${inv.invoice_number} ?`)) statusMutation.mutate({ id: inv.id as string, status: next });
+                              }}
+                              disabled={statusMutation.isPending}
+                              className="odoo-pager-btn"
+                              title={inv.status === 'disputed' ? 'Lever le litige' : 'Mettre en litige'}
+                              aria-label={inv.status === 'disputed' ? 'Lever le litige' : 'Mettre en litige'}
+                              style={inv.status === 'disputed' ? { color: '#b85d1a' } : undefined}>
+                              <Scale size={13} />
+                            </button>
+                          )}
+                          {invStage !== 'cancelled' && invStage !== 'paid' && (
+                            <button onClick={() => setCancelFor(inv)}
+                              className="odoo-pager-btn" title="Annuler la facture" aria-label="Annuler la facture" style={{ color: '#dc3545' }}>
+                              <X size={13} />
+                            </button>
+                          )}
+                          <button onClick={() => setControlFor(inv.id as string)} className="odoo-pager-btn"
+                            title="Contrôle : blocages, mentions légales, rapprochement" aria-label="Contrôle de la facture">
+                            {Number(inv.blocking_holds) > 0 ? <ShieldAlert size={13} style={{ color: '#dc3545' }} /> : <ShieldCheck size={13} />}
+                          </button>
+                          {/* Suppression : brouillon seulement (mig 309) ; une facture validée s'annule avec un motif. */}
+                          {inv.validation_status === 'draft' && (
+                            <button onClick={() => handleDelete(inv)} disabled={deleteMutation.isPending}
+                              className="odoo-pager-btn" title="Supprimer le brouillon" aria-label="Supprimer le brouillon" style={{ color: '#b71c1c' }}>
                               <Trash2 size={13} />
                             </button>
-                          </>
-                        ) : (
-                          <button onClick={() => handleAttachFile(inv.id as string)} className="odoo-pager-btn" title="Joindre">
-                            <Upload size={13} />
-                          </button>
-                        )}
-                        {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                          <button onClick={() => {
-                            setShowPayForm(inv);
-                            const preMode = (inv.expected_payment_mode as string) || 'cash';
-                            setPayMethod(preMode);
-                            setPayAmount((parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string)).toFixed(2));
-                            setPayAvoir('');
-                          }}
-                            className="odoo-btn-primary"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
-                            <Banknote size={11} /> Payer
-                          </button>
-                        )}
-                        {/* Modifier : disponible meme apres paiement (ajustement comptable) */}
-                        <button
-                          onClick={() => setEditInvoice(inv)}
-                          className="odoo-pager-btn" title="Modifier la facture (en-tete)">
-                          <Pencil size={13} />
-                        </button>
-                        {/* Editer lignes : qty x prix par ingredient, recalcule le total */}
-                        <button
-                          onClick={() => setEditLinesInvoiceId(inv.id as string)}
-                          className="odoo-pager-btn" title="Editer les lignes (corrige qty/prix)">
-                          <ClipboardList size={13} />
-                        </button>
-                        {/* Voir/gerer les paiements (annuler un paiement errone) — visible
-                            seulement s'il y a au moins un paiement enregistre */}
-                        {parseFloat((inv.paid_amount as string) || '0') > 0 && (
-                          <button
-                            onClick={() => setPaymentsInvoiceId(inv.id as string)}
-                            className="odoo-pager-btn" title="Voir / gerer les paiements">
-                            <Coins size={13} />
-                          </button>
-                        )}
-                        {inv.status !== 'cancelled' && inv.status !== 'paid' && (
-                          <button
-                            onClick={() => {
-                              if (confirm(`Annuler la facture « ${inv.invoice_number as string} » de ${inv.supplier_name as string} ?\n\nElle sera marquée « Annulée » mais reste visible dans l'historique.`)) {
-                                cancelMutation.mutate(inv.id as string);
-                              }
-                            }}
-                            className="odoo-pager-btn" title="Annuler la facture" style={{ color: '#dc3545' }}>
-                            <X size={13} />
-                          </button>
-                        )}
-                        {/* Supprimer DEFINITIVEMENT — distinct de "Annuler" qui marque seulement */}
-                        <button
-                          onClick={() => handleDelete(inv)}
-                          disabled={deleteMutation.isPending}
-                          className="odoo-pager-btn" title="Supprimer definitivement" style={{ color: '#b71c1c' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
                 );
               })}
             </tbody>
             <tfoot>
               <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td colSpan={8} style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
-                  Total — {displayedInvoices.length} facture{displayedInvoices.length > 1 ? 's' : ''}
+                <td colSpan={5} style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
+                  Total du filtre — {total} facture{total > 1 ? 's' : ''}
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  <span style={{ fontWeight: 700 }}>{n(displayedTotals.total)}</span>
+                  <span style={{ fontWeight: 700 }}>{n(board?.sumTotal ?? 0)}</span>
                   <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                  {displayedTotals.remaining > 0 && (
-                    <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(displayedTotals.remaining)}</div>
+                  {(board?.sumRemaining ?? 0) > 0.005 && (
+                    <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(board?.sumRemaining ?? 0)}</div>
                   )}
                 </td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>
+          <Pager page={page} total={total} onPage={setPage}
+            note={view === 'open'
+              ? 'Seules les factures non réglées sont chargées ici — les autres sont dans l\'Historique.'
+              : `Réglées et annulées · ${periodText}`} />
         </div>
       )}
 
@@ -1099,6 +816,21 @@ function ReceivedInvoicesSection() {
         />
       )}
 
+      {/* Echelonner une facture en N echeances (mig 258) */}
+      {scheduleInvoice && (
+        <InvoiceScheduleModal
+          invoice={scheduleInvoice}
+          onClose={() => setScheduleInvoice(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['payment-schedules'] });
+            queryClient.invalidateQueries({ queryKey: ['invoice-debts'] });
+            queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+            setScheduleInvoice(null);
+          }}
+        />
+      )}
+
       {/* Pay invoice modal */}
       {showPayForm && (
         <ModalBackdrop onClose={() => setShowPayForm(null)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1124,7 +856,10 @@ function ReceivedInvoicesSection() {
               fd.supplierId = showPayForm.supplier_id;
               fd.categoryId = showPayForm.category_id || undefined;
               fd.description = `Paiement facture ${showPayForm.invoice_number}`;
-              if (payMethod !== 'check' && payMethod !== 'traite') {
+              fd.paymentMode = payMethod;
+              fd.paymentMethod = payLegacy;
+              if (payOverride) fd.cashOverride = payOverride;
+              if (payLegacy !== 'check' && payLegacy !== 'traite') {
                 fd.checkNumber = undefined; fd.checkDate = undefined; fd.avoirAmount = undefined;
               } else {
                 const av = parseFloat(fd.avoirAmount as string) || 0;
@@ -1134,30 +869,27 @@ function ReceivedInvoicesSection() {
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-                    {(payMethod === 'check' || payMethod === 'traite') && parseFloat(payAvoir) > 0
-                      ? `Montant ${payMethod === 'traite' ? 'traite' : 'chèque'} *` : 'Montant *'}
+                    {(payLegacy === 'check' || payLegacy === 'traite') && parseFloat(payAvoir) > 0
+                      ? `Montant ${payLegacy === 'traite' ? 'traite' : 'chèque'} *` : 'Montant *'}
                   </label>
                   <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required
                     value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Méthode *</label>
-                    <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-                      {paymentMethods.map(pm => (
-                        <option key={pm.code} value={pm.code}>{pm.label}</option>
-                      ))}
-                    </select></div>
+                  <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Mode de règlement *</label>
+                    <PaymentModeSelect value={payMethod} onChange={setPayMethod} /></div>
                   <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date *</label>
-                    <input name="paymentDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={format(new Date(), 'yyyy-MM-dd')} required /></div>
+                    <input name="paymentDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" value={payDate} onChange={e => setPayDate(e.target.value)} required /></div>
                 </div>
-                {(payMethod === 'check' || payMethod === 'traite') && (
+                <CashLimitGauge supplierId={showPayForm.supplier_id as string} date={payDate}
+                  amount={parseFloat(payAmount) || 0} modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
+                {(payLegacy === 'check' || payLegacy === 'traite') && (
                   <div className="odoo-alert" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <strong style={{ fontSize: '0.75rem' }}>Détails {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</strong>
+                    <strong style={{ fontSize: '0.75rem' }}>Détails {payLegacy === 'traite' ? 'de la traite' : 'du chèque'}</strong>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° {payMethod === 'traite' ? 'Traite' : 'Chèque'} *</label>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>N° {payLegacy === 'traite' ? 'Traite' : 'Chèque'} *</label>
                         <input name="checkNumber" defaultValue={(showPayForm.check_number as string) || ''}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required /></div>
-                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payMethod === 'traite' ? 'de la traite' : 'du chèque'}</label>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payLegacy === 'traite' ? 'de la traite' : 'du chèque'}</label>
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={(showPayForm.due_date as string)?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
@@ -1173,7 +905,7 @@ function ReceivedInvoicesSection() {
                       {parseFloat(payAvoir) > 0 && (
                         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                           <p style={{ fontSize: '0.6875rem', color: '#2563eb', fontWeight: 600, margin: 0, paddingBottom: 6 }}>
-                            Avoir {n(parseFloat(payAvoir))} + {payMethod === 'traite' ? 'traite' : 'chèque'} {n(parseFloat(payAmount))} = {n(parseFloat(payAvoir) + parseFloat(payAmount))} DH
+                            Avoir {n(parseFloat(payAvoir))} + {payLegacy === 'traite' ? 'traite' : 'chèque'} {n(parseFloat(payAmount))} = {n(parseFloat(payAvoir) + parseFloat(payAmount))} DH
                           </p>
                         </div>
                       )}
@@ -1187,8 +919,16 @@ function ReceivedInvoicesSection() {
                     </div>
                   </div>
                 )}
-                <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Référence / Notes</label>
-                  <input name="reference" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Optionnel" /></div>
+                {(() => {
+                  // Virement : la référence bancaire est obligatoire (mig 310) ; chèque/effet : c'est le N° ci-dessus.
+                  const refRequired = !!payModeDef?.requires_reference && payLegacy !== 'check' && payLegacy !== 'traite';
+                  return (
+                    <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+                        {refRequired ? 'Référence du virement *' : 'Référence / Notes'}</label>
+                      <input name="reference" required={refRequired} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        placeholder={refRequired ? 'N° d\'ordre ou référence bancaire' : 'Optionnel'} /></div>
+                  );
+                })()}
               </div>
               <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" onClick={() => setShowPayForm(null)} className="odoo-btn-secondary">Annuler</button>
@@ -1492,6 +1232,151 @@ type InvoiceLine = {
 // Taux TVA usuels au Maroc. '' = pas de TVA explicite sur la ligne.
 const TVA_RATES = ['0', '7', '10', '14', '20'];
 
+/**
+ * Echelonnement d'une facture recue (migration 258).
+ *
+ * Cas d'usage : four, frigo, vitrine achetes a credit — la facture existe, mais
+ * elle se regle en N mensualites. On decoupe le RESTE A PAYER en N echeances
+ * datees, qui apparaissent ensuite dans Comptabilite -> Dettes -> Echeancier.
+ *
+ * Le solde continue d'etre porte par la facture (paid_amount) : les echeances
+ * sont un calendrier, pas une seconde dette. Regler une echeance cree un
+ * paiement normal rattache a la facture.
+ */
+function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
+  invoice: Record<string, any>;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { entries: paymentMethods } = useReferentiel('payment_methods');
+  const reste = (parseFloat(invoice.total_amount as string) || 0)
+    - (parseFloat(invoice.paid_amount as string) || 0);
+
+  const [installments, setInstallments] = useState('3');
+  const [intervalMonths, setIntervalMonths] = useState('1');
+  const [firstDueDate, setFirstDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [mode, setMode] = useState((invoice.expected_payment_mode as string) || '');
+
+  // Apercu des echeances : meme repartition que le serveur (dernier terme ajuste).
+  const nbEch = Math.max(1, Math.floor(parseFloat(installments) || 1));
+  const pas = Math.max(1, Math.floor(parseFloat(intervalMonths) || 1));
+  const apercu = useMemo(() => {
+    const base = Math.floor((reste / nbEch) * 100) / 100;
+    const dernier = Math.round((reste - base * (nbEch - 1)) * 100) / 100;
+    const [y, m, d] = firstDueDate.split('-').map(Number);
+    if (!y || !m || !d) return [];
+    return Array.from({ length: nbEch }, (_, k) => {
+      const cible = new Date(Date.UTC(y, m - 1 + k * pas, 1));
+      const dernierJour = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+      const jour = Math.min(d, dernierJour);
+      return {
+        date: `${String(jour).padStart(2, '0')}/${String(cible.getUTCMonth() + 1).padStart(2, '0')}/${cible.getUTCFullYear()}`,
+        montant: k === nbEch - 1 ? dernier : base,
+      };
+    });
+  }, [reste, nbEch, pas, firstDueDate]);
+
+  const create = useMutation({
+    mutationFn: () => invoicesApi.createSchedule(invoice.id as string, {
+      installments: nbEch,
+      firstDueDate,
+      intervalMonths: pas,
+      expectedPaymentMode: mode || null,
+    }),
+    onSuccess: () => { notify.success(`Échéancier créé : ${nbEch} échéance${nbEch > 1 ? 's' : ''}`); onSuccess(); },
+    onError: (err: unknown) => {
+      const msg = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
+        : null;
+      notify.error(msg || 'Erreur lors de la création de l\'échéancier');
+    },
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 flex items-center justify-between bg-gradient-to-r from-violet-500 to-purple-600">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <CalendarClock size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Échelonner la facture</h2>
+              <p className="text-xs text-white/80">
+                {invoice.invoice_number as string} · {(invoice.supplier_name as string) || 'Fournisseur'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
+            <X size={18} className="text-white" />
+          </button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }} className="p-5 space-y-4">
+          <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
+            <span>Reste à échelonner</span>
+            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{n(reste)} DH</strong>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nombre d'échéances *</label>
+              <input type="number" min="1" max="120" value={installments}
+                onChange={(e) => setInstallments(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Tous les (mois)</label>
+              <input type="number" min="1" max="12" value={intervalMonths}
+                onChange={(e) => setIntervalMonths(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">1ère échéance *</label>
+              <input type="date" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Règlement prévu</label>
+              <select value={mode} onChange={(e) => setMode(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+                <option value="">Non précisé</option>
+                {paymentMethods.map((m: { code: string; label: string }) => (
+                  <option key={m.code} value={m.code}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {apercu.length > 0 && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600">Aperçu</div>
+              <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                {apercu.map((e, i) => (
+                  <div key={i} className="px-3 py-1.5 flex justify-between text-xs border-t border-gray-100">
+                    <span className="text-gray-600">Échéance {i + 1} · {e.date}</span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(e.montant)} DH</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            Les échéances apparaîtront dans <strong>Comptabilité → Dettes → Échéancier</strong>.
+            Le reste à payer de la facture ne change pas : l'échéancier n'est qu'un calendrier.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" style={{ flex: 1 }}>Annuler</button>
+            <button type="submit" disabled={create.isPending} className="odoo-btn-primary" style={{ flex: 1 }}>
+              {create.isPending ? 'Création...' : 'Créer l\'échéancier'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
 function InvoiceLinesEditorModal({
   invoiceId, onClose, onSuccess,
 }: {
@@ -1507,6 +1392,13 @@ function InvoiceLinesEditorModal({
     queryKey: ['ingredients'],
     queryFn: ingredientsApi.list,
   });
+  // Taux de TVA en vigueur à la date de la facture (codes datés du pack pays, mig 309).
+  const { data: taxCodes = [] } = useQuery<Array<{ code: string; label: string; rate: string }>>({
+    queryKey: ['tax-codes', invoice?.invoice_date],
+    queryFn: () => invoicesApi.taxCodes(invoice?.invoice_date ? String(invoice.invoice_date).slice(0, 10) : undefined),
+    enabled: !!invoice,
+  });
+  const tvaRates = Array.from(new Set((taxCodes.length ? taxCodes.map(t => String(Number(t.rate))) : TVA_RATES))).sort((a, b) => Number(a) - Number(b));
 
   const [lines, setLines] = useState<InvoiceLine[]>([]);
   const [initialized, setInitialized] = useState(false);
@@ -1574,7 +1466,7 @@ function InvoiceLinesEditorModal({
   const taxAmount = hasAnyRate ? perLineTva : headerTax;
   const paidAmount = parseFloat((invoice?.paid_amount as string) || '0');
   const newTtc = newTotal + taxAmount;
-  const ttcBelowPaid = paidAmount > 0 && newTtc < paidAmount;
+  const ttcBelowPaid = lines.length > 0 && paidAmount > 0 && newTtc < paidAmount - 0.005;
 
   const updateLine = (idx: number, patch: Partial<InvoiceLine>) => {
     setLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
@@ -1585,6 +1477,50 @@ function InvoiceLinesEditorModal({
   const addLine = () => {
     setLines(prev => [...prev, { ingredientId: null, description: '', quantity: '1', unitPrice: '0', tvaRate: '' }]);
   };
+
+  // Facture saisie au total (aucune ligne en base) : on l'explique et on propose de partir
+  // des lignes reçues du BC lié ou du montant HT global, au lieu d'un tableau vide à 0 DH.
+  const savedItemsCount = ((invoice?.items as unknown[]) || []).length;
+  const savedWithoutLines = !!invoice && savedItemsCount === 0;
+  const currentHt = parseFloat((invoice?.amount as string) || '0');
+  const currentTtc = parseFloat((invoice?.total_amount as string) || '0');
+  const poId = (invoice?.purchase_order_id as string) || null;
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const prefillFromPo = async () => {
+    if (!poId) return;
+    setPrefillLoading(true);
+    try {
+      const po = await purchaseOrdersApi.getById(poId);
+      const items = ((po?.items as Record<string, any>[]) || []);
+      const anyDelivered = items.some(it => parseFloat(it.quantity_delivered) > 0);
+      const next = items
+        .map(it => {
+          const q = parseFloat(anyDelivered ? it.quantity_delivered : it.quantity_ordered) || 0;
+          return {
+            ingredientId: (it.ingredient_id as string) || null,
+            description: (it.ingredient_name as string) || '',
+            quantity: String(q),
+            unitPrice: String(parseFloat(it.unit_price) || 0),
+            tvaRate: it.tva_rate != null && it.tva_rate !== '' ? String(parseFloat(it.tva_rate)) : '',
+          };
+        })
+        .filter(l => parseFloat(l.quantity) > 0);
+      if (next.length === 0) { notify.error('Le BC lié n\'a aucune ligne reçue à reprendre'); return; }
+      setLines(next);
+    } catch (e) {
+      notify.error(apiErrorMessage(e, 'Impossible de charger le BC lié'));
+    } finally {
+      setPrefillLoading(false);
+    }
+  };
+  const prefillFromTotal = () => setLines([{
+    ingredientId: null,
+    description: (invoice?.description as string) || 'Montant global de la facture',
+    quantity: '1',
+    unitPrice: currentHt.toFixed(2),
+    tvaRate: '',
+  }]);
+  const htGap = newTotal - currentHt;
 
   const handleSave = () => {
     const payload = lines
@@ -1632,6 +1568,31 @@ function InvoiceLinesEditorModal({
             </div>
           ) : (
             <>
+              {savedWithoutLines && (
+                <div style={{ marginBottom: 12 }}>
+                  <StatusBanner tone="info" icon={FileText}
+                    title="Facture saisie au total, sans détail"
+                    actions={lines.length === 0 ? (
+                      <>
+                        {poId && (
+                          <button type="button" onClick={prefillFromPo} disabled={prefillLoading} className="odoo-btn-primary"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {prefillLoading ? <Loader2 size={12} className="animate-spin" /> : <ClipboardList size={12} />}
+                            Reprendre les lignes du BC {(invoice?.purchase_order_number as string) || ''}
+                          </button>
+                        )}
+                        <button type="button" onClick={prefillFromTotal} className={poId ? 'odoo-btn-secondary' : 'odoo-btn-primary'}>
+                          Partir du montant global
+                        </button>
+                      </>
+                    ) : undefined}>
+                    Montant enregistré : <strong>{n(currentHt)} DH HT</strong> · TVA {n(headerTax)} DH · <strong>{n(currentTtc)} DH TTC</strong>
+                    {paidAmount > 0 && <> · déjà payé {n(paidAmount)} DH</>}.
+                    {' '}Détaillez-la pour qu'elle entre dans le rapprochement avec les réceptions
+                    {poId ? ' : partez des lignes reçues du BC, puis ajustez quantités et prix selon la facture papier.' : '.'}
+                  </StatusBanner>
+                </div>
+              )}
               <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
                 Edite, ajoute ou supprime des lignes. Le <strong>total HT</strong> est recalcule comme somme des sous-totaux. Choisis un <strong>taux de TVA par ligne</strong> (les articles peuvent avoir des taux differents) : la TVA totale devient la somme des TVA par ligne. Laisse le taux vide (—) pour conserver la TVA d'en-tete actuelle.
               </div>
@@ -1649,6 +1610,13 @@ function InvoiceLinesEditorModal({
                   </tr>
                 </thead>
                 <tbody>
+                  {lines.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '18px 6px', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+                        Aucune ligne pour l'instant{savedWithoutLines ? ' — utilisez un des boutons ci-dessus ou ajoutez les lignes une à une.' : '.'}
+                      </td>
+                    </tr>
+                  )}
                   {lines.map((line, idx) => {
                     const q = parseFloat(line.quantity) || 0;
                     const p = parseFloat(line.unitPrice) || 0;
@@ -1691,8 +1659,8 @@ function InvoiceLinesEditorModal({
                             onChange={e => updateLine(idx, { tvaRate: e.target.value })}
                             style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', textAlign: 'right', background: 'white' }}>
                             <option value="">—</option>
-                            {TVA_RATES.map(r => (
-                              <option key={r} value={r}>{r} %</option>
+                            {tvaRates.map(r => (
+                              <option key={r} value={r}>{r} %{r === '0' ? ' (exonéré / hors champ)' : ''}</option>
                             ))}
                           </select>
                         </td>
@@ -1718,9 +1686,19 @@ function InvoiceLinesEditorModal({
 
               <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--theme-bg-page)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>Nouveau total HT</span>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>Montant HT enregistré</span>
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(currentHt)} DH</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--theme-text-muted)' }}>Nouveau total HT (somme des lignes)</span>
                   <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(newTotal)} DH</strong>
                 </div>
+                {lines.length > 0 && Math.abs(htGap) >= 0.01 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#b85d1a' }}>
+                    <span>Écart avec le montant enregistré</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{htGap > 0 ? '+' : ''}{n(htGap)} DH</span>
+                  </div>
+                )}
                 {hasAnyRate ? (
                   <>
                     {[...tvaByRate.entries()].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).map(([rate, amt]) => (
@@ -1817,23 +1795,30 @@ function InvoicePaymentsModal({
     queryFn: () => invoicesApi.getById(invoiceId),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (paymentId: string) => paymentsApi.remove(paymentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
-      notify.success('Paiement supprime — facture mise a jour');
-    },
-    onError: (err: unknown) => {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
-        : null;
-      notify.error(msg || 'Erreur lors de la suppression');
-    },
+  // Mig 310 (G-D7-08) : un paiement ne se supprime plus. Il s'annule avec un motif
+  // (contre-pièce négative + extourne comptable), puis peut être ré-émis.
+  const { modes: payModes } = usePaymentModes();
+  const [voidTarget, setVoidTarget] = useState<Record<string, any> | null>(null);
+  const [reissueTarget, setReissueTarget] = useState<Record<string, any> | null>(null);
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
+    queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+  };
+  const voidMutation = useMutation({
+    mutationFn: ({ id, reasonCodeId, note }: { id: string; reasonCodeId: string; note?: string }) =>
+      paymentsApi.void(id, { reasonCodeId, note }),
+    onSuccess: () => { invalidateAll(); setVoidTarget(null); notify.success('Paiement annulé — contre-pièce passée, facture mise à jour'); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
+  });
+  const reissueMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => paymentsApi.reissue(id, data),
+    onSuccess: () => { invalidateAll(); setReissueTarget(null); notify.success('Règlement ré-émis'); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Ré-émission impossible')),
   });
 
   const payments = ((invoice?.payments as Record<string, any>[]) || []);
@@ -1888,8 +1873,8 @@ function InvoicePaymentsModal({
               </div>
 
               <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                Supprime un paiement saisi par erreur (mauvais montant, faux N° cheque, doublon).
-                La facture est recalculee automatiquement : statut + montant restant.
+                Un paiement ne se supprime pas : « Annuler » passe une contre-pièce motivée et extourne l'écriture.
+                La facture est recalculée automatiquement. Un chèque perdu ou rejeté peut ensuite être ré-émis.
               </div>
 
               {payments.length === 0 ? (
@@ -1911,15 +1896,16 @@ function InvoicePaymentsModal({
                   </thead>
                   <tbody>
                     {payments.map((p) => (
-                      <tr key={p.id as string}>
+                      <tr key={p.id as string} style={p.status === 'void' ? { opacity: 0.6, textDecoration: p.voids_payment_id ? undefined : 'line-through' } : undefined}>
                         <td>{fmtDate(p.payment_date as string)}</td>
                         <td>
                           <span className="odoo-tag"
                             style={getPaymentColor(p.payment_method as string)
                               ? { backgroundColor: getPaymentColor(p.payment_method as string) + '22', color: getPaymentColor(p.payment_method as string) }
                               : undefined}>
-                            {getPaymentLabel(p.payment_method as string)}
-                          </span>
+                            {paymentModeLabel(p, payModes) || getPaymentLabel(p.payment_method as string)}
+                          </span>{' '}
+                          <PaymentStatusTag p={p} />
                         </td>
                         <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>
                           {(p.check_number as string) || '—'}
@@ -1942,20 +1928,18 @@ function InvoicePaymentsModal({
                           {n(parseFloat(p.amount as string))}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <button onClick={() => {
-                            const amount = parseFloat(p.amount as string).toFixed(2);
-                            const checkInfo = p.check_number ? ` (N° ${p.check_number})` : '';
-                            const msg = `Supprimer ce paiement de ${amount} DH${checkInfo} ?\n\n` +
-                                        `Le montant restant sur la facture deviendra :\n` +
-                                        `${n(remaining + parseFloat(p.amount as string))} DH\n\n` +
-                                        `Action irreversible.`;
-                            if (confirm(msg)) deleteMutation.mutate(p.id as string);
-                          }}
-                            disabled={deleteMutation.isPending}
-                            className="odoo-pager-btn" title="Supprimer ce paiement"
-                            style={{ color: '#b71c1c' }}>
-                            <Trash2 size={11} />
-                          </button>
+                          {p.status !== 'void' && !p.voids_payment_id && p.payment_method !== 'avoir' && (
+                            <button onClick={() => setVoidTarget(p)} disabled={voidMutation.isPending}
+                              className="odoo-pager-btn" title="Annuler ce paiement (motif obligatoire)" style={{ color: '#b71c1c' }}>
+                              <Ban size={11} />
+                            </button>
+                          )}
+                          {p.status === 'void' && !p.voids_payment_id && p.payment_method !== 'avoir'
+                            && !payments.some(x => x.replaces_payment_id === p.id && x.status !== 'void') && (
+                            <button onClick={() => setReissueTarget(p)} className="odoo-pager-btn" title="Ré-émettre ce règlement">
+                              <RotateCcw size={11} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1970,6 +1954,18 @@ function InvoicePaymentsModal({
           <button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>
         </div>
       </div>
+      {voidTarget && (
+        <ReasonCodeDialog title={`Annuler le paiement de ${n(parseFloat(voidTarget.amount as string))} DH`} scope="void_payment"
+          description="Le paiement reste dans l'historique : une contre-pièce négative le neutralise et son écriture est extournée. Un chèque déjà encaissé ou un paiement rapproché en banque ne peut pas être annulé."
+          confirmLabel="Annuler le paiement" danger pending={voidMutation.isPending}
+          onClose={() => setVoidTarget(null)}
+          onSubmit={(v) => voidMutation.mutate({ id: voidTarget.id as string, reasonCodeId: v.reasonCodeId, note: v.note })} />
+      )}
+      {reissueTarget && (
+        <ReissuePaymentDialog payment={reissueTarget} pending={reissueMutation.isPending}
+          onClose={() => setReissueTarget(null)}
+          onSubmit={(data) => reissueMutation.mutate({ id: reissueTarget.id as string, data })} />
+      )}
     </ModalBackdrop>
   );
 }
