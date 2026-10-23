@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDirtyForm, useDraft } from './DirtyForms';
 import { FileText, Loader2, Eye } from 'lucide-react';
 import { settingsApi, type DocumentTemplate } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -38,21 +39,20 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
   const queryClient = useQueryClient();
   const { canEdit } = usePermissions();
   const editable = canEdit('settings');
-  const initial = () => ({
+  const { draft: form, setDraft: setForm, changes, reset, adopt } = useDraft({
     paymentTerms: tpl.payment_terms ?? '', latePenalty: tpl.late_penalty ?? '', footerNote: tpl.footer_note ?? '',
     showBank: tpl.show_bank, showLegalForm: tpl.show_legal_form,
   });
-  const [form, setForm] = useState(initial);
   const [previewing, setPreviewing] = useState(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setForm(initial()); }, [tpl]);
-  const saved = initial();
-  const dirty = (Object.keys(form) as (keyof typeof form)[]).some(k => form[k] !== saved[k]);
+  const dirty = changes > 0;
 
-  const save = useMutation({
-    mutationFn: () => settingsApi.updateDocumentTemplate(tpl.doc_type, form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['document-templates'] }); notify.success(`Modèle « ${tpl.label} » enregistré`); },
-    onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
+  useDirtyForm(`doc:${tpl.doc_type}`, {
+    dirty, changes, reset,
+    save: async () => {
+      await settingsApi.updateDocumentTemplate(tpl.doc_type, form);
+      adopt();
+      await queryClient.invalidateQueries({ queryKey: ['document-templates'] });
+    },
   });
 
   const preview = async () => {
@@ -74,7 +74,7 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
   const isInvoice = tpl.doc_type === 'invoice';
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)' }}>
+    <div id={`doc-${tpl.doc_type}`} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)', scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
           <div style={{ fontWeight: 600 }}>{tpl.label}</div>
@@ -114,14 +114,6 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
           Forme juridique et capital dans le pied de page
         </label>
       </div>
-      {editable && (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          {dirty && <button className="odoo-btn-secondary" onClick={() => setForm(saved)}>Annuler</button>}
-          <button className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -18,7 +18,7 @@ export const userController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    const { email, password, firstName, lastName, role, pinCode } = req.body;
+    const { email, password, firstName, lastName, role, pinCode, storeId } = req.body;
     if (!(await roleRepository.isAssignable(role))) {
       res.status(400).json({ success: false, error: { message: 'Rôle inconnu ou désactivé' } });
       return;
@@ -37,7 +37,7 @@ export const userController = {
       }
     }
     const passwordHash = await hashPassword(password);
-    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role }, req.user?.userId);
+    const user = await userRepository.create({ email, passwordHash, firstName, lastName, role, storeId }, req.user?.userId);
     if (pinCode) {
       const pinHash = await hashPin(pinCode);
       await userRepository.update(user.id, { pinCode: pinHash }, req.user?.userId);

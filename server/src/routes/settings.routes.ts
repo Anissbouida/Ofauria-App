@@ -7,6 +7,7 @@ import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
 import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
 import { dataController } from '../controllers/data.controller.js';
+import { setupController } from '../controllers/setup.controller.js';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
@@ -20,6 +21,9 @@ const router = Router();
 const jsonParser = express.json({ limit: '3mb' });
 // Import guide (lot 7) : fichier Excel ou CSV en memoire, 5 Mo maximum.
 const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Accueil de la configuration (refonte lot B) : points filtres par section visible.
+router.get('/setup', authenticate, asyncHandler(setupController.status));
 
 // Journal des modifications (mig 328) et des connexions : section « audit ».
 router.get('/audit-log', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.list));

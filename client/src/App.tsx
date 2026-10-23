@@ -36,6 +36,7 @@ import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
 import InventoryCheckValidationPage from './features/inventory-check/InventoryCheckValidationPage';
 import WarehousePage from './features/warehouse/WarehousePage';
+import RecallPage from './features/traceability/RecallPage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +80,7 @@ export default function App() {
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/reconciliation" element={<ReconciliationPage />} />
+              <Route path="/traceability/recall" element={<RecallPage />} />
               <Route path="/unsold" element={<UnsoldDecisionsPage />} />
               <Route path="/inventory-check/opening" element={<OpeningInventoryCheckPage />} />
               <Route path="/inventory-check/validation" element={<InventoryCheckValidationPage />} />

@@ -146,7 +146,18 @@ export interface ImportPreview {
   rows: { line: number; action: 'create' | 'update' | 'error' | 'skip'; values: Record<string, unknown>; errors: { column: string; message: string }[] }[];
 }
 
+/** Accueil de la configuration (refonte lot B) : un point de contrôle par réglage clé. */
+export interface SetupCheck {
+  key: string; page: string; section: string | null; label: string; detail: string;
+  status: 'ok' | 'todo' | 'warn' | 'info'; required: boolean; anchor?: string;
+}
+export interface SetupOverview {
+  checks: SetupCheck[];
+  recent: { id: string; table_name: string; operation: string; record_label: string | null; changed_at: string; changed_by_name: string | null }[] | null;
+}
+
 export const settingsApi = {
+  setup: () => api.get('/settings/setup').then(r => r.data.data) as Promise<SetupOverview>,
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
   update: (data: Partial<CompanySettings>) => api.put('/settings', data).then(r => r.data.data) as Promise<CompanySettings>,
   auditLog: (params: { table?: string; changedBy?: string; subjectId?: string; from?: string; to?: string; q?: string; limit?: number; offset?: number }) =>

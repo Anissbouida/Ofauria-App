@@ -196,11 +196,12 @@ export const saleRepository = {
       );
 
       for (const item of data.items) {
-        await client.query(
+        const saleItemResult = await client.query(
           `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit, display_unit)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
           [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit', item.displayUnit || null]
         );
+        const saleItemId = saleItemResult.rows[0].id as string;
 
         // Decrement vitrine (display) stock for regular POS sales only.
         // - 'standard'  (vente directe POS) : decremente la vitrine.
@@ -251,7 +252,17 @@ export const saleRepository = {
           );
           for (const step of fefoPlan) {
             await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty);
+            // Chaîne de rappel (mig 337) : on persiste QUEL lot produit a servi
+            // cette ligne de vente, pour la traçabilité descendante lot→client.
+            await client.query(
+              `INSERT INTO sale_item_lots (sale_item_id, product_lot_id, quantity)
+               VALUES ($1, $2, $3)`,
+              [saleItemId, step.lotId, step.qty]
+            );
           }
+          // Lignes sans lot (reliquat FEFO non couvert par un lot, ex. stock
+          // orphelin antérieur au suivi par lot) : pas de ligne sale_item_lots —
+          // la requête de rappel comblera ces cas par un repli approximatif.
         }
       }
 
