@@ -331,6 +331,18 @@ export const productionRepository = {
     try {
       await client.query('BEGIN');
 
+      // Verrou de transition : le controleur a lu le statut hors transaction, on
+      // le relit sous FOR UPDATE pour que deux confirm concurrents ne generent
+      // pas deux fois les besoins / le BSI / les numeros de lot.
+      const lockResult = await client.query(
+        `SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId]
+      );
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      if (lockResult.rows[0].status !== 'draft') {
+        throw new Error(`Le plan est deja en statut "${lockResult.rows[0].status}" : il ne peut pas etre confirme une seconde fois.`);
+      }
+
       // Get plan items
       const itemsResult = await client.query(
         `SELECT ppi.*, p.name as product_name FROM production_plan_items ppi
@@ -545,24 +557,29 @@ export const productionRepository = {
         throw new Error('Impossible : au moins un produit a deja ete demarre ou produit. Annulez d\'abord les items en cours.');
       }
 
-      // 3) Verifie l'etat du BSI : refuse si preleve/verifie/cloture
+      // 3) Verifie l'etat du BSI : refuse des que le stock a ete decremente.
+      //    Statuts d'EN-TETE (mig 084/103) : 'prelevement' = magasinier a sorti la
+      //    matiere (startPrelevement a deja decremente les lots). 'preleve' est un
+      //    statut de LIGNE, pas d'en-tete — l'utiliser ici laissait passer un plan
+      //    dont les ingredients etaient deja sortis.
       const bsiActive = await client.query(
         `SELECT COUNT(*)::int AS nb FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('preleve', 'verifie', 'cloture')`,
+         WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')`,
         [planId],
       );
       if (bsiActive.rows[0].nb > 0) {
         throw new Error('Impossible : le bon de sortie a deja ete preleve. Annulez d\'abord le BSI.');
       }
 
-      // 4) Supprime BSI 'genere' (et lignes via cascade ou explicite)
+      // 4) Supprime BSI non encore preleves (genere/preparation/pret/annule) et leurs lignes.
+      //    La cle etrangere des lignes est bon_id (mig 084), pas bs_id.
       const bsiToDelete = await client.query(
         `SELECT id FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('genere', 'annule')`,
+         WHERE plan_id = $1 AND status IN ('genere', 'preparation', 'pret', 'annule')`,
         [planId],
       );
       for (const row of bsiToDelete.rows) {
-        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bs_id = $1`, [row.id]);
+        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bon_id = $1`, [row.id]);
         await client.query(`DELETE FROM production_bons_sortie WHERE id = $1`, [row.id]);
       }
 
@@ -588,57 +605,79 @@ export const productionRepository = {
   },
 
   async start(planId: string) {
-    // Check if this plan has unfulfilled semi-finished dependencies
-    const depsResult = await db.query(
-      `SELECT ppd.status, r.name as sub_recipe_name
-       FROM production_plan_dependencies ppd
-       JOIN recipes r ON r.id = ppd.sub_recipe_id
-       WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
-      [planId]
-    );
-    if (depsResult.rows.length > 0) {
-      const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
-      throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
-    }
+    // Controles + transition dans UNE transaction, plan verrouille : deux clics
+    // "Lancer" simultanes passaient tous les deux les controles (lus hors
+    // transaction) et ecrivaient in_progress deux fois.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
-    // Semi-finished plans don't have their own BSI, so skip this check for them
-    const planInfo = await db.query(
-      `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
-    );
-    if (!planInfo.rows[0]?.is_semi_finished_plan) {
-      // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
-      // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
-      const needsResult = await db.query(
-        `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
+      const lockResult = await client.query(
+        `SELECT status, is_semi_finished_plan FROM production_plans WHERE id = $1 FOR UPDATE`,
         [planId]
       );
-      const hasIngredientNeeds = needsResult.rows.length > 0;
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      const lockedStatus = lockResult.rows[0].status as string;
+      if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(lockedStatus)) {
+        throw new Error(`Le plan est en statut "${lockedStatus}" : il ne peut pas etre demarre.`);
+      }
 
-      if (hasIngredientNeeds) {
-        const bsiResult = await db.query(
-          `SELECT id, status, numero FROM production_bons_sortie
-           WHERE plan_id = $1 AND status != 'annule'
-           ORDER BY created_at DESC LIMIT 1`,
+      // Check if this plan has unfulfilled semi-finished dependencies
+      const depsResult = await client.query(
+        `SELECT ppd.status, r.name as sub_recipe_name
+         FROM production_plan_dependencies ppd
+         JOIN recipes r ON r.id = ppd.sub_recipe_id
+         WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
+        [planId]
+      );
+      if (depsResult.rows.length > 0) {
+        const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
+        throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
+      }
+
+      // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
+      // Semi-finished plans don't have their own BSI, so skip this check for them
+      if (!lockResult.rows[0].is_semi_finished_plan) {
+        // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
+        // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
+        const needsResult = await client.query(
+          `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
           [planId]
         );
-        if (bsiResult.rows.length === 0) {
-          throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
-        }
-        const bsi = bsiResult.rows[0];
-        if (bsi.status !== 'cloture') {
-          const statusLabels: Record<string, string> = {
-            genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
-          };
-          throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+        const hasIngredientNeeds = needsResult.rows.length > 0;
+
+        if (hasIngredientNeeds) {
+          const bsiResult = await client.query(
+            `SELECT id, status, numero FROM production_bons_sortie
+             WHERE plan_id = $1 AND status != 'annule'
+             ORDER BY created_at DESC LIMIT 1`,
+            [planId]
+          );
+          if (bsiResult.rows.length === 0) {
+            throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
+          }
+          const bsi = bsiResult.rows[0];
+          if (bsi.status !== 'cloture') {
+            const statusLabels: Record<string, string> = {
+              genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
+            };
+            throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+          }
         }
       }
-    }
 
-    await db.query(
-      `UPDATE production_plans SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
-      [planId]
-    );
+      await client.query(
+        `UPDATE production_plans SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
+        [planId]
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async complete(planId: string, actualItems: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, completionType?: string): Promise<{ warnings: string[] }> {
@@ -646,6 +685,17 @@ export const productionRepository = {
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+
+      // Verrou de transition : sans lui, deux "Terminer" concurrents passaient le
+      // controle in_progress du controleur et deduisaient le stock deux fois.
+      const lockResult = await client.query(
+        `SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId]
+      );
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      if (lockResult.rows[0].status !== 'in_progress') {
+        throw new Error(`Le plan est en statut "${lockResult.rows[0].status}" : il ne peut pas etre termine.`);
+      }
 
       // Update actual quantities and mark as produced
       for (const item of actualItems) {
