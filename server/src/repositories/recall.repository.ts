@@ -8,7 +8,7 @@ import { db } from '../config/database.js';
  *     → production_lot_usage (quelle matière a servi quel plan)
  *       → production_plans
  *         → product_lots (fournées de produit fini)
- *           → sale_item_lots (mig 333 : quel lot a servi quelle ligne de vente)
+ *           → sale_item_lots (mig 337 : quel lot a servi quelle ligne de vente)
  *             → sales / customers (clients à contacter)
  *
  * On suit aussi les liens de recyclage : un lot produit recyclé engendre un
@@ -18,7 +18,7 @@ import { db } from '../config/database.js';
  * Deux limites métier explicitement signalées dans la sortie :
  *   - ventes anonymes (POS walk-in sans customer_id) → pas de client nominatif,
  *     on fournit date + magasin + caissier.
- *   - ventes antérieures à la mig 333 → pas de lien par ligne ; repli approximatif
+ *   - ventes antérieures à la mig 337 → pas de lien par ligne ; repli approximatif
  *     par recoupement de dates (ventes du produit dans la fenêtre DLC du lot, sur
  *     le même magasin, sans lien), marqué `approximate`.
  */
@@ -58,7 +58,7 @@ export interface RecallBatch {
     wasted: number;
     recycled: number;
   };
-  /** Quantité vendue effectivement reliée à des lignes de vente (mig 333). */
+  /** Quantité vendue effectivement reliée à des lignes de vente (mig 337). */
   linkedSoldQty: number;
   sales: RecallSale[];
   approximateSales: RecallSale[];
