@@ -39,6 +39,7 @@ import ForecastPage from './features/forecast/ForecastPage';
 import HaccpPage from './features/haccp/HaccpPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
 import LegacyRedirect from './components/LegacyRedirect';
+import RecallPage from './features/traceability/RecallPage';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,6 +91,7 @@ export default function App() {
               {/* Anciens écrans regroupés dans la Journée boutique : liens et favoris conservés. */}
               <Route path="/reconciliation" element={<Navigate to="/boutique?tab=ventes" replace />} />
               <Route path="/controle" element={<ControlePage />} />
+              <Route path="/traceability/recall" element={<RecallPage />} />
               <Route path="/unsold" element={<Navigate to="/boutique?tab=invendus" replace />} />
               <Route path="/inventory-check/opening" element={<OpeningInventoryCheckPage />} />
               <Route path="/inventory-check/validation" element={<Navigate to="/boutique?tab=ouverture" replace />} />
