@@ -139,9 +139,13 @@ export const productionCoutRepository = {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Cost calculation
-  // Formule : Cout de revient = Matieres + Main d'oeuvre + Charges fixes
+  // Formule : Cout de revient = Matieres + Main d'oeuvre + Energie + Charges fixes
   // MO calculee depuis production_item_etapes (qui a valide chaque etape)
-  // Charges fixes = quote-part mensuelle / nombre de plans du mois
+  // Energie = usages equipements (production_equipement_usage) × cout horaire snapshot
+  // Charges fixes = taux forfaitaire sur matieres (TAUX_CHARGES_FIXES_ESTIME)
+  // Pertes = valorisation des pertes du rendement au cout matiere unitaire :
+  //   un « dont » informatif, PAS un terme additif (la matiere perdue est deja
+  //   dans cout_matieres — l'additionner la compterait deux fois). Cf. mig 339.
   // ═══════════════════════════════════════════════════════════════════════════
 
   async calculateAndSave(planId: string, userId: string) {
@@ -218,6 +222,66 @@ export const productionCoutRepository = {
     }));
     const coutMO = detailMO.reduce((s, d) => s + d.total, 0);
 
+    // 2b. Energie — usages equipements enregistres sur le plan (four, petrin, cellule...)
+    // duree × cout horaire fige a l'enregistrement (cout_horaire_snapshot). Un usage
+    // sans duree (fin non saisie) ne coute rien : il apparait avec 0 pour etre visible.
+    const energieResult = await db.query(
+      `SELECT pe.id as equipement_id, pe.nom as name,
+              SUM(COALESCE(peu.duree_minutes, 0)) as minutes,
+              MAX(COALESCE(peu.cout_horaire_snapshot, pe.cout_horaire, 0)) as cout_horaire,
+              ROUND(SUM(COALESCE(peu.duree_minutes, 0) * COALESCE(peu.cout_horaire_snapshot, pe.cout_horaire, 0)) / 60.0, 2) as total
+       FROM production_equipement_usage peu
+       JOIN production_equipements pe ON pe.id = peu.equipement_id
+       WHERE peu.plan_id = $1
+       GROUP BY pe.id, pe.nom
+       ORDER BY total DESC`,
+      [planId]
+    );
+    const detailEnergie = energieResult.rows.map(r => ({
+      equipement_id: r.equipement_id, name: r.name,
+      minutes: parseInt(r.minutes), cout_horaire: parseFloat(r.cout_horaire),
+      total: parseFloat(r.total),
+    }));
+    const coutEnergie = Math.round(detailEnergie.reduce((s, d) => s + d.total, 0) * 100) / 100;
+
+    // 2c. Pertes — pertes_detail du rendement, valorisees au cout matiere unitaire
+    // de l'item (snapshot theo_cout_matiere_u, mig 261 ; repli : cout matiere du
+    // plan / unites produites). Agrege par categorie (pertes_cuisson, casse...).
+    const pertesResult = await db.query(
+      `SELECT pr.pertes_detail, ppi.theo_cout_matiere_u
+       FROM production_rendement pr
+       JOIN production_plan_items ppi ON ppi.id = pr.plan_item_id
+       WHERE pr.plan_id = $1`,
+      [planId]
+    );
+    const unitesProduitesResult = await db.query(
+      `SELECT COALESCE(SUM(actual_quantity), 0) as total FROM production_plan_items
+       WHERE plan_id = $1 AND status != 'cancelled'`,
+      [planId]
+    );
+    const unitesProduites = parseFloat(unitesProduitesResult.rows[0]?.total) || 0;
+    const coutMatiereUnitaireRepli = unitesProduites > 0 ? coutMatieres / unitesProduites : 0;
+    const pertesParCategorie = new Map<string, { quantite: number; total: number }>();
+    for (const r of pertesResult.rows) {
+      const cu = r.theo_cout_matiere_u != null ? parseFloat(r.theo_cout_matiere_u) : coutMatiereUnitaireRepli;
+      const details: { categorie?: string; quantite?: number | string }[] = Array.isArray(r.pertes_detail) ? r.pertes_detail : [];
+      for (const p of details) {
+        const q = parseFloat(String(p.quantite ?? 0)) || 0;
+        if (q <= 0) continue;
+        const cat = p.categorie || 'autres';
+        const agg = pertesParCategorie.get(cat) || { quantite: 0, total: 0 };
+        agg.quantite += q;
+        agg.total += q * cu;
+        pertesParCategorie.set(cat, agg);
+      }
+    }
+    const detailPertes = Array.from(pertesParCategorie, ([categorie, a]) => ({
+      categorie, quantite: a.quantite,
+      cout_unitaire: a.quantite > 0 ? Math.round(a.total / a.quantite * 100) / 100 : 0,
+      total: Math.round(a.total * 100) / 100,
+    }));
+    const coutPertes = Math.round(detailPertes.reduce((s, d) => s + d.total, 0) * 100) / 100;
+
     // 3. Charges fixes = TAUX_CHARGES_FIXES_ESTIME × cout matieres
     const coutCharges = Math.round(coutMatieres * TAUX_CHARGES_FIXES_ESTIME * 100) / 100;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
@@ -268,12 +332,13 @@ export const productionCoutRepository = {
     const ecartMix = coutPrevu != null && coutPrevuMixReel != null
       ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
       : null;
-    const coutTotal = coutMatieres + coutMO + coutCharges;
+    // Revient = matieres + MO + energie + charges (les pertes sont un « dont »).
+    const coutTotal = coutMatieres + coutMO + coutEnergie + coutCharges;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
-    // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix)
+    // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels)
     const result = await db.query(
       `INSERT INTO production_cout_reel
        (plan_id, cout_matieres, cout_main_oeuvre, cout_energie, cout_pertes,
@@ -281,13 +346,13 @@ export const productionCoutRepository = {
         cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
         calculated_by, calculated_at)
-       VALUES ($1, $2, $3, 0, 0, $4, $5, $6, $7, $11, $12, $8, $9, '[]', '[]', $10, NOW())
+       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW())
        ON CONFLICT (plan_id)
        DO UPDATE SET
          cout_matieres = EXCLUDED.cout_matieres,
          cout_main_oeuvre = EXCLUDED.cout_main_oeuvre,
-         cout_energie = 0,
-         cout_pertes = 0,
+         cout_energie = EXCLUDED.cout_energie,
+         cout_pertes = EXCLUDED.cout_pertes,
          cout_charges_fixes = EXCLUDED.cout_charges_fixes,
          detail_charges_fixes = EXCLUDED.detail_charges_fixes,
          cout_prevu = EXCLUDED.cout_prevu,
@@ -296,8 +361,8 @@ export const productionCoutRepository = {
          ecart_mix = EXCLUDED.ecart_mix,
          detail_matieres = EXCLUDED.detail_matieres,
          detail_main_oeuvre = EXCLUDED.detail_main_oeuvre,
-         detail_energie = '[]',
-         detail_pertes = '[]',
+         detail_energie = EXCLUDED.detail_energie,
+         detail_pertes = EXCLUDED.detail_pertes,
          calculated_by = EXCLUDED.calculated_by,
          calculated_at = NOW(),
          updated_at = NOW()
@@ -306,7 +371,9 @@ export const productionCoutRepository = {
        JSON.stringify(detailCharges), coutPrevu, ecartPct,
        JSON.stringify(detailMatieres), JSON.stringify(detailMO),
        userId,
-       coutPrevuMixReel, ecartMix]
+       coutPrevuMixReel, ecartMix,
+       coutEnergie, coutPertes,
+       JSON.stringify(detailEnergie), JSON.stringify(detailPertes)]
     );
     return result.rows[0];
   },

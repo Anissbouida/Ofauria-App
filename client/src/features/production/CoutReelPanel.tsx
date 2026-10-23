@@ -4,7 +4,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Calculator, Loader2,
-  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown
 } from 'lucide-react';
 
 interface CoutReelPanelProps {
@@ -75,8 +75,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
 
   const coutMat = toNum(cout?.cout_matieres);
   const coutMO = toNum(cout?.cout_main_oeuvre);
+  const coutEnergie = toNum(cout?.cout_energie);
   const coutCharges = toNum(cout?.cout_charges_fixes);
-  const coutRevient = coutMat + coutMO + coutCharges;
+  // Revient = matieres + MO + energie + charges. Les pertes (cout_pertes) sont
+  // une valorisation de matiere DEJA comptee dans cout_matieres : un « dont »,
+  // pas un terme additif (mig 339).
+  const coutRevient = coutMat + coutMO + coutEnergie + coutCharges;
+  const coutPertes = toNum(cout?.cout_pertes);
 
   return (
     <div className="odoo-section">
@@ -126,6 +131,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
+                <Zap size={11} style={{ display: 'inline', marginRight: 4 }} />Énergie
+              </div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutEnergie)}</div>
+            </div>
+            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+              <div className="odoo-stat-card-label">
                 <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutCharges)}</div>
@@ -137,6 +148,25 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: '#28a745' }}>{formatDH(coutRevient)}</div>
             </div>
           </div>
+
+          {/* Dont pertes : matiere perdue (rendement), deja incluse dans les matieres */}
+          {coutPertes > 0 && (
+            <div style={{
+              padding: '0.4rem 1rem',
+              backgroundColor: 'var(--theme-bg-card)',
+              borderBottom: '1px solid var(--theme-bg-separator)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              fontSize: '0.8125rem',
+            }}>
+              <span style={{ color: 'var(--theme-text-muted)' }}>
+                <TrendingDown size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />
+                dont pertes (matière perdue, déjà comptée dans Matières)
+              </span>
+              <span style={{ fontWeight: 600, color: '#dc3545' }}>
+                {formatDH(coutPertes)}{coutMat > 0 ? ` (${((coutPertes / coutMat) * 100).toFixed(1)} % des matières)` : ''}
+              </span>
+            </div>
+          )}
 
           {/* Prix par unite */}
           {totalQuantity && totalQuantity > 0 && (
@@ -269,6 +299,50 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                       <td className="py-1 px-2 text-gray-700">{d.label}</td>
                       <td className="py-1 px-2 text-right text-gray-500">{formatDH(d.mensuel)}</td>
                       <td className="py-1 px-2 text-right font-medium text-gray-900">{formatDH(d.part)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </DetailSection>
+            )}
+
+            {(cout.detail_energie || []).length > 0 && (
+              <DetailSection title="Detail energie (equipements)" icon={<Zap size={12} className="text-yellow-500" />}
+                isExpanded={expandedSection === 'energie'} onToggle={() => setExpandedSection(expandedSection === 'energie' ? null : 'energie')}>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-400 uppercase">
+                    <th className="text-left py-1 px-2">Equipement</th>
+                    <th className="text-right py-1 px-2">Minutes</th>
+                    <th className="text-right py-1 px-2">Cout/h</th>
+                    <th className="text-right py-1 px-2">Total</th>
+                  </tr></thead>
+                  <tbody>{(cout.detail_energie || []).map((d, i) => (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_horaire).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </DetailSection>
+            )}
+
+            {(cout.detail_pertes || []).length > 0 && (
+              <DetailSection title="Detail pertes (valorisees au cout matiere)" icon={<TrendingDown size={12} className="text-red-500" />}
+                isExpanded={expandedSection === 'pertes'} onToggle={() => setExpandedSection(expandedSection === 'pertes' ? null : 'pertes')}>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-400 uppercase">
+                    <th className="text-left py-1 px-2">Categorie</th>
+                    <th className="text-right py-1 px-2">Qte</th>
+                    <th className="text-right py-1 px-2">PU matiere</th>
+                    <th className="text-right py-1 px-2">Total</th>
+                  </tr></thead>
+                  <tbody>{(cout.detail_pertes || []).map((d, i) => (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="py-1 px-2 text-gray-700">{d.categorie.replace(/^pertes?_/, '').replace(/_/g, ' ')}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.quantite).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_unitaire).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
