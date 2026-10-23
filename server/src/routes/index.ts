@@ -46,6 +46,7 @@ import { ledgerRouter } from './ledger.routes.js';
 import fixedAssetRoutes from './fixed-asset.routes.js';
 import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 import withholdingRoutes from './withholding.routes.js';
+import recallRoutes from './recall.routes.js';
 
 const router = Router();
 
@@ -112,5 +113,6 @@ router.use('/ledger', ledgerRouter);
 router.use('/fixed-assets', fixedAssetRoutes);
 router.use('/bank-reconciliation', bankReconciliationRoutes);
 router.use('/withholding', withholdingRoutes);
+router.use('/traceability', recallRoutes);
 
 export default router;
