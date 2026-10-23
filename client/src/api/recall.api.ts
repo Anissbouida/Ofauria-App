@@ -94,10 +94,16 @@ export interface IngredientLotLite {
 }
 
 export const recallApi = {
-  /** Lots matière sélectionnables (réutilise la liste des lots d'ingrédients). */
-  lots: (search?: string): Promise<IngredientLotLite[]> =>
+  /**
+   * Lots matière sélectionnables (réutilise la liste des lots d'ingrédients).
+   * On récupère une page large SANS paramètre `search` et on filtre côté client :
+   *  - le `search` serveur plante sur un bug pré-existant de findAll (sa requête
+   *    COUNT référence l'alias suppliers `s` sans le JOIN) ;
+   *  - et le filtre client couvre aussi le n° de lot interne, que l'API ignore.
+   */
+  lots: (): Promise<IngredientLotLite[]> =>
     api
-      .get('/ingredient-lots', { params: search ? { search, limit: '50' } : { limit: '50' } })
+      .get('/ingredient-lots', { params: { limit: '1000' } })
       .then(r => r.data.data),
 
   /** Arbre d'impact d'un rappel à partir d'un lot matière. */

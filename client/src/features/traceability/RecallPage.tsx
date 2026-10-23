@@ -48,10 +48,22 @@ export default function RecallPage() {
   const [search, setSearch] = useState('');
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
 
-  const { data: lots = [], isFetching: lotsLoading } = useQuery({
-    queryKey: ['recall-lots', search],
-    queryFn: () => recallApi.lots(search || undefined),
+  const { data: allLots = [], isFetching: lotsLoading } = useQuery({
+    queryKey: ['recall-lots'],
+    queryFn: () => recallApi.lots(),
   });
+
+  // Filtre côté client : n° de lot interne, ingrédient, fournisseur, n° lot fournisseur.
+  const lots = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allLots.slice(0, 100);
+    return allLots
+      .filter(l =>
+        [l.lot_number, l.ingredient_name, l.supplier_name, l.supplier_lot_number]
+          .some(v => (v || '').toLowerCase().includes(q))
+      )
+      .slice(0, 100);
+  }, [allLots, search]);
 
   const { data: recall, isFetching: recallLoading, error } = useQuery<RecallResult>({
     queryKey: ['recall', selectedLotId],
