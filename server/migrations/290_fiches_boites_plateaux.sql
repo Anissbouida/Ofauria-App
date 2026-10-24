@@ -124,8 +124,12 @@
 --   référence reste intact (archivage, pas suppression), la fiche reste
 --   restaurable, et la base du catalogue devient la seule cible des
 --   nomenclatures. Idempotent : no-op quand il n'y a aucun homonyme.
+--   La passe est rejouée avant chaque résolution par nom qui suit la création
+--   des bases propres à la migration (leurs homonymes ne peuvent être repérés
+--   qu'une fois ces bases en table).
 -- ─────────────────────────────────────────────────────────────────────────────
-DO $$
+CREATE OR REPLACE FUNCTION pg_temp.archiver_homonymes_catalogue(p_ctx TEXT)
+RETURNS void LANGUAGE plpgsql AS $$
 DECLARE z TEXT;
 BEGIN
   WITH cat AS (
@@ -142,9 +146,11 @@ BEGIN
   )
   SELECT string_agg(name || ' (' || left(id::text, 8) || ')', ', ' ORDER BY name) INTO z FROM arch;
   IF z IS NOT NULL THEN
-    RAISE NOTICE 'Mig 290 : homonymes de bases du catalogue archivés -> %', z;
+    RAISE NOTICE 'Mig % : homonymes de bases du catalogue archivés -> %', p_ctx, z;
   END IF;
 END $$;
+
+SELECT pg_temp.archiver_homonymes_catalogue('290 préambule');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 0. Ingredients manquants au referentiel.
@@ -426,6 +432,10 @@ FROM (VALUES
   ('fab29000-0000-4000-8000-000000000222', 'fab29000-0000-4000-8000-000000000137', 1200, 10.00, true,  1, 'f4251b45-b3fe-486a-950c-b20225283cb0')
 ) AS v (id, recette, poids, emb, defaut, ordre, produit)
 ON CONFLICT (id) DO NOTHING;
+
+-- Les bases propres à cette migration sont en table : on rejoue l'archivage
+-- de leurs éventuels homonymes avant de les résoudre par nom.
+SELECT pg_temp.archiver_homonymes_catalogue('290 avant résolution par nom');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. Resolution des 41 preparations de base consommees (pattern mig 283).

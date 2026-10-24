@@ -80,8 +80,12 @@
 --   référence reste intact (archivage, pas suppression), la fiche reste
 --   restaurable, et la base du catalogue devient la seule cible des
 --   nomenclatures. Idempotent : no-op quand il n'y a aucun homonyme.
+--   La passe est rejouée avant chaque résolution par nom qui suit la création
+--   des bases propres à la migration (leurs homonymes ne peuvent être repérés
+--   qu'une fois ces bases en table).
 -- ─────────────────────────────────────────────────────────────────────────────
-DO $$
+CREATE OR REPLACE FUNCTION pg_temp.archiver_homonymes_catalogue(p_ctx TEXT)
+RETURNS void LANGUAGE plpgsql AS $$
 DECLARE z TEXT;
 BEGIN
   WITH cat AS (
@@ -98,9 +102,11 @@ BEGIN
   )
   SELECT string_agg(name || ' (' || left(id::text, 8) || ')', ', ' ORDER BY name) INTO z FROM arch;
   IF z IS NOT NULL THEN
-    RAISE NOTICE 'Mig 286 : homonymes de bases du catalogue archivés -> %', z;
+    RAISE NOTICE 'Mig % : homonymes de bases du catalogue archivés -> %', p_ctx, z;
   END IF;
 END $$;
+
+SELECT pg_temp.archiver_homonymes_catalogue('286 préambule');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 0. Ingredients manquants (prix marche marocain 2026, a valider).

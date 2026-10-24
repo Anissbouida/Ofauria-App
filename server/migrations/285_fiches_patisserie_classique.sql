@@ -95,8 +95,12 @@
 --   référence reste intact (archivage, pas suppression), la fiche reste
 --   restaurable, et la base du catalogue devient la seule cible des
 --   nomenclatures. Idempotent : no-op quand il n'y a aucun homonyme.
+--   La passe est rejouée avant chaque résolution par nom qui suit la création
+--   des bases propres à la migration (leurs homonymes ne peuvent être repérés
+--   qu'une fois ces bases en table).
 -- ─────────────────────────────────────────────────────────────────────────────
-DO $$
+CREATE OR REPLACE FUNCTION pg_temp.archiver_homonymes_catalogue(p_ctx TEXT)
+RETURNS void LANGUAGE plpgsql AS $$
 DECLARE z TEXT;
 BEGIN
   WITH cat AS (
@@ -113,9 +117,11 @@ BEGIN
   )
   SELECT string_agg(name || ' (' || left(id::text, 8) || ')', ', ' ORDER BY name) INTO z FROM arch;
   IF z IS NOT NULL THEN
-    RAISE NOTICE 'Mig 285 : homonymes de bases du catalogue archivés -> %', z;
+    RAISE NOTICE 'Mig % : homonymes de bases du catalogue archivés -> %', p_ctx, z;
   END IF;
 END $$;
+
+SELECT pg_temp.archiver_homonymes_catalogue('285 préambule');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 0. Ingrédients manquants au référentiel.
@@ -384,6 +390,10 @@ FROM (VALUES
    'Boîte de 6 macarons assortis (chocolat, vanille, citron, framboise, pistache). Composé depuis les mêmes bases que les macarons à la pièce ; coût boîte porté par le format (2 DH). J+4 à +4 °C. Allergènes : amande, pistache, œuf, lait, soja.')
 ) AS v (id, nom, pieces, pid, notes)
 ON CONFLICT (id) DO NOTHING;
+
+-- Les bases propres à cette migration sont en table : on rejoue l'archivage
+-- de leurs éventuels homonymes avant de les résoudre par nom.
+SELECT pg_temp.archiver_homonymes_catalogue('285 avant résolution par nom');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. Résolution des recettes sources des nomenclatures (bases transversales
