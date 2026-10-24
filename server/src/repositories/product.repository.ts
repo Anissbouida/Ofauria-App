@@ -174,10 +174,12 @@ export const productRepository = {
   async findById(id: string) {
     const result = await db.query(
       `SELECT p.*, c.name as category_name, c.slug as category_slug,
-              u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role
+              u.first_name as responsible_first_name, u.last_name as responsible_last_name, u.role as responsible_role,
+              COALESCE(vpa.allergens, '{}'::text[]) AS allergens
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN users u ON u.id = p.responsible_user_id
+       LEFT JOIN v_product_allergens vpa ON vpa.product_id = p.id
        WHERE p.id = $1`,
       [id]
     );

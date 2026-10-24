@@ -116,7 +116,9 @@ export const recipeRepository = {
               pc.quantite_theorique as contenant_quantite_theorique,
               pc.pertes_fixes as contenant_pertes_fixes,
               pc.unite_lancement as contenant_unite_lancement,
-              pc.poids_kg as contenant_poids_kg
+              pc.poids_kg as contenant_poids_kg,
+              COALESCE(va.allergens, '{}'::text[]) AS allergens,
+              COALESCE(va.nb_allergens, 0) AS nb_allergens
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
@@ -124,6 +126,7 @@ export const recipeRepository = {
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
+       LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
        WHERE r.id = $1`,
       [id]
     );
@@ -217,10 +220,12 @@ export const recipeRepository = {
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
+              COALESCE(va.allergens, '{}'::text[]) AS allergens,
               p.name as product_name, p.price as product_price
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
        WHERE r.product_id = $1`,
       [productId]
     );

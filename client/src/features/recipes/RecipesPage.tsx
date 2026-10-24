@@ -7,7 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
@@ -106,6 +106,8 @@ interface RecipeDetail {
   // Parametres de pate (mig 342) : T° de pate cible en fin de petrissage, hydratation en % boulanger.
   temperature_pate_cible_c?: string | number | null;
   hydratation_pct?: string | number | null;
+  // Allergenes agreges de toute la nomenclature (v_recipe_allergens, mig 343).
+  allergens?: string[] | null;
   total_cost: string;
   total_weight_kg: string | null;
   is_base: boolean;
@@ -1282,6 +1284,29 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                   </div>
                 </div>
               )}
+
+              {/* Allergènes — agrégés de toute la nomenclature (mig 343). Mention obligatoire
+                  sur l'étiquette : on l'affiche même quand la liste est vide, pour que
+                  « aucun allergène déclaré » soit une information et non un oubli. */}
+              <div className="odoo-section">
+                <div className="odoo-section-header">
+                  <AlertTriangle size={12} /> Allergènes
+                  {recipe.allergens && recipe.allergens.length > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 600, color: '#dc3545' }}>{recipe.allergens.length}</span>
+                  )}
+                </div>
+                <div style={{ padding: '0.625rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {recipe.allergens && recipe.allergens.length > 0 ? (
+                    recipe.allergens.map(a => (
+                      <span key={a} className="odoo-tag odoo-tag-red" style={{ textTransform: 'capitalize' }}>{a}</span>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      Aucun allergène déclaré sur les ingrédients de cette nomenclature. Vérifiez que les fiches ingrédients sont renseignées.
+                    </span>
+                  )}
+                </div>
+              </div>
 
               {/* Étapes de production */}
               {recipe.etapes && recipe.etapes.length > 0 && (
