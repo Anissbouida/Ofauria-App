@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../ui/InlineNotification';
-import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle } from 'lucide-react';
+import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle, ClipboardList, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /* ─── Step indicators ─── */
 const STEPS = [
@@ -22,26 +22,29 @@ const STEPS = [
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="flex items-center justify-center gap-1 px-5 py-3 border-b bg-gray-50 shrink-0">
-      {STEPS.map((step, i) => (
-        <div key={step.num} className="flex items-center">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            current === step.num
-              ? 'bg-primary-600 text-white'
-              : current > step.num
-                ? 'bg-green-100 text-green-700'
-                : 'bg-gray-200 text-gray-400'
-          }`}>
-            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">
-              {current > step.num ? '✓' : step.num}
-            </span>
-            <span className="hidden sm:inline">{step.label}</span>
+    <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+      {STEPS.map((step, i) => {
+        const done = current > step.num;
+        const active = current === step.num;
+        return (
+          <div key={step.num} style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.25rem 0.625rem', borderRadius: 999, fontSize: '0.75rem',
+              fontWeight: active ? 600 : 500,
+              background: active ? 'var(--odoo-purple)' : done ? '#d4edda' : 'var(--odoo-border)',
+              color: active ? '#fff' : done ? '#155724' : 'var(--odoo-text-muted)',
+            }}>
+              <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>
+                {done ? '✓' : step.num}
+              </span>
+              <span className="hidden sm:inline">{step.label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? '#28a745' : 'var(--odoo-border)' }} />
+            )}
           </div>
-          {i < STEPS.length - 1 && (
-            <div className={`w-8 h-0.5 mx-1 ${current > step.num ? 'bg-green-300' : 'bg-gray-200'}`} />
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -313,24 +316,31 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   if (isEdit && !detailLoaded) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-8 text-center">
-          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-3" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-gray-500 text-sm">Chargement de la commande...</p>
+      <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.45)' }}>
+        <div className="odoo-scope text-center" style={{ padding: '2rem', borderRadius: 6, border: '1px solid var(--odoo-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
+          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-3" style={{ borderColor: 'var(--theme-accent)', borderTopColor: 'transparent' }} />
+          <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement de la commande...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white w-full h-full sm:rounded-2xl flex flex-col sm:m-4 sm:max-h-full">
+    <div className="fixed inset-0 flex items-center justify-center z-50 sm:p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full h-full flex flex-col sm:max-h-full"
+        style={{ maxWidth: 1100, border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
-          <h2 className="text-lg sm:text-xl font-bold text-bakery-chocolate">
-            {isEdit ? 'Modifier la commande' : 'Nouvelle commande'}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 text-2xl leading-none">&times;</button>
+        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.875rem 1.25rem', background: 'var(--theme-accent)', color: '#fff' }}>
+          <ClipboardList size={18} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontWeight: 700, fontSize: '0.9375rem', margin: 0 }}>
+              {isEdit ? 'Modifier la commande' : 'Nouvelle commande'}
+            </h2>
+            {isEdit && order?.order_number && (
+              <div style={{ fontSize: '0.75rem', opacity: 0.85, fontFamily: 'ui-monospace, monospace' }}>{order.order_number as string}</div>
+            )}
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
         </div>
 
         {/* Step indicator */}
@@ -908,28 +918,29 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
         </div>
 
         {/* Footer navigation */}
-        <div className="border-t px-5 py-4 shrink-0 rounded-b-2xl">
-          <div className="flex gap-3">
-            {step === 1 ? (
-              <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5">Annuler</button>
-            ) : (
-              <button type="button" onClick={() => setStep(step - 1)} className="btn-secondary flex-1 py-2.5">
-                Retour
-              </button>
-            )}
-            {step < 3 ? (
-              <button type="button" onClick={handleNext}
-                disabled={step === 1 ? !canNextStep1 : !canNextStep2}
-                className="btn-primary flex-1 py-2.5 disabled:opacity-50">
-                Suivant
-              </button>
-            ) : (
-              <button type="button" onClick={handleSubmit} disabled={saving}
-                className="btn-primary flex-1 py-2.5 disabled:opacity-50">
-                {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer les modifications' : 'Confirmer la commande'}
-              </button>
-            )}
-          </div>
+        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginRight: 'auto' }}>
+            Étape {step} / {STEPS.length} · {STEPS[step - 1]?.label}
+          </span>
+          {step === 1 ? (
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+          ) : (
+            <button type="button" onClick={() => setStep(step - 1)} className="odoo-btn-secondary">
+              <ChevronLeft size={13} /> Retour
+            </button>
+          )}
+          {step < 3 ? (
+            <button type="button" onClick={handleNext}
+              disabled={step === 1 ? !canNextStep1 : !canNextStep2}
+              className="odoo-btn-primary">
+              Suivant <ChevronRight size={13} />
+            </button>
+          ) : (
+            <button type="button" onClick={handleSubmit} disabled={saving}
+              className="odoo-btn-primary">
+              <Check size={13} /> {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer les modifications' : 'Confirmer la commande'}
+            </button>
+          )}
         </div>
       </div>
     </div>
