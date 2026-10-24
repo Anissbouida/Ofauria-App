@@ -41,8 +41,10 @@ export async function importRepositories() {
   };
 }
 
-/** Suffixe unique par run pour ne jamais collisionner avec une autre execution. */
-export const RUN = Date.now().toString(36);
+/** Suffixe unique par FICHIER de test : les suites tournent en parallele dans des
+ *  workers distincts, Date.now() seul peut tomber sur la meme milliseconde
+ *  (collision sur users.email UNIQUE). */
+export const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export interface Fixtures {
   storeId: string;
