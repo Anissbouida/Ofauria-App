@@ -83,6 +83,41 @@
 --     AND NOT EXISTS (SELECT 1 FROM recipe_format_components c WHERE c.source_ingredient_id = ingredients.id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Préalable. Homonymes actifs des bases du catalogue : archivage.
+--   Les résolutions par nom de cette migration (et des suivantes, jusqu'à la
+--   290 qui refuse tout doublon de base active) supposent UNE seule base
+--   active par nom. Or la prod porte encore d'anciennes fiches « maison »
+--   homonymes des bases posées par les migs 273/276/280-290 : « Crème
+--   pâtissière » 089eac36 a été archivée à la main en local, mais elle était
+--   toujours active en prod -> « introuvable ou ambiguë (2) » au déploiement.
+--   On archive ici tout homonyme actif qui n'est PAS une base du catalogue
+--   (UUID fixes fab2xxxx-… / 0be7a000-…) : l'historique de production qui le
+--   référence reste intact (archivage, pas suppression), la fiche reste
+--   restaurable, et la base du catalogue devient la seule cible des
+--   nomenclatures. Idempotent : no-op quand il n'y a aucun homonyme.
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE z TEXT;
+BEGIN
+  WITH cat AS (
+    SELECT DISTINCT name FROM recipes
+     WHERE is_base AND archived_at IS NULL
+       AND (id::text LIKE 'fab2____-0000-4000-8000-%' OR id::text LIKE '0be7a000-0000-4000-8000-%')
+  ), arch AS (
+    UPDATE recipes r
+       SET archived_at = now(), updated_at = now()
+     WHERE r.is_base AND r.archived_at IS NULL
+       AND r.name IN (SELECT name FROM cat)
+       AND NOT (r.id::text LIKE 'fab2____-0000-4000-8000-%' OR r.id::text LIKE '0be7a000-0000-4000-8000-%')
+    RETURNING r.name, r.id
+  )
+  SELECT string_agg(name || ' (' || left(id::text, 8) || ')', ', ' ORDER BY name) INTO z FROM arch;
+  IF z IS NOT NULL THEN
+    RAISE NOTICE 'Mig 285 : homonymes de bases du catalogue archivés -> %', z;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 0. Ingrédients manquants au référentiel.
 -- ─────────────────────────────────────────────────────────────────────────────
 INSERT INTO ingredients (name, unit, unit_cost, category)
