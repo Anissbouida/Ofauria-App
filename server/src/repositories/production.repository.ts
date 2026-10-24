@@ -1167,6 +1167,39 @@ export const productionRepository = {
               [ingredientId, -actualConsumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
             );
           }
+
+          // ─── Emballages : meme consommation que complete() (audit 2026-10-23 §4.2).
+          // Un plan auto-complete via produceItems ne decrementait jamais les
+          // emballages : seule la cloture manuelle le faisait.
+          if (storeId && !isSemiFinishedPlan) {
+            const packagingNeeds = await client.query(
+              `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
+               FROM recipe_packaging rp
+               JOIN packaging_items pi ON pi.id = rp.packaging_id
+               WHERE rp.recipe_id = $1`,
+              [recipe.id]
+            );
+            for (const pk of packagingNeeds.rows) {
+              const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
+              if (pkConsumption <= 0) continue;
+              try {
+                await packagingItemRepository.adjustStock(client, {
+                  packagingId: pk.packaging_id,
+                  storeId,
+                  change: -pkConsumption,
+                  type: 'consumption',
+                  referenceId: planId,
+                  referenceType: 'production_plan',
+                  unitCost: parseFloat(pk.unit_cost),
+                  note: `Production partielle: ${item.product_name} x${item.actual_quantity}`,
+                  performedBy: userId,
+                });
+              } catch (pkErr) {
+                console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+                warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
+              }
+            }
+          }
         }
 
         // For semi-finished plans: feed semi_finished_stock instead of product stock
@@ -1387,29 +1420,96 @@ export const productionRepository = {
     try {
       await client.query('BEGIN');
 
+      // Magasin du transfert : c'est la que le stock produit a ete incremente a la
+      // production, donc la qu'un ecart de reception doit etre corrige.
+      const transferHeader = await client.query(
+        `SELECT plan_id, store_id FROM production_transfers WHERE id = $1 FOR UPDATE`, [transferId]
+      );
+      if (!transferHeader.rows[0]) throw new Error('Transfert introuvable');
+      const transferStoreId: string | null = transferHeader.rows[0].store_id ?? null;
+      const transferPlanId: string = transferHeader.rows[0].plan_id;
+
       let hasDiscrepancy = false;
+      const discrepancies: { product_id: string; product_name: string | null; transferred: number; received: number; delta: number }[] = [];
       for (const item of items) {
         await client.query(
           `UPDATE production_transfer_items SET received_quantity = $1 WHERE id = $2 AND transfer_id = $3`,
           [item.qtyReceived, item.itemId, transferId]
         );
-        // Check discrepancy
         const tItem = await client.query(
-          `SELECT transferred_quantity FROM production_transfer_items WHERE id = $1`, [item.itemId]
+          `SELECT transferred_quantity, product_id, product_name, plan_item_id
+           FROM production_transfer_items WHERE id = $1`, [item.itemId]
         );
-        if (tItem.rows[0] && item.qtyReceived !== tItem.rows[0].transferred_quantity) {
+        if (!tItem.rows[0]) continue;
+        const transferred = parseFloat(tItem.rows[0].transferred_quantity);
+        const delta = item.qtyReceived - transferred;
+
+        // ─── Ecart de reception : le stock produit SUIT la quantite reellement
+        // recue (audit 2026-10-23 §4.2). Avant, le statut passait a
+        // received_with_discrepancy mais le stock incremente a la production
+        // restait tel quel : le manquant devenait un stock fantome en boutique.
+        if (delta !== 0) {
           hasDiscrepancy = true;
-        }
-        // Update plan item status to received
-        const planItemResult = await client.query(
-          `SELECT plan_item_id FROM production_transfer_items WHERE id = $1`, [item.itemId]
-        );
-        if (planItemResult.rows[0]) {
+          const productId: string = tItem.rows[0].product_id;
+          discrepancies.push({ product_id: productId, product_name: tItem.rows[0].product_name, transferred, received: item.qtyReceived, delta });
+
+          const stockAfter = await adjustProductStock(client, productId, delta, transferStoreId);
           await client.query(
-            `UPDATE production_plan_items SET status = 'received' WHERE id = $1`,
-            [planItemResult.rows[0].plan_item_id]
+            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [productId, delta < 0 ? 'loss' : 'adjustment', delta, stockAfter,
+             `Ecart de reception transfert : ${transferred} transfere(s), ${item.qtyReceived} recu(s)${item.notes ? ' — ' + item.notes : ''}`,
+             transferId, userId, transferStoreId]
           );
+
+          // Miroir sur le lot de la fournee (invariant backroom + vitrine + sold +
+          // wasted + recycled = quantity_total) : le manquant part en wasted_qty,
+          // un surplus recu augmente le lot.
+          const lotResult = await client.query(
+            `SELECT id, backroom_qty FROM product_lots
+             WHERE production_plan_id = $1 AND product_id = $2 AND status = 'active'
+             ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+            [transferPlanId, productId]
+          );
+          if (lotResult.rows[0]) {
+            if (delta < 0) {
+              const lost = Math.min(-delta, parseFloat(lotResult.rows[0].backroom_qty) || 0);
+              if (lost > 0) {
+                await client.query(
+                  `UPDATE product_lots SET backroom_qty = backroom_qty - $2, wasted_qty = wasted_qty + $2, updated_at = NOW() WHERE id = $1`,
+                  [lotResult.rows[0].id, lost]
+                );
+              }
+            } else {
+              await client.query(
+                `UPDATE product_lots SET backroom_qty = backroom_qty + $2, quantity_total = quantity_total + $2, updated_at = NOW() WHERE id = $1`,
+                [lotResult.rows[0].id, delta]
+              );
+            }
+          }
+
+          // Perte valorisee au cout de revient, visible dans le module Controle.
+          if (delta < 0) {
+            const costResult = await client.query(`SELECT cost_price FROM products WHERE id = $1`, [productId]);
+            const unitCost = parseFloat(costResult.rows[0]?.cost_price) || 0;
+            await client.query(
+              `INSERT INTO product_losses
+                 (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost,
+                  production_plan_id, ingredients_consumed, declared_by, store_id)
+               VALUES ($1, $2, 'production', 'ecart_inventaire', $3, $4, $5, $6, true, $7, $8)`,
+              [productId, -delta,
+               `Ecart de reception du transfert : ${transferred} transfere(s), ${item.qtyReceived} recu(s)${item.notes ? ' — ' + item.notes : ''}`,
+               unitCost, Math.round(-delta * unitCost * 100) / 100,
+               transferPlanId, userId, transferStoreId]
+            );
+          }
         }
+
+        // Update plan item status to received
+        await client.query(
+          `UPDATE production_plan_items SET status = 'received' WHERE id = $1`,
+          [tItem.rows[0].plan_item_id]
+        );
       }
 
       // Update transfer status
@@ -1476,7 +1576,7 @@ export const productionRepository = {
       }
 
       await client.query('COMMIT');
-      return { status: transferStatus, planCompleted, planId };
+      return { status: transferStatus, planCompleted, planId, discrepancies };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

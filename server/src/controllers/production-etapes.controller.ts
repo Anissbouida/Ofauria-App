@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionEtapesRepository } from '../repositories/production-etapes.repository.js';
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
+import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema } from '../validators/production-etapes.validator.js';
 
 export const productionEtapesController = {
@@ -96,13 +97,21 @@ export const productionEtapesController = {
 
     const { db } = await import('../config/database.js');
     const planResult = await db.query(
-      `SELECT plan_id FROM production_plan_items WHERE id = $1`, [itemId]
+      `SELECT ppi.plan_id, ppi.product_id, ppi.contenant_id, pp.store_id AS plan_store_id
+       FROM production_plan_items ppi
+       JOIN production_plans pp ON pp.id = ppi.plan_id
+       WHERE ppi.id = $1`, [itemId]
     );
     const planId = planResult.rows[0]?.plan_id;
     if (!planId) {
       res.status(404).json({ success: false, error: { message: 'Item non trouve' } });
       return;
     }
+
+    // Le rendement est un upsert : on lit le vers_frigo precedent pour ne pousser
+    // au frigo que le DELTA (une re-saisie ne doit pas doubler le stock frigo).
+    const previous = await productionRendementRepository.findByPlanItem(itemId);
+    const previousVersFrigo = previous?.vers_frigo != null ? parseFloat(String(previous.vers_frigo)) : 0;
 
     const rendement = await productionRendementRepository.record({
       planItemId: itemId,
@@ -117,7 +126,55 @@ export const productionEtapesController = {
       recordedBy: req.user!.userId,
       notes: parsed.data.notes,
     });
-    res.json({ success: true, data: rendement });
+
+    // Surplus -> frigo AUTOMATIQUE (audit 2026-10-23 §4.2) : jusqu'ici vers_frigo
+    // n'etait qu'un nombre de reporting, le stock frigo n'existait que si
+    // quelqu'un pensait a le saisir a la main dans /stock-frigo/surplus.
+    const frigo: { added?: number; lot_number?: string | null; warning?: string } = {};
+    const delta = (parsed.data.vers_frigo || 0) - previousVersFrigo;
+    const storeId = planResult.rows[0].plan_store_id || req.user!.storeId;
+    if (delta > 0) {
+      const productId = planResult.rows[0].product_id as string | null;
+      if (!productId) {
+        frigo.warning = 'Surplus non pousse au frigo : cet article n\'a pas de produit (semi-fini par recette de base).';
+      } else if (!storeId) {
+        frigo.warning = 'Surplus non pousse au frigo : magasin inconnu.';
+      } else {
+        try {
+          // Lot de la fournee (cree a la production) et DLC du produit (jour meme par defaut).
+          const lotResult = await db.query(
+            `SELECT pl.lot_number, pl.expires_at
+             FROM product_lots pl
+             WHERE pl.production_plan_id = $1 AND pl.product_id = $2
+             ORDER BY pl.created_at DESC LIMIT 1`,
+            [planId, productId]
+          );
+          const expiresAt = lotResult.rows[0]?.expires_at
+            ? new Date(lotResult.rows[0].expires_at).toISOString()
+            : undefined;
+          const entry = await stockFrigoRepository.addSurplus({
+            productId,
+            storeId,
+            quantity: delta,
+            lotNumber: lotResult.rows[0]?.lot_number ?? undefined,
+            expiresAt,
+            sourcePlanId: planId,
+            sourceContenantId: planResult.rows[0].contenant_id ?? undefined,
+            performedBy: req.user!.userId,
+            notes: `Surplus de production (rendement) — ${delta} pousse(s) au frigo`,
+          });
+          frigo.added = delta;
+          frigo.lot_number = entry?.lot_number ?? null;
+        } catch (err) {
+          console.error('[rendement] surplus -> frigo echoue:', err);
+          frigo.warning = `Surplus non pousse au frigo : ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (delta < 0) {
+      frigo.warning = `vers_frigo reduit de ${-delta} : ajustez le stock frigo a la main (Stock > Frigo), le retrait n'est pas automatique.`;
+    }
+
+    res.json({ success: true, data: rendement, frigo });
   },
 
   // ─── Get rendement for a plan ───
