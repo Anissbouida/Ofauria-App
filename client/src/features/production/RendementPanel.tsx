@@ -67,10 +67,20 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
   const recordMutation = useMutation({
     mutationFn: ({ itemId, data }: { itemId: string; data: Record<string, any> }) =>
       productionEtapesApi.recordRendement(itemId, data as any),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production-rendement', planId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-frigo'] });
       setRecordingItem(null);
-      notify.success('Rendement enregistre');
+      // Retour du surplus -> frigo automatique : dire ce qui a ete pousse, ou pourquoi pas.
+      const frigo = result?.frigo ?? {};
+      if (frigo.added && frigo.added > 0) {
+        notify.success(`Rendement enregistre — ${frigo.added} pousse(s) au frigo${frigo.lot_number ? ` (lot ${frigo.lot_number})` : ''}`);
+      } else {
+        notify.success('Rendement enregistre');
+      }
+      if (frigo.warning) {
+        notify(frigo.warning, { icon: '⚠️', duration: 8000 });
+      }
     },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Erreur'),
   });
