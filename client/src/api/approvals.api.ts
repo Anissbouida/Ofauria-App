@@ -1,7 +1,7 @@
 import api from './client';
 import type { ApprovalDocType, ApprovalCondition, ApprovalRequestStatus, ApprovalStepStatus } from '@ofauria/shared';
 
-/** Circuits d'approbation (lot 8 Paramètres, mig 333). */
+/** Circuits d'approbation (lot 8 Paramètres, mig 347). */
 
 export interface ApprovalStep {
   id: string; request_id: string; step_order: number;

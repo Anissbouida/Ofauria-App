@@ -5,7 +5,7 @@ import { setAuditUser } from '../utils/audit-context.js';
 import { APPROVAL_DOC_TYPES, APPROVAL_OPS, type ApprovalDocTypeDef } from '@ofauria/shared';
 
 /**
- * Paramètres › Circuits d'approbation (lot 8, mig 333) : règles, conditions,
+ * Paramètres › Circuits d'approbation (lot 8, mig 347) : règles, conditions,
  * étapes. Les demandes en cours gardent leurs étapes copiées : modifier une
  * règle n'affecte que les soumissions suivantes.
  */
@@ -93,7 +93,7 @@ export const approvalRulesController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 333)', 409); return; }
+    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 347)', 409); return; }
     const b = req.body ?? {};
     const code = String(b.code ?? '').trim().toLowerCase();
     if (!/^[a-z][a-z0-9_]{1,39}$/.test(code)) { bad(res, 'Code : lettres minuscules, chiffres et _ (2 à 40 caractères)'); return; }
@@ -131,7 +131,7 @@ export const approvalRulesController = {
   },
 
   async update(req: AuthRequest, res: Response) {
-    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 333)', 409); return; }
+    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 347)', 409); return; }
     const existing = (await db.query(`SELECT * FROM approval_rules WHERE code = $1`, [req.params.code])).rows[0];
     if (!existing) { bad(res, 'Règle inconnue', 404); return; }
     const b = req.body ?? {};
@@ -183,7 +183,7 @@ export const approvalRulesController = {
   },
 
   async remove(req: AuthRequest, res: Response) {
-    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 333)', 409); return; }
+    if (!(await ready())) { bad(res, 'Approbations non disponibles sur cette base (migration 347)', 409); return; }
     const existing = (await db.query(`SELECT id FROM approval_rules WHERE code = $1`, [req.params.code])).rows[0];
     if (!existing) { bad(res, 'Règle inconnue', 404); return; }
     const pending = (await db.query(`SELECT count(*) FROM approval_requests WHERE rule_id = $1 AND status = 'pending'`, [existing.id])).rows[0].count;

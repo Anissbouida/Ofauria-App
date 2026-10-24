@@ -58,7 +58,7 @@ router.get('/notification-rules', authenticate, authorizeSettings('notifications
 router.put('/notification-rules/:type', authenticate, jsonParser, authorizeSettings('notifications', 'edit'), asyncHandler(docs.updateNotificationRule));
 
 // Donnees (lot 7) : import guide, exports de la configuration et des donnees de base.
-// Circuits d'approbation (lot 8, mig 333) : section « approvals ».
+// Circuits d'approbation (lot 8, mig 347) : section « approvals ».
 router.get('/approval-rules', authenticate, authorizeSettings('approvals'), asyncHandler(approvalRulesController.list));
 router.post('/approval-rules', authenticate, jsonParser, authorizeSettings('approvals', 'create'), asyncHandler(approvalRulesController.create));
 router.put('/approval-rules/:code', authenticate, jsonParser, authorizeSettings('approvals', 'edit'), asyncHandler(approvalRulesController.update));

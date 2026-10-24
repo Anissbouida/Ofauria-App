@@ -85,7 +85,7 @@ export const purchaseOrderController = {
       return;
     }
     const amount = Number((await purchaseOrderRepository.totalAmount(req.params.id)) ?? po.total_amount ?? 0);
-    // Circuit d'approbation (lot 8, mig 333) : si une règle active correspond
+    // Circuit d'approbation (lot 8, mig 347) : si une règle active correspond
     // (BC au-dessus du seuil paramétré), le bon attend l'accord d'un
     // approbateur et c'est le moteur qui l'enverra. On passe AVANT le plafond :
     // le demandeur ne fait que soumettre, il n'approuve pas.

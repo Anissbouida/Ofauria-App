@@ -13,7 +13,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
- * Paramètres › Circuits d'approbation (lot 8, mig 333). Une règle = type de
+ * Paramètres › Circuits d'approbation (lot 8, mig 347). Une règle = type de
  * pièce + condition + approbateurs successifs. Les demandes en cours gardent
  * leur circuit : modifier une règle ne vaut que pour les prochaines pièces.
  */
@@ -123,7 +123,7 @@ export default function ApprovalsTab() {
         Une pièce qui remplit la condition attend l'accord des approbateurs, dans l'ordre (série) ou tous en même temps (parallèle).
         Le demandeur ne peut jamais approuver sa propre pièce. Les décisions se prennent depuis la boîte « À approuver » de la cloche.
       </StatusBanner>
-      {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 333 n'est pas appliquée sur cette base.</StatusBanner>}
+      {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 347 n'est pas appliquée sur cette base.</StatusBanner>}
 
       {draft && (
         <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12, display: 'grid', gap: 10, background: 'var(--odoo-bg-card, var(--odoo-bg))' }}>

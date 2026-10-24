@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 333 — Moteur d'approbation (lot 8 Paramètres)
+-- 347 — Moteur d'approbation (lot 8 Paramètres)
 --   Jusqu'ici chaque module validait par rôle en dur : un BC s'envoie si on
 --   est admin ou gérant, quel que soit son montant. Les circuits
 --   d'approbation deviennent du paramétrage :
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS approval_rules (
   CHECK (code ~ '^[a-z][a-z0-9_]{1,39}$'),
   CHECK (jsonb_typeof(condition) = 'object')
 );
-COMMENT ON TABLE approval_rules IS 'Circuits d''approbation paramétrables (mig 333) : type de pièce, condition JSONB {field, op, value}, mode série ou parallèle.';
+COMMENT ON TABLE approval_rules IS 'Circuits d''approbation paramétrables (mig 347) : type de pièce, condition JSONB {field, op, value}, mode série ou parallèle.';
 
 CREATE TABLE IF NOT EXISTS approval_rule_steps (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -77,7 +77,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_requests_pending ON approval_reque
 CREATE INDEX IF NOT EXISTS idx_approval_requests_doc ON approval_requests (doc_type, doc_id, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests (status, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_approval_requests_by ON approval_requests (requested_by, requested_at DESC);
-COMMENT ON TABLE approval_requests IS 'Demandes d''approbation (mig 333) : une seule en attente par pièce.';
+COMMENT ON TABLE approval_requests IS 'Demandes d''approbation (mig 347) : une seule en attente par pièce.';
 
 CREATE TABLE IF NOT EXISTS approval_steps (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

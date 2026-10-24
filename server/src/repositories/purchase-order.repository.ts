@@ -35,7 +35,7 @@ export const purchaseOrderRepository = {
                 WHERE inv.status != 'cancelled'
                   AND (inv.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
               ) as has_invoice,
-              -- Demande d'approbation en attente (lot 8, mig 333) : la table
+              -- Demande d'approbation en attente (lot 8, mig 347) : la table
               -- peut manquer sur une base non migrée, d'où le to_regclass.
               CASE WHEN to_regclass('public.approval_requests') IS NOT NULL THEN EXISTS (
                 SELECT 1 FROM approval_requests ar

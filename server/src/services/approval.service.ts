@@ -8,7 +8,7 @@ import {
 } from '@ofauria/shared';
 
 /**
- * Moteur d'approbation (lot 8 Paramètres, mig 333).
+ * Moteur d'approbation (lot 8 Paramètres, mig 347).
  *
  * Un module soumet une pièce avec ses valeurs (montant, écart…) ; la première
  * règle active dont la condition correspond crée une demande et ses étapes.
@@ -163,7 +163,7 @@ async function applyDecision(request: ApprovalRequestRow, actorId: string, decis
 export const approvalService = {
   /**
    * Cherche une règle active applicable et, s'il y en a une, crée la demande.
-   * Sans table (migration 333 absente) ou sans règle applicable : not_required.
+   * Sans table (migration 347 absente) ou sans règle applicable : not_required.
    */
   async submit(input: SubmitInput): Promise<SubmitResult> {
     if (!(await tablesReady())) return { outcome: 'not_required' };

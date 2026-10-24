@@ -1,5 +1,5 @@
 /**
- * Circuits d'approbation (lot 8 Paramètres, mig 333).
+ * Circuits d'approbation (lot 8 Paramètres, mig 347).
  *
  * Une règle porte sur un type de pièce et une condition {field, op, value}
  * évaluée sur les valeurs que le module fournit au moment de la soumission.

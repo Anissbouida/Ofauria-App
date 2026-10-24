@@ -49,7 +49,7 @@ const q = async (text: string, params?: unknown[]) => (await conn.query(text, pa
 let server: import('node:http').Server | undefined;
 try {
   if (!(await q(`SELECT to_regclass('public.approval_rules') AS t`))[0].t) {
-    await conn.query(readFileSync(fileURLToPath(new URL('../migrations/333_approbations.sql', import.meta.url)), 'utf8'));
+    await conn.query(readFileSync(fileURLToPath(new URL('../migrations/347_approbations.sql', import.meta.url)), 'utf8'));
   }
   const { default: app } = await import('../src/app.js');
   const { generateToken } = await import('../src/utils/jwt.js');
@@ -87,7 +87,10 @@ try {
   const rules = await call('GET', '/settings/approval-rules', admin);
   ok(rules.status === 200 && rules.json.data.map((r: any) => r.code).sort().join(',') === 'inventory_gap,invoice_cancel,po_over_threshold', '3 regles livrees', rules.json?.data?.map((r: any) => r.code));
   ok(rules.json.data.find((r: any) => r.code === 'inventory_gap').steps.map((s: any) => s.approver_role).join('>') === 'manager>admin', 'ecart d\'inventaire : gerant puis admin');
-  ok((await call('GET', '/settings/approval-rules', manager)).status === 403, 'gerant sans droit Parametres : 403');
+  // Depuis la gouvernance des droits (mig 330/335), le rôle Gérant porte par
+  // défaut le droit « Paramètres » (toutes sections) : on vérifie donc le refus
+  // avec un rôle qui n'a aucun droit Paramètres (la caissière).
+  ok((await call('GET', '/settings/approval-rules', cashier)).status === 403, 'role sans droit Parametres : 403');
   ok((await call('PUT', '/settings/approval-rules/po_over_threshold', admin, { condition: { field: 'inconnu', op: 'gte', value: 1 } })).status === 400, 'champ de condition inconnu refuse');
   ok((await call('PUT', '/settings/approval-rules/po_over_threshold', admin, { escalateAfterHours: 1000 })).status === 400, 'escalade hors bornes refusee');
   ok((await call('PUT', '/settings/approval-rules/po_over_threshold', admin, { steps: [] })).status === 400, 'circuit sans approbateur refuse');
