@@ -65,7 +65,7 @@ export default function NotificationsTab() {
               <thead><tr><th style={{ width: 70 }}>Active</th><th>Événement</th><th>Prévenus (30 jours)</th><th style={{ textAlign: 'right' }}>Envois (30 j)</th><th>Prévenir aussi</th></tr></thead>
               <tbody>
                 {list.map(r => (
-                  <tr key={r.type} style={{ opacity: r.enabled ? 1 : 0.6 }}>
+                  <tr key={r.type} id={`notif-row-${r.type}`} style={{ opacity: r.enabled ? 1 : 0.6 }}>
                     <td>
                       <input id={`notif-${r.type}`} type="checkbox" checked={r.enabled} disabled={!editable || save.isPending}
                         aria-label={`Activer « ${r.label} »`}

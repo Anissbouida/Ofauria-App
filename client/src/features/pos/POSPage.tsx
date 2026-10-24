@@ -508,7 +508,12 @@ export default function POSPage() {
       queryClient.invalidateQueries({ queryKey: ['pending-production-transfers'] });
       setConfirmingTransferId(null);
       if (data?.data?.status === 'received_with_discrepancy') {
-        notify('Reception production confirmee avec ecart', { icon: '⚠️' });
+        // Le serveur a deja corrige le stock, le lot et les pertes : on dit quoi, article par article.
+        const ecarts = (data?.data?.discrepancies ?? []) as { product_name: string | null; transferred: number; received: number; delta: number }[];
+        const detail = ecarts
+          .map(e => `${e.product_name || 'Article'} : ${e.received}/${e.transferred} (${e.delta > 0 ? '+' : ''}${e.delta})`)
+          .join(' · ');
+        notify(`Reception confirmee avec ecart — stock ajuste${detail ? ` : ${detail}` : ''}`, { icon: '⚠️', duration: 9000 });
       } else {
         notify.success('Reception production confirmee');
       }

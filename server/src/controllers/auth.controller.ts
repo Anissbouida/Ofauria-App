@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { env } from '../config/env.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
-import { resolveRole } from '../services/access-rights.js';
+import { loginRoleContext } from '../services/access-rights.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, comparePassword } from '../utils/hash.js';
 import { generateToken } from '../utils/jwt.js';
@@ -131,8 +131,8 @@ export const authController = {
 
     // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
     // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
-    const roleInfo = await resolveRole(user.role);
-    const token = generateToken({ userId: user.id, role: roleInfo.baseRole, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+    const roleCtx = await loginRoleContext(user.id);
+    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
     setAuthCookie(res, token);
     res.json({
       success: true,
@@ -143,9 +143,10 @@ export const authController = {
           email: user.email,
           firstName: user.first_name,
           lastName: user.last_name,
-          role: roleInfo.baseRole,
-          roleCode: roleInfo.code,
-          roleLabel: roleInfo.label,
+          role: roleCtx.primaryBaseRole,
+          roleCode: roleCtx.roleCode,
+          roleLabel: roleCtx.roleLabel,
+          roles: roleCtx.roles,
           isActive: user.is_active,
           storeId: user.store_id || null,
         },
@@ -213,8 +214,8 @@ export const authController = {
 
     // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
     // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
-    const roleInfo = await resolveRole(user.role);
-    const token = generateToken({ userId: user.id, role: roleInfo.baseRole, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+    const roleCtx = await loginRoleContext(user.id);
+    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
     setAuthCookie(res, token);
     res.json({
       success: true,
@@ -225,9 +226,10 @@ export const authController = {
           email: user.email,
           firstName: user.first_name,
           lastName: user.last_name,
-          role: roleInfo.baseRole,
-          roleCode: roleInfo.code,
-          roleLabel: roleInfo.label,
+          role: roleCtx.primaryBaseRole,
+          roleCode: roleCtx.roleCode,
+          roleLabel: roleCtx.roleLabel,
+          roles: roleCtx.roles,
           isActive: user.is_active,
           storeId: user.store_id || null,
         },
@@ -273,7 +275,7 @@ export const authController = {
       return;
     }
 
-    const roleInfo = await resolveRole(user.role);
+    const roleCtx = await loginRoleContext(user.id);
     res.json({
       success: true,
       data: {
@@ -281,9 +283,10 @@ export const authController = {
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        role: roleInfo.baseRole,
-        roleCode: roleInfo.code,
-        roleLabel: roleInfo.label,
+        role: roleCtx.primaryBaseRole,
+        roleCode: roleCtx.roleCode,
+        roleLabel: roleCtx.roleLabel,
+        roles: roleCtx.roles,
         isActive: user.is_active,
         storeId: user.store_id || null,
       },

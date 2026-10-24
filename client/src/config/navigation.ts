@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, PackageX, Truck, ClipboardCheck, ArrowLeftRight, Box,
+  Package, PackageX, Truck, ClipboardCheck, ArrowLeftRight, Box, ShieldAlert,
 } from 'lucide-react';
 import { MODULE_LABELS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -103,6 +103,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Contrôle ouverture', description: "Validation du stock d'ouverture" },
       { module: 'reconciliation', href: '/reconciliation', icon: ArrowLeftRight, color: 'bg-lime-600',
         description: 'Suivi appro, transferts et invendus' },
+      // Rappel de lot : traçabilité descendante (matière → clients). Visible pour
+      // l'administrateur et le gérant (porté par le module 'reconciliation', seul
+      // accordé à ces deux rôles), cohérent avec la route API réservée.
+      { module: 'reconciliation', href: '/traceability/recall', icon: ShieldAlert, color: 'bg-red-700',
+        label: 'Rappel de lot', description: "Remonter d'un lot matière aux clients" },
     ],
   },
   {

@@ -1,24 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, History, Search, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { settingsApi, type BusinessParameter, type ParamField } from '../../api/settings.api';
 import { useSettings } from '../../context/SettingsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { notify } from '../../components/ui/InlineNotification';
+import { useDirtyForm, useDraft } from './DirtyForms';
 
 /**
  * Écran générique des paramètres métier (audit Paramètres, lot 4) : construit à
- * partir du catalogue serveur (services/parameters-catalog.ts). Chaque paramètre
- * s'enregistre seul, avec contrôle des bornes côté serveur et trace au journal.
- * `keys` restreint l'affichage (onglets Production, Général) ; sans `keys`,
- * tous les paramètres visibles sont listés par domaine, avec recherche.
+ * partir du catalogue serveur (services/parameters-catalog.ts). Chaque carte est un
+ * brouillon de la barre d'enregistrement commune (refonte lot A) ; le serveur contrôle
+ * les bornes et trace au journal. `keys` ou `domains` restreignent l'affichage ;
+ * sans filtre, tous les paramètres visibles sont listés par domaine, avec recherche.
  */
-
-function errorMessage(err: unknown, fallback: string) {
-  const e = err as { response?: { data?: { error?: { message?: string } | string } } };
-  const er = e?.response?.data?.error;
-  return typeof er === 'string' ? er : er?.message || fallback;
-}
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -38,18 +32,19 @@ function hintFor(key: string, v: Record<string, unknown>): string | null {
   return null;
 }
 
-export default function ParametersPanel({ keys, searchable = !keys }: { keys?: string[]; searchable?: boolean }) {
+export default function ParametersPanel({ keys, domains, searchable = !keys && !domains }: { keys?: string[]; domains?: string[]; searchable?: boolean }) {
   const [q, setQ] = useState('');
   const { data = [], isLoading, isError } = useQuery({ queryKey: ['business-parameters'], queryFn: settingsApi.parameters });
 
   const shown = useMemo(() => {
     let list = keys ? data.filter(p => keys.includes(p.key)) : data;
+    if (domains) list = list.filter(p => domains.includes(p.domain));
     if (q.trim()) {
       const n = normalize(q.trim());
       list = list.filter(p => normalize(`${p.label} ${p.help} ${p.domainLabel} ${p.fields.map(f => f.label).join(' ')}`).includes(n));
     }
     return list;
-  }, [data, keys, q]);
+  }, [data, keys, domains, q]);
 
   const groups = useMemo(() => {
     const m = new Map<string, BusinessParameter[]>();
@@ -74,7 +69,7 @@ export default function ParametersPanel({ keys, searchable = !keys }: { keys?: s
       {!shown.length && <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Aucun paramètre {q ? 'ne correspond à la recherche' : 'accessible'}.</p>}
       {groups.map(([domain, params]) => (
         <section key={domain} style={{ display: 'grid', gap: 8 }}>
-          {!keys && <h3 style={{ margin: 0, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>{domain}</h3>}
+          {searchable && <h3 style={{ margin: 0, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>{domain}</h3>}
           {params.map(p => <ParameterCard key={p.key} param={p} />)}
         </section>
       ))}
@@ -86,30 +81,29 @@ function ParameterCard({ param }: { param: BusinessParameter }) {
   const queryClient = useQueryClient();
   const { refreshSettings } = useSettings();
   const saved = param.value ?? param.defaults;
-  const [draft, setDraft] = useState<Record<string, unknown>>(saved);
+  const { draft, setDraft, reset, adopt } = useDraft<Record<string, unknown>>(saved);
   const [showHistory, setShowHistory] = useState(false);
-  useEffect(() => { setDraft(param.value ?? param.defaults); }, [param.value, param.defaults]);
 
-  const dirty = param.fields.some(f => String(draft[f.name]) !== String(saved[f.name]));
+  const changes = param.fields.filter(f => String(draft[f.name]) !== String(saved[f.name])).length;
   const isDefault = param.fields.every(f => String(saved[f.name]) === String(param.defaults[f.name]));
+  const draftIsDefault = param.fields.every(f => String(draft[f.name]) === String(param.defaults[f.name]));
   const disabled = !param.available || !param.editable;
 
-  const save = useMutation({
-    mutationFn: (value: Record<string, unknown>) => settingsApi.updateParameter(param.key, value),
-    onSuccess: async () => {
+  useDirtyForm(`param:${param.key}`, {
+    dirty: changes > 0, changes, reset,
+    save: async () => {
+      await settingsApi.updateParameter(param.key, Object.fromEntries(param.fields.map(f => [f.name, draft[f.name]])));
+      adopt();
       await queryClient.invalidateQueries({ queryKey: ['business-parameters'] });
       // Les paramètres stockés dans company_settings sont aussi lus par le contexte global.
       await refreshSettings();
-      notify.success(`« ${param.label} » enregistré`);
     },
-    onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
 
-  const submit = () => save.mutate(Object.fromEntries(param.fields.map(f => [f.name, draft[f.name]])));
   const hint = hintFor(param.key, draft);
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', display: 'grid', gap: 10, background: 'var(--odoo-bg)', opacity: param.available ? 1 : 0.6 }}>
+    <div id={`param-${param.key}`} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', display: 'grid', gap: 10, background: 'var(--odoo-bg)', opacity: param.available ? 1 : 0.6, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 320px' }}>
           <div style={{ fontWeight: 600 }}>{param.label}</div>
@@ -118,7 +112,8 @@ function ParameterCard({ param }: { param: BusinessParameter }) {
         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
           {!param.available && <span className="odoo-tag odoo-tag-grey">Non disponible sur cette base</span>}
           {param.available && !param.editable && <span className="odoo-tag odoo-tag-grey">Lecture seule</span>}
-          {param.available && !isDefault && <span className="odoo-tag odoo-tag-blue">Modifié</span>}
+          {param.available && changes > 0 && <span className="odoo-tag odoo-tag-orange">Non enregistré</span>}
+          {param.available && !isDefault && <span className="odoo-tag odoo-tag-blue">Personnalisé</span>}
         </div>
       </div>
 
@@ -138,19 +133,12 @@ function ParameterCard({ param }: { param: BusinessParameter }) {
             ? `Modifié le ${new Date(param.history[0].changed_at).toLocaleDateString('fr-FR')}${param.history[0].by_name ? ` par ${param.history[0].by_name}` : ''}`
             : 'Jamais modifié depuis l\'activation du journal'}
         </button>
-        {!disabled && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            {!isDefault && (
-              <button className="odoo-btn-secondary" onClick={() => save.mutate(Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])))}
-                disabled={save.isPending} title="Revenir à la valeur par défaut" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <RotateCcw size={12} /> Valeur par défaut
-              </button>
-            )}
-            {dirty && <button className="odoo-btn-secondary" onClick={() => setDraft(saved)}>Annuler</button>}
-            <button className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={submit}>
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
+        {!disabled && !draftIsDefault && (
+          // Ne fait que préparer le brouillon : l'enregistrement passe par la barre commune.
+          <button type="button" className="odoo-btn-secondary" title="Revenir à la valeur par défaut (à enregistrer ensuite)"
+            onClick={() => setDraft({ ...draft, ...Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])) })}>
+            <RotateCcw size={12} /> Valeur par défaut
+          </button>
         )}
       </div>
 

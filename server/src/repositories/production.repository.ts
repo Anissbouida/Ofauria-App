@@ -331,6 +331,18 @@ export const productionRepository = {
     try {
       await client.query('BEGIN');
 
+      // Verrou de transition : le controleur a lu le statut hors transaction, on
+      // le relit sous FOR UPDATE pour que deux confirm concurrents ne generent
+      // pas deux fois les besoins / le BSI / les numeros de lot.
+      const lockResult = await client.query(
+        `SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId]
+      );
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      if (lockResult.rows[0].status !== 'draft') {
+        throw new Error(`Le plan est deja en statut "${lockResult.rows[0].status}" : il ne peut pas etre confirme une seconde fois.`);
+      }
+
       // Get plan items
       const itemsResult = await client.query(
         `SELECT ppi.*, p.name as product_name FROM production_plan_items ppi
@@ -545,24 +557,29 @@ export const productionRepository = {
         throw new Error('Impossible : au moins un produit a deja ete demarre ou produit. Annulez d\'abord les items en cours.');
       }
 
-      // 3) Verifie l'etat du BSI : refuse si preleve/verifie/cloture
+      // 3) Verifie l'etat du BSI : refuse des que le stock a ete decremente.
+      //    Statuts d'EN-TETE (mig 084/103) : 'prelevement' = magasinier a sorti la
+      //    matiere (startPrelevement a deja decremente les lots). 'preleve' est un
+      //    statut de LIGNE, pas d'en-tete — l'utiliser ici laissait passer un plan
+      //    dont les ingredients etaient deja sortis.
       const bsiActive = await client.query(
         `SELECT COUNT(*)::int AS nb FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('preleve', 'verifie', 'cloture')`,
+         WHERE plan_id = $1 AND status IN ('prelevement', 'verifie', 'cloture')`,
         [planId],
       );
       if (bsiActive.rows[0].nb > 0) {
         throw new Error('Impossible : le bon de sortie a deja ete preleve. Annulez d\'abord le BSI.');
       }
 
-      // 4) Supprime BSI 'genere' (et lignes via cascade ou explicite)
+      // 4) Supprime BSI non encore preleves (genere/preparation/pret/annule) et leurs lignes.
+      //    La cle etrangere des lignes est bon_id (mig 084), pas bs_id.
       const bsiToDelete = await client.query(
         `SELECT id FROM production_bons_sortie
-         WHERE plan_id = $1 AND status IN ('genere', 'annule')`,
+         WHERE plan_id = $1 AND status IN ('genere', 'preparation', 'pret', 'annule')`,
         [planId],
       );
       for (const row of bsiToDelete.rows) {
-        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bs_id = $1`, [row.id]);
+        await client.query(`DELETE FROM production_bons_sortie_lignes WHERE bon_id = $1`, [row.id]);
         await client.query(`DELETE FROM production_bons_sortie WHERE id = $1`, [row.id]);
       }
 
@@ -588,57 +605,79 @@ export const productionRepository = {
   },
 
   async start(planId: string) {
-    // Check if this plan has unfulfilled semi-finished dependencies
-    const depsResult = await db.query(
-      `SELECT ppd.status, r.name as sub_recipe_name
-       FROM production_plan_dependencies ppd
-       JOIN recipes r ON r.id = ppd.sub_recipe_id
-       WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
-      [planId]
-    );
-    if (depsResult.rows.length > 0) {
-      const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
-      throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
-    }
+    // Controles + transition dans UNE transaction, plan verrouille : deux clics
+    // "Lancer" simultanes passaient tous les deux les controles (lus hors
+    // transaction) et ecrivaient in_progress deux fois.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
-    // Semi-finished plans don't have their own BSI, so skip this check for them
-    const planInfo = await db.query(
-      `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
-    );
-    if (!planInfo.rows[0]?.is_semi_finished_plan) {
-      // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
-      // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
-      const needsResult = await db.query(
-        `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
+      const lockResult = await client.query(
+        `SELECT status, is_semi_finished_plan FROM production_plans WHERE id = $1 FOR UPDATE`,
         [planId]
       );
-      const hasIngredientNeeds = needsResult.rows.length > 0;
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      const lockedStatus = lockResult.rows[0].status as string;
+      if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(lockedStatus)) {
+        throw new Error(`Le plan est en statut "${lockedStatus}" : il ne peut pas etre demarre.`);
+      }
 
-      if (hasIngredientNeeds) {
-        const bsiResult = await db.query(
-          `SELECT id, status, numero FROM production_bons_sortie
-           WHERE plan_id = $1 AND status != 'annule'
-           ORDER BY created_at DESC LIMIT 1`,
+      // Check if this plan has unfulfilled semi-finished dependencies
+      const depsResult = await client.query(
+        `SELECT ppd.status, r.name as sub_recipe_name
+         FROM production_plan_dependencies ppd
+         JOIN recipes r ON r.id = ppd.sub_recipe_id
+         WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
+        [planId]
+      );
+      if (depsResult.rows.length > 0) {
+        const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
+        throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
+      }
+
+      // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
+      // Semi-finished plans don't have their own BSI, so skip this check for them
+      if (!lockResult.rows[0].is_semi_finished_plan) {
+        // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
+        // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
+        const needsResult = await client.query(
+          `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
           [planId]
         );
-        if (bsiResult.rows.length === 0) {
-          throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
-        }
-        const bsi = bsiResult.rows[0];
-        if (bsi.status !== 'cloture') {
-          const statusLabels: Record<string, string> = {
-            genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
-          };
-          throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+        const hasIngredientNeeds = needsResult.rows.length > 0;
+
+        if (hasIngredientNeeds) {
+          const bsiResult = await client.query(
+            `SELECT id, status, numero FROM production_bons_sortie
+             WHERE plan_id = $1 AND status != 'annule'
+             ORDER BY created_at DESC LIMIT 1`,
+            [planId]
+          );
+          if (bsiResult.rows.length === 0) {
+            throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
+          }
+          const bsi = bsiResult.rows[0];
+          if (bsi.status !== 'cloture') {
+            const statusLabels: Record<string, string> = {
+              genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
+            };
+            throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+          }
         }
       }
-    }
 
-    await db.query(
-      `UPDATE production_plans SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
-      [planId]
-    );
+      await client.query(
+        `UPDATE production_plans SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
+        [planId]
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async complete(planId: string, actualItems: { planItemId: string; actualQuantity: number }[], userId: string, storeId?: string, completionType?: string): Promise<{ warnings: string[] }> {
@@ -646,6 +685,17 @@ export const productionRepository = {
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+
+      // Verrou de transition : sans lui, deux "Terminer" concurrents passaient le
+      // controle in_progress du controleur et deduisaient le stock deux fois.
+      const lockResult = await client.query(
+        `SELECT status FROM production_plans WHERE id = $1 FOR UPDATE`,
+        [planId]
+      );
+      if (lockResult.rows.length === 0) throw new Error('Plan introuvable');
+      if (lockResult.rows[0].status !== 'in_progress') {
+        throw new Error(`Le plan est en statut "${lockResult.rows[0].status}" : il ne peut pas etre termine.`);
+      }
 
       // Update actual quantities and mark as produced
       for (const item of actualItems) {
@@ -786,15 +836,17 @@ export const productionRepository = {
            `Production: ${item.product_name} x${item.actual_quantity}`, planId, userId, storeId || null]
         );
 
-        // Create product_display_tracking for lifecycle management
+        // Cycle de vie : lot produit fini pour TOUTE fournee (ci-dessous) et, pour
+        // les produits a DLV parametree, product_display_tracking (suivi legacy).
         if (storeId) {
           const productLifecycle = await client.query(
             `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
             [item.product_id]
           );
-          if (productLifecycle.rows[0]?.shelf_life_days) {
-            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
-            const shelfDays = parseInt(shelf_life_days);
+          const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
+          const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
+          if (shelfDays) {
+            const { display_life_hours } = productLifecycle.rows[0];
             const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
             await client.query(
               `INSERT INTO product_display_tracking (product_id, store_id, produced_at, expires_at, display_expires_at, status)
@@ -802,17 +854,19 @@ export const productionRepository = {
               displayHours !== null ? [item.product_id, storeId, shelfDays, displayHours] : [item.product_id, storeId, shelfDays]
             );
 
-            // Phase 1 — Cree le product_lot pour la fournee (tracabilite + FEFO).
-            // Reste invisible pour les flux qui n'ont pas encore migre — strictement additif.
-            await productLotRepository.createFromProduction(client, {
-              productId: item.product_id,
-              storeId,
-              productionPlanId: planId,
-              quantityProduced: parseFloat(item.actual_quantity),
-              shelfLifeDays: shelfDays,
-              notes: `Production plan ${planId}`,
-            });
           }
+
+          // Lot produit fini SYSTEMATIQUE (audit cycle de vie P2.7) : tracabilite
+          // descendante et FEFO pour 100 % du catalogue. Sans shelf_life_days,
+          // DLC = jour meme (repli dans createFromProduction).
+          await productLotRepository.createFromProduction(client, {
+            productId: item.product_id,
+            storeId,
+            productionPlanId: planId,
+            quantityProduced: parseFloat(item.actual_quantity),
+            shelfLifeDays: shelfDays,
+            notes: `Production plan ${planId}`,
+          });
         }
       }
 
@@ -1113,6 +1167,39 @@ export const productionRepository = {
               [ingredientId, -actualConsumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
             );
           }
+
+          // ─── Emballages : meme consommation que complete() (audit 2026-10-23 §4.2).
+          // Un plan auto-complete via produceItems ne decrementait jamais les
+          // emballages : seule la cloture manuelle le faisait.
+          if (storeId && !isSemiFinishedPlan) {
+            const packagingNeeds = await client.query(
+              `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
+               FROM recipe_packaging rp
+               JOIN packaging_items pi ON pi.id = rp.packaging_id
+               WHERE rp.recipe_id = $1`,
+              [recipe.id]
+            );
+            for (const pk of packagingNeeds.rows) {
+              const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
+              if (pkConsumption <= 0) continue;
+              try {
+                await packagingItemRepository.adjustStock(client, {
+                  packagingId: pk.packaging_id,
+                  storeId,
+                  change: -pkConsumption,
+                  type: 'consumption',
+                  referenceId: planId,
+                  referenceType: 'production_plan',
+                  unitCost: parseFloat(pk.unit_cost),
+                  note: `Production partielle: ${item.product_name} x${item.actual_quantity}`,
+                  performedBy: userId,
+                });
+              } catch (pkErr) {
+                console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+                warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
+              }
+            }
+          }
         }
 
         // For semi-finished plans: feed semi_finished_stock instead of product stock
@@ -1156,15 +1243,17 @@ export const productionRepository = {
           );
         }
 
-        // Calculate and store expiration date based on shelf_life_days
+        // Cycle de vie : lot produit fini pour TOUTE fournee (ci-dessous) et, pour
+        // les produits a DLV parametree, product_display_tracking (suivi legacy).
         if (storeId && item.product_id) {
           const productLifecycle = await client.query(
             `SELECT shelf_life_days, display_life_hours FROM products WHERE id = $1`,
             [item.product_id]
           );
-          if (productLifecycle.rows[0]?.shelf_life_days) {
-            const { shelf_life_days, display_life_hours } = productLifecycle.rows[0];
-            const shelfDays = parseInt(shelf_life_days);
+          const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
+          const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
+          if (shelfDays) {
+            const { display_life_hours } = productLifecycle.rows[0];
             const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
             const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';
             const params: unknown[] = [item.product_id, storeId];
@@ -1184,17 +1273,20 @@ export const productionRepository = {
               params
             );
 
-            // Phase 1 — product_lot pour la fournee (additif, n'impacte pas les flux legacy)
-            await productLotRepository.createFromProduction(client, {
-              productId: item.product_id,
-              storeId,
-              productionPlanId: planId,
-              quantityProduced: parseFloat(item.actual_quantity),
-              shelfLifeDays: shelfDays,
-              producedAt: producedAt ? new Date(producedAt) : undefined,
-              notes: `Production partielle plan ${planId}`,
-            });
           }
+
+          // Lot produit fini SYSTEMATIQUE (audit cycle de vie P2.7) : tracabilite
+          // descendante et FEFO pour 100 % du catalogue. Sans shelf_life_days,
+          // DLC = jour meme (repli dans createFromProduction).
+          await productLotRepository.createFromProduction(client, {
+            productId: item.product_id,
+            storeId,
+            productionPlanId: planId,
+            quantityProduced: parseFloat(item.actual_quantity),
+            shelfLifeDays: shelfDays,
+            producedAt: producedAt ? new Date(producedAt) : undefined,
+            notes: `Production partielle plan ${planId}`,
+          });
         }
       }
 
@@ -1328,29 +1420,96 @@ export const productionRepository = {
     try {
       await client.query('BEGIN');
 
+      // Magasin du transfert : c'est la que le stock produit a ete incremente a la
+      // production, donc la qu'un ecart de reception doit etre corrige.
+      const transferHeader = await client.query(
+        `SELECT plan_id, store_id FROM production_transfers WHERE id = $1 FOR UPDATE`, [transferId]
+      );
+      if (!transferHeader.rows[0]) throw new Error('Transfert introuvable');
+      const transferStoreId: string | null = transferHeader.rows[0].store_id ?? null;
+      const transferPlanId: string = transferHeader.rows[0].plan_id;
+
       let hasDiscrepancy = false;
+      const discrepancies: { product_id: string; product_name: string | null; transferred: number; received: number; delta: number }[] = [];
       for (const item of items) {
         await client.query(
           `UPDATE production_transfer_items SET received_quantity = $1 WHERE id = $2 AND transfer_id = $3`,
           [item.qtyReceived, item.itemId, transferId]
         );
-        // Check discrepancy
         const tItem = await client.query(
-          `SELECT transferred_quantity FROM production_transfer_items WHERE id = $1`, [item.itemId]
+          `SELECT transferred_quantity, product_id, product_name, plan_item_id
+           FROM production_transfer_items WHERE id = $1`, [item.itemId]
         );
-        if (tItem.rows[0] && item.qtyReceived !== tItem.rows[0].transferred_quantity) {
+        if (!tItem.rows[0]) continue;
+        const transferred = parseFloat(tItem.rows[0].transferred_quantity);
+        const delta = item.qtyReceived - transferred;
+
+        // ─── Ecart de reception : le stock produit SUIT la quantite reellement
+        // recue (audit 2026-10-23 §4.2). Avant, le statut passait a
+        // received_with_discrepancy mais le stock incremente a la production
+        // restait tel quel : le manquant devenait un stock fantome en boutique.
+        if (delta !== 0) {
           hasDiscrepancy = true;
-        }
-        // Update plan item status to received
-        const planItemResult = await client.query(
-          `SELECT plan_item_id FROM production_transfer_items WHERE id = $1`, [item.itemId]
-        );
-        if (planItemResult.rows[0]) {
+          const productId: string = tItem.rows[0].product_id;
+          discrepancies.push({ product_id: productId, product_name: tItem.rows[0].product_name, transferred, received: item.qtyReceived, delta });
+
+          const stockAfter = await adjustProductStock(client, productId, delta, transferStoreId);
           await client.query(
-            `UPDATE production_plan_items SET status = 'received' WHERE id = $1`,
-            [planItemResult.rows[0].plan_item_id]
+            `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [productId, delta < 0 ? 'loss' : 'adjustment', delta, stockAfter,
+             `Ecart de reception transfert : ${transferred} transfere(s), ${item.qtyReceived} recu(s)${item.notes ? ' — ' + item.notes : ''}`,
+             transferId, userId, transferStoreId]
           );
+
+          // Miroir sur le lot de la fournee (invariant backroom + vitrine + sold +
+          // wasted + recycled = quantity_total) : le manquant part en wasted_qty,
+          // un surplus recu augmente le lot.
+          const lotResult = await client.query(
+            `SELECT id, backroom_qty FROM product_lots
+             WHERE production_plan_id = $1 AND product_id = $2 AND status = 'active'
+             ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+            [transferPlanId, productId]
+          );
+          if (lotResult.rows[0]) {
+            if (delta < 0) {
+              const lost = Math.min(-delta, parseFloat(lotResult.rows[0].backroom_qty) || 0);
+              if (lost > 0) {
+                await client.query(
+                  `UPDATE product_lots SET backroom_qty = backroom_qty - $2, wasted_qty = wasted_qty + $2, updated_at = NOW() WHERE id = $1`,
+                  [lotResult.rows[0].id, lost]
+                );
+              }
+            } else {
+              await client.query(
+                `UPDATE product_lots SET backroom_qty = backroom_qty + $2, quantity_total = quantity_total + $2, updated_at = NOW() WHERE id = $1`,
+                [lotResult.rows[0].id, delta]
+              );
+            }
+          }
+
+          // Perte valorisee au cout de revient, visible dans le module Controle.
+          if (delta < 0) {
+            const costResult = await client.query(`SELECT cost_price FROM products WHERE id = $1`, [productId]);
+            const unitCost = parseFloat(costResult.rows[0]?.cost_price) || 0;
+            await client.query(
+              `INSERT INTO product_losses
+                 (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost,
+                  production_plan_id, ingredients_consumed, declared_by, store_id)
+               VALUES ($1, $2, 'production', 'ecart_inventaire', $3, $4, $5, $6, true, $7, $8)`,
+              [productId, -delta,
+               `Ecart de reception du transfert : ${transferred} transfere(s), ${item.qtyReceived} recu(s)${item.notes ? ' — ' + item.notes : ''}`,
+               unitCost, Math.round(-delta * unitCost * 100) / 100,
+               transferPlanId, userId, transferStoreId]
+            );
+          }
         }
+
+        // Update plan item status to received
+        await client.query(
+          `UPDATE production_plan_items SET status = 'received' WHERE id = $1`,
+          [tItem.rows[0].plan_item_id]
+        );
       }
 
       // Update transfer status
@@ -1417,7 +1576,7 @@ export const productionRepository = {
       }
 
       await client.query('COMMIT');
-      return { status: transferStatus, planCompleted, planId };
+      return { status: transferStatus, planCompleted, planId, discrepancies };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

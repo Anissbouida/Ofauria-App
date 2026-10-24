@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { ALLERGEN_CODES, normalizeAllergens } from '../validators/allergens.js';
 
 /**
  * Parser/generateur xlsx pour le module Economat — ingredients.
@@ -117,10 +118,16 @@ function toCleanString(v: unknown): string | null {
   return s.length > 0 ? s : null;
 }
 
-function parseAllergens(v: unknown): string[] {
+/**
+ * Colonne F : liste libre separee par des virgules, ramenee aux codes du
+ * referentiel des 14 allergenes (mig 344). Les valeurs non reconnues sont
+ * renvoyees a part : l'appelant les signale en warning et ne les importe pas
+ * (le CHECK en base les refuserait).
+ */
+function parseAllergens(v: unknown): { codes: string[]; unknown: string[] } {
   const s = toCleanString(v);
-  if (!s) return [];
-  return s.split(',').map(a => a.trim()).filter(Boolean);
+  if (!s) return { codes: [], unknown: [] };
+  return normalizeAllergens(s.split(','));
 }
 
 /**
@@ -160,7 +167,10 @@ export function parseIngredientWorkbook(buffer: Buffer): ParsedIngredientsWorkbo
     const rawUnit = row[2];
     const rawCost = row[3];
     const supplier = toCleanString(row[4]);
-    const allergens = parseAllergens(row[5]);
+    const { codes: allergens, unknown: unknownAllergens } = parseAllergens(row[5]);
+    if (unknownAllergens.length > 0) {
+      warnings.push(`Ligne ${sourceRow} : allergene(s) hors referentiel ignore(s) : ${unknownAllergens.join(', ')} — codes admis : ${ALLERGEN_CODES.join(', ')}`);
+    }
 
     if (!name) {
       errors.push({ sourceRow, message: 'Nom manquant (colonne A)' });

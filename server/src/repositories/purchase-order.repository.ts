@@ -5,12 +5,14 @@ import { packagingItemRepository } from './packaging-item.repository.js';
 import type { PoolClient } from 'pg';
 
 export const purchaseOrderRepository = {
-  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string }) {
+  async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; createdBy?: string }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     if (params.storeId) { conditions.push(`po.store_id = $${i++}`); values.push(params.storeId); }
+    // Portée « own » (mig 335/336) : limiter aux bons créés par l'utilisateur.
+    if (params.createdBy) { conditions.push(`po.created_by = $${i++}`); values.push(params.createdBy); }
     if (params.supplierId) { conditions.push(`po.supplier_id = $${i++}`); values.push(params.supplierId); }
     if (params.status) { conditions.push(`po.status = $${i++}`); values.push(params.status); }
     if (params.dateFrom) { conditions.push(`po.order_date >= $${i++}`); values.push(params.dateFrom); }
@@ -249,18 +251,10 @@ export const purchaseOrderRepository = {
         }
       }
 
-      // Update ingredient unit_costs
-      for (const item of items) {
-        const poItem = await client.query(
-          `SELECT ingredient_id FROM purchase_order_items WHERE id = $1`, [item.itemId]
-        );
-        if (poItem.rows[0]) {
-          await client.query(
-            `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
-            [item.unitPrice, poItem.rows[0].ingredient_id]
-          );
-        }
-      }
+      // Le coût standard des ingrédients n'est plus répercuté à la commande : il
+      // est piloté par le CMUP au moment de la réception (voir
+      // reception-voucher.repository). Les prix de ligne du BC sont déjà à jour
+      // ci-dessus (purchase_order_items.unit_price).
 
       await client.query('COMMIT');
       return { itemsUpdated: items.length, stillMissingPrices: stillMissing };
@@ -428,13 +422,12 @@ export const purchaseOrderRepository = {
           }
         }
 
-        // Le dernier prix saisi fait foi -> repercute sur le cout catalogue.
-        if (price !== null && price > 0) {
-          if (it.packagingId) {
-            await client.query(`UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`, [price, it.packagingId]);
-          } else if (it.ingredientId) {
-            await client.query(`UPDATE ingredients SET unit_cost = $1 WHERE id = $2`, [price, it.ingredientId]);
-          }
+        // Le dernier prix saisi fait foi -> repercute sur le cout catalogue du
+        // consommable. Pour les ingredients, le cout standard est desormais pilote
+        // par le CMUP a la reception (voir reception-voucher.repository), plus a la
+        // commande.
+        if (price !== null && price > 0 && it.packagingId) {
+          await client.query(`UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`, [price, it.packagingId]);
         }
       }
 

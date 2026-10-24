@@ -28,7 +28,12 @@ export const productionEtapesApi = {
     pertes_detail?: { categorie: string; quantite: number; notes?: string }[];
     notes?: string;
   }) =>
-    api.post(`/production-etapes/items/${itemId}/rendement`, data).then(r => r.data.data),
+    // Le serveur renvoie aussi `frigo` : surplus pousse automatiquement au stock frigo
+    // (quantite ajoutee, lot) ou avertissement si ce n'etait pas possible.
+    api.post(`/production-etapes/items/${itemId}/rendement`, data).then(r => ({
+      rendement: r.data.data as Record<string, unknown>,
+      frigo: (r.data.frigo ?? {}) as { added?: number; lot_number?: string | null; warning?: string },
+    })),
   getRendementTarget: (itemId: string) =>
     api.get(`/production-etapes/items/${itemId}/rendement/target`).then(r => r.data.data),
 

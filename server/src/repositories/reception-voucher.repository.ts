@@ -392,6 +392,22 @@ export const receptionVoucherRepository = {
             e.statusCode = 400;
             throw e;
           }
+          // ─── CMUP consommable : verrou + stock AVANT l'entrée ───
+          // Même logique que les ingrédients : unit_cost est global (catalogue)
+          // alors que le stock est par magasin, donc le coût moyen pondéré se
+          // calcule sur le stock agrégé, lu avant l'ajout d'adjustStock.
+          const pkgLockRes = await client.query(
+            `SELECT unit_cost FROM packaging_items WHERE id = $1 FOR UPDATE`,
+            [item.packagingId]
+          );
+          const pkgOldCost = pkgLockRes.rows[0]?.unit_cost != null
+            ? parseFloat(pkgLockRes.rows[0].unit_cost) : null;
+          const pkgStockRes = await client.query(
+            `SELECT COALESCE(SUM(stock_quantity), 0) AS qty FROM packaging_store_stock WHERE packaging_id = $1`,
+            [item.packagingId]
+          );
+          const pkgStockBefore = parseFloat(pkgStockRes.rows[0]?.qty ?? '0');
+
           await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
             packagingId: item.packagingId as string,
             storeId: consumableStoreId,
@@ -403,11 +419,22 @@ export const receptionVoucherRepository = {
             note: `Reception ${voucherNumber} — BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
             performedBy: data.receivedBy,
           });
-          // Met a jour le cout catalogue du consommable au dernier prix paye.
+          // Coût catalogue du consommable : CMUP après entrée (repli sur le prix
+          // reçu si stock ≤ 0 ou premier achat).
           if (effectiveCost && effectiveCost > 0) {
+            let pkgNewCost: number;
+            if (pkgStockBefore <= 0 || pkgOldCost == null || pkgOldCost <= 0) {
+              pkgNewCost = effectiveCost;
+            } else {
+              const pkgTotalQty = pkgStockBefore + item.quantityReceived;
+              pkgNewCost =
+                (pkgStockBefore * pkgOldCost + item.quantityReceived * effectiveCost) / pkgTotalQty;
+            }
+            // unit_cost est DECIMAL : on arrondit à 4 décimales.
+            pkgNewCost = Math.round(pkgNewCost * 10000) / 10000;
             await client.query(
               `UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`,
-              [effectiveCost, item.packagingId]
+              [pkgNewCost, item.packagingId]
             );
           }
           continue;
@@ -424,6 +451,27 @@ export const receptionVoucherRepository = {
            data.storeId || null]
         );
         if (!poItem) continue;
+
+        // ─── CMUP (coût moyen unité pondéré) : verrou + état AVANT l'entrée ───
+        // On verrouille la ligne ingredient pour sérialiser le calcul du coût
+        // standard : deux réceptions simultanées du même ingrédient (même sur des
+        // magasins différents) ne doivent pas se recouvrir. On lit ensuite le coût
+        // et le stock AVANT d'ajouter la quantité reçue.
+        const ingLockRes = await client.query(
+          `SELECT unit_cost FROM ingredients WHERE id = $1 FOR UPDATE`,
+          [item.ingredientId]
+        );
+        const oldUnitCost = ingLockRes.rows[0]?.unit_cost != null
+          ? parseFloat(ingLockRes.rows[0].unit_cost) : null;
+        // Stock avant réception, tous magasins confondus : unit_cost est global
+        // (1 ligne par ingrédient) alors que l'inventaire est par magasin, donc le
+        // CMUP se calcule sur le stock agrégé. current_quantity et unit_cost
+        // partagent l'unité de base de l'ingrédient — aucune conversion ici.
+        const stockBeforeRes = await client.query(
+          `SELECT COALESCE(SUM(current_quantity), 0) AS qty FROM inventory WHERE ingredient_id = $1`,
+          [item.ingredientId]
+        );
+        const stockBefore = parseFloat(stockBeforeRes.rows[0]?.qty ?? '0');
 
         // Lock inventory row then update
         const storeFilter = data.storeId ? ' AND store_id = $3' : '';
@@ -445,11 +493,26 @@ export const receptionVoucherRepository = {
           invParams
         );
 
-        // Update ingredient unit_cost if price provided
+        // ─── Coût standard de l'ingrédient : CMUP après entrée ───
+        // effectiveCost est le prix unitaire reçu, exprimé dans l'unité de base de
+        // l'ingrédient (contrat existant de la réception). stockBefore, la quantité
+        // reçue et effectiveCost sont donc tous dans la même unité.
         if (effectiveCost && effectiveCost > 0) {
+          let newUnitCost: number;
+          if (stockBefore <= 0 || oldUnitCost == null || oldUnitCost <= 0) {
+            // Pas de stock valorisable avant (premier achat, ou dérive
+            // d'inventaire ≤ 0) : impossible de moyenner → on retient le prix reçu.
+            newUnitCost = effectiveCost;
+          } else {
+            const totalQty = stockBefore + item.quantityReceived;
+            newUnitCost =
+              (stockBefore * oldUnitCost + item.quantityReceived * effectiveCost) / totalQty;
+          }
+          // unit_cost est DECIMAL(10,4) : on arrondit à 4 décimales.
+          newUnitCost = Math.round(newUnitCost * 10000) / 10000;
           await client.query(
             `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
-            [effectiveCost, item.ingredientId]
+            [newUnitCost, item.ingredientId]
           );
         }
 

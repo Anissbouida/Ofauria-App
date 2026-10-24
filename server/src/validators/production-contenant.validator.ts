@@ -1,8 +1,13 @@
 import { z } from 'zod';
+import { ETAPE_TYPES } from './recipe.validator.js';
 
 const etapeSchema = z.object({
   ordre: z.number().int().min(1),
   nom: z.string().min(1).max(200),
+  // Parametres structures (mig 342), memes regles que recipe.validator.
+  type: z.enum(ETAPE_TYPES).nullable().optional(),
+  temperature_c: z.number().min(-40).max(400).nullable().optional(),
+  humidite_pct: z.number().min(0).max(100).nullable().optional(),
   duree_estimee_min: z.number().int().min(1).nullable().optional(),
   est_bloquante: z.boolean().default(false),
   timer_auto: z.boolean().default(false),

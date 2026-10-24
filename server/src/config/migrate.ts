@@ -22,6 +22,11 @@ async function migrate() {
       executed_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Base VIERGE : sans cette colonne, l'INSERT (name, checksum) de la toute
+  // premiere migration echoue, ce qui avorte la transaction, et le repli
+  // INSERT (name) echoue a son tour dans la transaction avortee -> aucune
+  // base neuve ne pouvait migrer. Meme definition que la mig 102 (idempotent).
+  await db.query(`ALTER TABLE _migrations ADD COLUMN IF NOT EXISTS checksum CHAR(64)`);
 
   // Recupere les migrations deja appliquees avec leur checksum (si colonne existe).
   let executed: Map<string, string | null> = new Map();

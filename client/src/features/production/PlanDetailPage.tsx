@@ -166,6 +166,13 @@ export default function PlanDetailPage() {
       if (result?.data) {
         setBonNotNeededReason(null);
         notify.success('Bon de sortie genere — procedez au prelevement des ingredients');
+        // Lots hors DLC ecartes de l'allocation (mig 339) : le chef doit le savoir
+        // pour deroger explicitement depuis le bon de sortie s'il le juge utile.
+        const skipped = (result.data as { expired_lots_skipped?: { ingredient_name: string; lot_number: string }[] }).expired_lots_skipped;
+        if (skipped && skipped.length > 0) {
+          const liste = skipped.map(s => `${s.ingredient_name} (lot ${s.lot_number})`).join(', ');
+          notify(`${skipped.length} lot(s) a DLC depassee ecarte(s) : ${liste}. Derogation possible depuis le bon de sortie.`, { icon: '⚠️', duration: 9000 });
+        }
       } else {
         const reason = result?.reason || 'Aucun ingredient a prelever pour ce plan (produits sans recette).';
         setBonNotNeededReason(reason);

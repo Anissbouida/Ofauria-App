@@ -45,7 +45,7 @@ export const recipeComponentController = {
   },
 
   async saveFinance(req: AuthRequest, res: Response) {
-    const data = await recipeComponentRepository.updateFinance(req.params.recipeId, req.body);
+    const data = await recipeComponentRepository.updateFinance(req.params.recipeId, req.body, req.user?.userId ?? null);
     if (!data) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
     res.json({ success: true, data });
   },

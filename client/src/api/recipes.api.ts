@@ -178,15 +178,27 @@ export interface RecipeChild {
 }
 
 export const recipesApi = {
-  list: () => api.get('/recipes').then(r => r.data.data),
+  /** archived=true (strict) -> uniquement les fiches archivees (vue « Archivees ») ; sinon les actives.
+   *  Type `unknown` + test strict : la fonction est aussi passee telle quelle en queryFn
+   *  (ContenantsPage, ProductionPage...) et recoit alors le contexte React Query. */
+  list: (archived?: unknown) => api.get('/recipes', { params: archived === true ? { archived: 1 } : {} }).then(r => r.data.data),
   listBase: () => api.get('/recipes/base').then(r => r.data.data),
   listCategories: () => api.get('/recipes/categories').then(r => r.data.data as RecipeCategory[]),
   getById: (id: string) => api.get(`/recipes/${id}`).then(r => r.data.data),
   getByProductId: (productId: string) => api.get(`/recipes/by-product/${productId}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/recipes', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
+  /** DELETE archive la fiche (mig 346) : plus de suppression physique. */
   remove: (id: string) => api.delete(`/recipes/${id}`),
+  restore: (id: string) => api.post(`/recipes/${id}/restore`).then(r => r.data.data as { restoredCount: number }),
+  bulkArchive: (ids: string[]) => api.post('/recipes/bulk-archive', { ids }).then(r => r.data.data as { archivedCount: number }),
+  bulkRestore: (ids: string[]) => api.post('/recipes/bulk-restore', { ids }).then(r => r.data.data as { restoredCount: number }),
   versions: (id: string) => api.get(`/recipes/${id}/versions`).then(r => r.data.data),
+  /** Restaure une version (mig 346) : l'etat courant est d'abord verse en nouvelle version. */
+  restoreVersion: (id: string, versionNumber: number) =>
+    api.post(`/recipes/${id}/versions/${versionNumber}/restore`).then(r => r.data as {
+      data: Record<string, unknown>; restore: { restoredFrom: number; newVersion: number | null; warnings: string[] };
+    }),
 
   // --- Nomenclature par format (composition d'un produit composé) ---
   componentRoles: () => api.get('/recipes/component-roles').then(r => r.data.data as ComponentRole[]),

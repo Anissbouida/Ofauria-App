@@ -1,5 +1,23 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
+import { getUserTimezone } from '../utils/timezone.js';
+
+/**
+ * Date civile (YYYY-MM-DD) d'un instant, dans le fuseau du magasin.
+ * Les DLC sont des dates : les calculer en UTC decale d'un jour les fournees
+ * produites apres 23h locale (Maroc = UTC+1).
+ */
+function localIsoDate(date: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+/**
+ * Sans shelf_life_days, un produit est un produit DU JOUR : DLC = jour meme.
+ * Convention du moteur (mig 061, checkSaleability, FEFO vente) : shelf_life_days = 1
+ * <=> vendable le jour de production seulement (expires_at = J+1, refuse des que
+ * expires_at <= CURRENT_DATE). Le repli vaut donc 1, pas 0.
+ */
+const DEFAULT_SHELF_LIFE_DAYS = 1;
 
 /**
  * Product lots — fournees de production avec dual-clock DLV/DLC.
@@ -10,6 +28,14 @@ import { db } from '../config/database.js';
  * FEFO :
  *   - Backroom : ORDER BY expires_at (DLC plus proche en premier)
  *   - Vitrine : ORDER BY expires_at, display_expires_at (DLV cumulee)
+ *
+ * CONVENTION D'EXPIRATION (une seule, partout) :
+ *   un lot est expire des que expires_at <= CURRENT_DATE (ou display_expires_at <= NOW()).
+ *   C'est la convention de la vente (checkSaleability, FEFO), des invendus et du
+ *   catalogue ; les requetes d'expiration (markExpiredLots, autoExpireDueLots,
+ *   findExpiredActiveLots) la suivent aussi, sinon un lot etait invendable un jour
+ *   avant d'etre passe en pertes. shelf_life_days = 1 <=> vendable le jour de
+ *   production seulement (mig 061).
  */
 
 export interface ProductLot {
@@ -47,17 +73,18 @@ export const productLotRepository = {
     }
   ): Promise<ProductLot> {
     const producedAt = data.producedAt ?? new Date();
-    const shelfDays = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : null;
-    const expiresAt = shelfDays
-      ? new Date(producedAt.getTime() + shelfDays * 86400000)
-      : null;
+    const tz = getUserTimezone();
+    // Toute fournee a une DLC : shelf_life_days du produit, sinon jour meme
+    // (audit cycle de vie P2.7 — plus de lot sans DLC, plus de stock orphelin).
+    const shelfDays = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : DEFAULT_SHELF_LIFE_DAYS;
+    const expiresAt = new Date(producedAt.getTime() + shelfDays * 86400000);
 
     // Numero de lot incrementiel via sequence (zero collision)
     const seqResult = await client.query(
       `SELECT nextval('product_lot_number_seq') as n`
     );
     const seq = parseInt(seqResult.rows[0].n);
-    const ymd = producedAt.toISOString().slice(0, 10).replace(/-/g, '');
+    const ymd = localIsoDate(producedAt, tz).replace(/-/g, '');
     const lotNumber = `LOT-${ymd}-${String(seq).padStart(5, '0')}`;
 
     const result = await client.query(
@@ -73,7 +100,7 @@ export const productLotRepository = {
         data.storeId,
         lotNumber,
         producedAt.toISOString(),
-        expiresAt ? expiresAt.toISOString().slice(0, 10) : null,
+        localIsoDate(expiresAt, tz),
         data.quantityProduced,
         data.notes ?? null,
       ]
@@ -320,8 +347,8 @@ export const productLotRepository = {
       `pl.status = 'active'`,
       `(pl.vitrine_qty + pl.backroom_qty) > 0`,
       `(
-        (pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE)
-        OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW())
+        (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+        OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
       )`,
     ];
     const values: unknown[] = [];
@@ -337,8 +364,8 @@ export const productLotRepository = {
               p.image_url as product_image,
               c.name as category_name,
               CASE
-                WHEN pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW() THEN 'dlv_expired'
-                WHEN pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE THEN 'dlc_expired'
+                WHEN pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW() THEN 'dlv_expired'
+                WHEN pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE THEN 'dlc_expired'
                 ELSE 'other'
               END as expiry_reason,
               GREATEST(
@@ -633,8 +660,8 @@ export const productLotRepository = {
        SET status = 'expired', updated_at = NOW()
        WHERE status = 'active'
          AND (
-           (expires_at IS NOT NULL AND expires_at < CURRENT_DATE)
-           OR (display_expires_at IS NOT NULL AND display_expires_at < NOW())
+           (expires_at IS NOT NULL AND expires_at <= CURRENT_DATE)
+           OR (display_expires_at IS NOT NULL AND display_expires_at <= NOW())
          )
          AND (backroom_qty + vitrine_qty) > 0
        RETURNING id`
@@ -668,8 +695,8 @@ export const productLotRepository = {
          JOIN products p ON p.id = pl.product_id
          WHERE pl.status = 'active'
            AND (
-             (pl.expires_at IS NOT NULL AND pl.expires_at < CURRENT_DATE)
-             OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at < NOW())
+             (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+             OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
            )
            AND (pl.backroom_qty + pl.vitrine_qty) > 0
          FOR UPDATE`

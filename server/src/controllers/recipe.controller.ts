@@ -1,10 +1,12 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { recipeRepository } from '../repositories/recipe.repository.js';
+import { restoreRecipeVersion, RecipeRestoreError } from '../repositories/recipe-restore.helper.js';
 
 export const recipeController = {
-  async list(_req: AuthRequest, res: Response) {
-    const recipes = await recipeRepository.findAll();
+  async list(req: AuthRequest, res: Response) {
+    // ?archived=1 -> vue « Archivees » (fiches retirees des listes, restaurables).
+    const recipes = await recipeRepository.findAll(req.query.archived === '1');
     res.json({ success: true, data: recipes });
   },
   async getById(req: AuthRequest, res: Response) {
@@ -65,8 +67,43 @@ export const recipeController = {
     const versions = await recipeRepository.findVersions(req.params.id);
     res.json({ success: true, data: versions });
   },
+  // POST /recipes/:id/versions/:versionNumber/restore — re-applique la capture
+  // complete d'une version (mig 346), apres avoir verse l'etat courant en version.
+  async restoreVersion(req: AuthRequest, res: Response) {
+    const versionNumber = parseInt(req.params.versionNumber, 10);
+    if (!Number.isInteger(versionNumber) || versionNumber < 1) {
+      res.status(400).json({ success: false, error: { message: 'Numero de version invalide' } });
+      return;
+    }
+    try {
+      const result = await restoreRecipeVersion(req.params.id, versionNumber, req.user?.userId ?? null);
+      const recipe = await recipeRepository.findById(req.params.id);
+      res.json({ success: true, data: recipe, restore: result });
+    } catch (err) {
+      if (err instanceof RecipeRestoreError) {
+        const status = err.code === 'VERSION_NOT_FOUND' ? 404 : 409;
+        res.status(status).json({ success: false, error: { code: err.code, message: err.message } });
+        return;
+      }
+      throw err;
+    }
+  },
+  // DELETE /recipes/:id ARCHIVE la fiche (mig 346) : plus de suppression physique,
+  // l'historique de production la reference encore. Restaurable.
   async remove(req: AuthRequest, res: Response) {
-    await recipeRepository.delete(req.params.id);
-    res.json({ success: true, data: null });
+    const result = await recipeRepository.archive([req.params.id], req.user?.userId ?? null);
+    res.json({ success: true, data: result });
+  },
+  async restore(req: AuthRequest, res: Response) {
+    const result = await recipeRepository.restore([req.params.id]);
+    res.json({ success: true, data: result });
+  },
+  async bulkArchive(req: AuthRequest, res: Response) {
+    const result = await recipeRepository.archive(req.body.ids as string[], req.user?.userId ?? null);
+    res.json({ success: true, data: result });
+  },
+  async bulkRestore(req: AuthRequest, res: Response) {
+    const result = await recipeRepository.restore(req.body.ids as string[]);
+    res.json({ success: true, data: result });
   },
 };

@@ -5,6 +5,7 @@ import { settingsApi, type CompanyBankAccount } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
+import { settingAnchor } from './SettingsPrimitives';
 
 /**
  * Comptes bancaires de la société (audit Paramètres, lot 5, mig 331). Le RIB
@@ -51,7 +52,7 @@ export default function CompanyBankAccounts() {
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 10 }}>
+    <div id={settingAnchor('Comptes bancaires')} className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div>
           <div style={{ fontWeight: 600 }}>Comptes bancaires</div>

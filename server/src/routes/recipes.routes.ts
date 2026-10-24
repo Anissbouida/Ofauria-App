@@ -7,7 +7,7 @@ import { recipeComponentController } from '../controllers/recipe-component.contr
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { createRecipeSchema, updateRecipeSchema } from '../validators/recipe.validator.js';
+import { createRecipeSchema, updateRecipeSchema, bulkRecipeIdsSchema } from '../validators/recipe.validator.js';
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
@@ -66,8 +66,13 @@ router.put(
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
+router.post('/:id/versions/:versionNumber/restore', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), recipeController.restoreVersion);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), recipeController.create);
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), recipeController.update);
+// Archivage (mig 346) : DELETE archive, plus de suppression physique.
+router.post('/bulk-archive', authenticate, authorize(ROLES.ADMIN), validate(bulkRecipeIdsSchema), recipeController.bulkArchive);
+router.post('/bulk-restore', authenticate, authorize(ROLES.ADMIN), validate(bulkRecipeIdsSchema), recipeController.bulkRestore);
+router.post('/:id/restore', authenticate, authorize(ROLES.ADMIN), recipeController.restore);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), recipeController.remove);
 
 export default router;

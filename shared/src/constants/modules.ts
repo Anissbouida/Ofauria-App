@@ -28,6 +28,11 @@ export const APP_MODULES = {
   packaging: 'packaging',
   /** Rapprochement journalier (ISOLE, TEMPORAIRE) : appro - vendu - invendu. */
   reconciliation: 'reconciliation',
+  /** Stock unifie (fusion Economat + Pesage) : cle CANONIQUE. Alias legacy :
+   *  economat / inventory / pesage / warehouse (cf. MODULE_ALIASES). */
+  stock: 'stock',
+  /** Controle & Qualite (pertes, HACCP, tracabilite, controle des ventes). */
+  controle: 'controle',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -66,21 +71,44 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   warehouse: 'Pesage',  // alias retrocompat
   packaging: 'Emballages',
   reconciliation: 'Contrôle des ventes',
+  stock: 'Stock',
+  controle: 'Contrôle & Qualité',
 };
 
-/** Default permissions per role (used when no custom permissions are set) */
+/** Default permissions per role (used when no custom permissions are set).
+ *  Cles CANONIQUES (stock = economat+pesage unifies, cf. MODULE_ALIASES). */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'economat', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'pesage', 'packaging', 'reconciliation'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
-  baker: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  pastry_chef: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  viennoiserie: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  beldi_sale: ['economat', 'recipes', 'production', 'replenishment', 'packaging', 'pesage'],
-  /** Magasinier : pesage (BSI + sacs ouverts) + economat (stock scelle) + approv + emballages. */
-  magasinier: ['pesage', 'economat', 'replenishment', 'packaging'],
+  baker: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  pastry_chef: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  viennoiserie: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  beldi_sale: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  /** Magasinier : stock (economat + pesage unifies) + approv + emballages. */
+  magasinier: ['stock', 'replenishment', 'packaging'],
 };
+
+/**
+ * Fusion Stock : 'stock' est la cle canonique ; les cles historiques
+ * economat/inventory/pesage/warehouse designent le meme module (droit unique).
+ * MODULE_ALIASES mappe canonique -> cles legacy ; LEGACY_MODULE_KEYS liste les
+ * cles a MASQUER dans l'ecran des droits (remplacees par 'stock').
+ */
+export const MODULE_ALIASES: Partial<Record<string, string[]>> = {
+  stock: ['economat', 'inventory', 'pesage', 'warehouse'],
+};
+export const LEGACY_MODULE_KEYS: ReadonlySet<string> = new Set(['economat', 'inventory', 'pesage', 'warehouse']);
+
+/** Un module et ses cles equivalentes (canonique <-> legacy), dans les deux sens. */
+export function resolveModuleKeys(module: string): string[] {
+  const keys = new Set<string>([module, ...(MODULE_ALIASES[module] ?? [])]);
+  for (const [canon, aliases] of Object.entries(MODULE_ALIASES)) {
+    if (aliases?.includes(module)) { keys.add(canon); aliases.forEach(a => keys.add(a)); }
+  }
+  return [...keys];
+}
 
 export interface UserPermission {
   module: AppModule;
@@ -89,4 +117,92 @@ export interface UserPermission {
   canEdit: boolean;
   canDelete: boolean;
   config: Record<string, unknown>;
+}
+
+// ─── Alignement ERP (Phase 1) ───────────────────────────────────────────
+// Deux dimensions que les grands ERP ajoutent au CRUD par module :
+//  1. des VERBES MÉTIER (approuver, valider, comptabiliser…) au-delà de
+//     créer/modifier/supprimer ;
+//  2. une PORTÉE DES DONNÉES déclarative (ses enregistrements / son
+//     établissement / tous), équivalent des « record rules » Odoo.
+// Les deux sont stockés dans le JSONB `config` d'un droit (role_permissions
+// ou user_permissions) : config.verbs (string[]) et config.scope. Aucune
+// colonne dédiée — voir migration 335 et services/access-rules.ts.
+
+/** Portée des données d'un droit (du plus restreint au plus large). */
+export type DataScope = 'own' | 'store' | 'all';
+export const DATA_SCOPES: DataScope[] = ['own', 'store', 'all'];
+/** Rang de permissivité : « all » > « store » > « own ». */
+export const DATA_SCOPE_RANK: Record<DataScope, number> = { own: 0, store: 1, all: 2 };
+export const DATA_SCOPE_LABELS: Record<DataScope, string> = {
+  own: 'Ses enregistrements',
+  store: 'Son établissement',
+  all: 'Tous les établissements',
+};
+/** Portée par défaut d'un droit non précisé : l'établissement de l'utilisateur. */
+export const DEFAULT_DATA_SCOPE: DataScope = 'store';
+
+/** Actions métier au-delà du CRUD (verbes ERP). */
+export type BusinessVerb = 'approve' | 'validate' | 'post' | 'export' | 'print' | 'close';
+export const BUSINESS_VERBS: BusinessVerb[] = ['approve', 'validate', 'post', 'export', 'print', 'close'];
+export const BUSINESS_VERB_LABELS: Record<BusinessVerb, string> = {
+  approve: 'Approuver',
+  validate: 'Valider',
+  post: 'Comptabiliser',
+  export: 'Exporter',
+  print: 'Imprimer',
+  close: 'Clôturer',
+};
+
+/**
+ * Verbes métier proposés par module (un module absent n'expose aucun verbe
+ * spécifique). Sert à l'écran des droits : seules ces cases apparaissent.
+ * L'application effective des verbes (ex. bloquer l'approbation d'un BC) se
+ * branche sur les flux métier (Phase 2, avec les limites d'approbation).
+ */
+export const MODULE_VERBS: Partial<Record<AppModule, BusinessVerb[]>> = {
+  purchasing: ['approve', 'validate', 'post', 'export', 'print'],
+  accounting: ['validate', 'post', 'export', 'print', 'close'],
+  production: ['validate', 'close', 'print'],
+  replenishment: ['approve', 'validate'],
+  employees: ['validate', 'export', 'print'],
+  recipes: ['validate', 'export', 'print'],
+  reports: ['export', 'print'],
+  sales: ['export', 'print'],
+  pos: ['print'],
+  reconciliation: ['validate', 'close'],
+};
+
+export function isBusinessVerb(v: unknown): v is BusinessVerb {
+  return typeof v === 'string' && (BUSINESS_VERBS as string[]).includes(v);
+}
+export function isDataScope(v: unknown): v is DataScope {
+  return typeof v === 'string' && (DATA_SCOPES as string[]).includes(v);
+}
+
+// ─── Gouvernance (Phase 2) ──────────────────────────────────────────────
+// Une « capacité » est l'unité manipulée par la séparation des tâches (SoD) :
+// une action CRUD ou un verbe métier, sur un module donné.
+export type Capability = 'view' | 'create' | 'edit' | 'delete' | BusinessVerb;
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  view: 'Voir', create: 'Créer', edit: 'Modifier', delete: 'Supprimer',
+  approve: 'Approuver', validate: 'Valider', post: 'Comptabiliser',
+  export: 'Exporter', print: 'Imprimer', close: 'Clôturer',
+};
+export const CAPABILITIES: Capability[] = Object.keys(CAPABILITY_LABELS) as Capability[];
+export function isCapability(v: unknown): v is Capability {
+  return typeof v === 'string' && (CAPABILITIES as string[]).includes(v);
+}
+
+/** Types de document soumis à un plafond d'approbation par rôle. */
+export type ApprovalDocumentType = 'purchase_order' | 'expense' | 'invoice' | 'payment';
+export const APPROVAL_DOCUMENT_TYPES: ApprovalDocumentType[] = ['purchase_order', 'expense', 'invoice', 'payment'];
+export const APPROVAL_DOCUMENT_LABELS: Record<ApprovalDocumentType, string> = {
+  purchase_order: 'Bon de commande',
+  expense: 'Dépense',
+  invoice: 'Facture',
+  payment: 'Paiement',
+};
+export function isApprovalDocumentType(v: unknown): v is ApprovalDocumentType {
+  return typeof v === 'string' && (APPROVAL_DOCUMENT_TYPES as string[]).includes(v);
 }

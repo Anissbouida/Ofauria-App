@@ -12,6 +12,7 @@ import {
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
   Warehouse,
 } from 'lucide-react';
+import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
@@ -1088,6 +1089,7 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
     containerTypeId: (ingredient.container_type_id as string) || '',
     containerSize: ingredient.container_size != null ? String(ingredient.container_size) : '',
     densiteKgL: ingredient.densite_kg_l != null ? String(ingredient.densite_kg_l) : '',
+    allergens: (Array.isArray(ingredient.allergens) ? ingredient.allergens : []) as string[],
   });
 
   // Referentiel editable des types de contenant (Parametres -> Referentiel).
@@ -1120,6 +1122,7 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
             containerTypeId: form.containerTypeId || null,
             containerSize: form.containerSize !== '' ? (parseFloat(form.containerSize) || null) : null,
             densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
+            allergens: form.allergens,
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
@@ -1183,6 +1186,11 @@ function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading
               </p>
             </div>
           )}
+          {/* Allergenes : referentiel ferme des 14 (mig 344), agreges jusqu'a la fiche produit (mig 343). */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Allergènes</label>
+            <AllergenSelector value={form.allergens} onChange={allergens => setForm({ ...form, allergens })} />
+          </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">

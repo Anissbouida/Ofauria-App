@@ -90,7 +90,16 @@ export const productionController = {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en brouillon pour etre confirme' } });
       return;
     }
-    const { warnings } = await productionRepository.confirm(req.params.id, req.user!.userId);
+    // Le repository reverifie le statut sous verrou : un confirm concurrent
+    // (double clic) est refuse en 409 comme pour start/revertToDraft.
+    let warnings: string[];
+    try {
+      ({ warnings } = await productionRepository.confirm(req.params.id, req.user!.userId));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur lors de la confirmation';
+      res.status(409).json({ success: false, error: { message } });
+      return;
+    }
 
     // Auto-detect semi-finished needs: reserve available stock, create production
     // plans for any deficit. Skip semi-finished plans themselves to avoid recursion.
@@ -416,7 +425,16 @@ export const productionController = {
       });
       return;
     }
-    const { warnings } = await productionRepository.complete(req.params.id, bodyItems || req.body.items, req.user!.userId, req.user!.storeId, completionType);
+    // Le repository reverifie le statut sous verrou : un complete concurrent
+    // (double clic) est refuse en 409 au lieu de deduire le stock deux fois.
+    let warnings: string[];
+    try {
+      ({ warnings } = await productionRepository.complete(req.params.id, bodyItems || req.body.items, req.user!.userId, req.user!.storeId, completionType));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur lors de la cloture';
+      res.status(409).json({ success: false, error: { message } });
+      return;
+    }
     const updated = await productionRepository.findById(req.params.id);
 
     // If linked to an order, mark order as 'ready'

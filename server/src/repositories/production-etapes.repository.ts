@@ -40,14 +40,16 @@ export const productionEtapesRepository = {
         `INSERT INTO production_item_etapes
          (plan_item_id, ordre, nom, duree_estimee_min, est_bloquante, timer_auto,
           controle_qualite, checklist_items, est_repetable, nb_repetitions_cible,
-          responsable_role)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          responsable_role, type_etape, temperature_c, humidite_pct)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [planItemId, etape.ordre, etape.nom, etape.duree_estimee_min || null,
          etape.est_bloquante ?? true, etape.timer_auto ?? false,
          etape.controle_qualite ?? false, JSON.stringify(etape.checklist_items || []),
          etape.est_repetable ?? false, etape.nb_repetitions || 1,
-         etape.responsable_role || null]
+         etape.responsable_role || null,
+         // Parametres structures (mig 342) : copies tels quels pour l'ecran de fabrication.
+         etape.type || null, etape.temperature_c ?? null, etape.humidite_pct ?? null]
       );
       inserted.push(result.rows[0]);
     }

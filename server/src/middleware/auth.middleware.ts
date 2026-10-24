@@ -7,6 +7,8 @@ export interface AuthRequest extends Request {
   user?: {
     userId: string;
     role: string;
+    /** Tous les rôles de base de l'utilisateur (mig 335), pour authorize. */
+    baseRoles?: string[];
     storeId?: string;
     jti?: string;
     exp?: number;
@@ -61,6 +63,7 @@ export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonN
       user: {
         userId: payload.userId,
         role: payload.role,
+        baseRoles: payload.baseRoles && payload.baseRoles.length ? payload.baseRoles : [payload.role],
         storeId: payload.storeId,
         jti: payload.jti,
         exp: payload.exp,

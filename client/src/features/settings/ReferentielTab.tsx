@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -38,7 +39,14 @@ const fmt = (d: unknown, f: string) => (d ? format(new Date(String(d)), f, { loc
 const who = (l: Row) => (l.first_name ? `${String(l.first_name)} ${String(l.last_name || '')}`.trim() : 'Système');
 
 export default function ReferentielTab() {
-  const [tableId, setTableId] = useState<string | null>(null);
+  // Table ouverte dans l'URL (?page=referentiel&table=…) : lien direct et retour arrière.
+  const [params, setParams] = useSearchParams();
+  const tableId = params.get('table');
+  const setTableId = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('table', id); else next.delete('table');
+    setParams(next);
+  };
   return (
     <div className="odoo-scope">
       {tableId ? <ParamTable tableId={tableId} onBack={() => setTableId(null)} /> : <RefDashboard onOpenTable={setTableId} />}

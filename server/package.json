@@ -10,6 +10,8 @@
     "migrate": "tsx src/config/migrate.ts",
     "seed": "tsx src/config/seed.ts",
     "test": "vitest",
+    "test:db:setup": "scripts/test-db-setup.sh",
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/kalum_test} vitest run src/__tests__/db",
     "e2e:paie": "tsx scripts/e2e-paie.ts",
     "e2e:audit-parametres": "tsx scripts/e2e-audit-parametres.ts",
     "e2e:numerotation": "tsx scripts/e2e-numerotation.ts",
@@ -20,7 +22,9 @@
     "e2e:documents": "tsx scripts/e2e-documents.ts",
     "e2e:donnees": "tsx scripts/e2e-donnees.ts",
     "e2e:approbations": "tsx scripts/e2e-approbations.ts",
-    "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
+    "e2e:accueil-config": "tsx scripts/e2e-accueil-config.ts",
+    "seed:test-accounts": "tsx scripts/seed-test-accounts.ts",
+    "backfill:cmup": "tsx scripts/backfill-unit-cost-cmup.ts"
   },
   "dependencies": {
     "@ofauria/shared": "*",

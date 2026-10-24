@@ -1,8 +1,10 @@
 import { db } from '../config/database.js';
+import { snapshotRecipeVersion } from './recipe-version.helper.js';
 import {
   yieldInSellingUnit,
   requiresPieceWeight,
   YieldConversionError,
+  convertQuantity,
   type SellingUnit,
 } from '../utils/units.js';
 
@@ -19,18 +21,23 @@ const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
 /**
  * Convert quantity from one unit to another.
  * Returns the conversion factor: qty_in_fromUnit * factor = qty_in_toUnit
- * Returns 1 if units are incompatible (no conversion possible).
+ * Meme famille (g/kg, ml/l) : facteur direct. Poids <-> volume : via la densite
+ * de l'ingredient (utils/units.convertQuantity, mig 227/340). Sans densite sur un
+ * croisement poids<->volume, le repli est 1 — le meme que la vue SQL, dont
+ * conversion_ok signale le cas (la valeur stockee ici n'est pas la reference :
+ * recipes.total_cost est toujours relu depuis la vue).
  */
-function unitConversionFactor(fromUnit: string, toUnit: string): number {
+function unitConversionFactor(fromUnit: string, toUnit: string, densiteKgL?: number | null): number {
   if (fromUnit === toUnit) return 1;
   const from = UNIT_TO_BASE[fromUnit];
   const to = UNIT_TO_BASE[toUnit];
-  if (!from || !to || from.base !== to.base) return 1; // incompatible units
-  return from.factor / to.factor;
+  if (from && to && from.base === to.base) return from.factor / to.factor;
+  return convertQuantity(1, fromUnit, toUnit, densiteKgL).value;
 }
 
 export const recipeRepository = {
-  async findAll() {
+  /** @param archivedOnly true = uniquement les fiches archivees (vue « Archivees ») ; false = actives seulement. */
+  async findAll(archivedOnly = false) {
     // total_cost vient de la vue v_recipe_total_cost (recalcule a la volee).
     // Le champ recipes.total_cost stocke n'est jamais lu — toujours obsolete potentiel.
     // formats_nb / formats_perte_pct exposes pour badge "multi-format" et alerte perte.
@@ -39,9 +46,10 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id, r.mode_cout, r.compo_par_piece,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
-              r.created_at, r.updated_at,
+              r.created_at, r.updated_at, r.archived_at,
               vtc.total_cost,
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
@@ -81,6 +89,7 @@ export const recipeRepository = {
          ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
        ) df ON true
        LEFT JOIN production_contenants dfc ON dfc.id = df.contenant_id
+       WHERE r.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
        ORDER BY r.is_base DESC, r.name`
     );
     return result.rows;
@@ -93,6 +102,7 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.taux_main_oeuvre_dh_h, r.cout_energie_fournee, r.taux_frais_structure_pct,
@@ -109,7 +119,10 @@ export const recipeRepository = {
               pc.quantite_theorique as contenant_quantite_theorique,
               pc.pertes_fixes as contenant_pertes_fixes,
               pc.unite_lancement as contenant_unite_lancement,
-              pc.poids_kg as contenant_poids_kg
+              pc.poids_kg as contenant_poids_kg,
+              COALESCE(va.allergens, '{}'::text[]) AS allergens,
+              COALESCE(va.nb_allergens, 0) AS nb_allergens,
+              r.archived_at, r.archived_by
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
@@ -117,6 +130,7 @@ export const recipeRepository = {
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
+       LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
        WHERE r.id = $1`,
       [id]
     );
@@ -207,12 +221,15 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
+              COALESCE(va.allergens, '{}'::text[]) AS allergens,
               p.name as product_name, p.price as product_price
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
        WHERE r.product_id = $1`,
       [productId]
     );
@@ -290,7 +307,7 @@ export const recipeRepository = {
        FROM recipes r
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
-       WHERE r.is_base = true
+       WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
     );
     return result.rows;
@@ -299,6 +316,7 @@ export const recipeRepository = {
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
@@ -325,11 +343,12 @@ export const recipeRepository = {
       // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
       let totalCost = 0;
       for (const ing of (data.ingredients ?? [])) {
-        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit, densite_kg_l FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
           const recipeUnit = ing.unit || ingBaseUnit;
-          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          const densite = ingResult.rows[0].densite_kg_l != null ? parseFloat(ingResult.rows[0].densite_kg_l) : null;
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit, densite);
           totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
@@ -370,12 +389,14 @@ export const recipeRepository = {
       const tauxStruct = data.tauxFraisStructurePct ?? parseFloat(csDefaults.taux_frais_structure_defaut_pct || '0');
       const recipeResult = await client.query(
         `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, contenant_id, etapes, margin_multiplier,
-                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id,
+                              temperature_pate_cible_c, hydratation_pct)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
         [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
          data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
-         tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null]
+         tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null,
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -561,6 +582,7 @@ export const recipeRepository = {
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
@@ -586,40 +608,18 @@ export const recipeRepository = {
       );
 
       if (currentRecipe) {
-        const versionNumResult = await client.query(
-          `SELECT COALESCE(MAX(version_number), 0) + 1 as next_version FROM recipe_versions WHERE recipe_id = $1`,
-          [id]
-        );
-        const nextVersion = versionNumResult.rows[0].next_version;
-
-        await client.query(
-          `INSERT INTO recipe_versions (recipe_id, version_number, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, ingredients, sub_recipes, changed_by, change_note)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-          [
-            id,
-            nextVersion,
-            currentRecipe.name,
-            currentRecipe.instructions,
-            currentRecipe.yield_quantity,
-            currentRecipe.yield_unit || 'unit',
-            currentRecipe.piece_weight_kg ?? null,
-            currentRecipe.total_cost,
-            currentRecipe.is_base,
-            JSON.stringify(currentRecipe.ingredients),
-            JSON.stringify(currentRecipe.sub_recipes),
-            data.changedBy || null,
-            data.changeNote || null,
-          ]
-        );
+        // Version complete (mig 346) : legacy + nomenclature composee + formats + etapes + frais.
+        await snapshotRecipeVersion(client, id, data.changedBy || null, data.changeNote || null);
       }
 
       let totalCost = 0;
       for (const ing of (data.ingredients ?? [])) {
-        const ingResult = await client.query('SELECT unit_cost, unit FROM ingredients WHERE id = $1', [ing.ingredientId]);
+        const ingResult = await client.query('SELECT unit_cost, unit, densite_kg_l FROM ingredients WHERE id = $1', [ing.ingredientId]);
         if (ingResult.rows[0]) {
           const ingBaseUnit = ingResult.rows[0].unit;
           const recipeUnit = ing.unit || ingBaseUnit;
-          const factor = unitConversionFactor(recipeUnit, ingBaseUnit);
+          const densite = ingResult.rows[0].densite_kg_l != null ? parseFloat(ingResult.rows[0].densite_kg_l) : null;
+          const factor = unitConversionFactor(recipeUnit, ingBaseUnit, densite);
           totalCost += parseFloat(ingResult.rows[0].unit_cost) * ing.quantity * factor;
         }
       }
@@ -658,12 +658,15 @@ export const recipeRepository = {
            cout_energie_fournee = COALESCE($11, cout_energie_fournee),
            taux_frais_structure_pct = COALESCE($12, taux_frais_structure_pct),
            category_id = $13,
+           temperature_pate_cible_c = $15,
+           hydratation_pct = $16,
            updated_at = NOW()
          WHERE id = $14`,
         [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
          data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
-         data.categoryId ?? null, id]
+         data.categoryId ?? null, id,
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
       );
 
       // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire
@@ -870,7 +873,26 @@ export const recipeRepository = {
     return result.rows.length > 0;
   },
 
-  async delete(id: string) {
-    await db.query('DELETE FROM recipes WHERE id = $1', [id]);
+  /**
+   * Archivage (mig 346) — remplace la suppression physique : la fiche sort des
+   * listes et des selecteurs mais reste lisible depuis l'historique de
+   * production, et restaurable. Idempotent (deja archivee = ignoree).
+   */
+  async archive(ids: string[], userId: string | null) {
+    const result = await db.query(
+      `UPDATE recipes SET archived_at = NOW(), archived_by = $2, updated_at = NOW()
+       WHERE id = ANY($1::uuid[]) AND archived_at IS NULL`,
+      [ids, userId]
+    );
+    return { archivedCount: result.rowCount ?? 0 };
+  },
+
+  async restore(ids: string[]) {
+    const result = await db.query(
+      `UPDATE recipes SET archived_at = NULL, archived_by = NULL, updated_at = NOW()
+       WHERE id = ANY($1::uuid[]) AND archived_at IS NOT NULL`,
+      [ids]
+    );
+    return { restoredCount: result.rowCount ?? 0 };
   },
 };
