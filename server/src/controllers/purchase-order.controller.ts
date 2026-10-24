@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
 import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
@@ -83,9 +84,26 @@ export const purchaseOrderController = {
       res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
       return;
     }
-    // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
-    // defini ; l'administrateur approuve sans limite.
-    const amount = Number(po.total_amount ?? 0);
+    const amount = Number((await purchaseOrderRepository.totalAmount(req.params.id)) ?? po.total_amount ?? 0);
+    // Circuit d'approbation (lot 8, mig 347) : si une règle active correspond
+    // (BC au-dessus du seuil paramétré), le bon attend l'accord d'un
+    // approbateur et c'est le moteur qui l'enverra. On passe AVANT le plafond :
+    // le demandeur ne fait que soumettre, il n'approuve pas.
+    const approval = await approvalService.submit({
+      docType: 'purchase_order', docId: req.params.id, docLabel: `BC ${po.order_number} · ${po.supplier_name ?? ''}`.trim(),
+      amount, values: { amount }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+    });
+    if (approval.outcome === 'already_pending') {
+      res.status(409).json({ success: false, error: { message: 'Ce bon attend déjà une approbation' }, approval: approval.request });
+      return;
+    }
+    if (approval.outcome === 'submitted') {
+      res.status(202).json({ success: true, data: po, approval: approval.request });
+      return;
+    }
+    // Aucun circuit requis : l'envoyeur engage directement le bon. Le plafond
+    // d'approbation (mig 336) borne alors ce qu'il peut envoyer seul ; dormant
+    // tant qu'aucun plafond BC n'est défini, illimité pour l'administrateur.
     const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', amount);
     if (!allowed) {
       res.status(403).json({
@@ -141,6 +159,7 @@ export const purchaseOrderController = {
       return;
     }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'annule');
+    await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Bon de commande annulé');
     res.json({ success: true, data: updated });
   },
 
@@ -171,6 +190,7 @@ export const purchaseOrderController = {
       return;
     }
     try {
+      await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Bon de commande supprimé');
       await purchaseOrderRepository.delete(req.params.id);
       res.json({ success: true, data: null });
     } catch (err) {
@@ -260,6 +280,11 @@ export const purchaseOrderController = {
         ? null
         : num(raw.unitPrice),
     }));
+    // Lignes modifiées sur un bon en attente d'approbation : la demande est
+    // retirée, le montant approuvé ne serait plus celui du bon.
+    if (po.status === 'en_attente') {
+      await approvalService.cancelPending('purchase_order', req.params.id, req.user!.userId, 'Lignes du bon modifiées : à soumettre de nouveau');
+    }
     if (items.some(it => !(it.ingredientId || it.packagingId) || it.quantityOrdered <= 0)) {
       res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article et une quantite > 0' } });
       return;

@@ -50,7 +50,7 @@ export const openingInventoryCheckApi = {
   validate: (
     id: string,
     data: { action: 'approve' | 'reject'; rejectionReason?: string }
-  ) => api.post(`/inventory-checks/opening/${id}/validate`, data).then((r) => r.data.data),
+  ) => api.post(`/inventory-checks/opening/${id}/validate`, data).then((r) => ({ ...r.data.data, approval: r.data.approval })),
 
   listAwaitingValidation: () =>
     api.get('/inventory-checks/opening/awaiting-validation').then((r) => r.data.data),

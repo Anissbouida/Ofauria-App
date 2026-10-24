@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { caisseRepository, supplierRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
@@ -222,6 +223,26 @@ export const invoiceController = {
     }
   },
   async cancel(req: AuthRequest, res: Response) {
+    const current = await invoiceRepository.findById(req.params.id);
+    if (!current) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (current.status === 'cancelled') { res.status(409).json({ success: false, error: { message: 'Facture déjà annulée' } }); return; }
+    // Circuit d'approbation (lot 8) : l'annulation d'une facture émise vaut
+    // avoir (numérotation continue, mig 329) et passe par un approbateur.
+    const approval = await approvalService.submit({
+      docType: 'invoice_cancel', docId: req.params.id,
+      docLabel: `Annulation facture ${current.invoice_number ?? ''}`.trim(),
+      amount: Number(current.total_amount ?? 0),
+      values: { amount: Number(current.total_amount ?? 0), invoice_type: current.invoice_type },
+      storeId: current.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+    });
+    if (approval.outcome === 'already_pending') {
+      res.status(409).json({ success: false, error: { message: 'Cette annulation attend déjà une approbation' }, approval: approval.request });
+      return;
+    }
+    if (approval.outcome === 'submitted') {
+      res.status(202).json({ success: true, data: current, approval: approval.request });
+      return;
+    }
     const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
     res.json({ success: true, data: invoice });
   },

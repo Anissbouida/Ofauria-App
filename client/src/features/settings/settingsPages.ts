@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -19,7 +19,7 @@ export type SettingsPageKey =
   | 'production' | 'purchasing'
   | 'tax' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'data'
-  | 'notifications' | 'audit';
+  | 'notifications' | 'approvals' | 'audit';
 
 export interface SettingsPageDef {
   key: SettingsPageKey;
@@ -94,6 +94,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 
   { key: 'notifications', group: 'Sécurité et contrôle', section: 'notifications', label: 'Notifications', icon: Bell,
     description: 'Qui est prévenu, et de quoi', keywords: 'alerte notification destinataire' },
+  { key: 'approvals', group: 'Sécurité et contrôle', section: 'approvals', label: "Circuits d'approbation", icon: ClipboardCheck,
+    description: 'Règles qui soumettent une pièce à l\'accord d\'un approbateur', keywords: 'approbation validation seuil bon de commande avoir ecart delegation escalade' },
   { key: 'audit', group: 'Sécurité et contrôle', section: 'audit', label: 'Journal', icon: ShieldCheck,
     description: 'Modifications du paramétrage et connexions', keywords: 'audit historique connexion trace' },
 ];

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCheck, Package, ChefHat, Clock, X } from 'lucide-react';
+import { Bell, Check, CheckCheck, Package, ChefHat, Clock, X, ClipboardCheck } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../api/notifications.api';
 import type { Notification } from '../../api/notifications.api';
 import { useAuth } from '../../context/AuthContext';
+import { approvalsApi } from '../../api/approvals.api';
 
 const POLL_INTERVAL = 30_000; // 30 seconds
 
@@ -15,6 +16,10 @@ const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   order_created: Package,
   order_confirmed: Package,
   order_ready: Package,
+  approval_requested: ClipboardCheck,
+  approval_approved: Check,
+  approval_rejected: X,
+  approval_escalated: Clock,
 };
 
 function timeAgo(dateStr: string) {
@@ -49,6 +54,14 @@ export default function NotificationBell() {
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: notificationsApi.unreadCount,
+    refetchInterval: POLL_INTERVAL,
+    enabled: !!user,
+  });
+
+  // Pièces qui attendent ma décision (lot 8) : même rythme que les notifications.
+  const { data: approvalsCount = 0 } = useQuery({
+    queryKey: ['approvals', 'count'],
+    queryFn: approvalsApi.count,
     refetchInterval: POLL_INTERVAL,
     enabled: !!user,
   });
@@ -98,6 +111,8 @@ export default function NotificationBell() {
       navigate(`/replenishment/${notif.reference_id}`);
     } else if (notif.reference_type === 'order' && notif.reference_id) {
       navigate('/orders');
+    } else if (notif.reference_type === 'approval_request') {
+      navigate('/approvals');
     }
 
     setOpen(false);
@@ -114,9 +129,9 @@ export default function NotificationBell() {
         title="Notifications"
       >
         <Bell size={20} />
-        {unreadCount > 0 && (
+        {(unreadCount > 0 || approvalsCount > 0) && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none animate-pulse">
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {unreadCount + approvalsCount > 99 ? '99+' : unreadCount + approvalsCount}
           </span>
         )}
       </button>
@@ -143,6 +158,16 @@ export default function NotificationBell() {
               </button>
             </div>
           </div>
+
+          {/* Boîte À approuver (lot 8) */}
+          <button
+            onClick={() => { navigate('/approvals'); setOpen(false); }}
+            className={`w-full text-left px-4 py-2.5 border-b flex items-center gap-3 text-sm ${approvalsCount > 0 ? 'bg-amber-50 hover:bg-amber-100 text-amber-900' : 'bg-white hover:bg-gray-50 text-gray-600'}`}
+          >
+            <ClipboardCheck size={16} className={approvalsCount > 0 ? 'text-amber-600' : 'text-gray-400'} />
+            <span className="flex-1 font-medium">À approuver</span>
+            <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${approvalsCount > 0 ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500'}`}>{approvalsCount}</span>
+          </button>
 
           {/* Notification list */}
           <div className="max-h-[400px] overflow-y-auto">

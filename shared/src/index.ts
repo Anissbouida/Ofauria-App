@@ -7,6 +7,7 @@ export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 export * from './constants/shifts.js';
 export * from './constants/settings-sections.js';
+export * from './constants/approvals.js';
 
 // Types
 export * from './types/common.types.js';

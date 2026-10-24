@@ -1,0 +1,276 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ClipboardCheck, CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type ApprovalDocTypeDef } from '@ofauria/shared';
+import { approvalsApi, apiErrorMessage, type ApprovalRequest } from '../../api/approvals.api';
+import { useAuth } from '../../context/AuthContext';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+
+/**
+ * Boîte « À approuver » (lot 8). Les demandes que je peux trancher, celles
+ * que j'ai faites, l'historique (admin / gérant) et mes délégations.
+ */
+
+const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
+const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`;
+const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
+const statusTag: Record<string, string> = { pending: 'odoo-tag-orange', approved: 'odoo-tag-green', rejected: 'odoo-tag-red', cancelled: 'odoo-tag-grey' };
+const roleLabel = (c: string | null) => (c ? (ROLE_LABELS as Record<string, string>)[c] ?? c : '');
+
+function Steps({ r }: { r: ApprovalRequest }) {
+  return (
+    <ol className="ui-timeline" style={{ margin: 0 }}>
+      {r.steps.map(s => {
+        const done = s.status === 'approved' || s.status === 'rejected';
+        const cls = `ui-timeline-step${done ? ' is-done' : s.status === 'pending' ? ' is-current' : ''}`;
+        return (
+          <li key={s.id} className={cls}>
+            <span className="ui-timeline-dot" />
+            <div className="ui-timeline-label">
+              Étape {s.step_order} · {s.approver_name ?? roleLabel(s.approver_role)}
+              {s.status === 'pending' && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>En cours</span>}
+              {s.status === 'approved' && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6 }}>Approuvée</span>}
+              {s.status === 'rejected' && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>Refusée</span>}
+              {s.status === 'skipped' && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Sans objet</span>}
+            </div>
+            <div className="ui-timeline-detail">
+              {done && s.decided_at && <>{s.decided_by_name} · {when(s.decided_at)}{s.reason ? ` · ${s.reason}` : ''}</>}
+              {s.status === 'pending' && s.due_at && <><Clock size={11} style={{ verticalAlign: -1 }} /> attendue avant le {when(s.due_at)}{s.escalated_at ? ' · en retard, administrateur prévenu' : ''}</>}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function RequestCard({ r, decide, cancel }: {
+  r: ApprovalRequest;
+  decide?: (id: string, action: 'approve' | 'reject', reason: string) => void;
+  cancel?: (id: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const values = r.summary?.values ?? {};
+  const def = DOC_TYPES[r.doc_type];
+  return (
+    <article style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 14, display: 'grid', gap: 10, background: 'var(--odoo-bg-card, var(--odoo-bg))' }}>
+      <header style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{r.doc_label}</div>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+            {def?.label ?? r.doc_type} · règle « {r.rule_label} » ({r.summary?.condition ?? 'toujours'})
+            {r.store_name ? ` · ${r.store_name}` : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {r.amount && <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</span>}
+          <span className={`odoo-tag ${statusTag[r.status]}`}>{APPROVAL_REQUEST_STATUS_LABELS[r.status]}</span>
+        </div>
+      </header>
+      <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        Demandé par <b style={{ color: 'var(--odoo-text)' }}>{r.requested_by_name}</b> le {when(r.requested_at)}
+        {Object.keys(values).length > 0 && (
+          <> · {Object.entries(values).map(([k, v]) => `${def?.fields[k]?.label ?? k} : ${typeof v === 'number' ? v.toLocaleString('fr-FR') : String(v)}${def?.fields[k]?.unit ? ` ${def.fields[k].unit}` : ''}`).join(' · ')}</>
+        )}
+      </div>
+      <Steps r={r} />
+      {r.status !== 'pending' && r.decision_reason && <div style={{ fontSize: '0.8125rem' }}><b>Motif :</b> {r.decision_reason}</div>}
+      {r.status === 'approved' && r.apply_error && (
+        <StatusBanner tone="danger" icon={XCircle} title="Approuvée, mais l'effet n'a pas pu être appliqué">{r.apply_error}</StatusBanner>
+      )}
+      {r.status === 'approved' && r.applied_at && !r.apply_error && (
+        <div style={{ fontSize: '0.8125rem', color: '#155724' }}><CheckCircle2 size={12} style={{ verticalAlign: -2 }} /> {def?.effect}</div>
+      )}
+      {decide && r.status === 'pending' && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <textarea id={`approval-reason-${r.id}`} value={reason} onChange={e => setReason(e.target.value)} rows={2}
+            placeholder="Motif (obligatoire pour refuser, facultatif pour approuver)"
+            style={{ width: '100%', fontSize: '0.8125rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="odoo-btn-danger" disabled={!reason.trim()} onClick={() => decide(r.id, 'reject', reason)}><XCircle size={14} /> Refuser</button>
+            <button type="button" className="odoo-btn-primary" onClick={() => decide(r.id, 'approve', reason)}><CheckCircle2 size={14} /> Approuver</button>
+          </div>
+        </div>
+      )}
+      {cancel && r.status === 'pending' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={() => cancel(r.id)}>Retirer la demande</button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+export default function ApprovalsPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const isManager = user?.role === 'admin' || user?.role === 'manager';
+  const [tab, setTab] = useState<'inbox' | 'mine' | 'history' | 'delegations'>('inbox');
+  const [histStatus, setHistStatus] = useState('');
+
+  const inbox = useQuery({ queryKey: ['approvals', 'inbox'], queryFn: approvalsApi.inbox });
+  const mine = useQuery({ queryKey: ['approvals', 'mine'], queryFn: approvalsApi.mine, enabled: tab === 'mine' });
+  const history = useQuery({ queryKey: ['approvals', 'history', histStatus], queryFn: () => approvalsApi.history({ status: histStatus || undefined, limit: 100 }), enabled: tab === 'history' && isManager });
+  const delegations = useQuery({ queryKey: ['approvals', 'delegations'], queryFn: approvalsApi.delegations, enabled: tab === 'delegations' });
+  const delegates = useQuery({ queryKey: ['approvals', 'delegates'], queryFn: approvalsApi.delegates, enabled: tab === 'delegations' });
+
+  const refresh = () => { queryClient.invalidateQueries({ queryKey: ['approvals'] }); queryClient.invalidateQueries({ queryKey: ['notifications'] }); };
+  const decideMutation = useMutation({
+    mutationFn: ({ id, action, reason }: { id: string; action: 'approve' | 'reject'; reason: string }) =>
+      action === 'approve' ? approvalsApi.approve(id, reason || undefined) : approvalsApi.reject(id, reason),
+    onSuccess: (r, v) => {
+      refresh();
+      if (r.status === 'pending') notify.success('Étape approuvée. La demande passe à l\'étape suivante.');
+      else if (v.action === 'approve') notify.success(r.apply_error ? `Approuvée, mais : ${r.apply_error}` : `Approuvée. ${DOC_TYPES[r.doc_type]?.effect ?? ''}`);
+      else notify.success('Demande refusée, le demandeur est prévenu.');
+    },
+    onError: (err) => notify.error(apiErrorMessage(err, 'Décision refusée')),
+  });
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => approvalsApi.cancel(id),
+    onSuccess: () => { refresh(); notify.success('Demande retirée'); },
+    onError: (err) => notify.error(apiErrorMessage(err, 'Retrait refusé')),
+  });
+  const [delegate, setDelegate] = useState({ toUserId: '', startsOn: format(new Date(), 'yyyy-MM-dd'), endsOn: '' });
+  const addDelegation = useMutation({
+    mutationFn: () => approvalsApi.addDelegation({ toUserId: delegate.toUserId, startsOn: delegate.startsOn, endsOn: delegate.endsOn }),
+    onSuccess: () => { refresh(); setDelegate(d => ({ ...d, toUserId: '', endsOn: '' })); notify.success('Délégation enregistrée'); },
+    onError: (err) => notify.error(apiErrorMessage(err, 'Délégation refusée')),
+  });
+  const removeDelegation = useMutation({
+    mutationFn: (id: string) => approvalsApi.removeDelegation(id),
+    onSuccess: () => { refresh(); notify.success('Délégation retirée'); },
+    onError: (err) => notify.error(apiErrorMessage(err, 'Retrait refusé')),
+  });
+
+  const tabs = [
+    { key: 'inbox' as const, label: 'À approuver', icon: Inbox, count: inbox.data?.length },
+    { key: 'mine' as const, label: 'Mes demandes', icon: Send },
+    ...(isManager ? [{ key: 'history' as const, label: 'Historique', icon: History }] : []),
+    { key: 'delegations' as const, label: 'Délégations', icon: UserCheck },
+  ];
+
+  return (
+    <div className="odoo-scope p-6" style={{ display: 'grid', gap: 16, maxWidth: 1100, margin: '0 auto' }}>
+      <div className="odoo-form-header">
+        <div>
+          <h1 className="odoo-form-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardCheck size={22} /> Approbations</h1>
+          <p className="odoo-form-subtitle">Bons de commande au-dessus du seuil, annulations de factures, écarts d'inventaire : les pièces qui attendent une décision.</p>
+        </div>
+      </div>
+      <div className="odoo-tabs" role="tablist">
+        {tabs.map(t => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`odoo-tab${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)}>
+            <t.icon size={14} /> {t.label}{t.count ? ` (${t.count})` : ''}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'inbox' && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          {inbox.isLoading && <Loader2 className="animate-spin" size={18} />}
+          {!inbox.isLoading && !inbox.data?.length && (
+            <StatusBanner tone="success" icon={CheckCircle2} title="Rien à approuver">Aucune pièce n'attend votre décision.</StatusBanner>
+          )}
+          {inbox.data?.map(r => <RequestCard key={r.id} r={r} decide={(id, action, reason) => decideMutation.mutate({ id, action, reason })} />)}
+        </section>
+      )}
+
+      {tab === 'mine' && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          {mine.isLoading && <Loader2 className="animate-spin" size={18} />}
+          {!mine.isLoading && !mine.data?.length && <StatusBanner tone="neutral" icon={Send} title="Aucune demande">Vous n'avez soumis aucune pièce à approbation.</StatusBanner>}
+          {mine.data?.map(r => <RequestCard key={r.id} r={r} cancel={async id => { if (await confirm('Retirer cette demande ? La pièce reste en attente, vous pourrez la soumettre de nouveau.')) cancelMutation.mutate(id); }} />)}
+        </section>
+      )}
+
+      {tab === 'history' && isManager && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          <div className="odoo-control-bar" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select id="approval-history-status" aria-label="Filtrer par statut" value={histStatus} onChange={e => setHistStatus(e.target.value)}
+              style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }}>
+              <option value="">Tous les statuts</option>
+              {Object.entries(APPROVAL_REQUEST_STATUS_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+            {history.data && <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{history.data.total} demande{history.data.total > 1 ? 's' : ''}</span>}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table">
+              <thead><tr><th>Pièce</th><th>Règle</th><th style={{ textAlign: 'right' }}>Montant</th><th>Demandeur</th><th>Demandée le</th><th>Statut</th><th>Décidée par</th><th>Motif</th></tr></thead>
+              <tbody>
+                {history.data?.rows.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.doc_label}<div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{DOC_TYPES[r.doc_type]?.label}</div></td>
+                    <td>{r.rule_label}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</td>
+                    <td>{r.requested_by_name}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{when(r.requested_at)}</td>
+                    <td><span className={`odoo-tag ${statusTag[r.status]}`}>{APPROVAL_REQUEST_STATUS_LABELS[r.status]}</span>{r.apply_error && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>effet non appliqué</span>}</td>
+                    <td>{r.decided_by_name ?? '—'}{r.decided_at && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{when(r.decided_at)}</div>}</td>
+                    <td style={{ fontSize: '0.8125rem' }}>{r.decision_reason ?? '—'}</td>
+                  </tr>
+                ))}
+                {history.data && !history.data.rows.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>Aucune demande</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {tab === 'delegations' && (
+        <section style={{ display: 'grid', gap: 12 }}>
+          <StatusBanner tone="neutral" icon={UserCheck} title="Déléguer mes approbations pendant une absence">
+            Le délégué peut trancher les étapes qui m'attendent, à ma place, entre les deux dates. Chaque décision reste signée de son nom.
+          </StatusBanner>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Délégué
+              <select id="delegation-to" value={delegate.toUserId} onChange={e => setDelegate({ ...delegate, toUserId: e.target.value })}
+                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', minWidth: 220 }}>
+                <option value="">Choisir…</option>
+                {delegates.data?.map(d => <option key={d.id} value={d.id}>{d.name} · {d.role_label}</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Du
+              <input id="delegation-start" type="date" value={delegate.startsOn} onChange={e => setDelegate({ ...delegate, startsOn: e.target.value })}
+                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
+            </label>
+            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Au
+              <input id="delegation-end" type="date" value={delegate.endsOn} min={delegate.startsOn} onChange={e => setDelegate({ ...delegate, endsOn: e.target.value })}
+                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
+            </label>
+            <button type="button" className="odoo-btn-primary" disabled={!delegate.toUserId || !delegate.endsOn || addDelegation.isPending} onClick={() => addDelegation.mutate()}>Déléguer</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table">
+              <thead><tr><th>De</th><th>À</th><th>Du</th><th>Au</th><th /></tr></thead>
+              <tbody>
+                {delegations.data?.map(d => {
+                  const active = d.starts_on.slice(0, 10) <= format(new Date(), 'yyyy-MM-dd') && d.ends_on.slice(0, 10) >= format(new Date(), 'yyyy-MM-dd');
+                  return (
+                    <tr key={d.id} style={{ opacity: active ? 1 : 0.6 }}>
+                      <td>{d.from_name}{d.from_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
+                      <td>{d.to_name}{d.to_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
+                      <td>{format(new Date(d.starts_on), 'dd MMM yyyy', { locale: fr })}</td>
+                      <td>{format(new Date(d.ends_on), 'dd MMM yyyy', { locale: fr })}{active && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6 }}>active</span>}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {(d.from_user_id === user?.id || user?.role === 'admin') && (
+                          <button type="button" className="odoo-pager-btn" title="Retirer" aria-label="Retirer la délégation" style={{ color: '#dc3545' }} onClick={() => removeDelegation.mutate(d.id)}><Trash2 size={13} /></button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {delegations.data && !delegations.data.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>Aucune délégation</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

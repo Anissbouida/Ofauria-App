@@ -47,7 +47,8 @@ export const invoicesApi = {
   /** Fusionne les factures fournisseurs des BCs en une seule. */
   merge: (data: { purchaseOrderIds: string[]; supplierInvoiceNumber?: string; invoiceDate?: string }) =>
     api.post('/invoices/merge', data).then(r => r.data.data),
-  cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data.data),
+  /** 200 = annulée ; 202 = annulation soumise à approbation (r.approval). */
+  cancel: (id: string) => api.post(`/invoices/${id}/cancel`).then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string } }),
   /** Modification complete (admin + gerant) — sert aussi pour ajuster une facture. */
   update: (id: string, data: Record<string, any>) => api.put(`/invoices/${id}`, data).then(r => r.data.data),
   /** Remplace les lignes (admin + gerant). Recalcule amount + TVA + total_amount automatiquement.

@@ -7,6 +7,7 @@ import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
 import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
 import { dataController } from '../controllers/data.controller.js';
+import { approvalRulesController } from '../controllers/approval-rules.controller.js';
 import { setupController } from '../controllers/setup.controller.js';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -57,6 +58,12 @@ router.get('/notification-rules', authenticate, authorizeSettings('notifications
 router.put('/notification-rules/:type', authenticate, jsonParser, authorizeSettings('notifications', 'edit'), asyncHandler(docs.updateNotificationRule));
 
 // Donnees (lot 7) : import guide, exports de la configuration et des donnees de base.
+// Circuits d'approbation (lot 8, mig 347) : section « approvals ».
+router.get('/approval-rules', authenticate, authorizeSettings('approvals'), asyncHandler(approvalRulesController.list));
+router.post('/approval-rules', authenticate, jsonParser, authorizeSettings('approvals', 'create'), asyncHandler(approvalRulesController.create));
+router.put('/approval-rules/:code', authenticate, jsonParser, authorizeSettings('approvals', 'edit'), asyncHandler(approvalRulesController.update));
+router.delete('/approval-rules/:code', authenticate, authorizeSettings('approvals', 'delete'), asyncHandler(approvalRulesController.remove));
+
 router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler(dataController.status));
 router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));
 router.post('/data/import/:entity/preview', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.preview));

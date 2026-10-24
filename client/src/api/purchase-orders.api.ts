@@ -7,8 +7,9 @@ export const purchaseOrdersApi = {
     api.get(`/purchase-orders/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) =>
     api.post('/purchase-orders', data).then(r => r.data.data),
+  /** 200 = envoyé ; 202 = soumis à approbation (r.approval décrit la demande). */
   send: (id: string) =>
-    api.post(`/purchase-orders/${id}/send`).then(r => r.data.data),
+    api.post(`/purchase-orders/${id}/send`).then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string; steps?: { approver_name?: string | null; approver_role?: string | null }[] } }),
   confirmDelivery: (id: string, data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean }) =>
     api.post(`/purchase-orders/${id}/confirm-delivery`, data).then(r => r.data.data),
   markNotDelivered: (id: string) =>

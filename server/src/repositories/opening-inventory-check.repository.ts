@@ -299,7 +299,14 @@ export const openingInventoryCheckRepository = {
       `SELECT dic.*,
               u.first_name AS checked_by_first, u.last_name AS checked_by_last,
               (SELECT COUNT(*) FROM daily_inventory_check_items dici
-               WHERE dici.check_id = dic.id AND dici.discrepancy != 0) AS discrepancy_lines
+               WHERE dici.check_id = dic.id AND dici.discrepancy != 0) AS discrepancy_lines,
+              -- Circuit d'approbation en cours (lot 8) : étape attendue.
+              CASE WHEN to_regclass('public.approval_requests') IS NOT NULL THEN (
+                SELECT json_build_object('id', ar.id, 'step_order', s.step_order,
+                         'approver_role', s.approver_role, 'total_steps', (SELECT count(*) FROM approval_steps x WHERE x.request_id = ar.id))
+                  FROM approval_requests ar JOIN approval_steps s ON s.request_id = ar.id AND s.status = 'pending'
+                 WHERE ar.doc_type = 'inventory_count' AND ar.doc_id = dic.id::text AND ar.status = 'pending'
+                 ORDER BY s.step_order LIMIT 1) END AS approval
        FROM daily_inventory_checks dic
        JOIN users u ON u.id = dic.checked_by
        WHERE dic.check_type = 'opening' AND dic.status = 'awaiting_validation' ${where}
