@@ -238,18 +238,10 @@ export const purchaseOrderRepository = {
         }
       }
 
-      // Update ingredient unit_costs
-      for (const item of items) {
-        const poItem = await client.query(
-          `SELECT ingredient_id FROM purchase_order_items WHERE id = $1`, [item.itemId]
-        );
-        if (poItem.rows[0]) {
-          await client.query(
-            `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
-            [item.unitPrice, poItem.rows[0].ingredient_id]
-          );
-        }
-      }
+      // Le coût standard des ingrédients n'est plus répercuté à la commande : il
+      // est piloté par le CMUP au moment de la réception (voir
+      // reception-voucher.repository). Les prix de ligne du BC sont déjà à jour
+      // ci-dessus (purchase_order_items.unit_price).
 
       await client.query('COMMIT');
       return { itemsUpdated: items.length, stillMissingPrices: stillMissing };
@@ -417,13 +409,12 @@ export const purchaseOrderRepository = {
           }
         }
 
-        // Le dernier prix saisi fait foi -> repercute sur le cout catalogue.
-        if (price !== null && price > 0) {
-          if (it.packagingId) {
-            await client.query(`UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`, [price, it.packagingId]);
-          } else if (it.ingredientId) {
-            await client.query(`UPDATE ingredients SET unit_cost = $1 WHERE id = $2`, [price, it.ingredientId]);
-          }
+        // Le dernier prix saisi fait foi -> repercute sur le cout catalogue du
+        // consommable. Pour les ingredients, le cout standard est desormais pilote
+        // par le CMUP a la reception (voir reception-voucher.repository), plus a la
+        // commande.
+        if (price !== null && price > 0 && it.packagingId) {
+          await client.query(`UPDATE packaging_items SET unit_cost = $1, updated_at = NOW() WHERE id = $2`, [price, it.packagingId]);
         }
       }
 
