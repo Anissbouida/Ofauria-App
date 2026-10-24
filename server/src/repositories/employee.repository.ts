@@ -941,7 +941,13 @@ export const payrollRepository = {
       acomptes = pm.acomptes;
     }
     const net = Math.round((parseFloat(current.net_salary) - acomptes) * 100) / 100;
-    if (net < -0.005) {
+    // F-060 : les acomptes hebdo/quinzaine sont arrondis au centime a chaque
+    // periode ; sur 4-5 periodes, leur somme peut depasser de quelques centimes
+    // le net mensuel recalcule, sans vrai trop-percu. On tolere ce bruit d'arrondi
+    // (un vrai trop-percu, lui, se chiffre en dirhams) : sinon un bulletin etait
+    // bloque pour 0,01 DH. Le decaissement reste borne par `if (cashOut > 0)`.
+    const ACOMPTES_ROUNDING_TOLERANCE = 0.05;
+    if (net < -ACOMPTES_ROUNDING_TOLERANCE) {
       // Typiquement des semaines payees avant la retenue provisoire (transition).
       throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} DH (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
     }

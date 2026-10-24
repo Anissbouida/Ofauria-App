@@ -87,6 +87,20 @@ export const orderController = {
 
     const taxAmount = 0;
     const total = subtotal - discountAmount + taxAmount;
+
+    // F-040 : l'avance ne peut etre ni negative ni superieure au total — sinon le
+    // reste a livrer (total - avance) deviendrait negatif et la vente de livraison
+    // serait incoherente. On refuse explicitement en 400.
+    const advance = parseFloat(String(advanceAmount)) || 0;
+    if (advance < 0) {
+      res.status(400).json({ success: false, error: { message: 'Avance invalide (négative).' } });
+      return;
+    }
+    if (advance > total + 0.005) {
+      res.status(400).json({ success: false, error: { message: `Avance (${advance.toFixed(2)} DH) supérieure au total de la commande (${total.toFixed(2)} DH).` } });
+      return;
+    }
+
     const orderNumber = await orderRepository.generateOrderNumber();
 
     // Link to active cash register session

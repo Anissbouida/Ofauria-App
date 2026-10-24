@@ -34,13 +34,14 @@ function fakeRes() {
   return { res, json };
 }
 
-let saleController: any, salaryAdvanceController: any;
+let saleController: any, salaryAdvanceController: any, orderController: any;
 let productRepository: any, salesChannelRepository: any;
 let employeeRepository: any, salaryAdvanceRepository: any;
 
 beforeAll(async () => {
   ({ saleController } = await import('../controllers/sale.controller.js'));
   ({ salaryAdvanceController } = await import('../controllers/employee.controller.js'));
+  ({ orderController } = await import('../controllers/order.controller.js'));
   ({ productRepository } = await import('../repositories/product.repository.js'));
   ({ salesChannelRepository } = await import('../repositories/sales-channel.repository.js'));
   ({ employeeRepository } = await import('../repositories/employee.repository.js'));
@@ -91,5 +92,30 @@ describe('F-048 — plafond de l avance (gerant)', () => {
     const { res } = fakeRes();
     await salaryAdvanceController.create(req, res);
     expect(res.status).toHaveBeenCalledWith(409);
+  });
+});
+
+describe('F-040 — avance de commande vs total', () => {
+  it('avance (30) superieure au total (16) -> 400', async () => {
+    productRepository.findById.mockResolvedValue({ id: UID, name: 'Cake', price: '8' });
+    const req: any = {
+      body: { customerName: 'Mme X', pickupDate: '2026-03-01', items: [{ productId: UID, quantity: 2 }], advanceAmount: 30, paymentMethod: 'cash' },
+      user: { userId: UID, storeId: UID },
+    };
+    const { res, json } = fakeRes();
+    await orderController.create(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(json.mock.calls[0][0].error.message).toMatch(/supérieure au total/i);
+  });
+
+  it('avance negative -> 400', async () => {
+    productRepository.findById.mockResolvedValue({ id: UID, name: 'Cake', price: '8' });
+    const req: any = {
+      body: { customerName: 'Mme X', pickupDate: '2026-03-01', items: [{ productId: UID, quantity: 1 }], advanceAmount: -5, paymentMethod: 'cash' },
+      user: { userId: UID, storeId: UID },
+    };
+    const { res } = fakeRes();
+    await orderController.create(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 });
