@@ -907,6 +907,9 @@ export default function ProductionLaunchModal({
     const productName = items.find((i) => (i.product_id as string) === recipeProductId)?.product_name as string || '';
     const ingredients = ((recipeData?.ingredients || []) as Record<string, any>[]);
     const subRecipesData = ((recipeData?.sub_recipes || []) as Record<string, any>[]);
+    // Nomenclature composee (recipe_components) : pour une recette en mode compose,
+    // ingredients/sub_recipes legacy sont vides — sans ce bloc le panneau etait vide.
+    const composition = ((recipeData?.composition || []) as Record<string, any>[]);
     const instructions = ((recipeData?.instructions as string) || '');
 
     return (
@@ -954,6 +957,33 @@ export default function ProductionLaunchModal({
                         <span className="text-base font-medium text-gray-900">{ing.ingredient_name as string}</span>
                         <span className="text-base text-gray-700 font-mono font-semibold">
                           {parseFloat(ing.quantity as string).toFixed(2)} {ing.unit as string}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Nomenclature composee (recipe_components) */}
+              {composition.length > 0 && (
+                <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 bg-violet-50 border-b border-violet-200 flex items-center gap-2">
+                    <Layers size={18} className="text-violet-600" />
+                    <span className="font-bold text-violet-800">Nomenclature ({composition.length})</span>
+                    {recipeData.pieces_par_fournee && <span className="text-sm text-violet-700 ml-2">pour une fournée de {recipeData.pieces_par_fournee as number} pièce(s)</span>}
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {composition.map((c, idx) => (
+                      <div key={(c.id as string) || idx} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
+                        <span className="text-base font-medium text-gray-900 flex items-center gap-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {c.type === 'recipe' ? 'Préparation' : 'Ingrédient'}
+                          </span>
+                          {c.name as string}
+                          {c.role && <span className="text-xs text-gray-400">· {c.role as string}</span>}
+                        </span>
+                        <span className="text-base text-gray-700 font-mono font-semibold">
+                          {parseFloat(c.quantite as string).toFixed(2)} {c.unite as string}
                         </span>
                       </div>
                     ))}
@@ -1027,6 +1057,8 @@ export default function ProductionLaunchModal({
 
     const ingredients = (recipeData.ingredients || []) as Record<string, any>[];
     const subRecipesData = (recipeData.sub_recipes || []) as Record<string, any>[];
+    // Nomenclature composee (recipe_components) — voir renderRecipeFullscreen.
+    const composition = (recipeData.composition || []) as Record<string, any>[];
     const instructions = (recipeData.instructions as string) || '';
 
     return (
@@ -1071,6 +1103,32 @@ export default function ProductionLaunchModal({
                     <span className="text-sm font-medium text-gray-800">{ing.ingredient_name as string}</span>
                     <span className="text-sm text-gray-600 font-mono">
                       {parseFloat(ing.quantity as string).toFixed(2)} {ing.unit as string}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Nomenclature composee (recipe_components) */}
+          {composition.length > 0 && (
+            <div className="rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-3 py-2 bg-violet-50 border-b border-violet-100 flex items-center gap-2">
+                <Layers size={13} className="text-violet-600" />
+                <span className="font-semibold text-violet-800 text-xs uppercase tracking-wider">Nomenclature ({composition.length})</span>
+                {recipeData.pieces_par_fournee && <span className="text-[11px] text-violet-700 ml-1">· fournée de {recipeData.pieces_par_fournee as number} p.</span>}
+              </div>
+              <div className="divide-y divide-gray-50">
+                {composition.map((c, idx) => (
+                  <div key={(c.id as string) || idx} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50/50">
+                    <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
+                      <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {c.type === 'recipe' ? 'Prépa' : 'Ingr.'}
+                      </span>
+                      {c.name as string}
+                    </span>
+                    <span className="text-sm text-gray-600 font-mono">
+                      {parseFloat(c.quantite as string).toFixed(2)} {c.unite as string}
                     </span>
                   </div>
                 ))}

@@ -22,7 +22,7 @@ Pire : la dette **grossit**. Trois nouveaux lecteurs sont apparus, dont deux que
 
 Le formulaire de recette ([RecipesPage.tsx](../client/src/features/recipes/RecipesPage.tsx), `formIngredients` / `formSubRecipes`) écrit via `recipe.repository.create` dans `recipe_ingredients` et `recipe_sub_recipes`. **Toute recette créée depuis ce formulaire naît en `ratio_poids`.** Elle ne devient composée que si quelqu'un ouvre ensuite l'éditeur de nomenclature. La bascule A2 traitait le stock existant ; tant que le flux entrant n'est pas coupé, le stock se reconstitue.
 
-Conséquence visible en production : [ProductionLaunchModal.tsx](../client/src/features/production/ProductionLaunchModal.tsx) n'affiche que `recipeData.ingredients` et `sub_recipes`. Pour une recette composée, `findById` renvoie `components` — que le modal ignore. **Le panneau « recette » du lancement est vide pour toute recette composée** (constat sur le code, à confirmer à l'écran).
+Conséquence visible en production : [ProductionLaunchModal.tsx](../client/src/features/production/ProductionLaunchModal.tsx) n'affiche que `recipeData.ingredients` et `sub_recipes`. Pour une recette composée, `findById` renvoie `components` — que le modal ignore. **Le panneau « recette » du lancement est vide pour toute recette composée** (constat sur le code). *Corrigé le 2026-10-23 : le modal affiche désormais la nomenclature (`composition`) en plus du legacy — un cas de plus du bi-mode à supprimer en phase 3.*
 
 ## 3. Inventaire des lecteurs (état du 2026-10-23)
 
