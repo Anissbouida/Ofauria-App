@@ -502,13 +502,20 @@ export const receptionVoucherRepository = {
         );
         const oldUnitCost = ingLockRes.rows[0]?.unit_cost != null
           ? parseFloat(ingLockRes.rows[0].unit_cost) : null;
-        // Stock avant réception, tous magasins confondus : unit_cost est global
-        // (1 ligne par ingrédient) alors que l'inventaire est par magasin, donc le
-        // CMUP se calcule sur le stock agrégé. current_quantity et unit_cost
-        // partagent l'unité de base de l'ingrédient — aucune conversion ici.
+        // Stock AVANT réception, tous magasins confondus : unit_cost est global
+        // (1 ligne par ingrédient) alors que le stock est par magasin, donc le CMUP
+        // se calcule sur le stock agrégé.
+        // F-009 : on lit le stock réel depuis les LOTS actifs (même sémantique que
+        // sync_inventory_from_lots : SUM(economat + pesage)), et NON depuis
+        // inventory.current_quantity qui peut avoir dérivé — un inventaire fantôme
+        // (ex. 200 affichés alors que les lots sont à 0) faussait le coût moyen.
+        // On exclut le lot qui vient d'être inséré ci-dessus (son trigger a déjà
+        // mis à jour inventory) pour obtenir le stock strictement antérieur.
         const stockBeforeRes = await client.query(
-          `SELECT COALESCE(SUM(current_quantity), 0) AS qty FROM inventory WHERE ingredient_id = $1`,
-          [item.ingredientId]
+          `SELECT COALESCE(SUM(economat_quantity + pesage_quantity), 0) AS qty
+             FROM ingredient_lots
+            WHERE ingredient_id = $1 AND status = 'active' AND id <> $2`,
+          [item.ingredientId, lotId]
         );
         const stockBefore = parseFloat(stockBeforeRes.rows[0]?.qty ?? '0');
 

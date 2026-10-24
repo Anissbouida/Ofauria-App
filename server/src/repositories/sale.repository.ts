@@ -227,8 +227,12 @@ export const saleRepository = {
             const reasonLabel = saleabilityIssue.reason === 'DDE_EXPIREE'
               ? 'duree d\'exposition vitrine (DDE)'
               : 'date limite de vente (DLV)';
+            // Nom du produit pour un message lisible en caisse (chemin d'erreur rare,
+            // le surcout d'une requete est negligeable). Repli sur l'id si introuvable.
+            const nameRes = await client.query('SELECT name FROM products WHERE id = $1', [item.productId]);
+            const productLabel = nameRes.rows[0]?.name ?? item.productId;
             const err = new Error(
-              `Vente refusee : ${reasonLabel} atteinte pour le produit ${item.productId}`
+              `Vente refusee : ${reasonLabel} atteinte pour « ${productLabel} »`
             ) as Error & { code?: string; statusCode?: number };
             err.code = saleabilityIssue.reason;
             err.statusCode = 409;

@@ -639,7 +639,17 @@ export const recipeRepository = {
 
     const costPerSellingUnit = totalCost / yieldInSU;
     const computedPrice = costPerSellingUnit * marginMultiplier;
-    const finalPrice = overridePrice !== null && overridePrice >= 0 ? overridePrice : computedPrice;
+    const hasOverride = overridePrice !== null && overridePrice >= 0;
+    const finalPrice = hasOverride ? overridePrice : computedPrice;
+
+    // Garde-fou F-025 : une fiche fraichement creee (ou enregistree) sans composant
+    // a un cout nul. Sans prix de vente explicite, le prix calcule (cout x marge)
+    // vaudrait 0 et ECRASERAIT le prix catalogue du produit (observe : baguettes,
+    // tartes... passees a 0 DH, vendues a 0 en caisse). On ne touche alors ni au
+    // prix ni au cout : le prix sera recalcule des que des composants seront ajoutes.
+    if (!hasOverride && totalCost <= 0) {
+      return;
+    }
 
     if (sellingUnit === 'weight') {
       // Vendu au kg : on alimente price_per_kg (lu par POS et sales).
