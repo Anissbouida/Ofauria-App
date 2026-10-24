@@ -89,6 +89,33 @@ ALTER TABLE suppliers
 
 -- Un seul tiers par nom (insensible à la casse) : SONEPAL / SONEPALE restent deux
 -- noms distincts (fusion = G-D1-16, lot 2).
+--
+-- La prod porte déjà des homonymes (« Légumes et fruits » en double) : l'index
+-- ne peut pas se créer tant qu'ils coexistent. On ne fusionne rien ici (15
+-- tables référencent suppliers : la fusion est le lot G-D1-16) : la fiche la
+-- plus ancienne garde son nom, les suivantes reçoivent un suffixe « (2) »,
+-- « (3) »… et restent intactes (FK, historique, activité). Le gérant les
+-- fusionne ensuite depuis l'écran Fournisseurs. Idempotent.
+DO $$
+DECLARE z TEXT;
+BEGIN
+  WITH d AS (
+    SELECT id, name,
+           row_number() OVER (PARTITION BY lower(name) ORDER BY created_at, id) AS rn
+      FROM suppliers
+  ), u AS (
+    UPDATE suppliers s
+       SET name = d.name || ' (' || d.rn || ')'
+      FROM d
+     WHERE s.id = d.id AND d.rn > 1
+    RETURNING s.name
+  )
+  SELECT string_agg(name, ', ' ORDER BY name) INTO z FROM u;
+  IF z IS NOT NULL THEN
+    RAISE NOTICE 'Mig 304 : fournisseurs homonymes renommés (à fusionner) -> %', z;
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_suppliers_name_ci ON suppliers (lower(name));
 
 COMMENT ON COLUMN suppliers.ice IS
