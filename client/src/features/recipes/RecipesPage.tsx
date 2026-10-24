@@ -8,6 +8,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
+import { allergenLabel } from '../../constants/allergens';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
@@ -1298,7 +1299,7 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                 <div style={{ padding: '0.625rem 1rem', backgroundColor: 'var(--theme-bg-card)', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {recipe.allergens && recipe.allergens.length > 0 ? (
                     recipe.allergens.map(a => (
-                      <span key={a} className="odoo-tag odoo-tag-red" style={{ textTransform: 'capitalize' }}>{a}</span>
+                      <span key={a} className="odoo-tag odoo-tag-red">{allergenLabel(a)}</span>
                     ))
                   ) : (
                     <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>

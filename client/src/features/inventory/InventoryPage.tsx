@@ -12,6 +12,7 @@ import {
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
   Plus, List, LayoutGrid, Save, ShoppingCart, Upload, Download, BarChart3,
 } from 'lucide-react';
+import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
 import PackagingPage from '../packaging/PackagingPage';
@@ -769,7 +770,7 @@ export default function InventoryPage() {
 function AddIngredientModal({ onClose, onSave, isLoading }: {
   onClose: () => void; onSave: (data: Record<string, any>) => void; isLoading: boolean;
 }) {
-  const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', categoryId: '' });
+  const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', categoryId: '', allergens: [] as string[] });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
@@ -780,7 +781,7 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
           </div>
           <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, categoryId: form.categoryId || null }); }}
+        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, categoryId: form.categoryId || null, allergens: form.allergens }); }}
           style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom de l'ingrédient *</label>
@@ -805,6 +806,10 @@ function AddIngredientModal({ onClose, onSave, isLoading }: {
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
             <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Nom du fournisseur" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Allergènes</label>
+            <AllergenSelector value={form.allergens} onChange={allergens => setForm({ ...form, allergens })} />
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)', marginTop: '0.25rem' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>

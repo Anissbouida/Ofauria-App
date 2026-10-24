@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { inventoryRepository, ingredientRepository } from '../repositories/inventory.repository.js';
 import { ingredientLotRepository } from '../repositories/ingredient-lot.repository.js';
 import { db } from '../config/database.js';
+import { allergensSchema } from '../validators/allergens.js';
 
 export const inventoryController = {
   async list(req: AuthRequest, res: Response) {
@@ -248,8 +249,16 @@ export const ingredientController = {
   },
   async create(req: AuthRequest, res: Response) {
     try {
+      // Allergenes : referentiel ferme (mig 344). Les synonymes sont normalises,
+      // une valeur inconnue est refusee avec la liste admise.
+      const allergens = allergensSchema.safeParse(req.body?.allergens);
+      if (!allergens.success) {
+        res.status(400).json({ success: false, error: { message: allergens.error.issues.map(i => i.message).join(', ') } });
+        return;
+      }
       const ingredient = await ingredientRepository.create({
         ...req.body,
+        ...(allergens.data !== undefined ? { allergens: allergens.data } : {}),
         storeId: req.user!.storeId || null,
       });
       res.status(201).json({ success: true, data: ingredient });
@@ -260,7 +269,15 @@ export const ingredientController = {
   },
   async update(req: AuthRequest, res: Response) {
     try {
-      const ingredient = await ingredientRepository.update(req.params.id, req.body);
+      const allergens = allergensSchema.safeParse(req.body?.allergens);
+      if (!allergens.success) {
+        res.status(400).json({ success: false, error: { message: allergens.error.issues.map(i => i.message).join(', ') } });
+        return;
+      }
+      const ingredient = await ingredientRepository.update(req.params.id, {
+        ...req.body,
+        ...(allergens.data !== undefined ? { allergens: allergens.data } : {}),
+      });
       res.json({ success: true, data: ingredient });
     } catch (err) {
       console.error('Error updating ingredient:', err);
