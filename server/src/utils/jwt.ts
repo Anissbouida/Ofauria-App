@@ -4,7 +4,11 @@ import { env } from '../config/env.js';
 
 interface TokenPayload {
   userId: string;
+  // Role de base PRINCIPAL (admin-aware) : perimetre technique des routes.
   role: string;
+  // Rôles multiples (mig 335) : tous les rôles de base de l'utilisateur, pour
+  // les gardes authorize. Absent sur les anciens jetons (repli sur [role]).
+  baseRoles?: string[];
   storeId?: string;
   // OWASP A07-5 : version incrementee quand les privileges changent,
   // force les tokens existants a etre refuses apres un changement de role.

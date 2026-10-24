@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { useAuth } from './AuthContext';
 import { usersApi } from '../api/users.api';
 import type { AppModule, UserPermission } from '@ofauria/shared';
-import { DEFAULT_ROLE_MODULES, getRoleCategorySlugs } from '@ofauria/shared';
+import { DEFAULT_ROLE_MODULES, getRoleCategorySlugs, resolveModuleKeys } from '@ofauria/shared';
 
 interface PermissionsContextType {
   permissions: UserPermission[];
@@ -52,50 +52,45 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const hasCustomPermissions = permissions.length > 0;
 
+  // Fusion Stock : un droit stocke sous une cle (ex. 'stock') vaut pour ses
+  // equivalents ('economat', 'pesage'...) et inversement. Resolution des alias
+  // partagee avec le serveur (shared/resolveModuleKeys).
+  const findPerm = (module: AppModule): UserPermission | undefined => {
+    const keys = resolveModuleKeys(module);
+    return permissions.find(p => keys.includes(p.module));
+  };
+  const defaultsHas = (module: AppModule): boolean => {
+    const defaults = DEFAULT_ROLE_MODULES[user?.role || ''] || [];
+    return resolveModuleKeys(module).some(k => defaults.includes(k as AppModule));
+  };
+
   const hasModule = (module: AppModule): boolean => {
     if (isAdmin) return true;
-    if (hasCustomPermissions) {
-      return permissions.some(p => p.module === module && p.canView);
-    }
-    // Fallback to default role permissions
-    const defaults = DEFAULT_ROLE_MODULES[user?.role || ''] || [];
-    return defaults.includes(module);
+    if (hasCustomPermissions) return !!findPerm(module)?.canView;
+    return defaultsHas(module);
   };
 
   const canView = (module: AppModule): boolean => {
     if (isAdmin) return true;
-    if (hasCustomPermissions) {
-      const perm = permissions.find(p => p.module === module);
-      return perm?.canView ?? false;
-    }
-    const defaults = DEFAULT_ROLE_MODULES[user?.role || ''] || [];
-    return defaults.includes(module);
+    if (hasCustomPermissions) return findPerm(module)?.canView ?? false;
+    return defaultsHas(module);
   };
 
   const canCreate = (module: AppModule): boolean => {
     if (isAdmin) return true;
-    if (hasCustomPermissions) {
-      const perm = permissions.find(p => p.module === module);
-      return perm?.canCreate ?? false;
-    }
+    if (hasCustomPermissions) return findPerm(module)?.canCreate ?? false;
     return canView(module);
   };
 
   const canEdit = (module: AppModule): boolean => {
     if (isAdmin) return true;
-    if (hasCustomPermissions) {
-      const perm = permissions.find(p => p.module === module);
-      return perm?.canEdit ?? false;
-    }
+    if (hasCustomPermissions) return findPerm(module)?.canEdit ?? false;
     return canView(module);
   };
 
   const canDelete = (module: AppModule): boolean => {
     if (isAdmin) return true;
-    if (hasCustomPermissions) {
-      const perm = permissions.find(p => p.module === module);
-      return perm?.canDelete ?? false;
-    }
+    if (hasCustomPermissions) return findPerm(module)?.canDelete ?? false;
     return false;
   };
 
@@ -103,7 +98,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     if (isAdmin) return {};
     // Use custom permissions config if available
     if (hasCustomPermissions) {
-      const perm = permissions.find(p => p.module === module);
+      const perm = findPerm(module);
       if (perm?.config && Object.keys(perm.config).length > 0) return perm.config;
     }
     // Fallback: for production module, use role-based category slugs

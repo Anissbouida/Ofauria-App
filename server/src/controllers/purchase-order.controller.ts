@@ -9,31 +9,44 @@ import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { checkApprovalLimit } from '../services/governance.js';
+import { effectiveScopeFor, scopeStoreFilter } from '../services/access-rights.js';
 
-// Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
-function effectiveStoreFilter(req: AuthRequest): string | undefined {
-  return req.user!.role === 'admin' ? undefined : req.user!.storeId;
+/**
+ * Portée des données appliquée aux bons de commande (mig 335/336, déclarative) :
+ *   - 'all'   : tous les établissements (ex. administrateur, rôle régional) ;
+ *   - 'store' : l'établissement de l'utilisateur (défaut) ;
+ *   - 'own'   : seulement les bons qu'il a créés.
+ */
+async function poScope(req: AuthRequest): Promise<{ storeId?: string; createdBy?: string }> {
+  const scope = await effectiveScopeFor(req.user!.userId, 'purchasing');
+  return scopeStoreFilter(scope, req.user!.storeId, req.user!.userId);
 }
 
 export const purchaseOrderController = {
   async list(req: AuthRequest, res: Response) {
     const { supplierId, status, dateFrom, dateTo } = req.query as Record<string, string>;
+    const { storeId, createdBy } = await poScope(req);
     const data = await purchaseOrderRepository.findAll({
-      supplierId, status, dateFrom, dateTo, storeId: effectiveStoreFilter(req),
+      supplierId, status, dateFrom, dateTo, storeId, createdBy,
     });
     res.json({ success: true, data });
   },
 
   async eligible(req: AuthRequest, res: Response) {
-    const data = await purchaseOrderRepository.findEligibleForExpense(effectiveStoreFilter(req));
+    const scope = await effectiveScopeFor(req.user!.userId, 'purchasing');
+    const data = await purchaseOrderRepository.findEligibleForExpense(scope === 'all' ? undefined : req.user!.storeId);
     res.json({ success: true, data });
   },
 
   async getById(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    const userStore = effectiveStoreFilter(req);
-    if (userStore && po.store_id && po.store_id !== userStore) {
+    const { storeId, createdBy } = await poScope(req);
+    if (storeId && po.store_id && po.store_id !== storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    if (createdBy && po.created_by && po.created_by !== createdBy) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     res.json({ success: true, data: po });
@@ -68,6 +81,17 @@ export const purchaseOrderController = {
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
     if (po.status !== 'en_attente') {
       res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
+      return;
+    }
+    // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
+    // defini ; l'administrateur approuve sans limite.
+    const amount = Number(po.total_amount ?? 0);
+    const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', amount);
+    if (!allowed) {
+      res.status(403).json({
+        success: false,
+        error: { message: `Montant ${amount.toFixed(2)} au-dessus de votre plafond d'approbation (${limit.toFixed(2)}) pour un bon de commande` },
+      });
       return;
     }
     const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'envoye');
@@ -181,8 +205,11 @@ export const purchaseOrderController = {
   async updateHeader(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    const userStore = effectiveStoreFilter(req);
-    if (userStore && po.store_id && po.store_id !== userStore) {
+    const { storeId, createdBy } = await poScope(req);
+    if (storeId && po.store_id && po.store_id !== storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    if (createdBy && po.created_by && po.created_by !== createdBy) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const body = req.body as Record<string, unknown>;
@@ -207,8 +234,11 @@ export const purchaseOrderController = {
   async replaceItems(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    const userStore = effectiveStoreFilter(req);
-    if (userStore && po.store_id && po.store_id !== userStore) {
+    const { storeId, createdBy } = await poScope(req);
+    if (storeId && po.store_id && po.store_id !== storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    if (createdBy && po.created_by && po.created_by !== createdBy) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const body = req.body as { items?: unknown };
@@ -254,8 +284,11 @@ export const purchaseOrderController = {
   async generateInvoice(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    const userStore = effectiveStoreFilter(req);
-    if (userStore && po.store_id && po.store_id !== userStore) {
+    const { storeId, createdBy } = await poScope(req);
+    if (storeId && po.store_id && po.store_id !== storeId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    if (createdBy && po.created_by && po.created_by !== createdBy) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     try {

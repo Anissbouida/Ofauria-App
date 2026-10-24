@@ -9,7 +9,11 @@ export function authorize(...roles: Role[]) {
       return;
     }
 
-    if (!roles.includes(req.user.role as Role)) {
+    // Rôles multiples (mig 335) : accès accordé si l'un des rôles de base de
+    // l'utilisateur figure dans la liste autorisée. Repli sur le rôle principal
+    // pour les anciens jetons sans baseRoles.
+    const have = req.user.baseRoles && req.user.baseRoles.length ? req.user.baseRoles : [req.user.role];
+    if (!have.some(r => roles.includes(r as Role))) {
       res.status(403).json({ success: false, error: { message: 'Accès interdit' } });
       return;
     }

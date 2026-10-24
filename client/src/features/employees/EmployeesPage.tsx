@@ -49,8 +49,10 @@ export default function EmployeesPage() {
     return (
       <div className="odoo-scope" style={{ minHeight: '100%' }}>
         <div style={{ padding: '16px 20px' }}>
-          <StatusBanner tone="danger" icon={AlertOctagon} title="Accès non autorisé">
-            Vous n'avez pas le droit « Personnel ». Demandez-le à un administrateur.
+          <StatusBanner tone="danger" icon={AlertOctagon} title="Espace indisponible">
+            Votre compte n'est pas encore relié à une fiche salarié. Demandez à un administrateur
+            de relier votre compte à votre fiche (Utilisateurs › votre compte › Fiche salarié) pour
+            accéder à votre espace, ou d'activer le droit « Personnel ».
           </StatusBanner>
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
 } from '../controllers/ledger.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
+import { requireVerb } from '../middleware/module.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 
 // Acces : admin + gerant (ROLE_GROUPS.ADMIN_MANAGER). La gerante dispose des
@@ -33,7 +34,7 @@ ledgerRouter.get('/journals',         authenticate, authorize(...ROLE_GROUPS.ADM
 
 // Periodes fiscales
 ledgerRouter.get('/fiscal-periods',   authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), fiscalPeriodController.list);
-ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), fiscalPeriodController.updateStatus);
+ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'close'), fiscalPeriodController.updateStatus);
 
 // Ecritures comptables
 ledgerRouter.get('/entries',          authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), journalEntryController.list);
