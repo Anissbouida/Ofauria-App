@@ -67,14 +67,23 @@ CREATE TABLE IF NOT EXISTS tax_codes (
 );
 COMMENT ON TABLE tax_codes IS 'Codes de TVA datés par pays (pack pays, mig 309). Un taux qui change = une nouvelle ligne datée, jamais une mise à jour.';
 
-INSERT INTO tax_codes (country_code, code, label, rate, kind, recoverable, valid_from, valid_to, legal_ref) VALUES
+-- Seed par code ABSENT, pas par ON CONFLICT : en prod la table existe déjà avec
+-- ses codes (et le trigger tax_codes_no_overlap de la mig 331, qui se déclenche
+-- AVANT la résolution du conflit -> « Le code TVA N20 a déjà un taux sur cette
+-- période »). Un code déjà présent, quelle que soit sa période, n'est pas touché.
+INSERT INTO tax_codes (country_code, code, label, rate, kind, recoverable, valid_from, valid_to, legal_ref)
+SELECT v.country_code, v.code, v.label, v.rate, v.kind, v.recoverable, v.valid_from::date, v.valid_to::date, v.legal_ref
+FROM (VALUES
   ('MA', 'N20',     'TVA 20 %',                                 20, 'standard', true,  '2000-01-01', NULL,         'CGI art. 98'),
   ('MA', 'R14',     'TVA 14 %',                                 14, 'reduced',  true,  '2000-01-01', '2025-12-31', 'CGI art. 99 (résorbé par les LF 2024-2026)'),
   ('MA', 'R10',     'TVA 10 %',                                 10, 'reduced',  true,  '2000-01-01', NULL,         'CGI art. 99'),
   ('MA', 'R7',      'TVA 7 %',                                   7, 'reduced',  true,  '2000-01-01', '2025-12-31', 'CGI art. 99 (résorbé par les LF 2024-2026)'),
   ('MA', 'EXO_SDD', 'Exonéré sans droit à déduction (art. 91)', 0, 'exempt_without_credit', false, '2000-01-01', NULL, 'CGI art. 91 (farine, lait, beurre, sucre brut, levure fraîche…)'),
   ('MA', 'HC',      'Hors champ / non assujetti',                0, 'out_of_scope', false, '2000-01-01', NULL,       'Fournisseur non assujetti, achat au marché')
-ON CONFLICT (country_code, code, valid_from) DO NOTHING;
+) AS v (country_code, code, label, rate, kind, recoverable, valid_from, valid_to, legal_ref)
+WHERE NOT EXISTS (
+  SELECT 1 FROM tax_codes t WHERE t.country_code = v.country_code AND t.code = v.code
+);
 
 CREATE OR REPLACE FUNCTION fn_tax_rate(p_code TEXT, p_at DATE)
 RETURNS NUMERIC LANGUAGE sql STABLE AS $$
