@@ -194,6 +194,11 @@ export const recipesApi = {
   bulkArchive: (ids: string[]) => api.post('/recipes/bulk-archive', { ids }).then(r => r.data.data as { archivedCount: number }),
   bulkRestore: (ids: string[]) => api.post('/recipes/bulk-restore', { ids }).then(r => r.data.data as { restoredCount: number }),
   versions: (id: string) => api.get(`/recipes/${id}/versions`).then(r => r.data.data),
+  /** Restaure une version (mig 346) : l'etat courant est d'abord verse en nouvelle version. */
+  restoreVersion: (id: string, versionNumber: number) =>
+    api.post(`/recipes/${id}/versions/${versionNumber}/restore`).then(r => r.data as {
+      data: Record<string, unknown>; restore: { restoredFrom: number; newVersion: number | null; warnings: string[] };
+    }),
 
   // --- Nomenclature par format (composition d'un produit composé) ---
   componentRoles: () => api.get('/recipes/component-roles').then(r => r.data.data as ComponentRole[]),

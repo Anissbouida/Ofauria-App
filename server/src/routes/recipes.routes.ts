@@ -66,6 +66,7 @@ router.put(
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
+router.post('/:id/versions/:versionNumber/restore', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), recipeController.restoreVersion);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), recipeController.create);
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), recipeController.update);
 // Archivage (mig 346) : DELETE archive, plus de suppression physique.

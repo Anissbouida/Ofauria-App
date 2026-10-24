@@ -778,6 +778,27 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
 
   const [showVersions, setShowVersions] = useState(false);
   const [portions, setPortions] = useState<number | null>(null);
+
+  // Restauration d'une version (mig 346) : le serveur verse d'abord l'etat courant
+  // en nouvelle version, puis re-applique la capture. Rien n'est perdu.
+  const queryClient = useQueryClient();
+  const restoreVersionMutation = useMutation({
+    mutationFn: (versionNumber: number) => recipesApi.restoreVersion(recipeId, versionNumber),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['recipe', recipeId] });
+      queryClient.invalidateQueries({ queryKey: ['recipe-versions', recipeId] });
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      queryClient.invalidateQueries({ queryKey: ['recipe-composition', recipeId] });
+      notify.success(`Version ${res.restore.restoredFrom} restaurée — l'état précédent est conservé en version ${res.restore.newVersion ?? '?'}`);
+      for (const w of res.restore.warnings) notify(w, { icon: '⚠️', duration: 8000 });
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Restauration impossible'),
+  });
+  const askRestoreVersion = (versionNumber: number) => {
+    if (confirm(`Restaurer la version ${versionNumber} ?\n\nL'état actuel sera d'abord enregistré comme nouvelle version : rien n'est perdu. La nomenclature, les formats, les étapes et les frais de la version ${versionNumber} remplaceront les valeurs actuelles.`)) {
+      restoreVersionMutation.mutate(versionNumber);
+    }
+  };
   // KPI du format actif remontés par l'éditeur (Lot 4) — l'en-tête suit l'onglet.
 
   const yieldQty = recipe?.yield_quantity || 1;
@@ -1455,11 +1476,24 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                           padding: '0.625rem 1rem', borderTop: idx > 0 ? '1px solid var(--theme-bg-separator)' : 'none',
                           fontSize: '0.75rem', backgroundColor: 'var(--theme-bg-card)',
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, gap: 8 }}>
                             <strong>Version {v.version_number}</strong>
-                            <span style={{ color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                              <Clock size={10} />
-                              {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            <span style={{ color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                <Clock size={10} />
+                                {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {v.snapshot ? (
+                                <button type="button" onClick={() => askRestoreVersion(v.version_number)}
+                                  disabled={restoreVersionMutation.isPending}
+                                  className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}
+                                  title="Re-appliquer cette version (l'état actuel est conservé en nouvelle version)">
+                                  <ArchiveRestore size={11} /> Restaurer
+                                </button>
+                              ) : (
+                                <span title="Version antérieure à la capture complète : nomenclature non enregistrée, restauration impossible"
+                                  style={{ fontSize: '0.6875rem', fontStyle: 'italic' }}>capture partielle</span>
+                              )}
                             </span>
                           </div>
                           <div style={{ color: 'var(--theme-text-muted)' }}>
