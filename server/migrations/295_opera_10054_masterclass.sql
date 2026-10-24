@@ -165,7 +165,21 @@ UPDATE recipes
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. Format Cadre 40x30 → 24 parts, 115 g/part (poids nomenclature / nb).
+--
+--    En prod la recette Opéra n'a jamais été supprimée : elle porte encore les
+--    3 formats de la mig 273 (f1 cadre 60x40 par défaut, f2, f3), et l'index
+--    unique uq_recipe_formats_default (un seul format par défaut par recette)
+--    refusait l'insertion du cadre 40x30 -> « duplicate key value violates
+--    unique constraint "uq_recipe_formats_default" ». Comme en mig 303, on
+--    retire d'abord le défaut aux autres formats : la fiche masterclass devient
+--    le format par défaut, les anciens cadres restent disponibles.
 -- ─────────────────────────────────────────────────────────────────────────────
+UPDATE recipe_formats
+   SET is_default = false, updated_at = NOW()
+ WHERE recipe_id = '0be7a000-0000-4000-8000-000000000001'
+   AND is_default
+   AND id <> '0be7a000-0000-4000-8000-0000000000f4';
+
 INSERT INTO recipe_formats (id, recipe_id, contenant_id, quantite_par_format,
                             quantite_par_format_unite, nb_par_defaut, is_default, ordre)
 SELECT '0be7a000-0000-4000-8000-0000000000f4'::uuid,
