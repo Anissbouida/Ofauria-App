@@ -217,6 +217,16 @@ UPDATE recipes r
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. Format Cadre 40x30x4,5 cm → 24 parts, 130 g/part, PV forcé 18 DH.
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Le format du cadre (créé ici ou préexistant) devient le format par défaut.
+-- Les autres formats perdent le défaut AVANT l'insertion : en prod la fiche
+-- fab28600-…-131 (mig 286) porte déjà un format par défaut, et l'index unique
+-- uq_recipe_formats_default refusait sinon le cadre 40x30 (« duplicate key »).
+UPDATE recipe_formats f
+   SET is_default = false, updated_at = NOW()
+ WHERE f.recipe_id = (SELECT id FROM _fn303_rec WHERE key = 'produit')
+   AND f.is_default
+   AND f.contenant_id <> (SELECT id FROM production_contenants WHERE nom = 'Cadre 40x30x4,5 cm');
+
 INSERT INTO recipe_formats (id, recipe_id, contenant_id, quantite_par_format,
                             quantite_par_format_unite, nb_par_defaut, is_default, ordre,
                             prix_vente_unitaire_override, is_active)
@@ -228,13 +238,6 @@ SELECT 'f0ee7000-0000-4000-8000-0000000000f4'::uuid, x.id, c.id, 130, 'g', 24, t
      SELECT 1 FROM recipe_formats f
       WHERE f.recipe_id = x.id AND f.contenant_id = c.id
    );
-
--- Le format du cadre (créé ici ou préexistant) devient le format par défaut.
-UPDATE recipe_formats f
-   SET is_default = false, updated_at = NOW()
- WHERE f.recipe_id = (SELECT id FROM _fn303_rec WHERE key = 'produit')
-   AND f.is_default
-   AND f.contenant_id <> (SELECT id FROM production_contenants WHERE nom = 'Cadre 40x30x4,5 cm');
 
 UPDATE recipe_formats f
    SET quantite_par_format = 130, quantite_par_format_unite = 'g',
