@@ -7,7 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets } from 'lucide-react';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
@@ -68,9 +68,20 @@ interface RecipeFormat {
   marge_resolue?: string | null;
 }
 
+/** Types d'etape de fabrication (mig 342) — meme liste que le validator serveur. */
+const ETAPE_TYPES = ['petrissage', 'pointage', 'faconnage', 'tourage', 'appret', 'cuisson', 'refroidissement', 'montage', 'finition', 'autre'] as const;
+const ETAPE_TYPE_LABELS: Record<string, string> = {
+  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
+  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
+};
+
 interface RecipeEtape {
   ordre: number;
   nom: string;
+  // Parametres structures (mig 342). La duree est duree_estimee_min.
+  type?: string | null;
+  temperature_c?: number | null;
+  humidite_pct?: number | null;
   duree_estimee_min: number | null;
   est_bloquante: boolean;
   timer_auto: boolean;
@@ -92,6 +103,9 @@ interface RecipeDetail {
   yield_unit: string;
   // Poids unitaire d'une piece, requis quand yield_unit != products.sale_unit.
   piece_weight_kg?: string | number | null;
+  // Parametres de pate (mig 342) : T° de pate cible en fin de petrissage, hydratation en % boulanger.
+  temperature_pate_cible_c?: string | number | null;
+  hydratation_pct?: string | number | null;
   total_cost: string;
   total_weight_kg: string | null;
   is_base: boolean;
@@ -1273,6 +1287,23 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
               {recipe.etapes && recipe.etapes.length > 0 && (
                 <div className="odoo-section">
                   <div className="odoo-section-header"><ListChecks size={12} /> Étapes de production ({recipe.etapes.length})</div>
+                  {(recipe.temperature_pate_cible_c != null || recipe.hydratation_pct != null) && (
+                    <div style={{
+                      display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.5rem 1rem', fontSize: '0.75rem',
+                      backgroundColor: 'var(--theme-bg-secondary)', borderBottom: '1px solid var(--theme-bg-separator)',
+                    }}>
+                      {recipe.temperature_pate_cible_c != null && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Thermometer size={11} /> T° de pâte cible <strong>{parseFloat(String(recipe.temperature_pate_cible_c))} °C</strong>
+                        </span>
+                      )}
+                      {recipe.hydratation_pct != null && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Droplets size={11} /> Hydratation <strong>{parseFloat(String(recipe.hydratation_pct))} %</strong>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div>
                     {recipe.etapes.sort((a, b) => a.ordre - b.ordre).map((etape, idx) => (
                       <div key={idx} style={{
@@ -1293,7 +1324,16 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                             {etape.controle_qualite && <span className="odoo-tag odoo-tag-green"><ShieldCheck size={9} /> QC</span>}
                             {etape.est_repetable && <span className="odoo-tag odoo-tag-purple"><Repeat size={9} /> x{etape.nb_repetitions}</span>}
                           </div>
-                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 4, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 4, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', flexWrap: 'wrap' }}>
+                            {etape.type && etape.type !== 'autre' && (
+                              <span className="odoo-tag odoo-tag-grey">{ETAPE_TYPE_LABELS[etape.type] || etape.type}</span>
+                            )}
+                            {etape.temperature_c != null && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Thermometer size={10} /> {etape.temperature_c} °C</span>
+                            )}
+                            {etape.humidite_pct != null && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Droplets size={10} /> {etape.humidite_pct} % HR</span>
+                            )}
                             {etape.duree_estimee_min && (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Clock size={10} /> {etape.duree_estimee_min} min</span>
                             )}
@@ -1413,6 +1453,9 @@ interface FormEtape {
   ordre: number;
   nom: string;
   duree_estimee_min: string;
+  type: string;
+  temperature_c: string;
+  humidite_pct: string;
   est_bloquante: boolean;
   timer_auto: boolean;
   controle_qualite: boolean;
@@ -1653,6 +1696,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const [yieldUnit, setYieldUnit] = useState('unit');
   // Poids unitaire d'une piece (kg). Saisi quand yield_unit != product.sale_unit.
   const [pieceWeightKg, setPieceWeightKg] = useState('');
+  // Parametres de pate (mig 342) : T° de pate cible en fin de petrissage, hydratation (% boulanger).
+  const [temperaturePate, setTemperaturePate] = useState('');
+  const [hydratation, setHydratation] = useState('');
   // Categorie operationnelle (recipe_categories.id)
   const [categoryId, setCategoryId] = useState<string>('');
   const [marginMultiplier, setMarginMultiplier] = useState('3');
@@ -1682,6 +1728,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         : ''
     );
     setCategoryId((existingRecipe as Record<string, any>).category_id as string || '');
+    setTemperaturePate(existingRecipe.temperature_pate_cible_c != null ? String(parseFloat(String(existingRecipe.temperature_pate_cible_c))) : '');
+    setHydratation(existingRecipe.hydratation_pct != null ? String(parseFloat(String(existingRecipe.hydratation_pct))) : '');
     // Normalise a 2 decimales pour eviter "3.0400" stocke en NUMERIC SQL.
     setMarginMultiplier(parseFloat(String(existingRecipe.margin_multiplier ?? 3)).toFixed(2));
     setSalePrice(existingRecipe.product_price ? parseFloat(String(existingRecipe.product_price)).toFixed(2) : '');
@@ -1710,6 +1758,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       existingRecipe.etapes && existingRecipe.etapes.length > 0
         ? existingRecipe.etapes.map(e => ({
             ordre: e.ordre, nom: e.nom, duree_estimee_min: e.duree_estimee_min ? String(e.duree_estimee_min) : '',
+            type: e.type || '', temperature_c: e.temperature_c != null ? String(e.temperature_c) : '',
+            humidite_pct: e.humidite_pct != null ? String(e.humidite_pct) : '',
             est_bloquante: e.est_bloquante, timer_auto: e.timer_auto, controle_qualite: e.controle_qualite,
             checklist_items: e.checklist_items || [], est_repetable: e.est_repetable,
             nb_repetitions: String(e.nb_repetitions || 1), responsable_role: e.responsable_role || '',
@@ -1771,7 +1821,7 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
   const updateSubRecipeRow = (idx: number, field: keyof FormSubRecipe, value: string) => setFormSubRecipes(formSubRecipes.map((row, i) => i === idx ? { ...row, [field]: value } : row));
 
   const addEtapeRow = () => setFormEtapes([...formEtapes, {
-    ordre: formEtapes.length + 1, nom: '', duree_estimee_min: '', est_bloquante: true,
+    ordre: formEtapes.length + 1, nom: '', duree_estimee_min: '', type: '', temperature_c: '', humidite_pct: '', est_bloquante: true,
     timer_auto: false, controle_qualite: false, checklist_items: [], est_repetable: false,
     nb_repetitions: '1', responsable_role: '',
   }]);
@@ -1991,6 +2041,9 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
         ordre: e.ordre,
         nom: e.nom.trim(),
         duree_estimee_min: e.duree_estimee_min ? parseFloat(e.duree_estimee_min) : null,
+        type: e.type || null,
+        temperature_c: e.temperature_c !== '' ? parseFloat(e.temperature_c) : null,
+        humidite_pct: e.humidite_pct !== '' ? parseFloat(e.humidite_pct) : null,
         est_bloquante: e.est_bloquante,
         timer_auto: e.timer_auto,
         controle_qualite: e.controle_qualite,
@@ -2028,6 +2081,8 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
       yieldQuantity: parseFloat(yieldQuantity) || 1,
       yieldUnit,
       pieceWeightKg: pieceWeightKg && parseFloat(pieceWeightKg) > 0 ? parseFloat(pieceWeightKg) : null,
+      temperaturePateCibleC: temperaturePate !== '' ? parseFloat(temperaturePate) : null,
+      hydratationPct: hydratation !== '' ? parseFloat(hydratation) : null,
       categoryId: categoryId || null,
       marginMultiplier: parseFloat(marginMultiplier) || 3,
       tauxMainOeuvreDhH: tauxMo === '' ? undefined : parseFloat(tauxMo),
@@ -2826,6 +2881,30 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                   </div>
                 </div>
 
+                {/* Parametres de pate (mig 342) : le pilotage du petrissage et de la fermentation */}
+                <div className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="text-sm font-semibold text-gray-700 mb-2">Paramètres de pâte</div>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex items-center gap-2">
+                      <Thermometer size={14} className="text-gray-400" />
+                      <label className="text-xs text-gray-600">T° de pâte cible</label>
+                      <input type="number" min="-10" max="60" step="0.5" placeholder="ex: 25"
+                        className="w-20 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                        value={temperaturePate} onChange={(e) => setTemperaturePate(e.target.value)} />
+                      <span className="text-xs text-gray-400">°C</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Droplets size={14} className="text-gray-400" />
+                      <label className="text-xs text-gray-600">Hydratation</label>
+                      <input type="number" min="0" max="200" step="0.5" placeholder="ex: 68"
+                        className="w-20 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                        value={hydratation} onChange={(e) => setHydratation(e.target.value)} />
+                      <span className="text-xs text-gray-400">% (eau / farine)</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-2">T° en fin de pétrissage (boulangerie : 24-26 °C) et pourcentage boulanger. Laisser vide si non pertinent (crèmes, montages).</p>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-sm text-gray-700">{formEtapes.length} etape{formEtapes.length !== 1 ? 's' : ''}</h3>
                   <button type="button" onClick={addEtapeRow}
@@ -2876,6 +2955,27 @@ function RecipeFormModal({ recipeId, onClose, onSaved, defaultIsBase = false }: 
                               className="w-20 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
                               value={etape.duree_estimee_min} onChange={(e) => updateEtapeRow(idx, 'duree_estimee_min', e.target.value)} />
                             <span className="text-xs text-gray-400">min</span>
+                          </div>
+
+                          {/* Parametres structures (mig 342) : type, T°, hygrometrie */}
+                          <select value={etape.type} onChange={(e) => updateEtapeRow(idx, 'type', e.target.value)}
+                            className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500">
+                            <option value="">Type d'étape…</option>
+                            {ETAPE_TYPES.map(t => <option key={t} value={t}>{ETAPE_TYPE_LABELS[t]}</option>)}
+                          </select>
+                          <div className="flex items-center gap-1.5" title="Température (four, étuve, ambiante…)">
+                            <Thermometer size={14} className="text-gray-400" />
+                            <input type="number" min="-40" max="400" step="1" placeholder="°C"
+                              className="w-16 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                              value={etape.temperature_c} onChange={(e) => updateEtapeRow(idx, 'temperature_c', e.target.value)} />
+                            <span className="text-xs text-gray-400">°C</span>
+                          </div>
+                          <div className="flex items-center gap-1.5" title="Hygrométrie (étuve, pousse contrôlée)">
+                            <Droplets size={14} className="text-gray-400" />
+                            <input type="number" min="0" max="100" step="1" placeholder="HR"
+                              className="w-16 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                              value={etape.humidite_pct} onChange={(e) => updateEtapeRow(idx, 'humidite_pct', e.target.value)} />
+                            <span className="text-xs text-gray-400">% HR</span>
                           </div>
 
                           <label className="flex items-center gap-1.5 cursor-pointer">

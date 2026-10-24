@@ -5,8 +5,14 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useProductionTimers } from '../../context/ProductionTimerContext';
 import {
   CheckCircle, Play, Clock, SkipForward, ListChecks, Timer,
-  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock
+  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets
 } from 'lucide-react';
+
+/** Libelles des types d'etape (mig 342). */
+const ETAPE_TYPE_LABELS: Record<string, string> = {
+  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
+  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
+};
 
 interface EtapesPanelProps {
   planId: string;
@@ -22,6 +28,10 @@ interface Etape {
   ordre: number;
   nom: string;
   duree_estimee_min: number | null;
+  // Parametres structures (mig 342) : ce que l'ouvrier doit regler avant de lancer.
+  type_etape?: string | null;
+  temperature_c?: number | string | null;
+  humidite_pct?: number | string | null;
   est_bloquante: boolean;
   timer_auto: boolean;
   controle_qualite: boolean;
@@ -333,6 +343,9 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               <span className={`font-medium text-sm ${etape.status === 'completed' ? 'text-emerald-800 line-through' : 'text-gray-900'}`}>{etape.nom}</span>
                               {etape.est_bloquante && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold uppercase">Bloquante</span>}
                               {etape.timer_auto && etape.duree_estimee_min && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 font-bold"><Timer size={9} className="inline mr-0.5" />{etape.duree_estimee_min}min</span>}
+                              {etape.type_etape && etape.type_etape !== 'autre' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold uppercase">{ETAPE_TYPE_LABELS[etape.type_etape] || etape.type_etape}</span>}
+                              {etape.temperature_c != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 font-bold"><Thermometer size={9} className="inline mr-0.5" />{parseFloat(String(etape.temperature_c))} °C</span>}
+                              {etape.humidite_pct != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold"><Droplets size={9} className="inline mr-0.5" />{parseFloat(String(etape.humidite_pct))} % HR</span>}
                               {etape.est_repetable && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-bold"><RotateCcw size={9} className="inline mr-0.5" />{etape.nb_repetitions_actuelle}/{etape.nb_repetitions_cible}</span>}
                             </div>
                             {etape.status === 'completed' && etape.duree_reelle_min != null && (

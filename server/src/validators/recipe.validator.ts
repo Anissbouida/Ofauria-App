@@ -1,8 +1,18 @@
 import { z } from 'zod';
 
+/** Types d'etape de fabrication (mig 342). Meme liste que le CHECK de production_item_etapes.type_etape. */
+export const ETAPE_TYPES = [
+  'petrissage', 'pointage', 'faconnage', 'tourage', 'appret',
+  'cuisson', 'refroidissement', 'montage', 'finition', 'autre',
+] as const;
+
 const etapeSchema = z.object({
   ordre: z.number().int().min(1),
   nom: z.string().min(1, 'Le nom de l\'étape est requis').max(200),
+  // Parametres structures (mig 342) : type d'etape, T° (four/etuve/ambiante), hygrometrie.
+  type: z.enum(ETAPE_TYPES).nullable().optional(),
+  temperature_c: z.number().min(-40, 'Température trop basse').max(400, 'Température trop haute').nullable().optional(),
+  humidite_pct: z.number().min(0).max(100, 'L\'humidité est un pourcentage (0-100)').nullable().optional(),
   duree_estimee_min: z.number().positive().nullable().optional(),
   est_bloquante: z.boolean().default(true),
   timer_auto: z.boolean().default(false),
@@ -26,6 +36,9 @@ export const createRecipeSchema = z.object({
   // Poids unitaire d'une piece, en kg. Requis quand yield_unit != products.sale_unit
   // (la validation finale est faite dans le repository via ensureYieldUnitCompatible).
   pieceWeightKg: z.number().positive('Le poids unitaire doit être positif').nullable().optional(),
+  // Parametres de pate (mig 342) : T° de pate en fin de petrissage, hydratation en % boulanger.
+  temperaturePateCibleC: z.number().min(-10).max(60, 'Température de pâte invalide').nullable().optional(),
+  hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),
   marginMultiplier: z.number().positive('Le multiplicateur doit être positif').default(3),
   salePrice: z.number().nonnegative('Le prix de vente doit être positif').optional().nullable(),
   // Frais indirects au niveau recette (default 0 si absent — preserve le comportement existant)

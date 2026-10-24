@@ -44,6 +44,7 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id, r.mode_cout, r.compo_par_piece,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.created_at, r.updated_at,
@@ -98,6 +99,7 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
               r.taux_main_oeuvre_dh_h, r.cout_energie_fournee, r.taux_frais_structure_pct,
@@ -212,6 +214,7 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.temperature_pate_cible_c, r.hydratation_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
               p.name as product_name, p.price as product_price
@@ -304,6 +307,7 @@ export const recipeRepository = {
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
@@ -376,12 +380,14 @@ export const recipeRepository = {
       const tauxStruct = data.tauxFraisStructurePct ?? parseFloat(csDefaults.taux_frais_structure_defaut_pct || '0');
       const recipeResult = await client.query(
         `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, contenant_id, etapes, margin_multiplier,
-                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+                              taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id,
+                              temperature_pate_cible_c, hydratation_pct)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
         [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
          data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
-         tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null]
+         tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null,
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -567,6 +573,7 @@ export const recipeRepository = {
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
@@ -665,12 +672,15 @@ export const recipeRepository = {
            cout_energie_fournee = COALESCE($11, cout_energie_fournee),
            taux_frais_structure_pct = COALESCE($12, taux_frais_structure_pct),
            category_id = $13,
+           temperature_pate_cible_c = $15,
+           hydratation_pct = $16,
            updated_at = NOW()
          WHERE id = $14`,
         [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
          data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
-         data.categoryId ?? null, id]
+         data.categoryId ?? null, id,
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
       );
 
       // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire
