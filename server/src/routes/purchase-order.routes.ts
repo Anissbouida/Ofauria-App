@@ -6,7 +6,7 @@ import { requireVerb } from '../middleware/module.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
-import { reasonCodeSchema, optionalNoteSchema, changeOrderSchema, correctReceiptSchema } from '../validators/purchase-order-action.validator.js';
+import { reasonCodeSchema, optionalNoteSchema, changeOrderSchema, correctReceiptSchema, createPurchaseOrderSchema } from '../validators/purchase-order-action.validator.js';
 import { idempotent } from '../middleware/idempotency.middleware.js';
 import { listActions } from '../services/document-actions.service.js';
 
@@ -18,7 +18,7 @@ router.get('/overdue', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), pu
 router.get('/board', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseOrderController.board));
 router.get('/pipeline', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseOrderController.pipeline));
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.getById);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), idempotent(), purchaseOrderController.create);
+router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createPurchaseOrderSchema), idempotent(), purchaseOrderController.create);
 router.post('/:id/send', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('purchasing', 'approve'), validateUuidParams('id'), asyncHandler(purchaseOrderController.send));
 router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), idempotent(), purchaseOrderController.confirmDelivery);
 // Actions motivées (mig 306) : code motif obligatoire, journalisées dans document_actions.

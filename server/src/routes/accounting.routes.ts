@@ -72,37 +72,42 @@ revenueCategoriesRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), revenu
 revenueCategoriesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), revenueCategoryController.remove);
 
 export const invoicesRouter = Router();
-invoicesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.list);
+// F-008 : tous les handlers sont async et plusieurs recoivent un :id. Sans
+// asyncHandler, une erreur (ex. UUID malforme -> 22P02 Postgres) devient une
+// « unhandled rejection » et la requete reste pendante ; validateUuidParams
+// refuse en 400 un :id non-UUID avant d'atteindre la base. Meme convention que
+// le routeur fournisseurs et les routes factures deja durcies (control, holds).
+invoicesRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.list));
 invoicesRouter.get('/received-board', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.receivedBoard));
 invoicesRouter.get('/received-pipeline', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.receivedPipeline));
 invoicesRouter.get('/tax-codes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.taxCodes));
-invoicesRouter.get('/line-expenses', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.lineExpenses);
-invoicesRouter.get('/payment-alerts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.paymentAlerts);
-invoicesRouter.get('/debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.debts);
-invoicesRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.getById);
-invoicesRouter.put('/line/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateLineCategory);
-invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateCategory);
-invoicesRouter.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.replaceItems);
-invoicesRouter.put('/:id/payment-terms', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updatePaymentTerms);
-invoicesRouter.put('/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.updateStatusManual);
+invoicesRouter.get('/line-expenses', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.lineExpenses));
+invoicesRouter.get('/payment-alerts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.paymentAlerts));
+invoicesRouter.get('/debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.debts));
+invoicesRouter.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.getById));
+invoicesRouter.put('/line/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updateLineCategory));
+invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updateCategory));
+invoicesRouter.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.replaceItems));
+invoicesRouter.put('/:id/payment-terms', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updatePaymentTerms));
+invoicesRouter.put('/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updateStatusManual));
 // PUT /:id : modification complete (admin + gerant) — montants, dates, fournisseur, etc.
-invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.update);
-invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.create);
-invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.createFromOrder);
-invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.merge);
+invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.update));
+invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.create));
+invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('orderId'), asyncHandler(invoiceController.createFromOrder));
+invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.merge));
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
-invoicesRouter.post('/:id/schedule', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentScheduleController.createInvoiceSchedule);
+invoicesRouter.post('/:id/schedule', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentScheduleController.createInvoiceSchedule));
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.cancel));
 // Contrôle et blocages (mig 309).
 invoicesRouter.get('/:id/control', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.control));
 invoicesRouter.post('/:id/holds', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(manualHoldSchema), asyncHandler(invoiceController.addHold));
 invoicesRouter.post('/holds/:holdId/release', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('holdId'), validate(reasonCodeSchema), asyncHandler(invoiceController.releaseHold));
 // DELETE /:id : suppression physique (admin + gerant). ?force=true cascade les paiements.
-invoicesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.remove);
-invoicesRouter.post('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceUpload.single('attachment'), invoiceController.uploadAttachment);
-invoicesRouter.delete('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.removeAttachment);
-invoicesRouter.get('/:id/download-docx', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.downloadDocx);
-invoicesRouter.get('/:id/download-pdf', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), invoiceController.downloadDocx);
+invoicesRouter.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.remove));
+invoicesRouter.post('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), invoiceUpload.single('attachment'), asyncHandler(invoiceController.uploadAttachment));
+invoicesRouter.delete('/:id/attachment', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.removeAttachment));
+invoicesRouter.get('/:id/download-docx', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
+invoicesRouter.get('/:id/download-pdf', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
 
 // Upload Excel de caisse (in-memory, 5MB max, .xlsx/.xls)
 const caisseImportUpload = multer({
@@ -119,10 +124,10 @@ caisseImportRouter.post('/preview', authenticate, authorize(ROLES.ADMIN), caisse
 caisseImportRouter.post('/commit', authenticate, authorize(ROLES.ADMIN), caisseImportUpload.single('file'), caisseImportController.commit);
 
 export const paymentsRouter = Router();
-paymentsRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.list);
-paymentsRouter.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.summary);
+paymentsRouter.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.list));
+paymentsRouter.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.summary));
 // Gestion cheques : liste + confirmation/annulation encaissement
-paymentsRouter.get('/checks', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.listChecks);
+paymentsRouter.get('/checks', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.listChecks));
 // asyncHandler : un paiement refusé par la base (facture bloquée, mig 309) remonte en 409 lisible.
 paymentsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createPaymentSchema), asyncHandler(paymentController.create));
 // Mig 310 (D7) : modes typés, plafond espèces, annulation par contre-pièce, virements internes.
@@ -137,9 +142,9 @@ paymentsRouter.post('/:id/reissue', authenticate, authorize(...ROLE_GROUPS.ADMIN
 paymentsRouter.get('/:id/actions', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'),
   asyncHandler(async (req, res) => { res.json({ success: true, data: await listActions('payment', req.params.id) }); }));
 paymentsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(updatePaymentSchema), asyncHandler(paymentController.update));
-paymentsRouter.post('/:id/mark-cashed', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), paymentController.markCashed);
+paymentsRouter.post('/:id/mark-cashed', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentController.markCashed));
 // Annulation : admin uniquement (rollback ne dois pas etre routine)
-paymentsRouter.post('/:id/unmark-cashed', authenticate, authorize(ROLES.ADMIN), paymentController.unmarkCashed);
+paymentsRouter.post('/:id/unmark-cashed', authenticate, authorize(ROLES.ADMIN), validateUuidParams('id'), asyncHandler(paymentController.unmarkCashed));
 // Annulation paiement : elargi a ADMIN_MANAGER (cas d'usage courant
 // pour corriger erreurs de saisie : mauvais montant, faux N° cheque, doublon).
 // updatePaidAmount() est rejoue dans le delete() -> facture revient au bon statut.

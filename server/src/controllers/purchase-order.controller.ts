@@ -106,6 +106,17 @@ export const purchaseOrderController = {
       await purchaseOrderActionsRepository.log(po.id, 'created', req.user!.userId);
       res.status(201).json({ success: true, data: po });
     } catch (err) {
+      // F-002 : un fournisseur / article inexistant (UUID valide mais absent) ou
+      // une donnee non convertible est une erreur CLIENT (400), pas une 500.
+      const e = err as { code?: string; message?: string };
+      if (e.code === '23503') {
+        res.status(400).json({ success: false, error: { message: 'Fournisseur ou article inexistant.' } });
+        return;
+      }
+      if (e.code === '22P02' || e.code === '23514') {
+        res.status(400).json({ success: false, error: { message: 'Données du bon de commande invalides.' } });
+        return;
+      }
       console.error('[purchaseOrder.create] Error:', err);
       const message = err instanceof Error ? err.message : 'Erreur lors de la creation du bon de commande';
       res.status(500).json({ success: false, error: { message } });

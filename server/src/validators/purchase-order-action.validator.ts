@@ -32,3 +32,26 @@ export const changeOrderSchema = reasonCodeSchema.extend({
 export const correctReceiptSchema = reasonCodeSchema.extend({
   delta: z.coerce.number().finite().refine(v => Math.abs(v) > 0.0001, 'Quantité de correction requise').refine(v => Math.abs(v) <= 1_000_000, 'Quantité trop élevée'),
 });
+
+/**
+ * Creation d'un bon de commande (POST /purchase-orders) — F-002.
+ * Sans ce schema, un type invalide (quantityOrdered:"abc") ou une ligne mal
+ * formee faisait echouer l'INSERT cote Postgres en 500. On valide la FORME ;
+ * l'existence des cles etrangeres (fournisseur, article) reste verifiee par la
+ * base et traduite en 400 par le controleur.
+ */
+export const createPurchaseOrderSchema = z.object({
+  supplierId: z.string().uuid('Fournisseur invalide'),
+  expectedDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  items: z.array(
+    z.object({
+      ingredientId: z.string().uuid('Ingrédient invalide').optional().nullable(),
+      packagingId: z.string().uuid('Consommable invalide').optional().nullable(),
+      quantityOrdered: z.coerce.number().positive('Quantité commandée invalide (doit être > 0)').max(1_000_000),
+      unitPrice: z.coerce.number().min(0, 'Prix invalide').max(1_000_000).optional().nullable(),
+    }).refine((i) => Boolean(i.ingredientId) !== Boolean(i.packagingId), {
+      message: 'Une ligne porte soit un ingrédient soit un consommable (exclusif).',
+    }),
+  ).min(1, 'Au moins un article requis').max(200),
+}).passthrough();

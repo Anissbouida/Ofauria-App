@@ -709,6 +709,24 @@ export const salaryAdvanceController = {
       res.status(400).json({ success: false, error: { message: 'employeeId et montant positif requis' } });
       return;
     }
+    // F-048 : plafond serveur — une avance ne peut pas depasser le salaire mensuel
+    // (equivalent pour les payes a la semaine) diminue des avances deja en cours.
+    // La demande self-service appliquait deja cette regle ; le chemin gerant ne la
+    // controlait pas, laissant passer un montant aberrant (ex. 50 000 DH).
+    const emp = await employeeRepository.findById(employeeId);
+    if (!emp) {
+      res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } });
+      return;
+    }
+    const monthlyEq = (emp.pay_frequency ?? 'monthly') === 'weekly'
+      ? parseFloat(emp.weekly_salary ?? '0') * 52 / 12
+      : parseFloat(emp.monthly_salary ?? '0');
+    const outstanding = parseFloat((await salaryAdvanceRepository.outstandingByEmployee(employeeId))[0]?.outstanding ?? '0') || 0;
+    const cap = Math.max(0, Math.round((monthlyEq - outstanding) * 100) / 100);
+    if (parsed > cap + 0.001) {
+      res.status(409).json({ success: false, error: { message: `Montant trop élevé : ${cap.toFixed(2)} DH au plus (salaire mensuel moins avances en cours).` } });
+      return;
+    }
     // Plan d'etalement optionnel : retenue par paie, entre 0 exclu et le
     // montant de l'avance (au-dela, autant ne pas definir de plan).
     let monthly: number | null = null;

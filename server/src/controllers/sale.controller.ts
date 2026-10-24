@@ -82,6 +82,20 @@ export const saleController = {
         return;
       }
 
+      // F-026 : la quantite est toujours entiere — des pieces pour un produit
+      // unitaire, des grammes pour un produit au poids (sale_items.quantity est
+      // un INTEGER). Un decimal (ex. 1,5 piece) faisait echouer l'INSERT cote
+      // Postgres (22P02) et, sans asyncHandler, laissait la requete pendante.
+      // On refuse proprement en 400 avant d'atteindre la base.
+      if (!Number.isInteger(item.quantity)) {
+        const unitLabel = product.sale_unit === 'weight' ? 'grammes' : 'pièces';
+        res.status(400).json({
+          success: false,
+          error: { message: `Quantité invalide pour "${product.name}" : un nombre entier de ${unitLabel} est requis.` },
+        });
+        return;
+      }
+
       // Verify sufficient stock in the vitrine before selling.
       // Pour les produits au poids, item.quantity = poids vendu en grammes
       // et currentStock = grammes restants en vitrine (stock géré en grammes).
