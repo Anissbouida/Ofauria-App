@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { snapshotRecipeVersion } from './recipe-version.helper.js';
 
 export interface ComponentInput {
   role?: string | null;
@@ -109,7 +110,7 @@ export const recipeComponentRepository = {
                    ELSE 0 END AS cout_unitaire
        FROM recipes r
        LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
-       WHERE r.is_base = true
+       WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
     );
     const ingredients = await db.query(
@@ -248,6 +249,10 @@ export const recipeComponentRepository = {
       }
       const isDefault = owns.rows[0].is_default === true;
 
+      // Version complete AVANT modification (mig 346) : la nomenclature par format
+      // n'etait jamais versionnee, seul le formulaire recette le faisait.
+      await snapshotRecipeVersion(client, recipeId, userId ?? null, 'Nomenclature du format modifiee');
+
       // Anti-cycle : refuse si un composant (sous-)recette boucle vers cette recette.
       const childIds = data.components.filter((c) => c.sourceRecipeId).map((c) => c.sourceRecipeId as string);
       const cyclic = await this.detectComponentCycle(recipeId, childIds, client);
@@ -362,7 +367,10 @@ export const recipeComponentRepository = {
 
   // Met à jour les leviers financiers saisissables (frais indirects + multiplicateur).
   // Renvoie la composition recalculée (coûts/prix/marge à jour).
-  async updateFinance(recipeId: string, data: FinanceInput) {
+  async updateFinance(recipeId: string, data: FinanceInput, userId: string | null = null) {
+    // Version complete AVANT modification (mig 346) : les frais indirects et le
+    // multiplicateur n'etaient jamais versionnes.
+    await snapshotRecipeVersion(db, recipeId, userId, 'Parametres financiers modifies');
     const r = await db.query(
       `UPDATE recipes SET
          margin_multiplier        = COALESCE($2, margin_multiplier),

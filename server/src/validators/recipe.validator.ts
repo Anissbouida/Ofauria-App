@@ -23,6 +23,11 @@ const etapeSchema = z.object({
   responsable_role: z.string().max(50).nullable().optional(),
 });
 
+/** Archivage / restauration en masse (mig 346). */
+export const bulkRecipeIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, 'Au moins une recette').max(500),
+});
+
 export const createRecipeSchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
   productId: z.string().uuid().optional().nullable(),

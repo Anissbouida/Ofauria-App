@@ -7,7 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { contenantsApi } from '../../api/contenants.api';
-import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
+import { ChefHat, X, Search, Scale, BookOpen, DollarSign, ChevronRight, Plus, Pencil, Trash2, PlusCircle, Layers, History, Clock, Eye, TrendingUp, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, ListChecks, Timer, ShieldCheck, Repeat, Upload, Download, Thermometer, Droplets, AlertTriangle, Archive, ArchiveRestore } from 'lucide-react';
 import { allergenLabel } from '../../constants/allergens';
 import { getModeCalcul, MODE_LABELS } from '@ofauria/shared';
 import ContenantsPage from '../production/ContenantsPage';
@@ -109,6 +109,8 @@ interface RecipeDetail {
   hydratation_pct?: string | number | null;
   // Allergenes agreges de toute la nomenclature (v_recipe_allergens, mig 343).
   allergens?: string[] | null;
+  // Archivage (mig 346) : NULL = active.
+  archived_at?: string | null;
   total_cost: string;
   total_weight_kg: string | null;
   is_base: boolean;
@@ -208,7 +210,12 @@ export default function RecipesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { data: recipes = [], isLoading } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
+  // Vue « Archivees » (mig 346) : les fiches archivees sortent des listes actives mais restent restaurables.
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: recipes = [], isLoading } = useQuery({
+    queryKey: ['recipes', { archived: showArchived }],
+    queryFn: () => recipesApi.list(showArchived),
+  });
   const { data: recipeCategories = [] } = useQuery<RecipeCategory[]>({
     queryKey: ['recipe-categories'],
     queryFn: recipesApi.listCategories,
@@ -252,7 +259,11 @@ export default function RecipesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: recipesApi.remove,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Recette supprimee'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Fiche archivée — restaurable depuis la vue Archivées'); },
+  });
+  const restoreMutation = useMutation({
+    mutationFn: recipesApi.restore,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Fiche restaurée'); },
   });
 
   const filtered = recipes.filter((r: Record<string, any>) => {
@@ -328,7 +339,7 @@ export default function RecipesPage() {
 
   const askDelete = (r: Record<string, any>) => {
     const label = r.is_base ? 'la préparation de base' : 'la recette';
-    if (confirm(`Supprimer ${label} « ${r.name as string} » ?\n\nCette action est définitive.`)) {
+    if (confirm(`Archiver ${label} « ${r.name as string} » ?\n\nElle sort des listes et des sélecteurs, mais reste lisible depuis l'historique de production et restaurable depuis la vue Archivées.`)) {
       deleteMutation.mutate(r.id as string);
     }
   };
@@ -412,6 +423,13 @@ export default function RecipesPage() {
           <span className="odoo-pager">
             <strong>{sortedFiltered.length}</strong> / {activeTab === 'base' ? baseCount : productCount}
           </span>
+        )}
+        {activeTab !== 'contenants' && (
+          <button onClick={() => setShowArchived(v => !v)}
+            className={showArchived ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+            title={showArchived ? 'Revenir aux fiches actives' : 'Voir les fiches archivées'}>
+            <Archive size={13} /> {showArchived ? 'Archivées' : 'Archivées'}
+          </button>
         )}
         {activeTab !== 'contenants' && (
           <div className="odoo-view-switcher">
@@ -682,11 +700,19 @@ export default function RecipesPage() {
                             <Layers size={13} />
                           </button>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
-                          className="odoo-pager-btn" title="Supprimer"
-                          style={{ color: '#dc3545' }}>
-                          <Trash2 size={13} />
-                        </button>
+                        {showArchived ? (
+                          <button onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(r.id as string); }}
+                            className="odoo-pager-btn" title="Restaurer"
+                            style={{ color: '#28a745' }}>
+                            <ArchiveRestore size={13} />
+                          </button>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
+                            className="odoo-pager-btn" title="Archiver"
+                            style={{ color: '#dc3545' }}>
+                            <Archive size={13} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -743,6 +769,8 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
     yield_quantity: number; total_cost: string; is_base: boolean;
     ingredients: unknown[]; sub_recipes: unknown[];
     changed_by_name: string; change_note: string; created_at: string;
+    /** Capture complete (mig 346) : recipe, components, formats, etapes, frais. */
+    snapshot?: Record<string, unknown> | null;
   }>>({
     queryKey: ['recipe-versions', recipeId],
     queryFn: () => recipesApi.versions(recipeId),
@@ -1437,6 +1465,19 @@ function RecipeDetailModal({ recipeId, onClose, onEdit }: { recipeId: string; on
                           <div style={{ color: 'var(--theme-text-muted)' }}>
                             <div>Nom : {v.name} · Rendement : {v.yield_quantity} · Coût : {parseFloat(v.total_cost || '0').toFixed(2)} DH</div>
                             <div>{(v.ingredients as unknown[]).length} ingrédient(s), {(v.sub_recipes as unknown[]).length} sous-recette(s)</div>
+                            {/* Capture complete (mig 346) : nomenclature composee, formats, etapes, frais. */}
+                            {v.snapshot && (() => {
+                              const s = v.snapshot as { components?: unknown[]; formats?: { components?: unknown[] }[]; etapes?: unknown[]; recipe?: Record<string, unknown> };
+                              const rec = s.recipe || {};
+                              return (
+                                <div>
+                                  {(s.components?.length ?? 0)} composant(s), {(s.formats?.length ?? 0)} format(s), {(s.etapes?.length ?? 0)} étape(s)
+                                  {rec.margin_multiplier != null && <> · marge ×{parseFloat(String(rec.margin_multiplier)).toFixed(2)}</>}
+                                  {rec.taux_main_oeuvre_dh_h != null && <> · MO {parseFloat(String(rec.taux_main_oeuvre_dh_h)).toFixed(0)} DH/h</>}
+                                  {rec.perte_standard_pct != null && parseFloat(String(rec.perte_standard_pct)) > 0 && <> · perte {parseFloat(String(rec.perte_standard_pct))} %</>}
+                                </div>
+                              );
+                            })()}
                             {v.changed_by_name && <div>Par : {v.changed_by_name}</div>}
                             {v.change_note && <div style={{ fontStyle: 'italic' }}>Note : {v.change_note}</div>}
                           </div>
